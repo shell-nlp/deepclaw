@@ -21,20 +21,32 @@ dependencies = [
     "copilotkit>=0.1.78",
     "ag-ui-langgraph>=0.0.28",
     "ag-ui-protocol>=0.1.13",
-    "opensandbox-server>=0.1.6",
-    "opensandbox-code-interpreter>=0.1.1",
     "langgraph-checkpoint-postgres>=3.0.4",
-    "openinference-instrumentation-langchain>=0.1.62",
-    "arize-phoenix-otel>=0.15.0",
     "sqlmodel>=0.0.22",
     "apscheduler>=3.11.0",
-    "langchain-text-splitters>=1.1.2",
-    "pdfplumber>=0.11.9",
-    "pymupdf>=1.27.2.3",
-    "pandas>=3.0.2",
     "pypdf2>=3.0.1",
+    "pymupdf>=1.27.2.3",
+    "pdfplumber>=0.11.9",
+    "langchain-text-splitters>=1.1.2",
     "python-multipart>=0.0.20",
+    "pandas>=3.0.2",
 ]
+# uv add pypdf2 --optional pdf
+# uv sync --extra pdf 才会安装
+# uv sync --all-extras 安装所有可选依赖
+[project.optional-dependencies]
+opensandbox = [
+    "opensandbox-server>=0.1.6",
+    "opensandbox-code-interpreter>=0.1.1",
+]
+phoenix = [
+    "arize-phoenix-otel>=0.15.0",
+    "openinference-instrumentation-langchain>=0.1.62",
+]
+## uv add pytest --group dev
+# uv sync --no-dev  dev 组默认安装，可排除  
+# uv sync --group lint   安装特定组 
+# uv sync --all-groups 安装所有组  
 
 [[tool.uv.index]]
 url = "https://mirrors.aliyun.com/pypi/simple/"
