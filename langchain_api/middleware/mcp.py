@@ -6,11 +6,12 @@ from langchain.agents.middleware import (
     ExtendedModelResponse,
     ToolCallRequest,
 )
+from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 from loguru import logger
 
 from langchain_api.agent.context import AgentContext
-from mcp2tool.fastmcp_to_langchain import StreamableHttpMCPClient
+from mcp2tool.fastmcp_to_langchain import load_langchain_tools_from_mcp_config
 
 
 class StateSchema(AgentState):
@@ -23,13 +24,11 @@ class MCPMiddleware(AgentMiddleware[None, AgentContext, None]):
     state_schema = StateSchema
 
     async def get_mcp_tools(self, mcp_config):
-        async with StreamableHttpMCPClient.from_mcp_config(
+        return await load_langchain_tools_from_mcp_config(
             mcp_config,
-            "math",
+            server_name="math",
             tool_name_prefix=False,
-        ) as client:
-            tools = await client.load_langchain_tools()
-            return tools
+        )
 
     async def awrap_model_call(self, request, handler):
         mcp_config = request.runtime.context.mcp_config
@@ -61,7 +60,11 @@ class MCPMiddleware(AgentMiddleware[None, AgentContext, None]):
                 tool = tool_name_map[tool_name]
                 result = await tool.ainvoke(
                     request.tool_call["args"],
-                    config={"metadata": {"mcp_meta": {"userId": "刘宇"}}},
+                    config={
+                        "metadata": {
+                            "mcp_meta": {"userId": request.runtime.context.user_id}
+                        }
+                    },
                 )
-                return result
+                return ToolMessage(content=result, tool_call_id=request.tool_call["id"])
         return await handler(request)

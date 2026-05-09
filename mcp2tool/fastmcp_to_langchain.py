@@ -210,6 +210,79 @@ def convert_mcp_tool_to_langchain_tool(
     )
 
 
+def convert_mcp_tool_to_langchain_tool_from_config(
+    mcp_config: str | Path | dict[str, Any],
+    tool: MCPTool,
+    *,
+    server_name: str,
+    tool_name_prefix: bool = False,
+) -> BaseTool:
+    """Convert an MCP tool into a LangChain tool that reconnects on each call."""
+
+    config_source = _load_json_config(mcp_config)
+
+    async def coroutine(
+        runnable_config: RunnableConfig = None,
+        **arguments: Any,
+    ) -> tuple[str, dict[str, Any]]:
+        async with StreamableHttpMCPClient.from_mcp_config(
+            config_source,
+            server_name,
+            tool_name_prefix=tool_name_prefix,
+        ) as client:
+            result = await client._require_session().call_tool(
+                tool.name,
+                arguments,
+                meta=_extract_call_meta(runnable_config),
+            )
+        content, artifact = _convert_tool_result(result)
+        if result.isError:
+            raise ToolException(content or f"MCP tool {tool.name!r} returned an error")
+        return content, artifact
+
+    def func(
+        runnable_config: RunnableConfig = None,
+        **arguments: Any,
+    ) -> tuple[str, dict[str, Any]]:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coroutine(runnable_config=runnable_config, **arguments))
+        msg = "Synchronous invoke is not supported in a running event loop; use `ainvoke` instead."
+        raise RuntimeError(msg)
+
+    metadata: dict[str, Any] = {
+        "source": "mcp_client",
+        "mcp_tool_name": tool.name,
+    }
+    if server_name is not None:
+        metadata["mcp_server_name"] = server_name
+    if tool.title is not None:
+        metadata["title"] = tool.title
+    if tool.annotations is not None:
+        metadata["annotations"] = _dump_model(tool.annotations)
+    if tool.meta is not None:
+        metadata["meta"] = tool.meta
+    if tool.outputSchema is not None:
+        metadata["output_schema"] = tool.outputSchema
+    if tool.execution is not None:
+        metadata["execution"] = _dump_model(tool.execution)
+
+    return StructuredTool(
+        name=_tool_name(
+            tool,
+            server_name=server_name,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        description=tool.description or tool.title or tool.name,
+        args_schema=tool.inputSchema or {"type": "object", "properties": {}},
+        func=func,
+        coroutine=coroutine,
+        response_format="content_and_artifact",
+        metadata=metadata,
+    )
+
+
 async def list_mcp_tools(session: ClientSession) -> list[MCPTool]:
     """List all tools from a client session, including paginated results."""
 
@@ -263,6 +336,33 @@ async def load_langchain_tools_from_session(
         server_name=server_name,
         tool_name_prefix=tool_name_prefix,
     )
+
+
+async def load_langchain_tools_from_mcp_config(
+    config: str | Path | dict[str, Any],
+    *,
+    server_name: str,
+    tool_name_prefix: bool = False,
+) -> list[BaseTool]:
+    """Fetch tool schemas once and build LangChain tools that reconnect on invoke."""
+
+    async with StreamableHttpMCPClient.from_mcp_config(
+        config,
+        server_name,
+        tool_name_prefix=tool_name_prefix,
+    ) as client:
+        tools = await client.list_tools()
+
+    config_source = _load_json_config(config)
+    return [
+        convert_mcp_tool_to_langchain_tool_from_config(
+            config_source,
+            tool,
+            server_name=server_name,
+            tool_name_prefix=tool_name_prefix,
+        )
+        for tool in tools
+    ]
 
 
 class StreamableHttpMCPClient:

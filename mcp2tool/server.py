@@ -1,4 +1,6 @@
 from mcp.server.fastmcp import FastMCP, Context
+from loguru import logger
+
 
 mcp = FastMCP("Math", host="0.0.0.0", port=48000)
 
@@ -11,7 +13,7 @@ def add(a: int, b: int, ctx: Context) -> int:
     if meta is not None:
         extra_meta = meta.model_extra or {}
     user_id = extra_meta.get("userId") or "unknown"
-    print(f"User ID: {user_id}")
+    logger.info(f"User ID: {user_id}")
     return a + b
 
 
