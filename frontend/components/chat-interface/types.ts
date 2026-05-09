@@ -131,7 +131,7 @@ export interface BulkDeleteDocumentResponse {
   knowledge_base?: KnowledgeBase | null
 }
 
-export type ViewMode = 'chat' | 'knowledge'
+export type ViewMode = 'chat' | 'knowledge' | 'mcp'
 export type KnowledgePage =
   | 'libraries'
   | 'library-detail'
@@ -156,4 +156,11 @@ export interface KnowledgeDocumentDetailResponse {
   total_chunks: number
   page: number
   page_size: number
+}
+
+export interface McpServerSummary {
+  name: string
+  transport: string
+  endpoint: string
+  isDefaultServer: boolean
 }

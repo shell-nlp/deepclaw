@@ -4,9 +4,10 @@ import { marked } from 'marked'
 
 import {
   DEFAULT_BACKEND_URL,
+  DEFAULT_MCP_SERVER_NAME,
   DEFAULT_KNOWLEDGE_PAGE,
 } from './constants'
-import type { KnowledgePage, ViewMode } from './types'
+import type { KnowledgePage, McpServerSummary, ViewMode } from './types'
 
 export function getApiBaseUrl(): string {
   const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL
@@ -41,7 +42,9 @@ export function getRouteHash(
   viewMode: ViewMode,
   knowledgePage: KnowledgePage = DEFAULT_KNOWLEDGE_PAGE
 ): string {
-  return viewMode === 'chat' ? '#/chat' : `#/knowledge/${knowledgePage}`
+  if (viewMode === 'chat') return '#/chat'
+  if (viewMode === 'mcp') return '#/mcp'
+  return `#/knowledge/${knowledgePage}`
 }
 
 export function parseRouteHash(hash: string): {
@@ -50,6 +53,13 @@ export function parseRouteHash(hash: string): {
 } {
   const normalized = hash.replace(/^#/, '').replace(/^\/+/, '')
   const parts = normalized.split('/').filter(Boolean)
+
+  if (parts[0] === 'mcp') {
+    return {
+      viewMode: 'mcp',
+      knowledgePage: DEFAULT_KNOWLEDGE_PAGE,
+    }
+  }
 
   if (parts[0] === 'knowledge') {
     return {
@@ -165,5 +175,107 @@ export function stringifyToolContent(content: unknown): string {
     return JSON.stringify(content, null, 2)
   } catch {
     return String(content)
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+export function parseMcpConfig(raw: string): {
+  config: Record<string, unknown> | null
+  serverSummaries: McpServerSummary[]
+  error: string
+} {
+  const trimmed = raw.trim()
+  if (!trimmed) {
+    return {
+      config: null,
+      serverSummaries: [],
+      error: '',
+    }
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(trimmed)
+  } catch {
+    return {
+      config: null,
+      serverSummaries: [],
+      error: 'MCP 配置不是合法 JSON，请先修正后再保存。',
+    }
+  }
+
+  if (!isRecord(parsed)) {
+    return {
+      config: null,
+      serverSummaries: [],
+      error: 'MCP 配置根节点必须是 JSON 对象。',
+    }
+  }
+
+  const serverRoot = parsed.mcpServers
+  if (!isRecord(serverRoot)) {
+    return {
+      config: null,
+      serverSummaries: [],
+      error: 'MCP 配置必须包含 `mcpServers` 对象。',
+    }
+  }
+
+  const serverEntries = Object.entries(serverRoot).filter(([, value]) => isRecord(value))
+  if (serverEntries.length === 0) {
+    return {
+      config: null,
+      serverSummaries: [],
+      error: '`mcpServers` 至少需要配置一个服务。',
+    }
+  }
+
+  if (!isRecord(serverRoot[DEFAULT_MCP_SERVER_NAME])) {
+    return {
+      config: null,
+      serverSummaries: [],
+      error: `当前后端默认读取 \`mcpServers.${DEFAULT_MCP_SERVER_NAME}\`，请至少保留该服务配置。`,
+    }
+  }
+
+  const serverSummaries = serverEntries.map(([name, value]) => {
+    const serverConfig = value as Record<string, unknown>
+    const transport =
+      typeof serverConfig.type === 'string'
+        ? serverConfig.type
+        : typeof serverConfig.url === 'string'
+          ? 'streamable-http'
+          : typeof serverConfig.command === 'string'
+            ? 'stdio'
+            : 'unknown'
+
+    let endpoint = '未填写连接信息'
+    if (typeof serverConfig.url === 'string' && serverConfig.url.trim()) {
+      endpoint = serverConfig.url
+    } else if (
+      typeof serverConfig.command === 'string' &&
+      serverConfig.command.trim()
+    ) {
+      const args = Array.isArray(serverConfig.args)
+        ? serverConfig.args.map((item: unknown) => String(item)).join(' ')
+        : ''
+      endpoint = `${serverConfig.command}${args ? ` ${args}` : ''}`
+    }
+
+    return {
+      name,
+      transport,
+      endpoint,
+      isDefaultServer: name === DEFAULT_MCP_SERVER_NAME,
+    }
+  })
+
+  return {
+    config: parsed,
+    serverSummaries,
+    error: '',
   }
 }

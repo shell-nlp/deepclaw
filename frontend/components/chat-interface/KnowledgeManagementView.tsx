@@ -14,6 +14,7 @@ import type {
   KnowledgeDocument,
   KnowledgeDocumentDetailResponse,
   KnowledgePage,
+  ViewMode,
 } from './types'
 import { formatDateTime } from './utils'
 
@@ -54,7 +55,7 @@ interface KnowledgeManagementViewProps {
   loadingDocumentDetail: boolean
   uploadInputRef: Ref<HTMLInputElement>
   onNavigateTo: (
-    viewMode: 'chat' | 'knowledge',
+    viewMode: ViewMode,
     knowledgePage?: KnowledgePage,
     replace?: boolean
   ) => void

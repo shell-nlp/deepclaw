@@ -14,6 +14,7 @@ import styles from './ChatInterface.module.css'
 import { ChatView } from './chat-interface/ChatView'
 import {
   DEFAULT_AGENT_API_PATH,
+  DEFAULT_MCP_CONFIG_TEMPLATE,
   DEFAULT_KNOWLEDGE_PAGE,
   DEFAULT_RAG_API_PATH,
   DOCUMENT_CHUNK_PAGE_SIZE,
@@ -33,6 +34,7 @@ import {
   KNOWLEDGE_BASE_PAGE_SIZE,
 } from './chat-interface/constants'
 import { KnowledgeManagementView } from './chat-interface/KnowledgeManagementView'
+import { McpManagementView } from './chat-interface/McpManagementView'
 import type {
   AssistantMessageItem,
   BulkDeleteDocumentResponse,
@@ -59,6 +61,7 @@ import {
   getPageTotal,
   getRouteHash,
   parseRouteHash,
+  parseMcpConfig,
   stringifyToolContent,
 } from './chat-interface/utils'
 
@@ -218,6 +221,12 @@ export default function ChatInterface() {
   const [showCreateKnowledgeBaseModal, setShowCreateKnowledgeBaseModal] =
     useState(false)
   const [savedUsers, setSavedUsers] = useState<string[]>([])
+  const [mcpConfigDraft, setMcpConfigDraft] = useState('')
+  const [savedMcpConfigText, setSavedMcpConfigText] = useState('')
+  const [mcpConfig, setMcpConfig] = useState<Record<string, unknown> | null>(null)
+  const [mcpEnabled, setMcpEnabled] = useState(false)
+  const [mcpNotice, setMcpNotice] = useState('')
+  const [mcpError, setMcpError] = useState('')
 
   const [managementError, setManagementError] = useState('')
   const [managementNotice, setManagementNotice] = useState('')
@@ -241,6 +250,10 @@ export default function ChatInterface() {
   const contentBlockCounterRef = useRef(0)
   const requestModeRef = useRef<RequestMode>('agent')
   const requestKnowledgeBaseRef = useRef<KnowledgeBase | null>(null)
+  const requestMcpConfigRef = useRef<Record<string, unknown> | null>(null)
+  const mcpDraftParseResult = parseMcpConfig(mcpConfigDraft)
+  const savedMcpParseResult = parseMcpConfig(savedMcpConfigText)
+  const mcpConfigDirty = mcpConfigDraft !== savedMcpConfigText
 
   const scrollToBottom = useCallback(() => {
     if (chatContainerRef.current) {
@@ -255,6 +268,9 @@ export default function ChatInterface() {
     lastAssistantStreamEventRef.current = null
     reasoningBlockCounterRef.current = 0
     contentBlockCounterRef.current = 0
+    requestModeRef.current = 'agent'
+    requestKnowledgeBaseRef.current = null
+    requestMcpConfigRef.current = null
     const newId = generateSessionId()
     localStorage.setItem('rag_chat_session_id', newId)
     setSessionId(newId)
@@ -299,20 +315,34 @@ export default function ChatInterface() {
     const storedSessionId =
       localStorage.getItem('rag_chat_session_id') || generateSessionId()
     const storedUsers = localStorage.getItem('rag_saved_users')
+    const storedMcpConfig = localStorage.getItem('rag_mcp_config') || ''
+    const storedMcpEnabled = localStorage.getItem('rag_mcp_enabled') === 'true'
     const normalizedUsers = Array.from(
       new Set(
         [storedUserId, ...(storedUsers ? JSON.parse(storedUsers) : [])].filter(Boolean)
       )
     )
+    const parsedMcpConfig = parseMcpConfig(storedMcpConfig)
 
     localStorage.setItem('rag_user_id', storedUserId)
     localStorage.setItem('rag_chat_session_id', storedSessionId)
     localStorage.setItem('rag_saved_users', JSON.stringify(normalizedUsers))
+    localStorage.setItem(
+      'rag_mcp_enabled',
+      parsedMcpConfig.config && storedMcpEnabled ? 'true' : 'false'
+    )
 
     setUserId(storedUserId)
     setUserIdDraft(storedUserId)
     setSessionId(storedSessionId)
     setSavedUsers(normalizedUsers)
+    setMcpConfigDraft(storedMcpConfig)
+    setSavedMcpConfigText(storedMcpConfig)
+    setMcpConfig(parsedMcpConfig.config)
+    setMcpEnabled(Boolean(parsedMcpConfig.config) && storedMcpEnabled)
+    if (storedMcpConfig && parsedMcpConfig.error) {
+      setMcpError(`本地保存的 MCP 配置无效：${parsedMcpConfig.error}`)
+    }
   }, [])
 
   const navigateTo = useCallback(
@@ -657,6 +687,106 @@ export default function ChatInterface() {
   const removeSavedUser = (targetUserId: string) => {
     const nextUsers = savedUsers.filter((item) => item !== targetUserId)
     persistSavedUsers(nextUsers.length > 0 ? nextUsers : ['demo-user'])
+  }
+
+  const saveMcpConfig = () => {
+    const trimmed = mcpConfigDraft.trim()
+
+    if (!trimmed) {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('rag_mcp_config')
+        localStorage.setItem('rag_mcp_enabled', 'false')
+      }
+      setSavedMcpConfigText('')
+      setMcpConfigDraft('')
+      setMcpConfig(null)
+      setMcpEnabled(false)
+      setMcpNotice('MCP 配置已清空。')
+      setMcpError('')
+      return
+    }
+
+    const parsed = parseMcpConfig(trimmed)
+    if (!parsed.config || parsed.error) {
+      setMcpNotice('')
+      setMcpError(parsed.error || 'MCP 配置无效，无法保存。')
+      return
+    }
+
+    const formatted = JSON.stringify(parsed.config, null, 2)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('rag_mcp_config', formatted)
+    }
+
+    setSavedMcpConfigText(formatted)
+    setMcpConfigDraft(formatted)
+    setMcpConfig(parsed.config)
+    setMcpNotice(`已保存 ${parsed.serverSummaries.length} 个 MCP 服务配置。`)
+    setMcpError('')
+  }
+
+  const formatMcpConfig = () => {
+    const trimmed = mcpConfigDraft.trim()
+
+    if (!trimmed) {
+      setMcpNotice('')
+      setMcpError('当前 MCP 草稿为空，没有可格式化的内容。')
+      return
+    }
+
+    const parsed = parseMcpConfig(trimmed)
+    if (!parsed.config || parsed.error) {
+      setMcpNotice('')
+      setMcpError(parsed.error || 'MCP 配置无效，无法格式化。')
+      return
+    }
+
+    setMcpConfigDraft(JSON.stringify(parsed.config, null, 2))
+    setMcpNotice('MCP 草稿已格式化，尚未保存到本地配置。')
+    setMcpError('')
+  }
+
+  const toggleMcpEnabled = () => {
+    if (mcpEnabled) {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('rag_mcp_enabled', 'false')
+      }
+      setMcpEnabled(false)
+      setMcpNotice('MCP 已停用。')
+      setMcpError('')
+      return
+    }
+
+    if (mcpConfigDirty) {
+      setMcpNotice('')
+      setMcpError('当前 MCP 草稿还未保存，请先保存后再启用。')
+      return
+    }
+
+    if (!mcpConfig) {
+      setMcpNotice('')
+      setMcpError('请先保存一份有效的 MCP 配置后再启用。')
+      return
+    }
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('rag_mcp_enabled', 'true')
+    }
+    setMcpEnabled(true)
+    setMcpNotice('MCP 已启用，后续通用 Agent 请求会附带该配置。')
+    setMcpError('')
+  }
+
+  const loadMcpExample = () => {
+    setMcpConfigDraft(DEFAULT_MCP_CONFIG_TEMPLATE)
+    setMcpNotice('已填入 MCP 示例配置，请根据你的服务地址修改后保存。')
+    setMcpError('')
+  }
+
+  const clearMcpConfig = () => {
+    setMcpConfigDraft('')
+    setMcpNotice('已清空 MCP 草稿，点击“保存配置”后会同步清空本地配置。')
+    setMcpError('')
   }
 
   const openKnowledgeBaseLibrary = (knowledgeBase: KnowledgeBase) => {
@@ -1235,9 +1365,16 @@ export default function ChatInterface() {
     if (!query || isProcessing || !sessionId) return
 
     const requestMode: RequestMode = useKnowledgeBase ? 'rag' : 'agent'
+    const requestMcpConfig = requestMode === 'agent' && mcpEnabled ? mcpConfig : null
     if (requestMode === 'rag' && !selectedKnowledgeBase) {
       setManagementError('启用知识库后，必须先选择一个知识库。')
       navigateTo('knowledge', 'libraries')
+      return
+    }
+    if (requestMode === 'agent' && mcpEnabled && !requestMcpConfig) {
+      setMcpNotice('')
+      setMcpError('MCP 已启用但当前没有有效配置，请前往 MCP 管理检查并保存。')
+      navigateTo('mcp')
       return
     }
 
@@ -1263,6 +1400,7 @@ export default function ChatInterface() {
     contentBlockCounterRef.current = 0
     requestModeRef.current = requestMode
     requestKnowledgeBaseRef.current = selectedKnowledgeBase
+    requestMcpConfigRef.current = requestMcpConfig
     addMessage({ id: assistantMessageId, role: 'ai', content: '', toolData: [] })
 
     abortControllerRef.current = new AbortController()
@@ -1278,6 +1416,8 @@ export default function ChatInterface() {
       if (requestMode === 'rag' && selectedKnowledgeBase) {
         payload.index_name = selectedKnowledgeBase.passage_index
         payload.graph_name = selectedKnowledgeBase.index_prefix
+      } else if (requestMode === 'agent' && requestMcpConfig) {
+        payload.mcp_config = requestMcpConfig
       }
 
       const response = await fetch(
@@ -1333,6 +1473,7 @@ export default function ChatInterface() {
 
     const requestMode = requestModeRef.current
     const requestKnowledgeBase = requestKnowledgeBaseRef.current
+    const requestMcpConfig = requestMcpConfigRef.current
     if (requestMode === 'rag' && !requestKnowledgeBase) {
       setManagementError(
         '当前中断来自知识库问答，但未找到对应知识库，请重新发起知识库对话。'
@@ -1398,6 +1539,8 @@ export default function ChatInterface() {
       if (requestMode === 'rag' && requestKnowledgeBase) {
         payload.index_name = requestKnowledgeBase.passage_index
         payload.graph_name = requestKnowledgeBase.index_prefix
+      } else if (requestMode === 'agent' && requestMcpConfig) {
+        payload.mcp_config = requestMcpConfig
       }
 
       const response = await fetch(
@@ -1467,6 +1610,15 @@ export default function ChatInterface() {
   const documentPageTotal = getPageTotal(documentTotal, DOCUMENT_PAGE_SIZE)
   const chatDisabled = useKnowledgeBase && !selectedKnowledgeBase
   const chatModeLabel = useKnowledgeBase ? '知识库 RAG' : '通用 Agent'
+  const mcpStatusLabel = mcpEnabled
+    ? useKnowledgeBase
+      ? '已启用(RAG未使用)'
+      : savedMcpParseResult.serverSummaries.length > 0
+        ? `已启用(${savedMcpParseResult.serverSummaries.length})`
+        : '已启用'
+    : savedMcpParseResult.serverSummaries.length > 0
+      ? `已配置(${savedMcpParseResult.serverSummaries.length})`
+      : '未配置'
   const visibleChunkTotal = knowledgeBases.reduce((sum, item) => sum + item.chunk_count, 0)
   const documentChunkPageTotal = selectedDocumentDetail
     ? getPageTotal(selectedDocumentDetail.total_chunks, selectedDocumentDetail.page_size)
@@ -1483,7 +1635,7 @@ export default function ChatInterface() {
             <span className={styles.logoIcon}>AI</span>
             <h1 className={styles.title}>AI Agent Chat</h1>
           </div>
-          <p className={styles.subtitle}>智能问答 · 知识库管理 · 图检索 RAG</p>
+          <p className={styles.subtitle}>智能问答 · MCP 工具接入 · 知识库管理 · 图检索 RAG</p>
         </div>
       </header>
 
@@ -1510,6 +1662,14 @@ export default function ChatInterface() {
             </button>
             <button
               className={`${styles.sidebarButton} ${
+                viewMode === 'mcp' ? styles.sidebarButtonActive : ''
+              }`}
+              onClick={() => navigateTo('mcp')}
+            >
+              MCP 管理
+            </button>
+            <button
+              className={`${styles.sidebarButton} ${
                 viewMode === 'knowledge' && knowledgePage === 'users'
                   ? styles.sidebarButtonActive
                   : ''
@@ -1528,6 +1688,7 @@ export default function ChatInterface() {
               sessionId={sessionId}
               userId={userId}
               chatModeLabel={chatModeLabel}
+              mcpStatusLabel={mcpStatusLabel}
               status={status}
               isProcessing={isProcessing}
               useKnowledgeBase={useKnowledgeBase}
@@ -1552,77 +1713,98 @@ export default function ChatInterface() {
               onAbortRequest={abortRequest}
               onSendMessage={sendMessage}
             />
+          ) : viewMode === 'mcp' ? (
+            <div className={styles.managementViewport}>
+              <McpManagementView
+                mcpEnabled={mcpEnabled}
+                mcpConfigDraft={mcpConfigDraft}
+                mcpConfigDirty={mcpConfigDirty}
+                mcpNotice={mcpNotice}
+                mcpError={mcpError}
+                draftError={mcpDraftParseResult.error}
+                savedServerCount={savedMcpParseResult.serverSummaries.length}
+                draftServerSummaries={mcpDraftParseResult.serverSummaries}
+                onMcpConfigDraftChange={setMcpConfigDraft}
+                onSaveMcpConfig={saveMcpConfig}
+                onFormatMcpConfig={formatMcpConfig}
+                onToggleMcpEnabled={toggleMcpEnabled}
+                onLoadMcpExample={loadMcpExample}
+                onClearMcpConfig={clearMcpConfig}
+              />
+            </div>
           ) : (
-            <KnowledgeManagementView
-              knowledgePage={knowledgePage}
-              managementNotice={managementNotice}
-              managementError={managementError}
-              userId={userId}
-              userIdDraft={userIdDraft}
-              savedUsers={savedUsers}
-              knowledgeBaseTotal={knowledgeBaseTotal}
-              visibleChunkTotal={visibleChunkTotal}
-              knowledgeBases={knowledgeBases}
-              selectedKnowledgeBaseId={selectedKnowledgeBaseId}
-              selectedKnowledgeBase={selectedKnowledgeBase}
-              selectedKnowledgeBaseName={selectedKnowledgeBaseName}
-              selectedKnowledgeBaseDescription={selectedKnowledgeBaseDescription}
-              checkedKnowledgeBaseIds={checkedKnowledgeBaseIds}
-              knowledgeBaseSearchInput={knowledgeBaseSearchInput}
-              knowledgeBasePage={knowledgeBasePage}
-              knowledgeBasePageTotal={knowledgeBasePageTotal}
-              documents={documents}
-              documentTotal={documentTotal}
-              documentPage={documentPage}
-              documentPageTotal={documentPageTotal}
-              documentSearchInput={documentSearchInput}
-              checkedDocumentIds={checkedDocumentIds}
-              selectedDocumentDetail={selectedDocumentDetail}
-              documentChunkPage={documentChunkPage}
-              documentChunkPageTotal={documentChunkPageTotal}
-              knowledgeBaseName={knowledgeBaseName}
-              knowledgeBaseDescription={knowledgeBaseDescription}
-              showCreateKnowledgeBaseModal={showCreateKnowledgeBaseModal}
-              savingKnowledgeBase={savingKnowledgeBase}
-              uploadingDocuments={uploadingDocuments}
-              deletingBulk={deletingBulk}
-              loadingDocuments={loadingDocuments}
-              loadingDocumentDetail={loadingDocumentDetail}
-              uploadInputRef={uploadInputRef}
-              onNavigateTo={navigateTo}
-              onUserIdDraftChange={setUserIdDraft}
-              onApplyUserId={applyUserId}
-              onPersistSavedUsers={persistSavedUsers}
-              onSwitchUser={switchUser}
-              onRemoveSavedUser={removeSavedUser}
-              onSelectedKnowledgeBaseNameChange={setSelectedKnowledgeBaseName}
-              onSelectedKnowledgeBaseDescriptionChange={
-                setSelectedKnowledgeBaseDescription
-              }
-              onSaveKnowledgeBase={saveKnowledgeBase}
-              onDeleteKnowledgeBase={deleteKnowledgeBase}
-              onOpenUploadDialog={openUploadDialog}
-              onHandleUploadFiles={handleUploadFiles}
-              onDocumentSearchInputChange={setDocumentSearchInput}
-              onDocumentPageChange={setDocumentPage}
-              onDocumentSearchChange={setDocumentSearch}
-              onBulkDeleteDocuments={bulkDeleteDocuments}
-              onToggleDocumentChecked={toggleDocumentChecked}
-              onOpenDocumentDetail={openDocumentDetail}
-              onRenameDocument={renameDocument}
-              onDeleteDocument={deleteDocument}
-              onDocumentChunkPageChange={setDocumentChunkPage}
-              onKnowledgeBaseSearchInputChange={setKnowledgeBaseSearchInput}
-              onKnowledgeBasePageChange={setKnowledgeBasePage}
-              onKnowledgeBaseSearchChange={setKnowledgeBaseSearch}
-              onBulkDeleteKnowledgeBases={bulkDeleteKnowledgeBases}
-              onShowCreateKnowledgeBaseModalChange={setShowCreateKnowledgeBaseModal}
-              onToggleKnowledgeBaseChecked={toggleKnowledgeBaseChecked}
-              onOpenKnowledgeBaseLibrary={openKnowledgeBaseLibrary}
-              onKnowledgeBaseNameChange={setKnowledgeBaseName}
-              onKnowledgeBaseDescriptionChange={setKnowledgeBaseDescription}
-              onCreateKnowledgeBase={createKnowledgeBase}
-            />
+            <div className={styles.managementViewport}>
+              <KnowledgeManagementView
+                knowledgePage={knowledgePage}
+                managementNotice={managementNotice}
+                managementError={managementError}
+                userId={userId}
+                userIdDraft={userIdDraft}
+                savedUsers={savedUsers}
+                knowledgeBaseTotal={knowledgeBaseTotal}
+                visibleChunkTotal={visibleChunkTotal}
+                knowledgeBases={knowledgeBases}
+                selectedKnowledgeBaseId={selectedKnowledgeBaseId}
+                selectedKnowledgeBase={selectedKnowledgeBase}
+                selectedKnowledgeBaseName={selectedKnowledgeBaseName}
+                selectedKnowledgeBaseDescription={selectedKnowledgeBaseDescription}
+                checkedKnowledgeBaseIds={checkedKnowledgeBaseIds}
+                knowledgeBaseSearchInput={knowledgeBaseSearchInput}
+                knowledgeBasePage={knowledgeBasePage}
+                knowledgeBasePageTotal={knowledgeBasePageTotal}
+                documents={documents}
+                documentTotal={documentTotal}
+                documentPage={documentPage}
+                documentPageTotal={documentPageTotal}
+                documentSearchInput={documentSearchInput}
+                checkedDocumentIds={checkedDocumentIds}
+                selectedDocumentDetail={selectedDocumentDetail}
+                documentChunkPage={documentChunkPage}
+                documentChunkPageTotal={documentChunkPageTotal}
+                knowledgeBaseName={knowledgeBaseName}
+                knowledgeBaseDescription={knowledgeBaseDescription}
+                showCreateKnowledgeBaseModal={showCreateKnowledgeBaseModal}
+                savingKnowledgeBase={savingKnowledgeBase}
+                uploadingDocuments={uploadingDocuments}
+                deletingBulk={deletingBulk}
+                loadingDocuments={loadingDocuments}
+                loadingDocumentDetail={loadingDocumentDetail}
+                uploadInputRef={uploadInputRef}
+                onNavigateTo={navigateTo}
+                onUserIdDraftChange={setUserIdDraft}
+                onApplyUserId={applyUserId}
+                onPersistSavedUsers={persistSavedUsers}
+                onSwitchUser={switchUser}
+                onRemoveSavedUser={removeSavedUser}
+                onSelectedKnowledgeBaseNameChange={setSelectedKnowledgeBaseName}
+                onSelectedKnowledgeBaseDescriptionChange={
+                  setSelectedKnowledgeBaseDescription
+                }
+                onSaveKnowledgeBase={saveKnowledgeBase}
+                onDeleteKnowledgeBase={deleteKnowledgeBase}
+                onOpenUploadDialog={openUploadDialog}
+                onHandleUploadFiles={handleUploadFiles}
+                onDocumentSearchInputChange={setDocumentSearchInput}
+                onDocumentPageChange={setDocumentPage}
+                onDocumentSearchChange={setDocumentSearch}
+                onBulkDeleteDocuments={bulkDeleteDocuments}
+                onToggleDocumentChecked={toggleDocumentChecked}
+                onOpenDocumentDetail={openDocumentDetail}
+                onRenameDocument={renameDocument}
+                onDeleteDocument={deleteDocument}
+                onDocumentChunkPageChange={setDocumentChunkPage}
+                onKnowledgeBaseSearchInputChange={setKnowledgeBaseSearchInput}
+                onKnowledgeBasePageChange={setKnowledgeBasePage}
+                onKnowledgeBaseSearchChange={setKnowledgeBaseSearch}
+                onBulkDeleteKnowledgeBases={bulkDeleteKnowledgeBases}
+                onShowCreateKnowledgeBaseModalChange={setShowCreateKnowledgeBaseModal}
+                onToggleKnowledgeBaseChecked={toggleKnowledgeBaseChecked}
+                onOpenKnowledgeBaseLibrary={openKnowledgeBaseLibrary}
+                onKnowledgeBaseNameChange={setKnowledgeBaseName}
+                onKnowledgeBaseDescriptionChange={setKnowledgeBaseDescription}
+                onCreateKnowledgeBase={createKnowledgeBase}
+              />
+            </div>
           )}
         </main>
       </div>

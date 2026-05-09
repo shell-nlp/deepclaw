@@ -929,6 +929,15 @@
   overflow: hidden;
 }
 
+.managementViewport {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+  padding-bottom: 8px;
+}
+
 .sessionBar {
   position: relative;
   z-index: 1;
@@ -1881,6 +1890,7 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
+  min-height: 100%;
 }
 
 .managementHero {
@@ -2167,6 +2177,33 @@
   background: var(--bg-secondary);
   color: var(--text-primary);
   font-size: 14px;
+}
+
+.managementTextarea {
+  width: 100%;
+  min-height: 280px;
+  padding: 16px 18px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.65;
+  resize: vertical;
+  outline: none;
+  transition: all 0.2s ease;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.managementTextarea:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.managementHelperText {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .managementButton,

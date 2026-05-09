@@ -18,6 +18,7 @@ interface ChatViewProps {
   sessionId: string
   userId: string
   chatModeLabel: string
+  mcpStatusLabel: string
   status: ChatStatus
   isProcessing: boolean
   useKnowledgeBase: boolean
@@ -126,6 +127,7 @@ export function ChatView({
   sessionId,
   userId,
   chatModeLabel,
+  mcpStatusLabel,
   status,
   isProcessing,
   useKnowledgeBase,
@@ -167,6 +169,9 @@ export function ChatView({
           <code className={styles.sessionId}>
             {useKnowledgeBase ? selectedKnowledgeBaseName || '未选择' : '未启用'}
           </code>
+          <span className={styles.sessionDivider}>|</span>
+          <span className={styles.sessionLabel}>MCP</span>
+          <code className={styles.sessionId}>{mcpStatusLabel}</code>
         </div>
         <div className={styles.statusArea}>
           <span className={`${styles.statusDot} ${styles[status]}`} />
