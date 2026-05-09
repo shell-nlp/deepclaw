@@ -131,7 +131,7 @@ export interface BulkDeleteDocumentResponse {
   knowledge_base?: KnowledgeBase | null
 }
 
-export type ViewMode = 'chat' | 'knowledge' | 'mcp'
+export type ViewMode = 'chat' | 'knowledge' | 'mcp' | 'skills'
 export type KnowledgePage =
   | 'libraries'
   | 'library-detail'
@@ -163,4 +163,28 @@ export interface McpServerSummary {
   transport: string
   endpoint: string
   isDefaultServer: boolean
+}
+
+export interface SkillRecord {
+  skill_name: string
+  path: string
+  description: string
+  file_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface SkillListResponse {
+  items: SkillRecord[]
+  total: number
+}
+
+export interface SkillUploadResponse {
+  skill: SkillRecord
+  extracted_files: number
+}
+
+export interface SkillDeleteResponse {
+  skill_name: string
+  deleted_path: string
 }

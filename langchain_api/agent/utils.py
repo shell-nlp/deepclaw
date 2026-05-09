@@ -39,3 +39,12 @@ def copy_skills_to_store(skills_dir: Path, store: BaseStore):
                 copy_info.append(f"复制失败 {virtual_path}: {e}")
     copy_info.append(f"✅ Skills 复制完成: {copied_count} 个文件")
     logger.info("\n".join(copy_info))
+
+
+def sync_skills_store(skills_dir: Path, store: BaseStore):
+    """同步 store 中的 skills 文件，先删旧条目再全量复制。"""
+    existing_items = store.search(("filesystem",), limit=10000)
+    for item in existing_items:
+        if item.key.startswith("/workspace/skills/"):
+            store.delete(item.namespace, item.key)
+    copy_skills_to_store(skills_dir=skills_dir, store=store)

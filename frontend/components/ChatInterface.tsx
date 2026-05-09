@@ -32,9 +32,13 @@ import {
   KB_LIST_API_PATH,
   KB_UPDATE_API_PATH,
   KNOWLEDGE_BASE_PAGE_SIZE,
+  SKILL_DELETE_API_PATH,
+  SKILL_LIST_API_PATH,
+  SKILL_UPLOAD_API_PATH,
 } from './chat-interface/constants'
 import { KnowledgeManagementView } from './chat-interface/KnowledgeManagementView'
 import { McpManagementView } from './chat-interface/McpManagementView'
+import { SkillManagementView } from './chat-interface/SkillManagementView'
 import type {
   AssistantMessageItem,
   BulkDeleteDocumentResponse,
@@ -49,6 +53,10 @@ import type {
   PaginatedKnowledgeDocumentResponse,
   RequestMode,
   ReasoningBlock,
+  SkillDeleteResponse,
+  SkillListResponse,
+  SkillRecord,
+  SkillUploadResponse,
   StreamEvent,
   UploadResult,
   ViewMode,
@@ -227,6 +235,11 @@ export default function ChatInterface() {
   const [mcpEnabled, setMcpEnabled] = useState(false)
   const [mcpNotice, setMcpNotice] = useState('')
   const [mcpError, setMcpError] = useState('')
+  const [skills, setSkills] = useState<SkillRecord[]>([])
+  const [loadingSkills, setLoadingSkills] = useState(false)
+  const [uploadingSkills, setUploadingSkills] = useState(false)
+  const [skillNotice, setSkillNotice] = useState('')
+  const [skillError, setSkillError] = useState('')
 
   const [managementError, setManagementError] = useState('')
   const [managementNotice, setManagementNotice] = useState('')
@@ -240,6 +253,7 @@ export default function ChatInterface() {
   const chatContainerRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const uploadInputRef = useRef<HTMLInputElement>(null)
+  const skillUploadInputRef = useRef<HTMLInputElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const currentAssistantMessageIdRef = useRef<string | null>(null)
   const processedToolCallIdsRef = useRef<Set<string>>(new Set())
@@ -575,10 +589,33 @@ export default function ChatInterface() {
     [documentChunkPage]
   )
 
+  const loadSkills = useCallback(async () => {
+    setLoadingSkills(true)
+    setSkillError('')
+
+    try {
+      const result = await fetchJson<SkillListResponse>(getApiUrl(SKILL_LIST_API_PATH), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ search: '' }),
+      })
+      setSkills(result.items)
+    } catch (error) {
+      setSkillError(error instanceof Error ? error.message : 'Failed to load skills.')
+      setSkills([])
+    } finally {
+      setLoadingSkills(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (!userId) return
     void loadKnowledgeBases(userId, knowledgeBasePage, knowledgeBaseSearch)
   }, [knowledgeBasePage, knowledgeBaseSearch, loadKnowledgeBases, userId])
+
+  useEffect(() => {
+    void loadSkills()
+  }, [loadSkills])
 
   useEffect(() => {
     if (!selectedKnowledgeBaseId) {
@@ -787,6 +824,56 @@ export default function ChatInterface() {
     setMcpConfigDraft('')
     setMcpNotice('已清空 MCP 草稿，点击“保存配置”后会同步清空本地配置。')
     setMcpError('')
+  }
+
+  const openSkillUploadDialog = () => {
+    skillUploadInputRef.current?.click()
+  }
+
+  const handleUploadSkill = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setUploadingSkills(true)
+    setSkillNotice('')
+    setSkillError('')
+
+    const formData = new FormData()
+    formData.append('file', file)
+
+    try {
+      const result = await fetchJson<SkillUploadResponse>(getApiUrl(SKILL_UPLOAD_API_PATH), {
+        method: 'POST',
+        body: formData,
+      })
+      await loadSkills()
+      setSkillNotice(
+        `技能 "${result.skill.skill_name}" 上传完成，共解压 ${result.extracted_files} 个文件。`
+      )
+    } catch (error) {
+      setSkillError(error instanceof Error ? error.message : 'Failed to upload skill.')
+    } finally {
+      setUploadingSkills(false)
+      event.target.value = ''
+    }
+  }
+
+  const deleteSkill = async (skillName: string) => {
+    if (!window.confirm(`Delete skill "${skillName}" from workspace?`)) return
+
+    setSkillNotice('')
+    setSkillError('')
+    try {
+      const result = await fetchJson<SkillDeleteResponse>(getApiUrl(SKILL_DELETE_API_PATH), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skill_name: skillName }),
+      })
+      await loadSkills()
+      setSkillNotice(`技能 "${result.skill_name}" 已删除。`)
+    } catch (error) {
+      setSkillError(error instanceof Error ? error.message : 'Failed to delete skill.')
+    }
   }
 
   const openKnowledgeBaseLibrary = (knowledgeBase: KnowledgeBase) => {
@@ -1662,6 +1749,14 @@ export default function ChatInterface() {
             </button>
             <button
               className={`${styles.sidebarButton} ${
+                viewMode === 'skills' ? styles.sidebarButtonActive : ''
+              }`}
+              onClick={() => navigateTo('skills')}
+            >
+              技能管理
+            </button>
+            <button
+              className={`${styles.sidebarButton} ${
                 viewMode === 'mcp' ? styles.sidebarButtonActive : ''
               }`}
               onClick={() => navigateTo('mcp')}
@@ -1713,6 +1808,21 @@ export default function ChatInterface() {
               onAbortRequest={abortRequest}
               onSendMessage={sendMessage}
             />
+          ) : viewMode === 'skills' ? (
+            <div className={styles.managementViewport}>
+              <SkillManagementView
+                skills={skills}
+                total={skills.length}
+                uploadingSkills={uploadingSkills}
+                loadingSkills={loadingSkills}
+                skillNotice={skillNotice}
+                skillError={skillError}
+                uploadInputRef={skillUploadInputRef}
+                onOpenUploadDialog={openSkillUploadDialog}
+                onUploadSkills={handleUploadSkill}
+                onDeleteSkill={deleteSkill}
+              />
+            </div>
           ) : viewMode === 'mcp' ? (
             <div className={styles.managementViewport}>
               <McpManagementView

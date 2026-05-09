@@ -4,12 +4,14 @@ from fastapi import APIRouter
 
 from langchain_api.agent.agent import Agent
 from langchain_api.agent.context import AgentContext
+from langchain_api.agent.management_api import add_skill_management_endpoints
 from langchain_api.api import add_general_api_endpoint
 
 
 def create_agent_router() -> APIRouter:
     router = APIRouter(prefix="/api/agent")
     agent = Agent(deep_agent=True).get_agent()
+    add_skill_management_endpoints(router)
 
     add_langgraph_fastapi_endpoint(
         app=router,

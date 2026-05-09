@@ -44,6 +44,7 @@ export function getRouteHash(
 ): string {
   if (viewMode === 'chat') return '#/chat'
   if (viewMode === 'mcp') return '#/mcp'
+  if (viewMode === 'skills') return '#/skills'
   return `#/knowledge/${knowledgePage}`
 }
 
@@ -57,6 +58,13 @@ export function parseRouteHash(hash: string): {
   if (parts[0] === 'mcp') {
     return {
       viewMode: 'mcp',
+      knowledgePage: DEFAULT_KNOWLEDGE_PAGE,
+    }
+  }
+
+  if (parts[0] === 'skills') {
+    return {
+      viewMode: 'skills',
       knowledgePage: DEFAULT_KNOWLEDGE_PAGE,
     }
   }
