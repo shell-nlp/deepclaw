@@ -11,6 +11,7 @@ from loguru import logger
 from langchain_api.agent.context import AgentContext
 from langchain_api.constant import home_path, workspace_path
 from langchain_api.middleware.common import BusinessMiddleware
+from langchain_api.middleware.mcp import MCPMiddleware
 from langchain_api.settings import settings
 from langchain_api.utils import get_chat_model, get_current_time
 
@@ -77,6 +78,7 @@ class Agent:
 
             middleware.append(CopilotKitMiddleware())
         middleware.append(BusinessMiddleware())
+        middleware.append(MCPMiddleware())
 
         system_prompt = self.system_prompt + get_current_time()
         model = get_chat_model()

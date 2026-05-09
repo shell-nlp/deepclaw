@@ -10,3 +10,5 @@ class AgentContext(BaseModel):
     internet_search: bool = Field(False, description="是否启用联网搜索")
     # 是否启用深度思考
     deep_thinking: bool = Field(False, description="是否启用深度思考")
+    # MCP 配置
+    mcp_config: dict | None = Field(None, description="MCP 配置")
