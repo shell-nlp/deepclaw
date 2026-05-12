@@ -4,7 +4,6 @@ from typing import Any
 from deepagents import create_deep_agent
 from deepagents.backends.store import BackendContext
 from langchain.agents import create_agent
-from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph.state import CompiledStateGraph
 from loguru import logger
 
@@ -15,28 +14,6 @@ from langchain_api.middleware.mcp import MCPMiddleware
 from langchain_api.settings import settings
 from langchain_api.utils import get_chat_model, get_current_time
 
-checkpointer = None
-store = None
-
-
-def init_env():
-    global checkpointer, store
-    checkpointer = InMemorySaver()
-    if settings.PG_DATABASE_URL:
-        from langgraph.store.postgres import PostgresStore
-
-        store_ctx = PostgresStore.from_conn_string(settings.PG_DATABASE_URL)
-        store = store_ctx.__enter__()
-        store.setup()
-        logger.info("使用PostgresStore作为长期记忆")
-    else:
-        from langgraph.store.memory import InMemoryStore
-
-        store = InMemoryStore()
-        logger.info("使用InMemoryStore作为长期记忆")
-
-
-init_env()
 _platform = sys.platform
 if _platform.startswith("win"):
     DEFUALT_SYSTEM_PROMPT = "你的运行环境是 Windows 系统, 你可以使用 Windows 相关的命令"
@@ -65,9 +42,13 @@ class Agent:
         system_prompt=DEFUALT_SYSTEM_PROMPT,
         tools: list = [],
         deep_agent: bool = False,
+        checkpointer=None,
+        store=None,
     ):
         self.system_prompt = system_prompt
         self.tools = tools
+        self.checkpointer = checkpointer
+        self.store = store
         self.deep_agent = deep_agent
         self.agent = self.init_agent()
 
@@ -115,7 +96,7 @@ class Agent:
         elif settings.BACKEND_TYPE == "store":
             from langchain_api.agent.utils import copy_skills_to_store
 
-            copy_skills_to_store(skills_dir=workspace_path / "skills", store=store)
+            copy_skills_to_store(skills_dir=workspace_path / "skills", store=self.store)
             logger.info("使用 StoreBackend 作为后端")
 
         def make_backend(runtime):
@@ -149,8 +130,8 @@ class Agent:
                 middleware=middleware,
                 backend=make_backend,
                 skills=skills,
-                checkpointer=checkpointer,
-                store=store,
+                checkpointer=self.checkpointer,
+                store=self.store,
                 context_schema=AgentContext,
             )
         else:
@@ -161,8 +142,8 @@ class Agent:
                 tools=tools,
                 system_prompt=system_prompt,
                 middleware=middleware,
-                checkpointer=checkpointer,
-                store=store,
+                checkpointer=self.checkpointer,
+                store=self.store,
                 context_schema=AgentContext,
             )
 

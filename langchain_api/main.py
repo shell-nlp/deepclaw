@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,6 +9,8 @@ from langchain_api.agent.main import create_agent_router
 from langchain_api.constant import root_dir
 from langchain_api.patch.langchain import patch_langchain
 from langchain_api.rag.main import create_rag_router
+from langchain_api.settings import settings
+from loguru import logger
 
 
 def setup_observability() -> None:
@@ -23,11 +26,35 @@ def setup_observability() -> None:
         pass
 
 
-def create_app() -> FastAPI:
+def init_agent_env():
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    checkpointer = InMemorySaver()
+    if settings.PG_DATABASE_URL:
+        from langgraph.store.postgres import PostgresStore
+
+        store_ctx = PostgresStore.from_conn_string(settings.PG_DATABASE_URL)
+        store = store_ctx.__enter__()
+        store.setup()
+        logger.info("使用PostgresStore作为长期记忆")
+    else:
+        from langgraph.store.memory import InMemoryStore
+
+        store = InMemoryStore()
+        logger.info("使用InMemoryStore作为长期记忆")
+    return checkpointer, store
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 设置可观测性
     setup_observability()
     patch_langchain()
+    yield
 
-    app = FastAPI()
+
+def create_app() -> FastAPI:
+    app = FastAPI(lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -35,10 +62,11 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-
-    app.include_router(create_agent_router())
-    app.include_router(create_rag_router())
-
+    # 先注册 API 路由，再挂载前端静态站点；否则 "/" 的 StaticFiles
+    # 会抢先匹配 /api/*，把 POST 请求错误地返回成 405。
+    checkpointer, store = init_agent_env()
+    app.include_router(create_agent_router(checkpointer, store))
+    app.include_router(create_rag_router(checkpointer, store))
     next_frontend_path = root_dir / "frontend" / "out"
     if next_frontend_path.exists():
         app.mount(
