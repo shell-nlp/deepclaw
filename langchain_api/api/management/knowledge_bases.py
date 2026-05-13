@@ -85,8 +85,14 @@ def _handle_value_error(exc: ValueError) -> HTTPException:
     return HTTPException(status_code=400, detail=str(exc))
 
 
-def add_knowledge_base_management_routes(router: APIRouter) -> None:
-    @router.post("/knowledge-bases/list", response_model=PaginatedKnowledgeBaseResponse)
+def add_knowledge_base_management_routes(
+    router: APIRouter, tags: list[str] | None = None
+) -> None:
+    @router.post(
+        "/knowledge-bases/list",
+        response_model=PaginatedKnowledgeBaseResponse,
+        tags=tags,
+    )
     def list_knowledge_bases(request: KnowledgeBaseListRequest):
         return knowledge_base_manager.search_knowledge_bases(
             user_id=request.user_id,
@@ -95,7 +101,7 @@ def add_knowledge_base_management_routes(router: APIRouter) -> None:
             page_size=request.page_size,
         )
 
-    @router.post("/knowledge-bases/create", response_model=KnowledgeBaseRecord)
+    @router.post("/knowledge-bases/create", response_model=KnowledgeBaseRecord, tags=tags)
     def create_knowledge_base(request: CreateKnowledgeBaseRequest):
         try:
             return knowledge_base_manager.create_knowledge_base(
@@ -106,7 +112,7 @@ def add_knowledge_base_management_routes(router: APIRouter) -> None:
         except ValueError as exc:
             raise _handle_value_error(exc) from exc
 
-    @router.post("/knowledge-bases/detail", response_model=KnowledgeBaseRecord)
+    @router.post("/knowledge-bases/detail", response_model=KnowledgeBaseRecord, tags=tags)
     def get_knowledge_base(request: KnowledgeBaseIdentityRequest):
         try:
             return knowledge_base_manager.get_knowledge_base(
@@ -116,7 +122,7 @@ def add_knowledge_base_management_routes(router: APIRouter) -> None:
         except ValueError as exc:
             raise _handle_value_error(exc) from exc
 
-    @router.post("/knowledge-bases/update", response_model=KnowledgeBaseRecord)
+    @router.post("/knowledge-bases/update", response_model=KnowledgeBaseRecord, tags=tags)
     def update_knowledge_base(request: UpdateKnowledgeBaseRequest):
         try:
             return knowledge_base_manager.update_knowledge_base(
@@ -128,7 +134,7 @@ def add_knowledge_base_management_routes(router: APIRouter) -> None:
         except ValueError as exc:
             raise _handle_value_error(exc) from exc
 
-    @router.post("/knowledge-bases/delete", response_model=KnowledgeBaseDeleteResult)
+    @router.post("/knowledge-bases/delete", response_model=KnowledgeBaseDeleteResult, tags=tags)
     def delete_knowledge_base(request: KnowledgeBaseIdentityRequest):
         try:
             return knowledge_base_manager.delete_knowledge_base(
@@ -141,6 +147,7 @@ def add_knowledge_base_management_routes(router: APIRouter) -> None:
     @router.post(
         "/knowledge-bases/bulk-delete",
         response_model=BulkDeleteKnowledgeBaseResponse,
+        tags=tags,
     )
     def bulk_delete_knowledge_bases(request: BulkDeleteKnowledgeBaseRequest):
         try:
@@ -154,6 +161,7 @@ def add_knowledge_base_management_routes(router: APIRouter) -> None:
     @router.post(
         "/knowledge-bases/documents/list",
         response_model=PaginatedKnowledgeBaseDocumentResponse,
+        tags=tags,
     )
     def list_documents(request: DocumentListRequest):
         try:
@@ -170,6 +178,7 @@ def add_knowledge_base_management_routes(router: APIRouter) -> None:
     @router.post(
         "/knowledge-bases/documents/detail",
         response_model=KnowledgeBaseDocumentDetailResponse,
+        tags=tags,
     )
     def get_document_detail(request: DocumentDetailRequest):
         try:
@@ -186,6 +195,7 @@ def add_knowledge_base_management_routes(router: APIRouter) -> None:
     @router.post(
         "/knowledge-bases/documents/upload",
         response_model=KnowledgeBaseUploadResponse,
+        tags=tags,
     )
     async def upload_documents(
         user_id: str = Form(..., description="User ID"),
@@ -215,6 +225,7 @@ def add_knowledge_base_management_routes(router: APIRouter) -> None:
     @router.post(
         "/knowledge-bases/documents/update",
         response_model=KnowledgeBaseDocumentRecord,
+        tags=tags,
     )
     def update_document(request: UpdateKnowledgeBaseDocumentRequest):
         try:
@@ -227,7 +238,7 @@ def add_knowledge_base_management_routes(router: APIRouter) -> None:
         except ValueError as exc:
             raise _handle_value_error(exc) from exc
 
-    @router.post("/knowledge-bases/documents/delete")
+    @router.post("/knowledge-bases/documents/delete", tags=tags)
     def delete_document(request: DeleteKnowledgeBaseDocumentRequest):
         try:
             return knowledge_base_manager.delete_document(
@@ -241,6 +252,7 @@ def add_knowledge_base_management_routes(router: APIRouter) -> None:
     @router.post(
         "/knowledge-bases/documents/bulk-delete",
         response_model=BulkDeleteDocumentResponse,
+        tags=tags,
     )
     def bulk_delete_documents(request: BulkDeleteKnowledgeBaseDocumentRequest):
         try:

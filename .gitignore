@@ -19,3 +19,4 @@ logs/
 .playwright-cli/
 node_modules/
 .next/
+*.pdf
