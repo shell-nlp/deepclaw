@@ -8,9 +8,9 @@ from langchain_api.rag.knowledge_base import (
     KnowledgeBaseDocumentDetailResponse,
     KnowledgeBaseDocumentRecord,
     KnowledgeBaseRecord,
+    KnowledgeBaseUploadResponse,
     PaginatedKnowledgeBaseDocumentResponse,
     PaginatedKnowledgeBaseResponse,
-    KnowledgeBaseUploadResponse,
     UploadedKnowledgeFile,
     knowledge_base_manager,
 )
@@ -85,7 +85,7 @@ def _handle_value_error(exc: ValueError) -> HTTPException:
     return HTTPException(status_code=400, detail=str(exc))
 
 
-def add_knowledge_base_management_endpoints(router: APIRouter) -> None:
+def add_knowledge_base_management_routes(router: APIRouter) -> None:
     @router.post("/knowledge-bases/list", response_model=PaginatedKnowledgeBaseResponse)
     def list_knowledge_bases(request: KnowledgeBaseListRequest):
         return knowledge_base_manager.search_knowledge_bases(

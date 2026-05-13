@@ -21,7 +21,7 @@ def _handle_value_error(exc: ValueError) -> HTTPException:
     return HTTPException(status_code=400, detail=str(exc))
 
 
-def add_skill_management_endpoints(router: APIRouter) -> None:
+def add_skill_management_routes(router: APIRouter) -> None:
     @router.post("/skills/list", response_model=SkillListResponse)
     def list_skills(request: SkillListRequest):
         try:

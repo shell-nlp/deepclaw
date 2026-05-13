@@ -1,12 +1,9 @@
-from fastapi import APIRouter
 from langchain.agents import create_agent
 from langchain_deepseek import ChatDeepSeek
 
-from langchain_api.middleware import RAGMiddleware
 from langchain_api.middleware.common import BusinessMiddleware
-from langchain_api.rag.management_api import add_knowledge_base_management_endpoints
+from langchain_api.middleware.rag import RAGMiddleware
 from langchain_api.rag.retriever import es_retriever
-from langchain_api.rag.service import add_rag_api_endpoint
 from langchain_api.settings import settings
 
 
@@ -37,14 +34,3 @@ def create_rag_agent(checkpointer=None, store=None):
         checkpointer=checkpointer,
         store=store,
     )
-
-
-def create_rag_router(checkpointer=None, store=None) -> APIRouter:
-    router = APIRouter(prefix="/api/rag")
-    add_knowledge_base_management_endpoints(router)
-    rag_agent = create_rag_agent(checkpointer, store)
-    add_rag_api_endpoint(app=router, agent=rag_agent, path="/general_api")
-    return router
-
-
-__all__ = ["create_rag_router"]

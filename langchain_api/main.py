@@ -1,14 +1,18 @@
 import os
+import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from langchain_api.agent.main import create_agent_router
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from langchain_api.api.routers import create_agent_router, create_rag_router
 from langchain_api.constant import root_dir
 from langchain_api.patch.langchain import patch_langchain
-from langchain_api.rag.main import create_rag_router
 from langchain_api.settings import settings
 from loguru import logger
 

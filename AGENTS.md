@@ -3,9 +3,9 @@
 ## 项目结构
 
 - **后端**：`langchain_api/`，FastAPI + LangGraph/DeepAgents，Python 3.12。
-- **API 层**：`langchain_api/api/`，放置 FastAPI 路由注册和协议适配代码。
-- **Agent 层**：`langchain_api/agent/`，放置 Agent 构建、上下文、状态和 Agent Router。
-- **RAG 层**：`langchain_api/rag/`，放置 Elasticsearch 检索、向量图 RAG、RAG Router 和上下文。
+- **API 层**：`langchain_api/api/`，放置 FastAPI 路由注册、管理接口和协议适配代码。
+- **Agent 层**：`langchain_api/agent/`，只放置 Agent 构建、上下文、状态和技能管理领域逻辑。
+- **RAG 层**：`langchain_api/rag/`，只放置 Elasticsearch 检索、向量图 RAG、知识库管理和上下文。
 - **中间件**：`langchain_api/middleware/`，放置业务开关、RAG 注入、工具搜索和沙箱相关中间件。
 - **工具**：`langchain_api/tools/`，放置天气、网页抓取、定时任务等工具。
 - **前端**：`frontend/`，Next.js + React。构建后通过 FastAPI 的 `/` 路径直接提供静态页面。
@@ -80,11 +80,12 @@ docker-compose up -d phoenix  # http://localhost:6006
 
 - `langchain_api/api/endpoints.py`：通用 SSE 接口注册逻辑，具体路径由调用方传入。
 - `langchain_api/api/__init__.py`：导出 API 层公共入口。
+- `langchain_api/api/routers/agent.py`：组装 Agent 对外路由，包括 AG-UI、SSE 和技能管理接口。
+- `langchain_api/api/routers/rag.py`：组装 RAG 对外路由，包括 SSE 和知识库管理接口。
+- `langchain_api/api/management/`：集中放置管理类 HTTP 接口，避免混入 `agent/` 和 `rag/` 目录。
 
 
-- `langchain_api/agent/main.py`：创建 Agent Router，不提供独立 app 或 uvicorn 启动入口。
-- `langchain_api/rag/main.py`：创建 RAG Router，不提供独立 app 或 uvicorn 启动入口。
-- `langchain_api/rag/service.py`：创建 RAG agent，并把 RAG 接口注册到 FastAPI app/router。
+- `langchain_api/rag/agent.py`：创建 RAG agent，只负责 RAG 智能体组装。
 - `langchain_api/rag/retriever.py`：基础 Elasticsearch 检索工具，包含 DenseVector/BM25 和图 RAG 工具入口。
 - `langchain_api/rag/elastic_utils.py`：Elasticsearch 基础封装，包含普通检索、向量检索和向量图检索。
 - `langchain_api/rag/elastic_graph_rag.py`：基于 ES 的向量图 RAG。
