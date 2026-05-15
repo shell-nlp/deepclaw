@@ -179,6 +179,25 @@ function ensureToolItem(
   ]
 }
 
+type InterruptActionRequest = NonNullable<InterruptData>['action_requests'][number]
+
+type ResumeDecision =
+  | { type: 'approve' }
+  | { type: 'reject'; message: string }
+  | {
+      type: 'edit'
+      edited_action: {
+        name: string
+        args: Record<string, unknown>
+      }
+    }
+
+function getInterruptActionArgs(
+  action: InterruptActionRequest
+): Record<string, unknown> {
+  return action.args ?? action.arguments ?? {}
+}
+
 export default function ChatInterface() {
   const [viewMode, setViewMode] = useState<ViewMode>('chat')
   const [knowledgePage, setKnowledgePage] =
@@ -1257,9 +1276,9 @@ export default function ChatInterface() {
   }
 
   const handleStreamEvent = useCallback(
-    (event: StreamEvent) => {
+    (event: StreamEvent): StreamEvent['event'] | null => {
       const data = event.data
-      if (!data) return
+      if (!data) return null
 
       switch (event.event) {
         case 'token': {
@@ -1398,6 +1417,8 @@ export default function ChatInterface() {
           break
         }
       }
+
+      return event.event
     },
     [updateAssistantMessage]
   )
@@ -1409,6 +1430,7 @@ export default function ChatInterface() {
 
       const decoder = new TextDecoder()
       let buffer = ''
+      let interrupted = false
 
       const processChunk = (chunk: string) => {
         const normalized = chunk.replace(/\r\n/g, '\n')
@@ -1425,7 +1447,12 @@ export default function ChatInterface() {
           if (dataLines.length === 0) continue
 
           try {
-            handleStreamEvent(JSON.parse(dataLines.join('\n')) as StreamEvent)
+            const handledEvent = handleStreamEvent(
+              JSON.parse(dataLines.join('\n')) as StreamEvent
+            )
+            if (handledEvent === '__interrupt__') {
+              interrupted = true
+            }
           } catch (error) {
             console.error('Parse error:', error, dataLines.join('\n'))
           }
@@ -1443,6 +1470,8 @@ export default function ChatInterface() {
       if (buffer.trim()) {
         processChunk(`${buffer}\n\n`)
       }
+
+      return { interrupted }
     },
     [handleStreamEvent]
   )
@@ -1579,7 +1608,7 @@ export default function ChatInterface() {
           ) as HTMLTextAreaElement | null
           return {
             name: action.name,
-            args: editor ? JSON.parse(editor.value) : action.args,
+            args: editor ? JSON.parse(editor.value) : getInterruptActionArgs(action),
           }
         })
       } catch {
@@ -1606,17 +1635,26 @@ export default function ChatInterface() {
     reasoningBlockCounterRef.current = 0
     contentBlockCounterRef.current = 0
     abortControllerRef.current = new AbortController()
+    let receivedInterrupt = false
 
     try {
-      const decisions = (interruptData.action_requests || []).map((action, index) => {
-        if (decision === 'edit' && editedActions?.[index]) {
-          return {
-            type: 'edit',
-            edited_action: editedActions[index],
+      const decisions: ResumeDecision[] = (interruptData.action_requests || []).map(
+        (action, index) => {
+          if (decision === 'edit' && editedActions?.[index]) {
+            return {
+              type: 'edit',
+              edited_action: editedActions[index],
+            }
           }
+          if (decision === 'reject') {
+            return {
+              type: 'reject',
+              message: `用户拒绝执行工具 ${action.name}。`,
+            }
+          }
+          return { type: 'approve' }
         }
-        return { type: decision, message: `Decision applied to ${action.name}.` }
-      })
+      )
 
       const payload: Record<string, unknown> = {
         resume: { decisions },
@@ -1644,7 +1682,8 @@ export default function ChatInterface() {
       )
 
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
-      await readEventStream(response)
+      const streamResult = await readEventStream(response)
+      receivedInterrupt = streamResult.interrupted
       setStatus('ready')
     } catch (error: unknown) {
       if (error instanceof Error && error.name !== 'AbortError') {
@@ -1657,7 +1696,9 @@ export default function ChatInterface() {
       }
     } finally {
       setIsProcessing(false)
-      setInterruptData(null)
+      if (!receivedInterrupt) {
+        setInterruptData(null)
+      }
       currentAssistantMessageIdRef.current = null
       processedToolCallIdsRef.current.clear()
       lastAssistantStreamEventRef.current = null

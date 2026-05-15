@@ -1128,6 +1128,11 @@
   box-shadow: var(--shadow-sm);
 }
 
+.interruptArgsEditor:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
 .interruptButtons {
   display: flex;
   gap: 16px;

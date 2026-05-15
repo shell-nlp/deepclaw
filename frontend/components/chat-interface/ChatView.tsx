@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, Ref } from 'react'
 
 import styles from '../ChatInterface.module.css'
@@ -12,6 +13,9 @@ import type {
   Message,
 } from './types'
 import { getToolIcon, parseMarkdown } from './utils'
+
+type InterruptDecision = 'approve' | 'reject' | 'edit'
+type InterruptActionRequest = NonNullable<InterruptData>['action_requests'][number]
 
 interface ChatViewProps {
   messages: Message[]
@@ -122,6 +126,38 @@ function AssistantMessageBody({ msg }: { msg: Message }) {
   )
 }
 
+function getInterruptActionArgs(
+  action: InterruptActionRequest
+): Record<string, unknown> {
+  return action.args ?? action.arguments ?? {}
+}
+
+function isInterruptDecisionAllowed(
+  interruptData: InterruptData,
+  actionIndex: number,
+  decision: InterruptDecision
+): boolean {
+  const action = interruptData?.action_requests?.[actionIndex]
+  const configs = interruptData?.review_configs || []
+  const config =
+    configs[actionIndex] ||
+    configs.find((item) => item.action_name === action?.name)
+
+  return config ? config.allowed_decisions.includes(decision) : true
+}
+
+function isDecisionAllowedForAllActions(
+  interruptData: InterruptData,
+  decision: InterruptDecision
+): boolean {
+  const actionCount = interruptData?.action_requests?.length || 0
+  if (actionCount === 0) return false
+
+  return interruptData.action_requests.every((_, index) =>
+    isInterruptDecisionAllowed(interruptData, index, decision)
+  )
+}
+
 export function ChatView({
   messages,
   sessionId,
@@ -152,6 +188,30 @@ export function ChatView({
   onAbortRequest,
   onSendMessage,
 }: ChatViewProps) {
+  const [isEditingInterruptArgs, setIsEditingInterruptArgs] = useState(false)
+  const interruptEditorRefs = useRef<Array<HTMLTextAreaElement | null>>([])
+  const canEditInterrupt =
+    interruptData && isDecisionAllowedForAllActions(interruptData, 'edit')
+
+  useEffect(() => {
+    setIsEditingInterruptArgs(false)
+    interruptEditorRefs.current = []
+  }, [interruptData])
+
+  const handleEditInterrupt = () => {
+    if (!interruptData || !canEditInterrupt) return
+
+    if (!isEditingInterruptArgs) {
+      setIsEditingInterruptArgs(true)
+      window.setTimeout(() => {
+        interruptEditorRefs.current[0]?.focus()
+      }, 0)
+      return
+    }
+
+    void onInterruptAction('edit')
+  }
+
   return (
     <>
       <div className={styles.sessionBar}>
@@ -205,9 +265,20 @@ export function ChatView({
                   <label className={styles.interruptSectionLabel}>参数:</label>
                   <textarea
                     className={styles.interruptArgsEditor}
-                    defaultValue={JSON.stringify(action.args, null, 2)}
+                    defaultValue={JSON.stringify(
+                      getInterruptActionArgs(action),
+                      null,
+                      2
+                    )}
                     rows={4}
                     id={`argsEditor${index}`}
+                    ref={(element) => {
+                      interruptEditorRefs.current[index] = element
+                    }}
+                    disabled={
+                      !isEditingInterruptArgs ||
+                      !isInterruptDecisionAllowed(interruptData, index, 'edit')
+                    }
                   />
                 </div>
               </div>
@@ -217,18 +288,21 @@ export function ChatView({
             <button
               className={`${styles.interruptBtn} ${styles.approve}`}
               onClick={() => void onInterruptAction('approve')}
+              disabled={!isDecisionAllowedForAllActions(interruptData, 'approve')}
             >
               批准
             </button>
             <button
               className={`${styles.interruptBtn} ${styles.edit}`}
-              onClick={() => void onInterruptAction('edit')}
+              onClick={handleEditInterrupt}
+              disabled={!canEditInterrupt}
             >
-              编辑
+              {isEditingInterruptArgs ? '提交编辑' : '编辑参数'}
             </button>
             <button
               className={`${styles.interruptBtn} ${styles.reject}`}
               onClick={() => void onInterruptAction('reject')}
+              disabled={!isDecisionAllowedForAllActions(interruptData, 'reject')}
             >
               拒绝
             </button>
