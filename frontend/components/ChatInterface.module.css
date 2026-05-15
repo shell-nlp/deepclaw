@@ -880,6 +880,7 @@
 
 .sidebarInput,
 .managementInput,
+.interruptInput,
 .interruptArgsEditor,
 .input {
   width: 100%;
@@ -898,6 +899,7 @@
 
 .sidebarInput:focus,
 .managementInput:focus,
+.interruptInput:focus,
 .interruptArgsEditor:focus,
 .input:focus {
   border-color: var(--accent-primary);
@@ -1113,6 +1115,75 @@
   letter-spacing: 0.5px;
   margin-bottom: 8px;
   font-weight: 500;
+}
+
+.interruptArgGroup {
+  display: grid;
+  gap: 12px;
+}
+
+.interruptArgGroup .interruptArgGroup {
+  padding: 12px;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: var(--radius-md);
+  background: rgba(251, 191, 36, 0.05);
+}
+
+.interruptArgGroupLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: #92400e;
+}
+
+.interruptFormField {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.interruptFieldLabel {
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.interruptInput {
+  min-width: 0;
+  padding: 10px 12px;
+  background: rgba(251, 191, 36, 0.08);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #92400e;
+  font-size: 14px;
+}
+
+textarea.interruptInput {
+  resize: vertical;
+  min-height: 96px;
+  line-height: 1.5;
+}
+
+.interruptInput:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.interruptCheckbox {
+  width: 18px;
+  height: 18px;
+  accent-color: #d97706;
+}
+
+.interruptCheckbox:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.interruptArgEmpty {
+  color: var(--text-muted);
+  font-size: 13px;
 }
 
 .interruptArgsEditor {
@@ -2724,6 +2795,11 @@
   .managementSearchGroup {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .interruptFormField {
+    grid-template-columns: 1fr;
+    gap: 6px;
   }
 
   .welcome h2 {

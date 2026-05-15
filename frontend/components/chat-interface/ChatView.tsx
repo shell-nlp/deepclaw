@@ -16,6 +16,8 @@ import { getToolIcon, parseMarkdown } from './utils'
 
 type InterruptDecision = 'approve' | 'reject' | 'edit'
 type InterruptActionRequest = NonNullable<InterruptData>['action_requests'][number]
+type InterruptEditedAction = { name: string; args: Record<string, unknown> }
+type InterruptArgPath = Array<string | number>
 
 interface ChatViewProps {
   messages: Message[]
@@ -37,7 +39,10 @@ interface ChatViewProps {
   chatContainerRef: Ref<HTMLDivElement>
   textareaRef: Ref<HTMLTextAreaElement>
   onClearChat: () => void
-  onInterruptAction: (decision: 'approve' | 'reject' | 'edit') => void | Promise<void>
+  onInterruptAction: (
+    decision: 'approve' | 'reject' | 'edit',
+    editedActions?: InterruptEditedAction[]
+  ) => void | Promise<void>
   onInputChange: (value: string) => void
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void
   onKnowledgeBaseToggle: (checked: boolean) => void
@@ -132,6 +137,38 @@ function getInterruptActionArgs(
   return action.args ?? action.arguments ?? {}
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function cloneInterruptArgs(value: Record<string, unknown>): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(value)) as Record<string, unknown>
+}
+
+function updateValueAtPath(
+  value: unknown,
+  path: InterruptArgPath,
+  nextValue: unknown
+): unknown {
+  if (path.length === 0) return nextValue
+
+  const [head, ...rest] = path
+  if (Array.isArray(value)) {
+    const clone = [...value]
+    const index = Number(head)
+    clone[index] = updateValueAtPath(clone[index], rest, nextValue)
+    return clone
+  }
+
+  const clone = isRecord(value) ? { ...value } : {}
+  clone[String(head)] = updateValueAtPath(clone[String(head)], rest, nextValue)
+  return clone
+}
+
+function formatArgLabel(key: string | number): string {
+  return typeof key === 'number' ? `#${key + 1}` : key
+}
+
 function isInterruptDecisionAllowed(
   interruptData: InterruptData,
   actionIndex: number,
@@ -155,6 +192,134 @@ function isDecisionAllowedForAllActions(
 
   return interruptData.action_requests.every((_, index) =>
     isInterruptDecisionAllowed(interruptData, index, decision)
+  )
+}
+
+interface InterruptArgFieldsProps {
+  value: unknown
+  path: InterruptArgPath
+  label?: string
+  disabled: boolean
+  inputRef?: (element: HTMLInputElement | HTMLTextAreaElement | null) => void
+  onChange: (path: InterruptArgPath, value: unknown) => void
+}
+
+function InterruptArgFields({
+  value,
+  path,
+  label,
+  disabled,
+  inputRef,
+  onChange,
+}: InterruptArgFieldsProps) {
+  if (Array.isArray(value)) {
+    return (
+      <div className={styles.interruptArgGroup}>
+        {label && <div className={styles.interruptArgGroupLabel}>{label}</div>}
+        {value.length > 0 ? (
+          value.map((item, index) => (
+            <InterruptArgFields
+              key={`${path.join('.')}.${index}`}
+              value={item}
+              path={[...path, index]}
+              label={formatArgLabel(index)}
+              disabled={disabled}
+              onChange={onChange}
+            />
+          ))
+        ) : (
+          <span className={styles.interruptArgEmpty}>空列表</span>
+        )}
+      </div>
+    )
+  }
+
+  if (isRecord(value)) {
+    const entries = Object.entries(value)
+
+    return (
+      <div className={styles.interruptArgGroup}>
+        {label && <div className={styles.interruptArgGroupLabel}>{label}</div>}
+        {entries.length > 0 ? (
+          entries.map(([key, item], index) => (
+            <InterruptArgFields
+              key={`${path.join('.')}.${key}`}
+              value={item}
+              path={[...path, key]}
+              label={formatArgLabel(key)}
+              disabled={disabled}
+              inputRef={path.length === 0 && index === 0 ? inputRef : undefined}
+              onChange={onChange}
+            />
+          ))
+        ) : (
+          <span className={styles.interruptArgEmpty}>空对象</span>
+        )}
+      </div>
+    )
+  }
+
+  if (typeof value === 'boolean') {
+    return (
+      <label className={styles.interruptFormField}>
+        <span className={styles.interruptFieldLabel}>{label}</span>
+        <input
+          ref={inputRef as ((element: HTMLInputElement | null) => void) | undefined}
+          className={styles.interruptCheckbox}
+          type="checkbox"
+          checked={value}
+          disabled={disabled}
+          onChange={(event) => onChange(path, event.currentTarget.checked)}
+        />
+      </label>
+    )
+  }
+
+  if (typeof value === 'number') {
+    return (
+      <label className={styles.interruptFormField}>
+        <span className={styles.interruptFieldLabel}>{label}</span>
+        <input
+          ref={inputRef as ((element: HTMLInputElement | null) => void) | undefined}
+          className={styles.interruptInput}
+          type="number"
+          value={Number.isFinite(value) ? value : ''}
+          disabled={disabled}
+          onChange={(event) => {
+            const raw = event.currentTarget.value
+            onChange(path, raw === '' ? null : Number(raw))
+          }}
+        />
+      </label>
+    )
+  }
+
+  const textValue = value == null ? '' : String(value)
+  const isLongText = textValue.length > 80 || textValue.includes('\n')
+
+  return (
+    <label className={styles.interruptFormField}>
+      <span className={styles.interruptFieldLabel}>{label}</span>
+      {isLongText ? (
+        <textarea
+          ref={inputRef as ((element: HTMLTextAreaElement | null) => void) | undefined}
+          className={styles.interruptInput}
+          value={textValue}
+          disabled={disabled}
+          rows={4}
+          onChange={(event) => onChange(path, event.currentTarget.value)}
+        />
+      ) : (
+        <input
+          ref={inputRef as ((element: HTMLInputElement | null) => void) | undefined}
+          className={styles.interruptInput}
+          type="text"
+          value={textValue}
+          disabled={disabled}
+          onChange={(event) => onChange(path, event.currentTarget.value)}
+        />
+      )}
+    </label>
   )
 }
 
@@ -189,14 +354,38 @@ export function ChatView({
   onSendMessage,
 }: ChatViewProps) {
   const [isEditingInterruptArgs, setIsEditingInterruptArgs] = useState(false)
-  const interruptEditorRefs = useRef<Array<HTMLTextAreaElement | null>>([])
+  const [interruptArgsDrafts, setInterruptArgsDrafts] = useState<
+    Record<string, unknown>[]
+  >([])
+  const interruptEditorRefs = useRef<
+    Array<HTMLInputElement | HTMLTextAreaElement | null>
+  >([])
   const canEditInterrupt =
     interruptData && isDecisionAllowedForAllActions(interruptData, 'edit')
 
   useEffect(() => {
     setIsEditingInterruptArgs(false)
+    setInterruptArgsDrafts(
+      interruptData?.action_requests.map((action) =>
+        cloneInterruptArgs(getInterruptActionArgs(action))
+      ) || []
+    )
     interruptEditorRefs.current = []
   }, [interruptData])
+
+  const updateInterruptArgDraft = (
+    actionIndex: number,
+    path: InterruptArgPath,
+    value: unknown
+  ) => {
+    setInterruptArgsDrafts((prev) =>
+      prev.map((draft, index) =>
+        index === actionIndex
+          ? (updateValueAtPath(draft, path, value) as Record<string, unknown>)
+          : draft
+      )
+    )
+  }
 
   const handleEditInterrupt = () => {
     if (!interruptData || !canEditInterrupt) return
@@ -209,7 +398,13 @@ export function ChatView({
       return
     }
 
-    void onInterruptAction('edit')
+    void onInterruptAction(
+      'edit',
+      interruptData.action_requests.map((action, index) => ({
+        name: action.name,
+        args: interruptArgsDrafts[index] || getInterruptActionArgs(action),
+      }))
+    )
   }
 
   return (
@@ -262,22 +457,21 @@ export function ChatView({
                   <p className={styles.interruptDescription}>{action.description}</p>
                 )}
                 <div className={styles.interruptArgsSection}>
-                  <label className={styles.interruptSectionLabel}>参数:</label>
-                  <textarea
-                    className={styles.interruptArgsEditor}
-                    defaultValue={JSON.stringify(
-                      getInterruptActionArgs(action),
-                      null,
-                      2
-                    )}
-                    rows={4}
-                    id={`argsEditor${index}`}
-                    ref={(element) => {
-                      interruptEditorRefs.current[index] = element
-                    }}
+                  <span className={styles.interruptSectionLabel}>参数</span>
+                  <InterruptArgFields
+                    value={
+                      interruptArgsDrafts[index] || getInterruptActionArgs(action)
+                    }
+                    path={[]}
                     disabled={
                       !isEditingInterruptArgs ||
                       !isInterruptDecisionAllowed(interruptData, index, 'edit')
+                    }
+                    inputRef={(element) => {
+                      interruptEditorRefs.current[index] = element
+                    }}
+                    onChange={(path, value) =>
+                      updateInterruptArgDraft(index, path, value)
                     }
                   />
                 </div>

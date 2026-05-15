@@ -179,8 +179,6 @@ function ensureToolItem(
   ]
 }
 
-type InterruptActionRequest = NonNullable<InterruptData>['action_requests'][number]
-
 type ResumeDecision =
   | { type: 'approve' }
   | { type: 'reject'; message: string }
@@ -191,12 +189,6 @@ type ResumeDecision =
         args: Record<string, unknown>
       }
     }
-
-function getInterruptActionArgs(
-  action: InterruptActionRequest
-): Record<string, unknown> {
-  return action.args ?? action.arguments ?? {}
-}
 
 export default function ChatInterface() {
   const [viewMode, setViewMode] = useState<ViewMode>('chat')
@@ -1584,7 +1576,10 @@ export default function ChatInterface() {
     abortControllerRef.current?.abort()
   }
 
-  const handleInterruptAction = async (decision: 'approve' | 'reject' | 'edit') => {
+  const handleInterruptAction = async (
+    decision: 'approve' | 'reject' | 'edit',
+    editedActions?: Array<{ name: string; args: Record<string, unknown> }>
+  ) => {
     if (!interruptData) return
 
     const requestMode = requestModeRef.current
@@ -1597,24 +1592,6 @@ export default function ChatInterface() {
       setShowInterrupt(false)
       setInterruptData(null)
       return
-    }
-
-    let editedActions: Array<{ name: string; args: Record<string, unknown> }> | undefined
-    if (decision === 'edit') {
-      try {
-        editedActions = interruptData.action_requests.map((action, index) => {
-          const editor = document.getElementById(
-            `argsEditor${index}`
-          ) as HTMLTextAreaElement | null
-          return {
-            name: action.name,
-            args: editor ? JSON.parse(editor.value) : getInterruptActionArgs(action),
-          }
-        })
-      } catch {
-        setManagementError('Interrupt arguments must be valid JSON.')
-        return
-      }
     }
 
     setShowInterrupt(false)
