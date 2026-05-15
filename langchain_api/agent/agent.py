@@ -4,6 +4,7 @@ from typing import Any
 from deepagents import create_deep_agent
 from deepagents.backends.store import BackendContext
 from langchain.agents import create_agent
+from langchain.agents.middleware import HumanInTheLoopMiddleware
 from langgraph.graph.state import CompiledStateGraph
 from loguru import logger
 
@@ -16,13 +17,13 @@ from langchain_api.utils import get_chat_model, get_current_time
 
 _platform = sys.platform
 if _platform.startswith("win"):
-    DEFUALT_SYSTEM_PROMPT = "你的运行环境是 Windows 系统, 你可以使用 Windows 相关的命令"
+    DEFUALT_OS_PROMPT = "你的运行环境是 Windows 系统, 你可以使用 Windows 相关的命令"
 elif _platform.startswith("linux"):
-    DEFUALT_SYSTEM_PROMPT = "你的运行环境是 Linux 系统, 你可以使用 Linux 相关的命令"
+    DEFUALT_OS_PROMPT = "你的运行环境是 Linux 系统, 你可以使用 Linux 相关的命令"
 elif _platform.startswith("darwin"):
-    DEFUALT_SYSTEM_PROMPT = "你的运行环境是 macOS 系统, 你可以使用 macOS 相关的命令"
+    DEFUALT_OS_PROMPT = "你的运行环境是 macOS 系统, 你可以使用 macOS 相关的命令"
 else:
-    DEFUALT_SYSTEM_PROMPT = f"你的运行环境未知: {_platform}"
+    DEFUALT_OS_PROMPT = f"你的运行环境未知: {_platform}"
 
 skills = ["/workspace/skills"]
 
@@ -34,6 +35,14 @@ def user_namespace_factory(ctx: BackendContext[Any, AgentContext]) -> tuple[str,
     # from langchain_core.runnables.config import var_child_runnable_config
     # config = var_child_runnable_config.get()
     return ("filesystem", user_id)  # 用户隔离！
+
+
+DEFUALT_SYSTEM_PROMPT = f"""
+{DEFUALT_OS_PROMPT}
+
+## 额外要遵守的要求
+- 若工具被拒绝执行，即使你可以推理出用户问题的答案，也要拒绝。
+"""
 
 
 class Agent:
@@ -119,6 +128,18 @@ class Agent:
             from langchain_api.middleware.tool_search import DeferredToolMiddleware
 
             middleware.append(DeferredToolMiddleware())
+        # HumanInTheLoopMiddleware
+        middleware.append(
+            HumanInTheLoopMiddleware(
+                interrupt_on={
+                    "execute": {
+                        "allowed_decisions": ["approve", "edit", "reject"],
+                        "description": "工具执行等待批准",
+                    },
+                },
+                description_prefix="工具执行等待批准",
+            )
+        )
 
         if self.deep_agent:
             logger.info("使用 DeepAgent")

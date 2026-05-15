@@ -407,6 +407,70 @@ export function ChatView({
     )
   }
 
+  const interruptPanel =
+    showInterrupt && interruptData ? (
+      <div className={styles.interruptPanel}>
+        <div className={styles.interruptHeader}>
+          <span>需要人工确认</span>
+        </div>
+        <div className={styles.interruptContent}>
+          {interruptData.action_requests?.map((action, index) => (
+            <div key={index} className={styles.interruptAction}>
+              <div className={styles.interruptActionHeader}>
+                <span className={styles.interruptToolIcon}>
+                  {getToolIcon(action.name)}
+                </span>
+                <span className={styles.interruptToolName}>{action.name}</span>
+              </div>
+              {action.description && (
+                <p className={styles.interruptDescription}>{action.description}</p>
+              )}
+              <div className={styles.interruptArgsSection}>
+                <span className={styles.interruptSectionLabel}>参数</span>
+                <InterruptArgFields
+                  value={interruptArgsDrafts[index] || getInterruptActionArgs(action)}
+                  path={[]}
+                  disabled={
+                    !isEditingInterruptArgs ||
+                    !isInterruptDecisionAllowed(interruptData, index, 'edit')
+                  }
+                  inputRef={(element) => {
+                    interruptEditorRefs.current[index] = element
+                  }}
+                  onChange={(path, value) =>
+                    updateInterruptArgDraft(index, path, value)
+                  }
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className={styles.interruptButtons}>
+          <button
+            className={`${styles.interruptBtn} ${styles.approve}`}
+            onClick={() => void onInterruptAction('approve')}
+            disabled={!isDecisionAllowedForAllActions(interruptData, 'approve')}
+          >
+            批准
+          </button>
+          <button
+            className={`${styles.interruptBtn} ${styles.edit}`}
+            onClick={handleEditInterrupt}
+            disabled={!canEditInterrupt}
+          >
+            {isEditingInterruptArgs ? '提交编辑' : '编辑参数'}
+          </button>
+          <button
+            className={`${styles.interruptBtn} ${styles.reject}`}
+            onClick={() => void onInterruptAction('reject')}
+            disabled={!isDecisionAllowedForAllActions(interruptData, 'reject')}
+          >
+            拒绝
+          </button>
+        </div>
+      </div>
+    ) : null
+
   return (
     <>
       <div className={styles.sessionBar}>
@@ -438,71 +502,6 @@ export function ChatView({
           </button>
         </div>
       </div>
-
-      {showInterrupt && interruptData && (
-        <div className={styles.interruptPanel}>
-          <div className={styles.interruptHeader}>
-            <span>需要人工确认</span>
-          </div>
-          <div className={styles.interruptContent}>
-            {interruptData.action_requests?.map((action, index) => (
-              <div key={index} className={styles.interruptAction}>
-                <div className={styles.interruptActionHeader}>
-                  <span className={styles.interruptToolIcon}>
-                    {getToolIcon(action.name)}
-                  </span>
-                  <span className={styles.interruptToolName}>{action.name}</span>
-                </div>
-                {action.description && (
-                  <p className={styles.interruptDescription}>{action.description}</p>
-                )}
-                <div className={styles.interruptArgsSection}>
-                  <span className={styles.interruptSectionLabel}>参数</span>
-                  <InterruptArgFields
-                    value={
-                      interruptArgsDrafts[index] || getInterruptActionArgs(action)
-                    }
-                    path={[]}
-                    disabled={
-                      !isEditingInterruptArgs ||
-                      !isInterruptDecisionAllowed(interruptData, index, 'edit')
-                    }
-                    inputRef={(element) => {
-                      interruptEditorRefs.current[index] = element
-                    }}
-                    onChange={(path, value) =>
-                      updateInterruptArgDraft(index, path, value)
-                    }
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className={styles.interruptButtons}>
-            <button
-              className={`${styles.interruptBtn} ${styles.approve}`}
-              onClick={() => void onInterruptAction('approve')}
-              disabled={!isDecisionAllowedForAllActions(interruptData, 'approve')}
-            >
-              批准
-            </button>
-            <button
-              className={`${styles.interruptBtn} ${styles.edit}`}
-              onClick={handleEditInterrupt}
-              disabled={!canEditInterrupt}
-            >
-              {isEditingInterruptArgs ? '提交编辑' : '编辑参数'}
-            </button>
-            <button
-              className={`${styles.interruptBtn} ${styles.reject}`}
-              onClick={() => void onInterruptAction('reject')}
-              disabled={!isDecisionAllowedForAllActions(interruptData, 'reject')}
-            >
-              拒绝
-            </button>
-          </div>
-        </div>
-      )}
 
       <div className={styles.chatContainer} ref={chatContainerRef}>
         {messages.length === 0 ? (
@@ -576,6 +575,8 @@ export function ChatView({
             </div>
           ))
         )}
+
+        {interruptPanel}
 
         {isProcessing && messages[messages.length - 1]?.role !== 'ai' && (
           <div className={`${styles.message} ${styles.ai}`}>

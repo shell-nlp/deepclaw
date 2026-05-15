@@ -35,7 +35,43 @@ LangChain Agent API 是一个面向二次开发的智能 Agent 服务骨架。�
 
 ## 界面预览
 
+以下界面是项目能力的重要展示，涵盖聊天、人工确认、知识库、技能管理、MCP 管理和用户隔离等核心工作流。
+
+### 聊天主界面
+
 ![聊天界面](assets/img/chat.png)
+
+统一承载 Agent 对话、工具调用流式输出和核心交互入口。
+
+### Human in the Loop 人工确认
+
+![Human in the Loop](assets/img/human_in_the_loop.png)
+
+展示工具调用进入人工确认后的审批与参数编辑流程，用于控制高风险操作。
+
+### 知识库管理
+
+![知识库管理](assets/img/knowledge_base.png)
+
+用于查看知识库列表、知识详情和文档切片管理入口。
+
+### 技能管理
+
+![技能管理](assets/img/skill_management.png)
+
+用于上传、删除和维护技能目录内容。
+
+### MCP 管理
+
+![MCP 管理](assets/img/mcp_management.png)
+
+用于配置 MCP Server，并控制 Agent 侧工具接入。
+
+### 用户管理
+
+![用户管理](assets/img/user_management.png)
+
+用于切换和维护不同用户身份，隔离会话与知识库数据。
 
 ## 技术栈
 

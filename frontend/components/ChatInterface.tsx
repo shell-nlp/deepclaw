@@ -337,8 +337,7 @@ export default function ChatInterface() {
     if (typeof window === 'undefined') return
 
     const storedUserId = localStorage.getItem('rag_user_id') || 'demo-user'
-    const storedSessionId =
-      localStorage.getItem('rag_chat_session_id') || generateSessionId()
+    const freshSessionId = generateSessionId()
     const storedUsers = localStorage.getItem('rag_saved_users')
     const storedMcpConfig = localStorage.getItem('rag_mcp_config') || ''
     const storedMcpEnabled = localStorage.getItem('rag_mcp_enabled') === 'true'
@@ -350,7 +349,7 @@ export default function ChatInterface() {
     const parsedMcpConfig = parseMcpConfig(storedMcpConfig)
 
     localStorage.setItem('rag_user_id', storedUserId)
-    localStorage.setItem('rag_chat_session_id', storedSessionId)
+    localStorage.setItem('rag_chat_session_id', freshSessionId)
     localStorage.setItem('rag_saved_users', JSON.stringify(normalizedUsers))
     localStorage.setItem(
       'rag_mcp_enabled',
@@ -359,7 +358,7 @@ export default function ChatInterface() {
 
     setUserId(storedUserId)
     setUserIdDraft(storedUserId)
-    setSessionId(storedSessionId)
+    setSessionId(freshSessionId)
     setSavedUsers(normalizedUsers)
     setMcpConfigDraft(storedMcpConfig)
     setSavedMcpConfigText(storedMcpConfig)
@@ -434,7 +433,7 @@ export default function ChatInterface() {
 
   useEffect(() => {
     scrollToBottom()
-  }, [messages, scrollToBottom])
+  }, [messages, showInterrupt, interruptData, scrollToBottom])
 
   const loadKnowledgeBases = useCallback(
     async (targetUserId: string, page = knowledgeBasePage, search = knowledgeBaseSearch) => {
@@ -1600,10 +1599,10 @@ export default function ChatInterface() {
       role: 'user',
       content:
         decision === 'approve'
-          ? 'Approve pending action.'
+          ? '已批准执行待确认的工具。'
           : decision === 'reject'
-            ? 'Reject pending action.'
-            : 'Resume with edited arguments.',
+            ? '已拒绝执行待确认的工具。'
+            : '已修改工具参数并继续执行。',
     })
 
     setIsProcessing(true)
