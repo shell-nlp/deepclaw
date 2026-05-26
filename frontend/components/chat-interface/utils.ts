@@ -4,7 +4,6 @@ import { marked } from 'marked'
 
 import {
   DEFAULT_BACKEND_URL,
-  DEFAULT_MCP_SERVER_NAME,
   DEFAULT_KNOWLEDGE_PAGE,
 } from './constants'
 import type { KnowledgePage, McpServerSummary, ViewMode } from './types'
@@ -241,14 +240,6 @@ export function parseMcpConfig(raw: string): {
     }
   }
 
-  if (!isRecord(serverRoot[DEFAULT_MCP_SERVER_NAME])) {
-    return {
-      config: null,
-      serverSummaries: [],
-      error: `当前后端默认读取 \`mcpServers.${DEFAULT_MCP_SERVER_NAME}\`，请至少保留该服务配置。`,
-    }
-  }
-
   const serverSummaries = serverEntries.map(([name, value]) => {
     const serverConfig = value as Record<string, unknown>
     const transport =
@@ -277,7 +268,6 @@ export function parseMcpConfig(raw: string): {
       name,
       transport,
       endpoint,
-      isDefaultServer: name === DEFAULT_MCP_SERVER_NAME,
     }
   })
 

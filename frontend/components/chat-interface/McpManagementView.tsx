@@ -93,10 +93,10 @@ export function McpManagementView({
           </span>
         </div>
         <div className={styles.managementSummaryCard}>
-          <span className={styles.managementSummaryLabel}>默认服务键</span>
-          <strong className={styles.managementSummaryValue}>math</strong>
+          <span className={styles.managementSummaryLabel}>加载策略</span>
+          <strong className={styles.managementSummaryValue}>全部服务</strong>
           <span className={styles.managementMeta}>
-            当前后端默认从 `mcpServers.math` 加载工具
+            后端会按 `mcpServers` 下的所有服务逐个加载工具
           </span>
         </div>
       </div>
@@ -112,15 +112,15 @@ export function McpManagementView({
 
           <div className={styles.managementMetaPanel}>
             <span>要求: 根节点必须包含 `mcpServers`</span>
-            <span>要求: 当前必须存在 `mcpServers.math`</span>
-            <span>支持: `streamable-http` / `sse` / `stdio`</span>
+            <span>要求: `mcpServers` 至少包含一个服务</span>
+            <span>支持: `streamable-http` / `streamableHttp` / `sse` / `stdio`</span>
           </div>
 
           <textarea
             className={styles.managementTextarea}
             value={mcpConfigDraft}
             onChange={(event) => onMcpConfigDraftChange(event.target.value)}
-            placeholder='请输入 MCP JSON 配置，例如 {"mcpServers":{"math":{"type":"streamable-http","url":"http://127.0.0.1:48000/mcp"}}}'
+            placeholder='请输入 MCP JSON 配置，例如 {"mcpServers":{"cdp-bridge":{"type":"streamableHttp","url":"http://127.0.0.1:8000/mcp"}}}'
             spellCheck={false}
             rows={18}
           />
@@ -170,16 +170,12 @@ export function McpManagementView({
                 <div key={server.name} className={styles.managementListItemStatic}>
                   <div className={styles.managementListHeader}>
                     <strong>{server.name}</strong>
-                    <span>{server.isDefaultServer ? '默认加载' : '附加配置'}</span>
+                    <span>已配置</span>
                   </div>
                   <p className={styles.managementDescription}>{server.endpoint}</p>
                   <div className={styles.managementListMeta}>
                     <span>传输方式: {server.transport}</span>
-                    <span>
-                      {server.isDefaultServer
-                        ? '会被当前后端直接读取'
-                        : '当前后端默认不会直接使用该 key'}
-                    </span>
+                    <span>启用后会被后端读取并尝试加载工具</span>
                   </div>
                 </div>
               ))

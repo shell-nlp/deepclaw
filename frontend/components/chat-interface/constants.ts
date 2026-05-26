@@ -3,7 +3,6 @@ import type { KnowledgePage } from './types'
 export const DEFAULT_BACKEND_URL = 'http://localhost:7869'
 export const DEFAULT_AGENT_API_PATH = '/api/agent/general_api'
 export const DEFAULT_RAG_API_PATH = '/api/rag/general_api'
-export const DEFAULT_MCP_SERVER_NAME = 'math'
 export const SKILL_LIST_API_PATH = '/api/agent/skills/list'
 export const SKILL_UPLOAD_API_PATH = '/api/agent/skills/upload'
 export const SKILL_DELETE_API_PATH = '/api/agent/skills/delete'
@@ -27,9 +26,9 @@ export const DOCUMENT_CHUNK_PAGE_SIZE = 8
 export const DEFAULT_KNOWLEDGE_PAGE: KnowledgePage = 'libraries'
 export const DEFAULT_MCP_CONFIG_TEMPLATE = `{
   "mcpServers": {
-    "math": {
-      "type": "streamable-http",
-      "url": "http://127.0.0.1:48000/mcp"
+    "cdp-bridge": {
+      "type": "streamableHttp",
+      "url": "http://127.0.0.1:8000/mcp"
     }
   }
 }`

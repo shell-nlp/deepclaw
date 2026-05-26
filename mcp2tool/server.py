@@ -13,7 +13,7 @@ def add(a: int, b: int, ctx: Context) -> int:
     if meta is not None:
         extra_meta = meta.model_extra or {}
     user_id = extra_meta.get("userId") or "unknown"
-    logger.info(f"User ID: {user_id}")
+    logger.warning(f"User ID: {user_id}")
     return a + b
 
 

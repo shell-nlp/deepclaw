@@ -56,6 +56,7 @@ def _infer_transport(server_config: dict[str, Any]) -> str:
         "stdio": "stdio",
         "sse": "sse",
         "http": "streamable-http",
+        "streamablehttp": "streamable-http",
         "streamable-http": "streamable-http",
         "streamable_http": "streamable-http",
     }
@@ -587,7 +588,7 @@ async def main() -> None:
         print(f"Converted LangChain tools: {[tool.name for tool in tools]}")
         result = await tools[0].ainvoke(
             {"a": 3, "b": 5},
-            config={"metadata": {"mcp_meta": {"userId": "u123"}}},
+            config={"metadata": {"mcp_meta": {"userId": "u123456789"}}},
         )
         print(f"Call result: {result}")
 

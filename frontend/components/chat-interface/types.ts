@@ -170,7 +170,6 @@ export interface McpServerSummary {
   name: string
   transport: string
   endpoint: string
-  isDefaultServer: boolean
 }
 
 export interface SkillRecord {
