@@ -29,6 +29,17 @@ export const DEFAULT_MCP_CONFIG_TEMPLATE = `{
     "cdp-bridge": {
       "type": "streamableHttp",
       "url": "http://127.0.0.1:8000/mcp"
+    },
+    "weather-mcp": {
+      "type": "streamableHttp",
+      "url": "http://127.0.0.1:8001/mcp"
+    },
+    "local-file": {
+      "type": "stdio",
+      "command": "python",
+      "args": [
+        "server.py"
+      ]
     }
   }
 }`

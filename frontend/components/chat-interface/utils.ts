@@ -189,6 +189,84 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+function normalizeMcpTransport(value: string): string {
+  const normalized = value.trim().toLowerCase()
+  if (
+    normalized === 'streamablehttp' ||
+    normalized === 'streamable-http' ||
+    normalized === 'streamable_http' ||
+    normalized === 'http'
+  ) {
+    return 'streamable-http'
+  }
+  if (normalized === 'sse') return 'sse'
+  if (normalized === 'stdio') return 'stdio'
+  return value
+}
+
+function normalizeMcpServerConfig(
+  serverConfig: Record<string, unknown>
+): Record<string, unknown> {
+  const normalizedConfig: Record<string, unknown> = { ...serverConfig }
+  const transport =
+    typeof serverConfig.type === 'string'
+      ? serverConfig.type
+      : typeof serverConfig.transport === 'string'
+        ? serverConfig.transport
+        : null
+
+  if (transport) {
+    normalizedConfig.type = normalizeMcpTransport(transport)
+  }
+
+  delete normalizedConfig.transport
+  return normalizedConfig
+}
+
+function getMcpServerRoot(
+  parsed: Record<string, unknown>
+): { serverRoot: Record<string, unknown> | null; error: string } {
+  if (isRecord(parsed.mcpServers)) {
+    return {
+      serverRoot: parsed.mcpServers,
+      error: '',
+    }
+  }
+
+  if (isRecord(parsed.mcpServer)) {
+    return {
+      serverRoot: parsed.mcpServer,
+      error: '',
+    }
+  }
+
+  if (typeof parsed.mcpServer === 'string') {
+    try {
+      const innerParsed = JSON.parse(parsed.mcpServer)
+      if (!isRecord(innerParsed)) {
+        return {
+          serverRoot: null,
+          error: '`mcpServer` 解析后必须是 JSON 对象。',
+        }
+      }
+      return {
+        serverRoot: innerParsed,
+        error: '',
+      }
+    } catch {
+      return {
+        serverRoot: null,
+        error: '`mcpServer` 不是合法 JSON 字符串，请先修正后再保存。',
+      }
+    }
+  }
+
+  return {
+    serverRoot: null,
+    error: 'MCP 配置必须包含 `mcpServers` 对象，或兼容的 `mcpServer` 配置。',
+  }
+}
+
 export function parseMcpConfig(raw: string): {
   config: Record<string, unknown> | null
   serverSummaries: McpServerSummary[]
@@ -222,12 +300,12 @@ export function parseMcpConfig(raw: string): {
     }
   }
 
-  const serverRoot = parsed.mcpServers
-  if (!isRecord(serverRoot)) {
+  const { serverRoot, error } = getMcpServerRoot(parsed)
+  if (!serverRoot) {
     return {
       config: null,
       serverSummaries: [],
-      error: 'MCP 配置必须包含 `mcpServers` 对象。',
+      error,
     }
   }
 
@@ -236,12 +314,16 @@ export function parseMcpConfig(raw: string): {
     return {
       config: null,
       serverSummaries: [],
-      error: '`mcpServers` 至少需要配置一个服务。',
+      error: '`mcpServers` 或 `mcpServer` 至少需要配置一个服务。',
     }
   }
 
-  const serverSummaries = serverEntries.map(([name, value]) => {
-    const serverConfig = value as Record<string, unknown>
+  const normalizedServerEntries = serverEntries.map(([name, value]) => [
+    name,
+    normalizeMcpServerConfig(value as Record<string, unknown>),
+  ] as const)
+
+  const serverSummaries = normalizedServerEntries.map(([name, serverConfig]) => {
     const transport =
       typeof serverConfig.type === 'string'
         ? serverConfig.type
@@ -272,7 +354,10 @@ export function parseMcpConfig(raw: string): {
   })
 
   return {
-    config: parsed,
+    config: {
+      ...parsed,
+      mcpServers: Object.fromEntries(normalizedServerEntries),
+    },
     serverSummaries,
     error: '',
   }

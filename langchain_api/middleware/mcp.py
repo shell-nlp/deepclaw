@@ -1,3 +1,4 @@
+import json
 from typing import Any, NotRequired
 
 from langchain.agents.middleware import (
@@ -23,8 +24,53 @@ class MCPMiddleware(AgentMiddleware[None, AgentContext, None]):
 
     state_schema = StateSchema
 
-    def get_mcp_server_names(self, mcp_config: dict[str, Any]) -> list[str]:
+    def normalize_mcp_server_config(
+        self, server_config: dict[str, Any]
+    ) -> dict[str, Any]:
+        normalized = dict(server_config)
+        transport = normalized.get("type")
+        if not isinstance(transport, str):
+            transport = normalized.get("transport")
+
+        if isinstance(transport, str) and transport.strip():
+            normalized["type"] = transport.strip()
+
+        normalized.pop("transport", None)
+        return normalized
+
+    def normalize_mcp_config(self, mcp_config: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(mcp_config, dict):
+            raise TypeError("`mcp_config` 必须是对象")
+
         server_root = mcp_config.get("mcpServers")
+        if not isinstance(server_root, dict):
+            legacy_root = mcp_config.get("mcpServer")
+            if isinstance(legacy_root, str):
+                try:
+                    legacy_root = json.loads(legacy_root)
+                except json.JSONDecodeError as exc:
+                    raise ValueError("`mcp_config.mcpServer` 必须是合法 JSON 字符串") from exc
+
+            if not isinstance(legacy_root, dict):
+                raise ValueError(
+                    "`mcp_config` 必须包含 `mcpServers` 对象，或兼容的 `mcpServer` 配置"
+                )
+            server_root = legacy_root
+
+        normalized_servers = {
+            name: self.normalize_mcp_server_config(server_config)
+            for name, server_config in server_root.items()
+            if isinstance(name, str) and isinstance(server_config, dict)
+        }
+
+        normalized_config = dict(mcp_config)
+        normalized_config["mcpServers"] = normalized_servers
+        normalized_config.pop("mcpServer", None)
+        return normalized_config
+
+    def get_mcp_server_names(self, mcp_config: dict[str, Any]) -> list[str]:
+        normalized_config = self.normalize_mcp_config(mcp_config)
+        server_root = normalized_config.get("mcpServers")
         if not isinstance(server_root, dict):
             raise ValueError("`mcp_config.mcpServers` 必须是对象")
 
@@ -40,7 +86,8 @@ class MCPMiddleware(AgentMiddleware[None, AgentContext, None]):
     def get_mcp_server_config(
         self, mcp_config: dict[str, Any], server_name: str
     ) -> dict[str, Any]:
-        server_root = mcp_config.get("mcpServers")
+        normalized_config = self.normalize_mcp_config(mcp_config)
+        server_root = normalized_config.get("mcpServers")
         if not isinstance(server_root, dict):
             raise ValueError("`mcp_config.mcpServers` 必须是对象")
 
@@ -82,15 +129,14 @@ class MCPMiddleware(AgentMiddleware[None, AgentContext, None]):
             return []
 
     async def get_mcp_tools(self, mcp_config):
-        if not isinstance(mcp_config, dict):
-            raise TypeError("`mcp_config` 必须是对象")
+        normalized_config = self.normalize_mcp_config(mcp_config)
 
-        server_names = self.get_mcp_server_names(mcp_config)
+        server_names = self.get_mcp_server_names(normalized_config)
         tools = []
         for server_name in server_names:
             tools.extend(
                 await self.load_mcp_tools_for_server(
-                    mcp_config,
+                    normalized_config,
                     server_name,
                     tool_name_prefix=False,
                 )
@@ -108,7 +154,7 @@ class MCPMiddleware(AgentMiddleware[None, AgentContext, None]):
         for server_name in server_names:
             prefixed_tools.extend(
                 await self.load_mcp_tools_for_server(
-                    mcp_config,
+                    normalized_config,
                     server_name,
                     tool_name_prefix=True,
                 )

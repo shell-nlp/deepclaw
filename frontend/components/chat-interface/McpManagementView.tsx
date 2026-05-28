@@ -44,7 +44,8 @@ export function McpManagementView({
           <h2>管理 Agent 可用的 MCP 工具配置</h2>
           <p>
             这里保存的是前端本地 MCP 配置。保存并启用后，前端会在通用 Agent
-            请求里附带 `mcp_config`。当前 RAG 请求不会使用该配置。
+            请求里附带 `mcp_config`。一个 JSON 可以同时包含多个 MCP 服务，当前
+            RAG 请求不会使用该配置。
           </p>
         </div>
         <div className={styles.managementHeroActions}>
@@ -113,6 +114,8 @@ export function McpManagementView({
           <div className={styles.managementMetaPanel}>
             <span>要求: 根节点必须包含 `mcpServers`</span>
             <span>要求: `mcpServers` 至少包含一个服务</span>
+            <span>支持: 在 `mcpServers` 下同时配置多个命名服务</span>
+            <span>兼容: LangChain 风格的 `mcpServer` 字符串配置</span>
             <span>支持: `streamable-http` / `streamableHttp` / `sse` / `stdio`</span>
           </div>
 
@@ -120,7 +123,7 @@ export function McpManagementView({
             className={styles.managementTextarea}
             value={mcpConfigDraft}
             onChange={(event) => onMcpConfigDraftChange(event.target.value)}
-            placeholder='请输入 MCP JSON 配置，例如 {"mcpServers":{"cdp-bridge":{"type":"streamableHttp","url":"http://127.0.0.1:8000/mcp"}}}'
+            placeholder='请输入 MCP JSON 配置，例如 {"mcpServers":{"cdp-bridge":{"type":"streamableHttp","url":"http://127.0.0.1:8000/mcp"},"local-file":{"type":"stdio","command":"python","args":["server.py"]}}} 或 {"mcpServer":"{\"google-mcp\":{\"url\":\"http://127.0.0.1:5000/mcp/sse\",\"transport\":\"sse\"}}"}'
             spellCheck={false}
             rows={18}
           />
@@ -129,7 +132,8 @@ export function McpManagementView({
             <div className={styles.managementError}>{draftError}</div>
           ) : (
             <div className={styles.managementHelperText}>
-              保存时会自动格式化 JSON，并在启用后附加到 Agent 请求体。
+              保存时会自动格式化 JSON，并在启用后把整份 `mcpServers` 配置附加到
+              Agent 请求体。
             </div>
           )}
 
