@@ -113,14 +113,12 @@ class Agent:
 
             nonlocal backend
             if settings.BACKEND_TYPE == "store":
-                backend = StoreBackend(runtime, namespace=user_namespace_factory)
+                backend = StoreBackend(namespace=user_namespace_factory)
 
             return CompositeBackend(
                 default=backend,
                 routes={
-                    "/memories/": StoreBackend(
-                        runtime, namespace=user_namespace_factory
-                    ),
+                    "/memories/": StoreBackend(namespace=user_namespace_factory),
                 },
             )
 
@@ -129,17 +127,17 @@ class Agent:
 
             middleware.append(DeferredToolMiddleware())
         # HumanInTheLoopMiddleware
-        middleware.append(
-            HumanInTheLoopMiddleware(
-                interrupt_on={
-                    "execute": {
-                        "allowed_decisions": ["approve", "edit", "reject"],
-                        "description": "工具执行等待批准",
-                    },
-                },
-                description_prefix="工具执行等待批准",
-            )
-        )
+        # middleware.append(
+        #     HumanInTheLoopMiddleware(
+        #         interrupt_on={
+        #             "execute": {
+        #                 "allowed_decisions": ["approve", "edit", "reject"],
+        #                 "description": "工具执行等待批准",
+        #             },
+        #         },
+        #         description_prefix="工具执行等待批准",
+        #     )
+        # )
 
         if self.deep_agent:
             logger.info("使用 DeepAgent")
