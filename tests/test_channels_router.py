@@ -22,6 +22,31 @@ class FakeService:
         )
 
 
+class FakeWeixinClient:
+    async def get_updates(self, *, token, get_updates_buf=""):
+        self.token = token
+        self.get_updates_buf = get_updates_buf
+        return {
+            "get_updates_buf": "next_buf",
+            "msgs": [
+                {
+                    "message_type": 1,
+                    "message_id": "wx_msg_1",
+                    "from_user_id": "wx_user_1",
+                    "context_token": "ctx_1",
+                    "item_list": [{"text_item": {"text": "你好"}}],
+                },
+                {
+                    "message_type": 2,
+                    "message_id": "ignored",
+                    "from_user_id": "wx_user_1",
+                    "context_token": "ctx_1",
+                    "item_list": [{"text_item": {"text": "ignore"}}],
+                },
+            ],
+        }
+
+
 class ChannelsRouterTest(unittest.TestCase):
     def test_session_config_routes_list_and_update_reply_mode(self):
         from langchain_api.api.routers.channels import create_channels_router
@@ -92,6 +117,37 @@ class ChannelsRouterTest(unittest.TestCase):
         self.assertEqual({"status": "accepted"}, response.json())
         self.assertEqual(1, len(service.calls))
         self.assertEqual("feishu", service.calls[0][0].channel)
+
+    def test_weixin_clawbot_poll_accepts_text_updates(self):
+        from langchain_api.api.routers.channels import create_channels_router
+
+        store = ChannelStore("sqlite:///:memory:")
+        service = FakeService()
+        weixin_client = FakeWeixinClient()
+        app = FastAPI()
+        app.include_router(
+            create_channels_router(
+                store=store,
+                service=service,
+                weixin_client=weixin_client,
+            )
+        )
+        client = TestClient(app)
+
+        response = client.post(
+            "/api/channels/weixin-clawbot/poll",
+            json={"bot_token": "token_1", "get_updates_buf": "old_buf"},
+        )
+
+        self.assertEqual(200, response.status_code)
+        self.assertEqual(
+            {"status": "accepted", "accepted": 1, "get_updates_buf": "next_buf"},
+            response.json(),
+        )
+        self.assertEqual("token_1", weixin_client.token)
+        self.assertEqual("old_buf", weixin_client.get_updates_buf)
+        self.assertEqual(1, len(service.calls))
+        self.assertEqual("weixin_clawbot", service.calls[0][0].channel)
 
 
 if __name__ == "__main__":
