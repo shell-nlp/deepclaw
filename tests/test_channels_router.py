@@ -23,6 +23,22 @@ class FakeService:
 
 
 class FakeWeixinClient:
+    async def fetch_login_qrcode(self, *, local_token_list=None):
+        self.local_token_list = local_token_list
+        return {
+            "qrcode": "qr-content",
+            "qrcode_img_content": "https://example.test/qrcode.png",
+        }
+
+    async def get_qrcode_status(self, *, qrcode, verify_code=None):
+        self.qrcode = qrcode
+        self.verify_code = verify_code
+        return {
+            "status": "confirmed",
+            "bot_token": "token_1",
+            "baseurl": "https://node.example.test",
+        }
+
     async def get_updates(self, *, token, get_updates_buf=""):
         self.token = token
         self.get_updates_buf = get_updates_buf
@@ -148,6 +164,45 @@ class ChannelsRouterTest(unittest.TestCase):
         self.assertEqual("old_buf", weixin_client.get_updates_buf)
         self.assertEqual(1, len(service.calls))
         self.assertEqual("weixin_clawbot", service.calls[0][0].channel)
+
+    def test_weixin_clawbot_qrcode_routes_return_link_and_status(self):
+        from langchain_api.api.routers.channels import create_channels_router
+
+        store = ChannelStore("sqlite:///:memory:")
+        weixin_client = FakeWeixinClient()
+        app = FastAPI()
+        app.include_router(
+            create_channels_router(store=store, weixin_client=weixin_client)
+        )
+        client = TestClient(app)
+
+        qrcode_response = client.post(
+            "/api/channels/weixin-clawbot/qrcode",
+            json={"local_token_list": ["old_token"]},
+        )
+        status_response = client.get(
+            "/api/channels/weixin-clawbot/qrcode/status",
+            params={"qrcode": "qr-content", "verify_code": "1234"},
+        )
+
+        self.assertEqual(200, qrcode_response.status_code)
+        self.assertEqual(
+            {
+                "qrcode": "qr-content",
+                "qrcode_url": "https://example.test/qrcode.png",
+                "raw": {
+                    "qrcode": "qr-content",
+                    "qrcode_img_content": "https://example.test/qrcode.png",
+                },
+            },
+            qrcode_response.json(),
+        )
+        self.assertEqual(["old_token"], weixin_client.local_token_list)
+        self.assertEqual(200, status_response.status_code)
+        self.assertEqual("confirmed", status_response.json()["status"])
+        self.assertEqual("token_1", status_response.json()["bot_token"])
+        self.assertEqual("qr-content", weixin_client.qrcode)
+        self.assertEqual("1234", weixin_client.verify_code)
 
 
 if __name__ == "__main__":

@@ -48,6 +48,14 @@ class Settings(BaseSettings):
     # 微信 ClawBot iLink API 地址
     WEIXIN_CLAWBOT_API_BASE_URL: str = "https://ilinkai.weixin.qq.com"
 
+    # 服务启动时自动获取并打印微信 ClawBot 登录二维码链接
+    WEIXIN_CLAWBOT_PRINT_QRCODE_ON_STARTUP: bool = True
+
+    # 服务启动后自动等待扫码并轮询微信 ClawBot 消息
+    WEIXIN_CLAWBOT_AUTO_POLL_ON_STARTUP: bool = True
+    WEIXIN_CLAWBOT_LOGIN_POLL_INTERVAL_SECONDS: float = 2.0
+    WEIXIN_CLAWBOT_MESSAGE_POLL_INTERVAL_SECONDS: float = 1.0
+
     model_config = SettingsConfigDict(
         env_file=str(env_path),
         env_file_encoding="utf-8",

@@ -1,6 +1,7 @@
+import asyncio
 import os
 import sys
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -14,6 +15,10 @@ from langchain_api.api.routers import (
     create_agent_router,
     create_channels_router,
     create_rag_router,
+)
+from langchain_api.channels.weixin_startup import (
+    WeixinClawBotRuntime,
+    fetch_startup_qrcode,
 )
 from langchain_api.constant import root_dir
 from langchain_api.patch.langchain import patch_langchain
@@ -58,7 +63,33 @@ async def lifespan(app: FastAPI):
     # 设置可观测性
     setup_observability()
     patch_langchain()
-    yield
+    weixin_task = None
+    if settings.WEIXIN_CLAWBOT_PRINT_QRCODE_ON_STARTUP:
+        try:
+            qrcode = await fetch_startup_qrcode()
+            if qrcode.get("qrcode_url"):
+                logger.info("微信 ClawBot 登录二维码链接：\n{}", qrcode["qrcode_url"])
+            else:
+                logger.warning("微信 ClawBot 未返回可展示的二维码链接")
+            if (
+                settings.WEIXIN_CLAWBOT_AUTO_POLL_ON_STARTUP
+                and qrcode.get("qrcode")
+            ):
+                runtime = WeixinClawBotRuntime(
+                    qrcode=str(qrcode["qrcode"]),
+                    login_poll_interval_seconds=settings.WEIXIN_CLAWBOT_LOGIN_POLL_INTERVAL_SECONDS,
+                    message_poll_interval_seconds=settings.WEIXIN_CLAWBOT_MESSAGE_POLL_INTERVAL_SECONDS,
+                )
+                weixin_task = asyncio.create_task(runtime.run_forever())
+        except Exception as exc:
+            logger.warning("获取微信 ClawBot 登录二维码失败：{}", exc)
+    try:
+        yield
+    finally:
+        if weixin_task is not None:
+            weixin_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await weixin_task
 
 
 def create_app() -> FastAPI:

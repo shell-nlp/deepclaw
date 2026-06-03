@@ -128,6 +128,32 @@ class WeixinClawBotClientTest(unittest.IsolatedAsyncioTestCase):
             request["json_body"]["msg"]["item_list"][0]["text_item"]["text"],
         )
 
+    async def test_fetch_login_qrcode_posts_local_tokens(self):
+        from langchain_api.channels.adapters.weixin_clawbot import WeixinClawBotClient
+
+        fake = FakeClawBotClient()
+        client = WeixinClawBotClient(request_json=fake.request_json)
+
+        await client.fetch_login_qrcode(local_token_list=["old_token"])
+
+        request = fake.requests[0]
+        self.assertEqual("POST", request["method"])
+        self.assertEqual("ilink/bot/get_bot_qrcode?bot_type=3", request["path"])
+        self.assertEqual(["old_token"], request["json_body"]["local_token_list"])
+
+    async def test_get_qrcode_status_uses_query_params(self):
+        from langchain_api.channels.adapters.weixin_clawbot import WeixinClawBotClient
+
+        fake = FakeClawBotClient()
+        client = WeixinClawBotClient(request_json=fake.request_json)
+
+        await client.get_qrcode_status(qrcode="qr-content", verify_code="1234")
+
+        request = fake.requests[0]
+        self.assertEqual("GET", request["method"])
+        self.assertEqual("ilink/bot/get_qrcode_status", request["path"])
+        self.assertEqual({"qrcode": "qr-content", "verify_code": "1234"}, request["params"])
+
 
 if __name__ == "__main__":
     unittest.main()

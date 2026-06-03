@@ -21,6 +21,10 @@ class WeixinClawBotPollRequest(BaseModel):
     get_updates_buf: str = ""
 
 
+class WeixinClawBotQRCodeRequest(BaseModel):
+    local_token_list: list[str] = []
+
+
 def create_channels_router(
     *,
     store: ChannelStore | None = None,
@@ -44,6 +48,29 @@ def create_channels_router(
         message = await adapter.parse_event(payload)
         background_tasks.add_task(channel_service.process_message, message, adapter)
         return {"status": "accepted"}
+
+    @router.post("/weixin-clawbot/qrcode")
+    async def weixin_clawbot_qrcode(request: WeixinClawBotQRCodeRequest):
+        client = weixin_client or WeixinClawBotClient()
+        data = await client.fetch_login_qrcode(
+            local_token_list=request.local_token_list
+        )
+        return {
+            "qrcode": data.get("qrcode"),
+            "qrcode_url": data.get("qrcode_img_content") or data.get("qrcode"),
+            "raw": data,
+        }
+
+    @router.get("/weixin-clawbot/qrcode/status")
+    async def weixin_clawbot_qrcode_status(
+        qrcode: str,
+        verify_code: str | None = None,
+    ):
+        client = weixin_client or WeixinClawBotClient()
+        return await client.get_qrcode_status(
+            qrcode=qrcode,
+            verify_code=verify_code,
+        )
 
     @router.post("/weixin-clawbot/poll")
     async def weixin_clawbot_poll(

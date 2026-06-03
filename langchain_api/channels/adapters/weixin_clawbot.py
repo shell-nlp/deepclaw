@@ -49,6 +49,30 @@ class WeixinClawBotClient:
         self.base_url = (base_url or settings.WEIXIN_CLAWBOT_API_BASE_URL).rstrip("/")
         self.request_json = request_json or self._request_json
 
+    async def fetch_login_qrcode(
+        self, *, local_token_list: list[str] | None = None
+    ) -> dict[str, Any]:
+        return await self.request_json(
+            "POST",
+            "ilink/bot/get_bot_qrcode?bot_type=3",
+            json_body={"local_token_list": local_token_list or []},
+        )
+
+    async def get_qrcode_status(
+        self,
+        *,
+        qrcode: str,
+        verify_code: str | None = None,
+    ) -> dict[str, Any]:
+        params = {"qrcode": qrcode}
+        if verify_code:
+            params["verify_code"] = verify_code
+        return await self.request_json(
+            "GET",
+            "ilink/bot/get_qrcode_status",
+            params=params,
+        )
+
     async def get_updates(
         self,
         *,
