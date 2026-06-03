@@ -10,7 +10,11 @@ from fastapi.staticfiles import StaticFiles
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from langchain_api.api.routers import create_agent_router, create_rag_router
+from langchain_api.api.routers import (
+    create_agent_router,
+    create_channels_router,
+    create_rag_router,
+)
 from langchain_api.constant import root_dir
 from langchain_api.patch.langchain import patch_langchain
 from langchain_api.settings import settings
@@ -71,6 +75,7 @@ def create_app() -> FastAPI:
     checkpointer, store = init_agent_env()
     app.include_router(create_agent_router(checkpointer, store))
     app.include_router(create_rag_router(checkpointer, store))
+    app.include_router(create_channels_router())
     next_frontend_path = root_dir / "frontend" / "out"
     if next_frontend_path.exists():
         app.mount(

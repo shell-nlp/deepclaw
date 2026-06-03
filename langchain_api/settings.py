@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # 是否支持工具搜索功能,（与 Claude Code 保持一致）
     USE_TOOL_SEARCH: bool = False
 
+    # 渠道网关调用智能体通用接口的地址
+    CHANNEL_AGENT_API_URL: str = "http://127.0.0.1:7869/api/agent/general_api"
+
     model_config = SettingsConfigDict(
         env_file=str(env_path),
         env_file_encoding="utf-8",
