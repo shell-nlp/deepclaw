@@ -2,10 +2,10 @@ import sys
 from typing import Any
 
 from deepagents import create_deep_agent
-from deepagents.backends.store import BackendContext
 from langchain.agents import create_agent
 from langchain.agents.middleware import HumanInTheLoopMiddleware
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.runtime import Runtime
 from loguru import logger
 
 from langchain_api.agent.context import AgentContext
@@ -28,9 +28,9 @@ else:
 skills = ["/workspace/skills"]
 
 
-def user_namespace_factory(ctx: BackendContext[Any, AgentContext]) -> tuple[str, ...]:
+def user_namespace_factory(runtime: Runtime[Any]) -> tuple[str, ...]:
     """动态生成用户namespace：('user123', 'filesystem')"""
-    user_id = ctx.runtime.context.user_id  # 从context获取
+    user_id = runtime.context.user_id  # 从context获取
     # TODO 获取config,未来可实现共享命名空间
     # from langchain_core.runnables.config import var_child_runnable_config
     # config = var_child_runnable_config.get()
