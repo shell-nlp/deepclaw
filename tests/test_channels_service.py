@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from langchain_api.channels.models import AgentEvent, ChannelMessage
 from langchain_api.channels.store import ChannelStore
@@ -123,6 +124,57 @@ class ChannelServiceTest(unittest.IsolatedAsyncioTestCase):
         sessions = self.store.list_sessions()
         self.assertEqual(2, len(sessions))
         self.assertEqual(["user_1", "user_2"], [call["user_id"] for call in self.agent_client.calls])
+
+    async def test_weixin_clawbot_new_sessions_default_to_streaming_reply_mode(self):
+        from langchain_api.channels.service import ChannelService
+
+        service = ChannelService(
+            store=self.store,
+            agent_client=self.agent_client,
+            dispatcher=self.dispatcher,
+        )
+        message = ChannelMessage(
+            channel="weixin_clawbot",
+            message_id="wx_msg_1",
+            channel_user_id="wx_user_1",
+            channel_conversation_id="wx_user_1",
+            user_id="user_1",
+            text="hello streaming",
+        )
+
+        await service.process_message(message, FakeAdapter())
+
+        self.assertEqual("streaming", self.dispatcher.calls[0]["reply_mode"])
+        self.assertEqual("streaming", self.store.list_sessions()[0].reply_mode)
+
+    async def test_weixin_clawbot_default_reply_mode_can_be_configured_to_final(self):
+        from langchain_api.channels.service import ChannelService
+
+        class FakeSettings:
+            WEIXIN_CLAWBOT_DEFAULT_REPLY_MODE = "final"
+
+        service = ChannelService(
+            store=self.store,
+            agent_client=self.agent_client,
+            dispatcher=self.dispatcher,
+        )
+        message = ChannelMessage(
+            channel="weixin_clawbot",
+            message_id="wx_msg_1",
+            channel_user_id="wx_user_1",
+            channel_conversation_id="wx_user_1",
+            user_id="user_1",
+            text="hello final",
+        )
+
+        with patch(
+            "langchain_api.channels.service.weixin_clawbot_settings",
+            FakeSettings(),
+        ):
+            await service.process_message(message, FakeAdapter())
+
+        self.assertEqual("final", self.dispatcher.calls[0]["reply_mode"])
+        self.assertEqual("final", self.store.list_sessions()[0].reply_mode)
 
 
 if __name__ == "__main__":

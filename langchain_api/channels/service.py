@@ -3,6 +3,7 @@ from collections import defaultdict
 
 from langchain_api.channels.adapters.base import ChannelAdapter
 from langchain_api.channels.agent_client import AgentClient
+from langchain_api.channels.config import weixin_clawbot_settings
 from langchain_api.channels.dispatcher import ResponseDispatcher
 from langchain_api.channels.models import ChannelMessage, ChannelMessageRecord
 from langchain_api.channels.store import ChannelStore, get_channel_store
@@ -38,6 +39,7 @@ class ChannelService:
             channel_conversation_id=self._routing_conversation_id(message),
             channel_user_id=self._routing_channel_user_id(message),
             user_id=user.user_id,
+            reply_mode=self._default_reply_mode(message),
         )
 
         async with self._locks[channel_session.session_id]:
@@ -76,3 +78,8 @@ class ChannelService:
         if not message.user_id:
             return message.channel_conversation_id
         return f"{message.user_id}:{message.channel_conversation_id}"
+
+    def _default_reply_mode(self, message: ChannelMessage) -> str:
+        if message.channel == "weixin_clawbot":
+            return weixin_clawbot_settings.WEIXIN_CLAWBOT_DEFAULT_REPLY_MODE
+        return "final"

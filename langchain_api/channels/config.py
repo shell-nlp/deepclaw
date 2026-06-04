@@ -1,4 +1,5 @@
 from dotenv import find_dotenv, load_dotenv
+from typing import Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,6 +29,7 @@ class WeixinClawBotSettings(BaseSettings):
     WEIXIN_CLAWBOT_AUTO_POLL_ON_STARTUP: bool = True
     WEIXIN_CLAWBOT_LOGIN_POLL_INTERVAL_SECONDS: float = 2.0
     WEIXIN_CLAWBOT_MESSAGE_POLL_INTERVAL_SECONDS: float = 1.0
+    WEIXIN_CLAWBOT_DEFAULT_REPLY_MODE: Literal["final", "streaming"] = "streaming"
 
     model_config = SettingsConfigDict(
         env_file=str(env_path),
