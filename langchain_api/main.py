@@ -20,6 +20,7 @@ from langchain_api.channels.weixin_startup import (
     WeixinClawBotRuntime,
     fetch_startup_qrcode,
 )
+from langchain_api.channels.config import weixin_clawbot_settings
 from langchain_api.constant import root_dir
 from langchain_api.patch.langchain import patch_langchain
 from langchain_api.settings import settings
@@ -64,7 +65,7 @@ async def lifespan(app: FastAPI):
     setup_observability()
     patch_langchain()
     weixin_task = None
-    if settings.WEIXIN_CLAWBOT_PRINT_QRCODE_ON_STARTUP:
+    if weixin_clawbot_settings.WEIXIN_CLAWBOT_PRINT_QRCODE_ON_STARTUP:
         try:
             qrcode = await fetch_startup_qrcode()
             if qrcode.get("qrcode_url"):
@@ -72,13 +73,13 @@ async def lifespan(app: FastAPI):
             else:
                 logger.warning("微信 ClawBot 未返回可展示的二维码链接")
             if (
-                settings.WEIXIN_CLAWBOT_AUTO_POLL_ON_STARTUP
+                weixin_clawbot_settings.WEIXIN_CLAWBOT_AUTO_POLL_ON_STARTUP
                 and qrcode.get("qrcode")
             ):
                 runtime = WeixinClawBotRuntime(
                     qrcode=str(qrcode["qrcode"]),
-                    login_poll_interval_seconds=settings.WEIXIN_CLAWBOT_LOGIN_POLL_INTERVAL_SECONDS,
-                    message_poll_interval_seconds=settings.WEIXIN_CLAWBOT_MESSAGE_POLL_INTERVAL_SECONDS,
+                    login_poll_interval_seconds=weixin_clawbot_settings.WEIXIN_CLAWBOT_LOGIN_POLL_INTERVAL_SECONDS,
+                    message_poll_interval_seconds=weixin_clawbot_settings.WEIXIN_CLAWBOT_MESSAGE_POLL_INTERVAL_SECONDS,
                 )
                 weixin_task = asyncio.create_task(runtime.run_forever())
         except Exception as exc:

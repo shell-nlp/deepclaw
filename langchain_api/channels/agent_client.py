@@ -1,8 +1,8 @@
 import json
 from collections.abc import AsyncIterator, Callable
 
+from langchain_api.channels.config import channel_gateway_settings
 from langchain_api.channels.models import AgentEvent
-from langchain_api.settings import settings
 
 
 AgentSender = Callable[[dict], AsyncIterator[str]]
@@ -15,7 +15,7 @@ class AgentClient:
         agent_api_url: str | None = None,
         sender: AgentSender | None = None,
     ):
-        self.agent_api_url = agent_api_url or settings.CHANNEL_AGENT_API_URL
+        self.agent_api_url = agent_api_url or channel_gateway_settings.CHANNEL_AGENT_API_URL
         self.sender = sender or self._http_sender
 
     async def stream(

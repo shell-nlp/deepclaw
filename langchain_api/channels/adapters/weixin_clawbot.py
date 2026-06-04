@@ -4,8 +4,8 @@ import uuid
 from collections.abc import Callable
 from typing import Any, Awaitable
 
+from langchain_api.channels.config import weixin_clawbot_settings
 from langchain_api.channels.models import ChannelMessage
-from langchain_api.settings import settings
 
 
 CHANNEL = "weixin_clawbot"
@@ -46,7 +46,9 @@ class WeixinClawBotClient:
         base_url: str | None = None,
         request_json: RequestJson | None = None,
     ):
-        self.base_url = (base_url or settings.WEIXIN_CLAWBOT_API_BASE_URL).rstrip("/")
+        self.base_url = (
+            base_url or weixin_clawbot_settings.WEIXIN_CLAWBOT_API_BASE_URL
+        ).rstrip("/")
         self.request_json = request_json or self._request_json
 
     async def fetch_login_qrcode(
