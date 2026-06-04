@@ -16,6 +16,20 @@ class FakeAdapter:
         self.edits.append((reply_message_id, text))
 
 
+class FakeTypingAdapter(FakeAdapter):
+    supports_message_stream = False
+
+    def __init__(self):
+        super().__init__()
+        self.typing_events: list[tuple[ChannelMessage, bool]] = []
+
+    async def start_typing(self, message: ChannelMessage) -> None:
+        self.typing_events.append((message, True))
+
+    async def stop_typing(self, message: ChannelMessage) -> None:
+        self.typing_events.append((message, False))
+
+
 async def events(*items: AgentEvent):
     for item in items:
         yield item

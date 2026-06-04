@@ -7,8 +7,19 @@ class FakeClawBotClient:
     def __init__(self):
         self.sent = []
         self.requests = []
+        self.client_ids = []
+        self.message_states = []
 
-    async def send_message(self, *, token, to_user_id, context_token, text):
+    async def send_message(
+        self,
+        *,
+        token,
+        to_user_id,
+        context_token,
+        text,
+        client_id=None,
+        message_state=2,
+    ):
         self.sent.append(
             {
                 "token": token,
@@ -17,7 +28,9 @@ class FakeClawBotClient:
                 "text": text,
             }
         )
-        return {"message_id": f"reply_{len(self.sent)}"}
+        self.client_ids.append(client_id)
+        self.message_states.append(message_state)
+        return {"client_id": client_id or f"reply_{len(self.sent)}"}
 
     async def request_json(self, method, path, *, token=None, json_body=None, params=None):
         self.requests.append(
@@ -27,6 +40,37 @@ class FakeClawBotClient:
                 "token": token,
                 "json_body": json_body,
                 "params": params,
+            }
+        )
+        return {"ok": True}
+
+    async def get_config(self, *, token, ilink_user_id, context_token=None):
+        self.requests.append(
+            {
+                "method": "POST",
+                "path": "ilink/bot/getconfig",
+                "token": token,
+                "json_body": {
+                    "ilink_user_id": ilink_user_id,
+                    "context_token": context_token,
+                },
+                "params": None,
+            }
+        )
+        return {"typing_ticket": "ticket_1"}
+
+    async def send_typing(self, *, token, ilink_user_id, typing_ticket, status):
+        self.requests.append(
+            {
+                "method": "POST",
+                "path": "ilink/bot/sendtyping",
+                "token": token,
+                "json_body": {
+                    "ilink_user_id": ilink_user_id,
+                    "typing_ticket": typing_ticket,
+                    "status": status,
+                },
+                "params": None,
             }
         )
         return {"ok": True}
@@ -102,6 +146,55 @@ class WeixinClawBotAdapterTest(unittest.IsolatedAsyncioTestCase):
             ],
             client.sent,
         )
+
+    async def test_streaming_updates_reuse_client_id_and_finish_same_message(self):
+        from langchain_api.channels.adapters.weixin_clawbot import (
+            WeixinClawBotAdapter,
+        )
+
+        client = FakeClawBotClient()
+        adapter = WeixinClawBotAdapter(client=client, token="token_1")
+        message = ChannelMessage(
+            channel="weixin_clawbot",
+            message_id="msg_1",
+            channel_user_id="wx_user_1",
+            channel_conversation_id="wx_user_1",
+            text="hello",
+            raw={"context_token": "ctx_1"},
+        )
+
+        reply_id = await adapter.start_message(message, "typing")
+        await adapter.edit_message(reply_id, "part one")
+        await adapter.edit_message(reply_id, "part one and part two")
+        await adapter.finish_message(reply_id, "part one and part two")
+
+        self.assertEqual([reply_id, reply_id, reply_id, reply_id], client.client_ids)
+        self.assertEqual([1, 1, 1, 2], client.message_states)
+
+    async def test_typing_lifecycle_uses_get_config_and_send_typing(self):
+        from langchain_api.channels.adapters.weixin_clawbot import (
+            WeixinClawBotAdapter,
+        )
+
+        client = FakeClawBotClient()
+        adapter = WeixinClawBotAdapter(client=client, token="token_1")
+        message = ChannelMessage(
+            channel="weixin_clawbot",
+            message_id="msg_1",
+            channel_user_id="wx_user_1",
+            channel_conversation_id="wx_user_1",
+            text="hello",
+            raw={"context_token": "ctx_1"},
+        )
+
+        await adapter.start_typing(message)
+        await adapter.stop_typing(message)
+
+        self.assertEqual(
+            ["ilink/bot/getconfig", "ilink/bot/sendtyping", "ilink/bot/sendtyping"],
+            [item["path"] for item in client.requests],
+        )
+        self.assertEqual([1, 2], [item["json_body"]["status"] for item in client.requests[1:]])
 
 
 class WeixinClawBotClientTest(unittest.IsolatedAsyncioTestCase):
