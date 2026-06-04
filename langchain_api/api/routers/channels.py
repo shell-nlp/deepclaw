@@ -9,6 +9,7 @@ from langchain_api.channels.adapters.weixin_clawbot import (
     WeixinClawBotClient,
 )
 from langchain_api.channels.lifespan import start_weixin_clawbot_runtime
+from langchain_api.channels.lifespan import stop_weixin_clawbot_runtime
 from langchain_api.channels.models import (
     ChannelSessionList,
     ChannelSessionRead,
@@ -17,6 +18,7 @@ from langchain_api.channels.models import (
 from langchain_api.channels.service import ChannelService
 from langchain_api.channels.store import ChannelStore, get_channel_store
 from langchain_api.channels.weixin_startup import weixin_clawbot_user_state_key
+from langchain_api.channels.weixin_startup import weixin_clawbot_user_id_from_state_key
 
 
 class WeixinClawBotPollRequest(BaseModel):
@@ -26,6 +28,35 @@ class WeixinClawBotPollRequest(BaseModel):
 
 class WeixinClawBotQRCodeRequest(BaseModel):
     local_token_list: list[str] = []
+
+
+class WeixinClawBotBoundUserRead(BaseModel):
+    user_id: str
+    state_key: str
+    connected: bool
+    status: str
+    bot_token: str | None = None
+    qrcode_url: str | None = None
+    base_url: str | None = None
+    updated_at: str
+
+
+class WeixinClawBotBoundUserList(BaseModel):
+    items: list[WeixinClawBotBoundUserRead]
+    total: int
+
+
+class WeixinClawBotBoundUserDeleteResponse(BaseModel):
+    user_id: str
+    deleted: bool
+
+
+def _mask_token(value: str | None) -> str | None:
+    if not value:
+        return None
+    if len(value) <= 5:
+        return "***"
+    return f"{value[:5]}...{value[-3:]}"
 
 
 def create_channels_router(
@@ -149,6 +180,60 @@ def create_channels_router(
                 qrcode=str(login_qrcode),
             )
         return status
+
+    @router.get(
+        "/weixin-clawbot/users",
+        response_model=WeixinClawBotBoundUserList,
+    )
+    async def list_weixin_clawbot_users():
+        states = channel_store.list_runtime_states(channel=WEIXIN_CLAWBOT_CHANNEL)
+        items: list[WeixinClawBotBoundUserRead] = []
+        for state in states:
+            state_user_id = weixin_clawbot_user_id_from_state_key(state.state_key)
+            if state_user_id is None:
+                continue
+
+            state_data = state.data or {}
+            user_id = str(state_data.get("owner_user_id") or state_user_id)
+            bot_token = state_data.get("bot_token")
+            connected = bool(bot_token)
+            items.append(
+                WeixinClawBotBoundUserRead(
+                    user_id=user_id,
+                    state_key=state.state_key,
+                    connected=connected,
+                    status="connected" if connected else "pending",
+                    bot_token=_mask_token(str(bot_token)) if bot_token else None,
+                    qrcode_url=state_data.get("qrcode_url"),
+                    base_url=state_data.get("base_url"),
+                    updated_at=state.updated_at.isoformat(),
+                )
+            )
+
+        return WeixinClawBotBoundUserList(items=items, total=len(items))
+
+    @router.delete(
+        "/weixin-clawbot/users/{user_id}",
+        response_model=WeixinClawBotBoundUserDeleteResponse,
+    )
+    async def delete_weixin_clawbot_user(user_id: str):
+        state_key = weixin_clawbot_user_state_key(user_id)
+        runtime_state = channel_store.get_runtime_state(
+            channel=WEIXIN_CLAWBOT_CHANNEL,
+            state_key=state_key,
+        )
+        if runtime_state is None:
+            raise HTTPException(status_code=404, detail="Weixin ClawBot user not found")
+
+        await stop_weixin_clawbot_runtime(state_key)
+        deleted = channel_store.delete_runtime_state(
+            channel=WEIXIN_CLAWBOT_CHANNEL,
+            state_key=state_key,
+        )
+        return WeixinClawBotBoundUserDeleteResponse(
+            user_id=user_id,
+            deleted=deleted,
+        )
 
     @router.post("/weixin-clawbot/poll")
     async def weixin_clawbot_poll(

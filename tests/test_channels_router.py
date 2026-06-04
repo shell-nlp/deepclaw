@@ -249,6 +249,59 @@ class ChannelsRouterTest(unittest.TestCase):
         self.assertIs(store, started["store"])
         self.assertEqual("qr-content", started["qrcode"])
 
+    def test_weixin_clawbot_user_management_lists_and_deletes_bound_users(self):
+        from langchain_api.api.routers.channels import create_channels_router
+
+        store = ChannelStore("sqlite:///:memory:")
+        store.upsert_runtime_state(
+            channel="weixin_clawbot",
+            state_key="user:user_1",
+            data={
+                "owner_user_id": "user_1",
+                "bot_token": "token_1",
+                "qrcode": "qr_1",
+                "qrcode_url": "https://example.test/qr_1.png",
+                "base_url": "https://node.example.test",
+            },
+        )
+        store.upsert_runtime_state(
+            channel="weixin_clawbot",
+            state_key="default",
+            data={"bot_token": "legacy_token"},
+        )
+        stopped = {}
+
+        async def fake_stop_runtime(state_key):
+            stopped["state_key"] = state_key
+
+        app = FastAPI()
+        app.include_router(create_channels_router(store=store))
+        client = TestClient(app)
+
+        with patch(
+            "langchain_api.api.routers.channels.stop_weixin_clawbot_runtime",
+            fake_stop_runtime,
+        ):
+            list_response = client.get("/api/channels/weixin-clawbot/users")
+            delete_response = client.delete(
+                "/api/channels/weixin-clawbot/users/user_1"
+            )
+
+        self.assertEqual(200, list_response.status_code)
+        self.assertEqual(1, list_response.json()["total"])
+        self.assertEqual("user_1", list_response.json()["items"][0]["user_id"])
+        self.assertTrue(list_response.json()["items"][0]["connected"])
+        self.assertEqual("token...n_1", list_response.json()["items"][0]["bot_token"])
+        self.assertEqual(200, delete_response.status_code)
+        self.assertEqual({"user_id": "user_1", "deleted": True}, delete_response.json())
+        self.assertEqual("user:user_1", stopped["state_key"])
+        self.assertIsNone(
+            store.get_runtime_state(
+                channel="weixin_clawbot",
+                state_key="user:user_1",
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

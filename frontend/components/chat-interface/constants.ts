@@ -10,6 +10,9 @@ export const WEIXIN_CLAWBOT_USER_QRCODE_API_PATH = (userId: string) =>
   `/api/channels/weixin-clawbot/users/${encodeURIComponent(userId)}/qrcode`
 export const WEIXIN_CLAWBOT_USER_QRCODE_STATUS_API_PATH = (userId: string) =>
   `/api/channels/weixin-clawbot/users/${encodeURIComponent(userId)}/qrcode/status`
+export const WEIXIN_CLAWBOT_USERS_API_PATH = '/api/channels/weixin-clawbot/users'
+export const WEIXIN_CLAWBOT_USER_API_PATH = (userId: string) =>
+  `/api/channels/weixin-clawbot/users/${encodeURIComponent(userId)}`
 export const KB_LIST_API_PATH = '/api/rag/knowledge-bases/list'
 export const KB_CREATE_API_PATH = '/api/rag/knowledge-bases/create'
 export const KB_DETAIL_API_PATH = '/api/rag/knowledge-bases/detail'

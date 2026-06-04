@@ -2434,6 +2434,55 @@ textarea.interruptInput {
   text-decoration: underline;
 }
 
+.channelQrPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: center;
+  padding: 18px;
+  border-radius: var(--radius-xl);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
+.channelQrImage,
+.channelQrPlaceholder {
+  width: 240px;
+  height: 240px;
+  border-radius: var(--radius-lg);
+  background: white;
+  border: 1px solid var(--border-subtle);
+}
+
+.channelQrImage {
+  padding: 10px;
+  object-fit: contain;
+}
+
+.channelQrPlaceholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.channelQrDetails {
+  width: min(100%, 300px);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.channelQrLink {
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .managementDivider {
   height: 1px;
   background: var(--border-subtle);
@@ -2690,7 +2739,8 @@ textarea.interruptInput {
   .managementQuickGrid,
   .managementPageGrid,
   .managementLibraryGrid,
-  .managementCardGrid {
+  .managementCardGrid,
+  .channelQrPanel {
     grid-template-columns: 1fr;
   }
 

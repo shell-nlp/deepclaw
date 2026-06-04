@@ -211,3 +211,24 @@ export interface WeixinClawBotQrcodeStatusResponse {
   qrcode_url?: string | null
   raw?: Record<string, unknown>
 }
+
+export interface WeixinClawBotBoundUser {
+  user_id: string
+  state_key: string
+  connected: boolean
+  status: string
+  bot_token?: string | null
+  qrcode_url?: string | null
+  base_url?: string | null
+  updated_at: string
+}
+
+export interface WeixinClawBotBoundUserListResponse {
+  items: WeixinClawBotBoundUser[]
+  total: number
+}
+
+export interface WeixinClawBotBoundUserDeleteResponse {
+  user_id: string
+  deleted: boolean
+}

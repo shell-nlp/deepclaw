@@ -77,3 +77,13 @@ async def stop_weixin_clawbot_runtimes() -> None:
     for task in tasks:
         with suppress(asyncio.CancelledError):
             await task
+
+
+async def stop_weixin_clawbot_runtime(state_key: str) -> None:
+    task = _weixin_runtime_tasks.pop(state_key, None)
+    if task is None:
+        return
+
+    task.cancel()
+    with suppress(asyncio.CancelledError):
+        await task

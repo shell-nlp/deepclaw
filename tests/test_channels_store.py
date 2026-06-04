@@ -142,6 +142,34 @@ class ChannelStoreTest(unittest.TestCase):
 
         self.assertEqual(["user:user_1", "user:user_2"], [item.state_key for item in states])
 
+    def test_delete_runtime_state_removes_channel_key(self):
+        from langchain_api.channels.store import ChannelStore
+
+        store = ChannelStore(self.db_url)
+        store.upsert_runtime_state(
+            channel="weixin_clawbot",
+            state_key="user:user_1",
+            data={"bot_token": "token_1"},
+        )
+
+        deleted = store.delete_runtime_state(
+            channel="weixin_clawbot",
+            state_key="user:user_1",
+        )
+        missing = store.get_runtime_state(
+            channel="weixin_clawbot",
+            state_key="user:user_1",
+        )
+
+        self.assertTrue(deleted)
+        self.assertIsNone(missing)
+        self.assertFalse(
+            store.delete_runtime_state(
+                channel="weixin_clawbot",
+                state_key="user:user_1",
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

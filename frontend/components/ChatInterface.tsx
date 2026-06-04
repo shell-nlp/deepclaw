@@ -11,6 +11,7 @@ import {
 } from 'react'
 
 import styles from './ChatInterface.module.css'
+import { ChannelManagementView } from './chat-interface/ChannelManagementView'
 import { ChatView } from './chat-interface/ChatView'
 import {
   DEFAULT_AGENT_API_PATH,
@@ -39,7 +40,6 @@ import {
 import { KnowledgeManagementView } from './chat-interface/KnowledgeManagementView'
 import { McpManagementView } from './chat-interface/McpManagementView'
 import { SkillManagementView } from './chat-interface/SkillManagementView'
-import { WeixinChannelManagementView } from './chat-interface/WeixinChannelManagementView'
 import type {
   AssistantMessageItem,
   BulkDeleteDocumentResponse,
@@ -1787,7 +1787,7 @@ export default function ChatInterface() {
               }`}
               onClick={() => navigateTo('channels')}
             >
-              微信渠道
+              渠道管理
             </button>
             <button
               className={`${styles.sidebarButton} ${
@@ -1870,7 +1870,7 @@ export default function ChatInterface() {
             </div>
           ) : viewMode === 'channels' ? (
             <div className={styles.managementViewport}>
-              <WeixinChannelManagementView userId={userId} />
+              <ChannelManagementView userId={userId} />
             </div>
           ) : (
             <div className={styles.managementViewport}>

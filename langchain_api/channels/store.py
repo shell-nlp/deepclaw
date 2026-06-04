@@ -217,6 +217,25 @@ class ChannelStore:
             session.refresh(runtime_state)
             return runtime_state
 
+    def delete_runtime_state(
+        self,
+        *,
+        channel: str,
+        state_key: str = "default",
+    ) -> bool:
+        with Session(self.engine) as session:
+            statement = select(ChannelRuntimeState).where(
+                ChannelRuntimeState.channel == channel,
+                ChannelRuntimeState.state_key == state_key,
+            )
+            runtime_state = session.exec(statement).first()
+            if runtime_state is None:
+                return False
+
+            session.delete(runtime_state)
+            session.commit()
+            return True
+
     def list_sessions(self) -> list[ChannelSession]:
         with Session(self.engine) as session:
             statement = select(ChannelSession).order_by(ChannelSession.updated_at.desc())
