@@ -6,7 +6,12 @@ import {
   DEFAULT_BACKEND_URL,
   DEFAULT_KNOWLEDGE_PAGE,
 } from './constants'
-import type { KnowledgePage, McpServerSummary, ViewMode } from './types'
+import type {
+  InterruptData,
+  KnowledgePage,
+  McpServerSummary,
+  ViewMode,
+} from './types'
 
 export function getApiBaseUrl(): string {
   const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL
@@ -99,6 +104,18 @@ export function generateSessionId(): string {
 
 export function generateMessageId(): string {
   return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+}
+
+export function createClearedChatState(): {
+  sessionId: string
+  showInterrupt: false
+  interruptData: InterruptData | null
+} {
+  return {
+    sessionId: generateSessionId(),
+    showInterrupt: false,
+    interruptData: null,
+  }
 }
 
 export function formatDateTime(value: string): string {

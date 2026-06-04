@@ -64,6 +64,7 @@ import type {
 } from './chat-interface/types'
 import {
   fetchJson,
+  createClearedChatState,
   generateMessageId,
   generateSessionId,
   getApiUrl,
@@ -288,7 +289,10 @@ export default function ChatInterface() {
   }, [])
 
   const clearChat = useCallback(() => {
+    const clearedState = createClearedChatState()
     setMessages([])
+    setShowInterrupt(clearedState.showInterrupt)
+    setInterruptData(clearedState.interruptData)
     currentAssistantMessageIdRef.current = null
     processedToolCallIdsRef.current.clear()
     lastAssistantStreamEventRef.current = null
@@ -297,9 +301,8 @@ export default function ChatInterface() {
     requestModeRef.current = 'agent'
     requestKnowledgeBaseRef.current = null
     requestMcpConfigRef.current = null
-    const newId = generateSessionId()
-    localStorage.setItem('rag_chat_session_id', newId)
-    setSessionId(newId)
+    localStorage.setItem('rag_chat_session_id', clearedState.sessionId)
+    setSessionId(clearedState.sessionId)
   }, [])
 
   const addMessage = useCallback((message: Message) => {
