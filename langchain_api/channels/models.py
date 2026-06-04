@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field as PydanticField
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import JSON, Column, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -65,6 +65,20 @@ class ChannelMessageRecord(SQLModel, table=True):
     channel_user_id: str = Field(index=True)
     status: str = Field(default="received")
     error: str | None = None
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class ChannelRuntimeState(SQLModel, table=True):
+    __tablename__ = "channel_runtime_states"
+    __table_args__ = (
+        UniqueConstraint("channel", "state_key", name="uq_channel_runtime_state"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    channel: str = Field(index=True)
+    state_key: str = Field(default="default", index=True)
+    data: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
 

@@ -16,11 +16,16 @@ from langchain_api.api.routers import (
     create_channels_router,
     create_rag_router,
 )
+from langchain_api.channels.adapters.weixin_clawbot import (
+    CHANNEL as WEIXIN_CLAWBOT_CHANNEL,
+)
+from langchain_api.channels.config import weixin_clawbot_settings
+from langchain_api.channels.store import get_channel_store
 from langchain_api.channels.weixin_startup import (
+    RUNTIME_STATE_KEY as WEIXIN_CLAWBOT_RUNTIME_STATE_KEY,
     WeixinClawBotRuntime,
     fetch_startup_qrcode,
 )
-from langchain_api.channels.config import weixin_clawbot_settings
 from langchain_api.constant import root_dir
 from langchain_api.patch.langchain import patch_langchain
 from langchain_api.settings import settings
@@ -67,17 +72,27 @@ async def lifespan(app: FastAPI):
     weixin_task = None
     if weixin_clawbot_settings.WEIXIN_CLAWBOT_PRINT_QRCODE_ON_STARTUP:
         try:
-            qrcode = await fetch_startup_qrcode()
+            channel_store = get_channel_store()
+            runtime_state = channel_store.get_runtime_state(
+                channel=WEIXIN_CLAWBOT_CHANNEL,
+                state_key=WEIXIN_CLAWBOT_RUNTIME_STATE_KEY,
+            )
+            saved_bot_token = None
+            if runtime_state is not None and runtime_state.data:
+                saved_bot_token = runtime_state.data.get("bot_token")
+            local_token_list = [str(saved_bot_token)] if saved_bot_token else []
+            qrcode = await fetch_startup_qrcode(local_token_list=local_token_list)
             if qrcode.get("qrcode_url"):
                 logger.info("微信 ClawBot 登录二维码链接：\n{}", qrcode["qrcode_url"])
             else:
                 logger.warning("微信 ClawBot 未返回可展示的二维码链接")
             if (
                 weixin_clawbot_settings.WEIXIN_CLAWBOT_AUTO_POLL_ON_STARTUP
-                and qrcode.get("qrcode")
+                and (qrcode.get("qrcode") or saved_bot_token)
             ):
                 runtime = WeixinClawBotRuntime(
-                    qrcode=str(qrcode["qrcode"]),
+                    qrcode=str(qrcode.get("qrcode") or ""),
+                    store=channel_store,
                     login_poll_interval_seconds=weixin_clawbot_settings.WEIXIN_CLAWBOT_LOGIN_POLL_INTERVAL_SECONDS,
                     message_poll_interval_seconds=weixin_clawbot_settings.WEIXIN_CLAWBOT_MESSAGE_POLL_INTERVAL_SECONDS,
                 )

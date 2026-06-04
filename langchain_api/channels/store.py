@@ -8,6 +8,7 @@ from sqlmodel import Session, SQLModel, create_engine, select
 from langchain_api.channels.models import (
     ChannelMessage,
     ChannelMessageRecord,
+    ChannelRuntimeState,
     ChannelSession,
     ChannelUser,
     MessageStatus,
@@ -157,6 +158,52 @@ class ChannelStore:
             session.commit()
             session.refresh(record)
             return record
+
+    def get_runtime_state(
+        self,
+        *,
+        channel: str,
+        state_key: str = "default",
+    ) -> ChannelRuntimeState | None:
+        with Session(self.engine) as session:
+            statement = select(ChannelRuntimeState).where(
+                ChannelRuntimeState.channel == channel,
+                ChannelRuntimeState.state_key == state_key,
+            )
+            return session.exec(statement).first()
+
+    def upsert_runtime_state(
+        self,
+        *,
+        channel: str,
+        state_key: str = "default",
+        data: dict,
+    ) -> ChannelRuntimeState:
+        with Session(self.engine) as session:
+            statement = select(ChannelRuntimeState).where(
+                ChannelRuntimeState.channel == channel,
+                ChannelRuntimeState.state_key == state_key,
+            )
+            runtime_state = session.exec(statement).first()
+            now = utc_now()
+            if runtime_state is None:
+                runtime_state = ChannelRuntimeState(
+                    channel=channel,
+                    state_key=state_key,
+                    data=dict(data),
+                    created_at=now,
+                    updated_at=now,
+                )
+            else:
+                merged = dict(runtime_state.data or {})
+                merged.update(data)
+                runtime_state.data = merged
+                runtime_state.updated_at = now
+
+            session.add(runtime_state)
+            session.commit()
+            session.refresh(runtime_state)
+            return runtime_state
 
     def list_sessions(self) -> list[ChannelSession]:
         with Session(self.engine) as session:

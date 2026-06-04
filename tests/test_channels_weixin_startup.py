@@ -18,6 +18,8 @@ class FakeRuntimeClient:
     def __init__(self):
         self.status_calls = 0
         self.update_calls = 0
+        self.tokens = []
+        self.get_updates_bufs = []
 
     async def get_qrcode_status(self, *, qrcode, verify_code=None):
         self.status_calls += 1
@@ -25,6 +27,8 @@ class FakeRuntimeClient:
 
     async def get_updates(self, *, token, get_updates_buf=""):
         self.update_calls += 1
+        self.tokens.append(token)
+        self.get_updates_bufs.append(get_updates_buf)
         return {
             "get_updates_buf": "next_buf",
             "msgs": [
@@ -37,6 +41,25 @@ class FakeRuntimeClient:
                 }
             ],
         }
+
+
+class FakeAuthError(Exception):
+    def __init__(self, status_code):
+        self.response = type("Response", (), {"status_code": status_code})()
+
+
+class FakeRecoveringRuntimeClient(FakeRuntimeClient):
+    def __init__(self):
+        super().__init__()
+        self.failed_once = False
+
+    async def get_updates(self, *, token, get_updates_buf=""):
+        if not self.failed_once:
+            self.failed_once = True
+            self.tokens.append(token)
+            self.get_updates_bufs.append(get_updates_buf)
+            raise FakeAuthError(401)
+        return await super().get_updates(token=token, get_updates_buf=get_updates_buf)
 
 
 class FakeService:
@@ -89,6 +112,76 @@ class WeixinStartupTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, len(service.messages))
         self.assertEqual("weixin_clawbot", service.messages[0][0].channel)
         self.assertEqual("hello", service.messages[0][0].text)
+
+    async def test_runtime_reuses_persisted_token_after_process_restart(self):
+        from langchain_api.channels.store import ChannelStore
+        from langchain_api.channels.weixin_startup import WeixinClawBotRuntime
+
+        store = ChannelStore("sqlite:///:memory:")
+        store.upsert_runtime_state(
+            channel="weixin_clawbot",
+            state_key="default",
+            data={
+                "bot_token": "old_token",
+                "base_url": "https://old-node.example.test",
+                "get_updates_buf": "old_buf",
+            },
+        )
+        client = FakeRuntimeClient()
+        service = FakeService()
+
+        runtime = WeixinClawBotRuntime(
+            qrcode="qr-content",
+            client=client,
+            service=service,
+            store=store,
+            login_poll_interval_seconds=0,
+            message_poll_interval_seconds=0,
+        )
+
+        await runtime.run_once()
+
+        self.assertEqual(0, client.status_calls)
+        self.assertEqual(["old_token"], client.tokens)
+        self.assertEqual(["old_buf"], client.get_updates_bufs)
+        self.assertEqual("https://old-node.example.test", client.base_url)
+        self.assertEqual(
+            "next_buf",
+            store.get_runtime_state(
+                channel="weixin_clawbot",
+                state_key="default",
+            ).data["get_updates_buf"],
+        )
+
+    async def test_runtime_falls_back_to_qrcode_when_persisted_token_expires(self):
+        from langchain_api.channels.store import ChannelStore
+        from langchain_api.channels.weixin_startup import WeixinClawBotRuntime
+
+        store = ChannelStore("sqlite:///:memory:")
+        store.upsert_runtime_state(
+            channel="weixin_clawbot",
+            state_key="default",
+            data={"bot_token": "expired_token", "get_updates_buf": "old_buf"},
+        )
+        client = FakeRecoveringRuntimeClient()
+        service = FakeService()
+        runtime = WeixinClawBotRuntime(
+            qrcode="qr-content",
+            client=client,
+            service=service,
+            store=store,
+            login_poll_interval_seconds=0,
+            message_poll_interval_seconds=0,
+        )
+
+        first_result = await runtime.run_once()
+        second_result = await runtime.run_once()
+
+        self.assertFalse(first_result)
+        self.assertTrue(second_result)
+        self.assertEqual(1, client.status_calls)
+        self.assertEqual(["expired_token", "token_1"], client.tokens)
+        self.assertEqual(1, len(service.messages))
 
 
 if __name__ == "__main__":

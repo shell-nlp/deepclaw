@@ -91,6 +91,33 @@ class ChannelStoreTest(unittest.TestCase):
         self.assertEqual("received", second.status)
         self.assertEqual("done", done.status)
 
+    def test_runtime_state_upsert_reuses_channel_key(self):
+        from langchain_api.channels.store import ChannelStore
+
+        store = ChannelStore(self.db_url)
+
+        first = store.upsert_runtime_state(
+            channel="weixin_clawbot",
+            state_key="default",
+            data={"bot_token": "token_1", "get_updates_buf": ""},
+        )
+        second = store.upsert_runtime_state(
+            channel="weixin_clawbot",
+            state_key="default",
+            data={"bot_token": "token_1", "get_updates_buf": "next_buf"},
+        )
+        loaded = store.get_runtime_state(
+            channel="weixin_clawbot",
+            state_key="default",
+        )
+
+        self.assertEqual(first.id, second.id)
+        self.assertIsNotNone(loaded)
+        self.assertEqual(
+            {"bot_token": "token_1", "get_updates_buf": "next_buf"},
+            loaded.data,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
