@@ -9,7 +9,7 @@ post : http://localhost:7869/api/general_api (SSE 流式响应)
 """
 
 import uuid
-from typing import Literal
+from typing import Literal, Union
 
 from fastapi import APIRouter, FastAPI
 from fastapi.responses import StreamingResponse
@@ -20,11 +20,35 @@ from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class TextContentBlock(BaseModel):
+    """文本内容块"""
+    type: Literal["text"] = "text"
+    text: str
+
+
+class ImageContentBlock(BaseModel):
+    """图片内容块，支持 URL 或 base64 编码"""
+    type: Literal["image"] = "image"
+    url: str | None = None
+    base64: str | None = None
+    mime_type: str | None = None
+
+
+ContentBlock = Union[TextContentBlock, ImageContentBlock]
+MessageContent = Union[str, list[ContentBlock]]
+
+
 class GeneralAPIRequest(BaseModel):
-    query: str | None = Field(
+    query: MessageContent | None = Field(
         None,
-        description="用户输入的查询",
-        examples=["请你执行如下任务：\n 1. 计算 10 + 10 的结果。\n2. 将结果乘以 5。"],
+        description="用户输入的查询，支持字符串或结构化多模态内容（文本、图片等）",
+        examples=[
+            "请你执行如下任务：\n 1. 计算 10 + 10 的结果。\n2. 将结果乘以 5。",
+            [
+                {"type": "text", "text": "这张照片里是什么动物？"},
+                {"type": "image", "url": "https://example.com/image.jpg", "mime_type": "image/jpeg"},
+            ],
+        ],
     )
     resume: dict | None = Field(
         None,
@@ -129,11 +153,15 @@ def add_general_api_endpoint(
         if request.query and request.resume:
             raise ValueError("query 和 resume 不能同时存在")
         elif request.query:
+            # 支持字符串或结构化多模态内容
+            content = request.query if isinstance(request.query, str) else [
+                block.model_dump() for block in request.query
+            ]
             update = {
                 "messages": [
                     {
                         "role": "user",
-                        "content": f"""{request.query}""",
+                        "content": content,
                     }
                 ]
             }
