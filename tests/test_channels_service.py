@@ -92,6 +92,38 @@ class ChannelServiceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, len(self.agent_client.calls))
         self.assertEqual(1, len(self.dispatcher.calls))
 
+    async def test_user_id_override_isolated_channel_user_mappings(self):
+        from langchain_api.channels.service import ChannelService
+
+        service = ChannelService(
+            store=self.store,
+            agent_client=self.agent_client,
+            dispatcher=self.dispatcher,
+        )
+        first = ChannelMessage(
+            channel="weixin_clawbot",
+            message_id="wx_msg_1",
+            channel_user_id="same_wx_user",
+            channel_conversation_id="same_wx_user",
+            user_id="user_1",
+            text="hello 1",
+        )
+        second = ChannelMessage(
+            channel="weixin_clawbot",
+            message_id="wx_msg_2",
+            channel_user_id="same_wx_user",
+            channel_conversation_id="same_wx_user",
+            user_id="user_2",
+            text="hello 2",
+        )
+
+        await service.process_message(first, FakeAdapter())
+        await service.process_message(second, FakeAdapter())
+
+        sessions = self.store.list_sessions()
+        self.assertEqual(2, len(sessions))
+        self.assertEqual(["user_1", "user_2"], [call["user_id"] for call in self.agent_client.calls])
+
 
 if __name__ == "__main__":
     unittest.main()

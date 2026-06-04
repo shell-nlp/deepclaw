@@ -15,6 +15,17 @@ from langchain_api.channels.store import ChannelStore
 RUNTIME_STATE_KEY = "default"
 
 
+def weixin_clawbot_user_state_key(user_id: str) -> str:
+    return f"user:{user_id}"
+
+
+def weixin_clawbot_user_id_from_state_key(state_key: str) -> str | None:
+    if not state_key.startswith("user:"):
+        return None
+    user_id = state_key.removeprefix("user:")
+    return user_id or None
+
+
 async def fetch_startup_qrcode(
     *,
     client: WeixinClawBotClient | None = None,
@@ -39,6 +50,8 @@ class WeixinClawBotRuntime:
         client: WeixinClawBotClient | None = None,
         service: ChannelService | None = None,
         store: ChannelStore | None = None,
+        state_key: str = RUNTIME_STATE_KEY,
+        owner_user_id: str | None = None,
         login_poll_interval_seconds: float = 2,
         message_poll_interval_seconds: float = 1,
     ):
@@ -46,9 +59,15 @@ class WeixinClawBotRuntime:
         self.client = client or WeixinClawBotClient()
         self.service = service or ChannelService()
         self.store = store
+        self.state_key = state_key
         self.login_poll_interval_seconds = login_poll_interval_seconds
         self.message_poll_interval_seconds = message_poll_interval_seconds
         state = self._load_runtime_state()
+        self.owner_user_id = (
+            owner_user_id
+            or self._optional_string(state.get("owner_user_id"))
+            or weixin_clawbot_user_id_from_state_key(state_key)
+        )
         self.bot_token: str | None = self._optional_string(state.get("bot_token"))
         self.get_updates_buf = str(state.get("get_updates_buf") or "")
         if state.get("base_url"):
@@ -82,6 +101,7 @@ class WeixinClawBotRuntime:
         self.get_updates_buf = updates.get("get_updates_buf") or self.get_updates_buf
         self._save_runtime_state()
         for message in adapter.iter_text_messages(updates):
+            message.user_id = self.owner_user_id
             await self.service.process_message(message, adapter)
         return True
 
@@ -107,7 +127,7 @@ class WeixinClawBotRuntime:
             return {}
         state = self.store.get_runtime_state(
             channel=CHANNEL,
-            state_key=RUNTIME_STATE_KEY,
+            state_key=self.state_key,
         )
         return dict(state.data) if state is not None and state.data else {}
 
@@ -116,11 +136,12 @@ class WeixinClawBotRuntime:
             return
         self.store.upsert_runtime_state(
             channel=CHANNEL,
-            state_key=RUNTIME_STATE_KEY,
+            state_key=self.state_key,
             data={
                 "bot_token": self.bot_token,
                 "base_url": getattr(self.client, "base_url", None),
                 "get_updates_buf": self.get_updates_buf,
+                "owner_user_id": self.owner_user_id,
             },
         )
 

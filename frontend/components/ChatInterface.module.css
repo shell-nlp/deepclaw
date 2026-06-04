@@ -2424,6 +2424,16 @@ textarea.interruptInput {
   border: 1px solid var(--border-subtle);
 }
 
+.managementLink {
+  color: var(--accent-primary);
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.managementLink:hover {
+  text-decoration: underline;
+}
+
 .managementDivider {
   height: 1px;
   background: var(--border-subtle);

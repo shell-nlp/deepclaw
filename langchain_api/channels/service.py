@@ -30,12 +30,13 @@ class ChannelService:
 
         user = self.store.get_or_create_user(
             channel=message.channel,
-            channel_user_id=message.channel_user_id,
+            channel_user_id=self._routing_channel_user_id(message),
+            user_id=message.user_id,
         )
         channel_session = self.store.get_or_create_session(
             channel=message.channel,
-            channel_conversation_id=message.channel_conversation_id,
-            channel_user_id=message.channel_user_id,
+            channel_conversation_id=self._routing_conversation_id(message),
+            channel_user_id=self._routing_channel_user_id(message),
             user_id=user.user_id,
         )
 
@@ -65,3 +66,13 @@ class ChannelService:
                 message.message_id,
                 "done",
             )
+
+    def _routing_channel_user_id(self, message: ChannelMessage) -> str:
+        if not message.user_id:
+            return message.channel_user_id
+        return f"{message.user_id}:{message.channel_user_id}"
+
+    def _routing_conversation_id(self, message: ChannelMessage) -> str:
+        if not message.user_id:
+            return message.channel_conversation_id
+        return f"{message.user_id}:{message.channel_conversation_id}"

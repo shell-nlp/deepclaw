@@ -118,6 +118,30 @@ class ChannelStoreTest(unittest.TestCase):
             loaded.data,
         )
 
+    def test_list_runtime_states_filters_by_channel(self):
+        from langchain_api.channels.store import ChannelStore
+
+        store = ChannelStore(self.db_url)
+        store.upsert_runtime_state(
+            channel="weixin_clawbot",
+            state_key="user:user_1",
+            data={"bot_token": "token_1"},
+        )
+        store.upsert_runtime_state(
+            channel="weixin_clawbot",
+            state_key="user:user_2",
+            data={"bot_token": "token_2"},
+        )
+        store.upsert_runtime_state(
+            channel="feishu",
+            state_key="user:user_3",
+            data={"token": "token_3"},
+        )
+
+        states = store.list_runtime_states(channel="weixin_clawbot")
+
+        self.assertEqual(["user:user_1", "user:user_2"], [item.state_key for item in states])
+
 
 if __name__ == "__main__":
     unittest.main()

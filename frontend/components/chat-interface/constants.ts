@@ -6,6 +6,10 @@ export const DEFAULT_RAG_API_PATH = '/api/rag/general_api'
 export const SKILL_LIST_API_PATH = '/api/agent/skills/list'
 export const SKILL_UPLOAD_API_PATH = '/api/agent/skills/upload'
 export const SKILL_DELETE_API_PATH = '/api/agent/skills/delete'
+export const WEIXIN_CLAWBOT_USER_QRCODE_API_PATH = (userId: string) =>
+  `/api/channels/weixin-clawbot/users/${encodeURIComponent(userId)}/qrcode`
+export const WEIXIN_CLAWBOT_USER_QRCODE_STATUS_API_PATH = (userId: string) =>
+  `/api/channels/weixin-clawbot/users/${encodeURIComponent(userId)}/qrcode/status`
 export const KB_LIST_API_PATH = '/api/rag/knowledge-bases/list'
 export const KB_CREATE_API_PATH = '/api/rag/knowledge-bases/create'
 export const KB_DETAIL_API_PATH = '/api/rag/knowledge-bases/detail'

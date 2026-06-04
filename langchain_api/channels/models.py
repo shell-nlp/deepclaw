@@ -89,6 +89,7 @@ class ChannelMessage(BaseModel):
     channel_user_id: str
     channel_conversation_id: str
     text: str
+    user_id: str | None = None
     message_type: str = "text"
     raw: dict[str, Any] | None = None
 

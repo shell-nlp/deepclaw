@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -203,6 +204,50 @@ class ChannelsRouterTest(unittest.TestCase):
         self.assertEqual("token_1", status_response.json()["bot_token"])
         self.assertEqual("qr-content", weixin_client.qrcode)
         self.assertEqual("1234", weixin_client.verify_code)
+
+    def test_weixin_clawbot_user_qrcode_routes_persist_user_runtime_state(self):
+        from langchain_api.api.routers.channels import create_channels_router
+
+        store = ChannelStore("sqlite:///:memory:")
+        weixin_client = FakeWeixinClient()
+        started = {}
+
+        async def fake_start_runtime(*, state_key, store, qrcode):
+            started["state_key"] = state_key
+            started["store"] = store
+            started["qrcode"] = qrcode
+            return None
+
+        app = FastAPI()
+        app.include_router(
+            create_channels_router(store=store, weixin_client=weixin_client)
+        )
+        client = TestClient(app)
+
+        with patch(
+            "langchain_api.api.routers.channels.start_weixin_clawbot_runtime",
+            fake_start_runtime,
+        ):
+            qrcode_response = client.post(
+                "/api/channels/weixin-clawbot/users/user_1/qrcode"
+            )
+            status_response = client.get(
+                "/api/channels/weixin-clawbot/users/user_1/qrcode/status"
+            )
+
+        self.assertEqual(200, qrcode_response.status_code)
+        self.assertEqual(200, status_response.status_code)
+        runtime_state = store.get_runtime_state(
+            channel="weixin_clawbot",
+            state_key="user:user_1",
+        )
+        self.assertEqual("user_1", runtime_state.data["owner_user_id"])
+        self.assertEqual("qr-content", runtime_state.data["qrcode"])
+        self.assertEqual("token_1", runtime_state.data["bot_token"])
+        self.assertEqual("https://node.example.test", runtime_state.data["base_url"])
+        self.assertEqual("user:user_1", started["state_key"])
+        self.assertIs(store, started["store"])
+        self.assertEqual("qr-content", started["qrcode"])
 
 
 if __name__ == "__main__":

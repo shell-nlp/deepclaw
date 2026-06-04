@@ -115,16 +115,20 @@ class WeixinStartupTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_runtime_reuses_persisted_token_after_process_restart(self):
         from langchain_api.channels.store import ChannelStore
-        from langchain_api.channels.weixin_startup import WeixinClawBotRuntime
+        from langchain_api.channels.weixin_startup import (
+            WeixinClawBotRuntime,
+            weixin_clawbot_user_state_key,
+        )
 
         store = ChannelStore("sqlite:///:memory:")
         store.upsert_runtime_state(
             channel="weixin_clawbot",
-            state_key="default",
+            state_key=weixin_clawbot_user_state_key("user_1"),
             data={
                 "bot_token": "old_token",
                 "base_url": "https://old-node.example.test",
                 "get_updates_buf": "old_buf",
+                "owner_user_id": "user_1",
             },
         )
         client = FakeRuntimeClient()
@@ -135,6 +139,8 @@ class WeixinStartupTest(unittest.IsolatedAsyncioTestCase):
             client=client,
             service=service,
             store=store,
+            state_key=weixin_clawbot_user_state_key("user_1"),
+            owner_user_id="user_1",
             login_poll_interval_seconds=0,
             message_poll_interval_seconds=0,
         )
@@ -149,9 +155,10 @@ class WeixinStartupTest(unittest.IsolatedAsyncioTestCase):
             "next_buf",
             store.get_runtime_state(
                 channel="weixin_clawbot",
-                state_key="default",
+                state_key=weixin_clawbot_user_state_key("user_1"),
             ).data["get_updates_buf"],
         )
+        self.assertEqual("user_1", service.messages[0][0].user_id)
 
     async def test_runtime_falls_back_to_qrcode_when_persisted_token_expires(self):
         from langchain_api.channels.store import ChannelStore

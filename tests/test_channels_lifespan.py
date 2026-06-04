@@ -6,9 +6,9 @@ from langchain_api.channels import lifespan as channel_lifespan_module
 
 
 class ChannelLifespanTest(unittest.IsolatedAsyncioTestCase):
-    async def test_channel_lifespan_starts_weixin_runtime_and_cancels_task(self):
-        started = asyncio.Event()
-        cancelled = asyncio.Event()
+    async def test_channel_lifespan_starts_saved_weixin_user_runtimes_and_cancels_tasks(self):
+        started = []
+        cancelled = []
         captured = {}
 
         class FakeSettings:
@@ -18,17 +18,18 @@ class ChannelLifespanTest(unittest.IsolatedAsyncioTestCase):
             WEIXIN_CLAWBOT_MESSAGE_POLL_INTERVAL_SECONDS = 4
 
         class FakeState:
-            data = {"bot_token": "old_token"}
+            def __init__(self, state_key, token):
+                self.state_key = state_key
+                self.data = {"bot_token": token, "owner_user_id": state_key.removeprefix("user:")}
 
         class FakeStore:
-            def get_runtime_state(self, *, channel, state_key):
+            def list_runtime_states(self, *, channel):
                 captured["channel"] = channel
-                captured["state_key"] = state_key
-                return FakeState()
-
-        async def fake_fetch_startup_qrcode(*, local_token_list=None):
-            captured["local_token_list"] = local_token_list
-            return {"qrcode": "qr-content", "qrcode_url": "https://qr.example.test"}
+                return [
+                    FakeState("user:user_1", "token_1"),
+                    FakeState("user:user_2", "token_2"),
+                    FakeState("default", "legacy_token"),
+                ]
 
         class FakeRuntime:
             def __init__(
@@ -36,22 +37,28 @@ class ChannelLifespanTest(unittest.IsolatedAsyncioTestCase):
                 *,
                 qrcode,
                 store,
+                state_key,
+                owner_user_id,
                 login_poll_interval_seconds,
                 message_poll_interval_seconds,
             ):
-                captured["qrcode"] = qrcode
-                captured["store"] = store
-                captured["login_poll_interval_seconds"] = login_poll_interval_seconds
-                captured["message_poll_interval_seconds"] = (
-                    message_poll_interval_seconds
+                captured.setdefault("runtimes", []).append(
+                    {
+                        "qrcode": qrcode,
+                        "store": store,
+                        "state_key": state_key,
+                        "owner_user_id": owner_user_id,
+                        "login_poll_interval_seconds": login_poll_interval_seconds,
+                        "message_poll_interval_seconds": message_poll_interval_seconds,
+                    }
                 )
 
             async def run_forever(self):
-                started.set()
+                started.append(True)
                 try:
                     await asyncio.Event().wait()
                 except asyncio.CancelledError:
-                    cancelled.set()
+                    cancelled.append(True)
                     raise
 
         fake_store = FakeStore()
@@ -68,24 +75,23 @@ class ChannelLifespanTest(unittest.IsolatedAsyncioTestCase):
             ),
             patch.object(
                 channel_lifespan_module,
-                "fetch_startup_qrcode",
-                fake_fetch_startup_qrcode,
-            ),
-            patch.object(
-                channel_lifespan_module,
                 "WeixinClawBotRuntime",
                 FakeRuntime,
             ),
         ):
             async with channel_lifespan_module.channel_lifespan():
-                await asyncio.wait_for(started.wait(), timeout=1)
+                for _ in range(10):
+                    if len(started) == 2:
+                        break
+                    await asyncio.sleep(0.01)
 
-        self.assertTrue(cancelled.is_set())
-        self.assertEqual(["old_token"], captured["local_token_list"])
-        self.assertEqual("qr-content", captured["qrcode"])
-        self.assertIs(fake_store, captured["store"])
-        self.assertEqual(3, captured["login_poll_interval_seconds"])
-        self.assertEqual(4, captured["message_poll_interval_seconds"])
+        self.assertEqual(2, len(cancelled))
+        self.assertEqual("weixin_clawbot", captured["channel"])
+        self.assertEqual(["user:user_1", "user:user_2"], [item["state_key"] for item in captured["runtimes"]])
+        self.assertEqual(["user_1", "user_2"], [item["owner_user_id"] for item in captured["runtimes"]])
+        self.assertTrue(all(item["store"] is fake_store for item in captured["runtimes"]))
+        self.assertTrue(all(item["login_poll_interval_seconds"] == 3 for item in captured["runtimes"]))
+        self.assertTrue(all(item["message_poll_interval_seconds"] == 4 for item in captured["runtimes"]))
 
 
 if __name__ == "__main__":

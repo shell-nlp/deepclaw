@@ -172,6 +172,18 @@ class ChannelStore:
             )
             return session.exec(statement).first()
 
+    def list_runtime_states(
+        self,
+        *,
+        channel: str | None = None,
+    ) -> list[ChannelRuntimeState]:
+        with Session(self.engine) as session:
+            statement = select(ChannelRuntimeState)
+            if channel is not None:
+                statement = statement.where(ChannelRuntimeState.channel == channel)
+            statement = statement.order_by(ChannelRuntimeState.state_key)
+            return list(session.exec(statement).all())
+
     def upsert_runtime_state(
         self,
         *,

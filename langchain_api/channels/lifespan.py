@@ -2,75 +2,78 @@ import asyncio
 from contextlib import asynccontextmanager, suppress
 from typing import AsyncIterator
 
-from loguru import logger
-
 from langchain_api.channels.adapters.weixin_clawbot import (
     CHANNEL as WEIXIN_CLAWBOT_CHANNEL,
 )
 from langchain_api.channels.config import weixin_clawbot_settings
-from langchain_api.channels.store import get_channel_store
+from langchain_api.channels.store import ChannelStore, get_channel_store
 from langchain_api.channels.weixin_startup import (
-    RUNTIME_STATE_KEY as WEIXIN_CLAWBOT_RUNTIME_STATE_KEY,
     WeixinClawBotRuntime,
-    fetch_startup_qrcode,
+    weixin_clawbot_user_id_from_state_key,
 )
+
+
+_weixin_runtime_tasks: dict[str, asyncio.Task] = {}
 
 
 @asynccontextmanager
 async def channel_lifespan() -> AsyncIterator[None]:
-    tasks = []
-    weixin_task = await _start_weixin_clawbot()
-    if weixin_task is not None:
-        tasks.append(weixin_task)
+    channel_store = get_channel_store()
+    if weixin_clawbot_settings.WEIXIN_CLAWBOT_AUTO_POLL_ON_STARTUP:
+        await start_saved_weixin_clawbot_runtimes(store=channel_store)
 
     try:
         yield
     finally:
-        for task in tasks:
-            task.cancel()
-        for task in tasks:
-            with suppress(asyncio.CancelledError):
-                await task
+        await stop_weixin_clawbot_runtimes()
 
 
-async def _start_weixin_clawbot() -> asyncio.Task | None:
-    if not weixin_clawbot_settings.WEIXIN_CLAWBOT_PRINT_QRCODE_ON_STARTUP:
-        return None
-
-    try:
-        channel_store = get_channel_store()
-        saved_bot_token = _get_saved_weixin_bot_token(channel_store)
-        local_token_list = [saved_bot_token] if saved_bot_token else []
-        qrcode = await fetch_startup_qrcode(local_token_list=local_token_list)
-        if qrcode.get("qrcode_url"):
-            logger.info("微信 ClawBot 登录二维码链接：\n{}", qrcode["qrcode_url"])
-        else:
-            logger.warning("微信 ClawBot 未返回可展示的二维码链接")
-
-        if not (
-            weixin_clawbot_settings.WEIXIN_CLAWBOT_AUTO_POLL_ON_STARTUP
-            and (qrcode.get("qrcode") or saved_bot_token)
-        ):
-            return None
-
-        runtime = WeixinClawBotRuntime(
-            qrcode=str(qrcode.get("qrcode") or ""),
-            store=channel_store,
-            login_poll_interval_seconds=weixin_clawbot_settings.WEIXIN_CLAWBOT_LOGIN_POLL_INTERVAL_SECONDS,
-            message_poll_interval_seconds=weixin_clawbot_settings.WEIXIN_CLAWBOT_MESSAGE_POLL_INTERVAL_SECONDS,
+async def start_saved_weixin_clawbot_runtimes(*, store: ChannelStore) -> None:
+    states = store.list_runtime_states(channel=WEIXIN_CLAWBOT_CHANNEL)
+    for state in states:
+        if not state.state_key.startswith("user:"):
+            continue
+        if not (state.data or {}).get("bot_token"):
+            continue
+        await start_weixin_clawbot_runtime(
+            state_key=state.state_key,
+            store=store,
+            qrcode=str((state.data or {}).get("qrcode") or ""),
         )
-        return asyncio.create_task(runtime.run_forever())
-    except Exception as exc:
-        logger.warning("获取微信 ClawBot 登录二维码失败：{}", exc)
+
+
+async def start_weixin_clawbot_runtime(
+    *,
+    state_key: str,
+    store: ChannelStore,
+    qrcode: str = "",
+) -> asyncio.Task | None:
+    existing = _weixin_runtime_tasks.get(state_key)
+    if existing is not None and not existing.done():
+        return existing
+
+    owner_user_id = weixin_clawbot_user_id_from_state_key(state_key)
+    if owner_user_id is None:
         return None
 
-
-def _get_saved_weixin_bot_token(channel_store) -> str | None:
-    runtime_state = channel_store.get_runtime_state(
-        channel=WEIXIN_CLAWBOT_CHANNEL,
-        state_key=WEIXIN_CLAWBOT_RUNTIME_STATE_KEY,
+    runtime = WeixinClawBotRuntime(
+        qrcode=qrcode,
+        store=store,
+        state_key=state_key,
+        owner_user_id=owner_user_id,
+        login_poll_interval_seconds=weixin_clawbot_settings.WEIXIN_CLAWBOT_LOGIN_POLL_INTERVAL_SECONDS,
+        message_poll_interval_seconds=weixin_clawbot_settings.WEIXIN_CLAWBOT_MESSAGE_POLL_INTERVAL_SECONDS,
     )
-    if runtime_state is None or not runtime_state.data:
-        return None
-    saved_bot_token = runtime_state.data.get("bot_token")
-    return str(saved_bot_token) if saved_bot_token else None
+    task = asyncio.create_task(runtime.run_forever())
+    _weixin_runtime_tasks[state_key] = task
+    return task
+
+
+async def stop_weixin_clawbot_runtimes() -> None:
+    tasks = list(_weixin_runtime_tasks.values())
+    _weixin_runtime_tasks.clear()
+    for task in tasks:
+        task.cancel()
+    for task in tasks:
+        with suppress(asyncio.CancelledError):
+            await task

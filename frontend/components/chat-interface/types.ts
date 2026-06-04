@@ -137,7 +137,7 @@ export interface BulkDeleteDocumentResponse {
   knowledge_base?: KnowledgeBase | null
 }
 
-export type ViewMode = 'chat' | 'knowledge' | 'mcp' | 'skills'
+export type ViewMode = 'chat' | 'knowledge' | 'mcp' | 'skills' | 'channels'
 export type KnowledgePage =
   | 'libraries'
   | 'library-detail'
@@ -194,4 +194,20 @@ export interface SkillUploadResponse {
 export interface SkillDeleteResponse {
   skill_name: string
   deleted_path: string
+}
+
+export interface WeixinClawBotQrcodeResponse {
+  qrcode?: string | null
+  qrcode_url?: string | null
+  raw?: Record<string, unknown>
+}
+
+export interface WeixinClawBotQrcodeStatusResponse {
+  status?: string | null
+  bot_token?: string | null
+  baseurl?: string | null
+  base_url?: string | null
+  qrcode?: string | null
+  qrcode_url?: string | null
+  raw?: Record<string, unknown>
 }
