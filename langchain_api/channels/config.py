@@ -21,6 +21,7 @@ class ChannelGatewaySettings(BaseSettings):
 class WeixinClawBotSettings(BaseSettings):
     # 微信 ClawBot iLink API 地址
     WEIXIN_CLAWBOT_API_BASE_URL: str = "https://ilinkai.weixin.qq.com"
+    WEIXIN_CLAWBOT_REQUEST_TIMEOUT_SECONDS: float = 10.0
 
     # 服务启动时自动获取并打印微信 ClawBot 登录二维码链接
     WEIXIN_CLAWBOT_PRINT_QRCODE_ON_STARTUP: bool = True

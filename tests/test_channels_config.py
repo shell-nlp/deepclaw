@@ -22,6 +22,10 @@ class ChannelConfigTest(unittest.TestCase):
             "https://ilinkai.weixin.qq.com",
             weixin_clawbot_settings.WEIXIN_CLAWBOT_API_BASE_URL,
         )
+        self.assertEqual(
+            10.0,
+            weixin_clawbot_settings.WEIXIN_CLAWBOT_REQUEST_TIMEOUT_SECONDS,
+        )
         self.assertTrue(weixin_clawbot_settings.WEIXIN_CLAWBOT_PRINT_QRCODE_ON_STARTUP)
         self.assertTrue(weixin_clawbot_settings.WEIXIN_CLAWBOT_AUTO_POLL_ON_STARTUP)
         self.assertFalse(hasattr(settings, "CHANNEL_AGENT_API_URL"))

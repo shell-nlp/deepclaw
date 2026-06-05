@@ -4,6 +4,8 @@ import uuid
 from collections.abc import Callable
 from typing import Any, Awaitable
 
+import httpx
+
 from langchain_api.channels.config import weixin_clawbot_settings
 from langchain_api.channels.models import ChannelMessage
 
@@ -18,6 +20,14 @@ MESSAGE_STATE_FINISH = 2
 
 
 RequestJson = Callable[..., Awaitable[dict[str, Any]]]
+
+
+class WeixinClawBotRequestError(RuntimeError):
+    pass
+
+
+class WeixinClawBotRequestTimeoutError(WeixinClawBotRequestError):
+    pass
 
 
 def base_info() -> dict[str, str]:
@@ -168,19 +178,27 @@ class WeixinClawBotClient:
         json_body: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        import httpx
-
         url = f"{self.base_url}/{path.lstrip('/')}"
-        async with httpx.AsyncClient(timeout=None) as client:
-            response = await client.request(
-                method,
-                url,
-                headers=make_headers(token),
-                json=json_body,
-                params=params,
-            )
-            response.raise_for_status()
-            return response.json()
+        timeout = weixin_clawbot_settings.WEIXIN_CLAWBOT_REQUEST_TIMEOUT_SECONDS
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.request(
+                    method,
+                    url,
+                    headers=make_headers(token),
+                    json=json_body,
+                    params=params,
+                )
+                response.raise_for_status()
+                return response.json()
+        except httpx.TimeoutException as exc:
+            raise WeixinClawBotRequestTimeoutError(
+                f"Weixin ClawBot request timed out for {path}"
+            ) from exc
+        except httpx.RequestError as exc:
+            raise WeixinClawBotRequestError(
+                f"Weixin ClawBot request failed for {path}"
+            ) from exc
 
 
 class WeixinClawBotAdapter:

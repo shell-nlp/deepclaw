@@ -1,4 +1,8 @@
+from collections.abc import Awaitable
+from typing import Any
+
 from fastapi import APIRouter, BackgroundTasks, HTTPException
+import httpx
 from pydantic import BaseModel
 
 from langchain_api.channels.adapters.dingtalk import DingTalkAdapter
@@ -7,6 +11,8 @@ from langchain_api.channels.adapters.weixin_clawbot import (
     CHANNEL as WEIXIN_CLAWBOT_CHANNEL,
     WeixinClawBotAdapter,
     WeixinClawBotClient,
+    WeixinClawBotRequestError,
+    WeixinClawBotRequestTimeoutError,
 )
 from langchain_api.channels.lifespan import start_weixin_clawbot_runtime
 from langchain_api.channels.lifespan import stop_weixin_clawbot_runtime
@@ -17,8 +23,10 @@ from langchain_api.channels.models import (
 )
 from langchain_api.channels.service import ChannelService
 from langchain_api.channels.store import ChannelStore, get_channel_store
-from langchain_api.channels.weixin_startup import weixin_clawbot_user_state_key
-from langchain_api.channels.weixin_startup import weixin_clawbot_user_id_from_state_key
+from langchain_api.channels.weixin_startup import (
+    weixin_clawbot_user_id_from_state_key,
+    weixin_clawbot_user_state_key,
+)
 
 
 class WeixinClawBotPollRequest(BaseModel):
@@ -59,6 +67,33 @@ def _mask_token(value: str | None) -> str | None:
     return f"{value[:5]}...{value[-3:]}"
 
 
+async def _call_weixin_clawbot_api(
+    awaitable: Awaitable[dict[str, Any]]
+) -> dict[str, Any]:
+    try:
+        return await awaitable
+    except WeixinClawBotRequestTimeoutError as exc:
+        raise HTTPException(
+            status_code=504,
+            detail="Weixin ClawBot request timed out. Please try again.",
+        ) from exc
+    except WeixinClawBotRequestError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Weixin ClawBot request failed. Please check the upstream service.",
+        ) from exc
+    except httpx.TimeoutException as exc:
+        raise HTTPException(
+            status_code=504,
+            detail="Weixin ClawBot request timed out. Please try again.",
+        ) from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Weixin ClawBot request failed. Please check the upstream service.",
+        ) from exc
+
+
 def create_channels_router(
     *,
     store: ChannelStore | None = None,
@@ -86,8 +121,8 @@ def create_channels_router(
     @router.post("/weixin-clawbot/qrcode")
     async def weixin_clawbot_qrcode(request: WeixinClawBotQRCodeRequest):
         client = weixin_client or WeixinClawBotClient()
-        data = await client.fetch_login_qrcode(
-            local_token_list=request.local_token_list
+        data = await _call_weixin_clawbot_api(
+            client.fetch_login_qrcode(local_token_list=request.local_token_list)
         )
         return {
             "qrcode": data.get("qrcode"),
@@ -101,9 +136,11 @@ def create_channels_router(
         verify_code: str | None = None,
     ):
         client = weixin_client or WeixinClawBotClient()
-        return await client.get_qrcode_status(
-            qrcode=qrcode,
-            verify_code=verify_code,
+        return await _call_weixin_clawbot_api(
+            client.get_qrcode_status(
+                qrcode=qrcode,
+                verify_code=verify_code,
+            )
         )
 
     @router.post("/weixin-clawbot/users/{user_id}/qrcode")
@@ -119,8 +156,10 @@ def create_channels_router(
             if runtime_state is not None and runtime_state.data
             else None
         )
-        data = await client.fetch_login_qrcode(
-            local_token_list=[str(saved_bot_token)] if saved_bot_token else []
+        data = await _call_weixin_clawbot_api(
+            client.fetch_login_qrcode(
+                local_token_list=[str(saved_bot_token)] if saved_bot_token else []
+            )
         )
         qrcode = data.get("qrcode")
         qrcode_url = data.get("qrcode_img_content") or qrcode
@@ -151,14 +190,27 @@ def create_channels_router(
             state_key=state_key,
         )
         state_data = runtime_state.data if runtime_state is not None else {}
+        if state_data.get("bot_token"):
+            base_url = str(state_data.get("base_url") or "").rstrip("/")
+            return {
+                "status": "confirmed",
+                "bot_token": str(state_data["bot_token"]),
+                "baseurl": base_url,
+                "base_url": base_url,
+                "qrcode": state_data.get("qrcode"),
+                "qrcode_url": state_data.get("qrcode_url"),
+            }
+
         login_qrcode = qrcode or state_data.get("qrcode")
         if not login_qrcode:
             raise HTTPException(status_code=404, detail="Weixin ClawBot qrcode not found")
 
         client = weixin_client or WeixinClawBotClient()
-        status = await client.get_qrcode_status(
-            qrcode=str(login_qrcode),
-            verify_code=verify_code,
+        status = await _call_weixin_clawbot_api(
+            client.get_qrcode_status(
+                qrcode=str(login_qrcode),
+                verify_code=verify_code,
+            )
         )
         update_data = {
             "owner_user_id": user_id,
@@ -242,9 +294,11 @@ def create_channels_router(
     ):
         client = weixin_client or WeixinClawBotClient()
         adapter = WeixinClawBotAdapter(token=request.bot_token, client=client)
-        updates = await client.get_updates(
-            token=request.bot_token,
-            get_updates_buf=request.get_updates_buf,
+        updates = await _call_weixin_clawbot_api(
+            client.get_updates(
+                token=request.bot_token,
+                get_updates_buf=request.get_updates_buf,
+            )
         )
         messages = adapter.iter_text_messages(updates)
         for message in messages:

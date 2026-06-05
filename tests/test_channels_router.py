@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import httpx
 
 from langchain_api.channels.models import ChannelMessageRecord
 from langchain_api.channels.store import ChannelStore
@@ -62,6 +63,14 @@ class FakeWeixinClient:
                 },
             ],
         }
+
+
+class TimeoutWeixinClient:
+    async def fetch_login_qrcode(self, *, local_token_list=None):
+        raise httpx.ReadTimeout("timed out")
+
+    async def get_qrcode_status(self, *, qrcode, verify_code=None):
+        raise httpx.ReadTimeout("timed out")
 
 
 class ChannelsRouterTest(unittest.TestCase):
@@ -248,6 +257,54 @@ class ChannelsRouterTest(unittest.TestCase):
         self.assertEqual("user:user_1", started["state_key"])
         self.assertIs(store, started["store"])
         self.assertEqual("qr-content", started["qrcode"])
+
+    def test_weixin_clawbot_user_qrcode_timeout_returns_504(self):
+        from langchain_api.api.routers.channels import create_channels_router
+
+        app = FastAPI()
+        app.include_router(
+            create_channels_router(
+                store=ChannelStore("sqlite:///:memory:"),
+                weixin_client=TimeoutWeixinClient(),
+            )
+        )
+        client = TestClient(app, raise_server_exceptions=False)
+
+        response = client.post("/api/channels/weixin-clawbot/users/user_1/qrcode")
+
+        self.assertEqual(504, response.status_code)
+        self.assertEqual(
+            "Weixin ClawBot request timed out. Please try again.",
+            response.json()["detail"],
+        )
+
+    def test_weixin_clawbot_user_status_uses_local_runtime_when_connected(self):
+        from langchain_api.api.routers.channels import create_channels_router
+
+        store = ChannelStore("sqlite:///:memory:")
+        store.upsert_runtime_state(
+            channel="weixin_clawbot",
+            state_key="user:user_1",
+            data={
+                "owner_user_id": "user_1",
+                "qrcode": "qr_1",
+                "qrcode_url": "https://liteapp.weixin.qq.com/q/test?qrcode=qr_1",
+                "bot_token": "token_1",
+                "base_url": "https://node.example.test",
+            },
+        )
+        app = FastAPI()
+        app.include_router(
+            create_channels_router(store=store, weixin_client=TimeoutWeixinClient())
+        )
+        client = TestClient(app, raise_server_exceptions=False)
+
+        response = client.get("/api/channels/weixin-clawbot/users/user_1/qrcode/status")
+
+        self.assertEqual(200, response.status_code)
+        self.assertEqual("confirmed", response.json()["status"])
+        self.assertEqual("token_1", response.json()["bot_token"])
+        self.assertEqual("https://node.example.test", response.json()["base_url"])
 
     def test_weixin_clawbot_user_management_lists_and_deletes_bound_users(self):
         from langchain_api.api.routers.channels import create_channels_router
