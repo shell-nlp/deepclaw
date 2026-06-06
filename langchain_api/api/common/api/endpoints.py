@@ -8,6 +8,8 @@ post : http://localhost:7869/api/general_api (SSE 流式响应)
 }
 """
 
+import uuid
+
 from fastapi import APIRouter, FastAPI
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessageChunk
@@ -80,9 +82,11 @@ def add_general_api_endpoint(
             raise ValueError("query 和 resume 不能同时存在")
         elif request.query:
             # 支持字符串或结构化多模态内容
-            content = request.query if isinstance(request.query, str) else [
-                block.model_dump() for block in request.query
-            ]
+            content = (
+                request.query
+                if isinstance(request.query, str)
+                else [block.model_dump() for block in request.query]
+            )
             update = {
                 "messages": [
                     {
