@@ -3,7 +3,6 @@ from typing import Any
 
 from deepagents import create_deep_agent
 from langchain.agents import create_agent
-from langchain.agents.middleware import HumanInTheLoopMiddleware
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.runtime import Runtime
 from loguru import logger

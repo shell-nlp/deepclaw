@@ -87,7 +87,7 @@ class ChineseRecursiveTextSplitter(RecursiveCharacterTextSplitter):
         try:
             ratio = alpha_count / total_count
             return ratio < threshold
-        except:
+        except ZeroDivisionError:
             return False
 
     def is_possible_title(

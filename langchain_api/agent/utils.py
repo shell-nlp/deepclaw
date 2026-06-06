@@ -1,4 +1,3 @@
-from datetime import datetime
 from pathlib import Path
 
 from deepagents.backends.utils import create_file_data
@@ -13,7 +12,6 @@ def copy_skills_to_store(skills_dir: Path, store: BaseStore):
         logger.error(f"❌ skills 目录不存在: {skills_dir}")
         return
 
-    now = datetime.now().isoformat()
     copied_count = 0
     copy_info = ["\n"]
     for file_path in skills_dir.rglob("*"):

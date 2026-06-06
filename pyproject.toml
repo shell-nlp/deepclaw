@@ -58,7 +58,20 @@ default = true
 dev = [
     "pytest>=9.0.3",
 ]
+lint = [
+    "ruff>=0.15.16",
+]
 
 # [tool.uv.sources]
 # ag-ui-langgraph = { git = "https://github.com/ag-ui-protocol/ag-ui.git", subdirectory = "integrations/langgraph/python" }
 # ag-ui-protocol = { git = "https://github.com/ag-ui-protocol/ag-ui.git", subdirectory = "sdks/python" }
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["langchain_api"]

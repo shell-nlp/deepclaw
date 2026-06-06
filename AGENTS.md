@@ -224,6 +224,12 @@ pnpm build
 uv run python -m py_compile <changed_file.py>
 ```
 
+代码修改后，还必须运行 Ruff 检查：
+
+```bash
+uv run ruff check .
+```
+
 修改前端文件后，至少运行：
 
 ```bash

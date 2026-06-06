@@ -50,11 +50,13 @@ def deferred_tool_search(deferred_tool: list[dict], query: str) -> list[dict]:
         regex = re.compile(re.escape(query), re.IGNORECASE)
 
     scored = []
-    for tool in deferred_tool:
-        searchable = f"{tool['name']} {tool['description']}"
+    for deferred_tool_item in deferred_tool:
+        searchable = (
+            f"{deferred_tool_item['name']} {deferred_tool_item['description']}"
+        )
         if regex.search(searchable):
-            score = 2 if regex.search(tool["name"]) else 1
-            scored.append((score, tool))
+            score = 2 if regex.search(deferred_tool_item["name"]) else 1
+            scored.append((score, deferred_tool_item))
 
     scored.sort(key=lambda x: x[0], reverse=True)
     return [tool for _, tool in scored][:MAX_RESULTS]
