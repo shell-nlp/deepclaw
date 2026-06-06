@@ -1,10 +1,12 @@
 <h1 align="center">LangChain API</h1>
 
 <p align="center">
-  <img alt="LangGraph" src="https://img.shields.io/badge/LangGraph-Agent-1C3C3C?style=for-the-badge">
-  <img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-000000?style=for-the-badge&logo=nextdotjs&logoColor=white">
-  <img alt="Elasticsearch" src="https://img.shields.io/badge/Elasticsearch-8.x-005571?style=for-the-badge&logo=elasticsearch&logoColor=white">
-  <img alt="License" src="https://img.shields.io/badge/License-Apache--2.0-blue?style=for-the-badge">
+  <a href="#"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square"></a>
+  <a href="#"><img alt="Python" src="https://img.shields.io/badge/Python-3.12%2B-3776AB?style=flat-square&logo=python&logoColor=white"></a>
+  <a href="#"><img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-0.115-009688?style=flat-square&logo=fastapi&logoColor=white"></a>
+  <a href="#"><img alt="LangGraph" src="https://img.shields.io/badge/LangGraph-Agent-1C3C3C?style=flat-square"></a>
+  <a href="#"><img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-000000?style=flat-square&logo=nextdotjs&logoColor=white"></a>
+  <a href="#"><img alt="Elasticsearch" src="https://img.shields.io/badge/Elasticsearch-8.x-005571?style=flat-square&logo=elasticsearch&logoColor=white"></a>
 </p>
 
 <p align="center">
@@ -38,7 +40,7 @@ LangChain API 是一个面向二次开发的智能体服务。项目把通用 Ag
 
 ## 界面预览
 
-以下界面覆盖项目当前的主要工作流，包括聊天、人工确认、知识库、技能管理、MCP 管理和用户隔离。
+以下界面覆盖项目当前的主要工作流，包括聊天、人工确认、知识库、技能管理、MCP 管理、渠道管理和用户隔离。
 
 ### 聊天主界面
 
@@ -69,6 +71,12 @@ LangChain API 是一个面向二次开发的智能体服务。项目把通用 Ag
 ![MCP 管理](assets/img/mcp_management.png)
 
 用于维护 MCP 配置，并控制通用 Agent 请求是否附带 MCP 服务定义。
+
+### 渠道管理
+
+![渠道管理](assets/img/channels_management.png)
+
+用于管理飞书、钉钉、微信 ClawBot 渠道接入、用户绑定和会话回复模式。
 
 ### 用户管理
 
