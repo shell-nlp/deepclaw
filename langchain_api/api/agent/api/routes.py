@@ -4,8 +4,8 @@ from fastapi import APIRouter
 
 from langchain_api.agent.agent import Agent
 from langchain_api.agent.context import AgentContext
-from langchain_api.api.endpoints import add_general_api_endpoint
-from langchain_api.api.management.skills import add_skill_management_routes
+from langchain_api.api.agent.api.skills import add_skill_management_routes
+from langchain_api.api.common.api.endpoints import add_general_api_endpoint
 
 
 def create_agent_router(checkpointer=None, store=None) -> APIRouter:

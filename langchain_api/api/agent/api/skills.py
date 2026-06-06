@@ -1,20 +1,15 @@
 from fastapi import APIRouter, File, HTTPException, UploadFile
-from pydantic import BaseModel, Field
 
+from langchain_api.api.agent.schemas.skills import (
+    SkillDeleteRequest,
+    SkillListRequest,
+)
 from langchain_api.agent.skill_manager import (
     SkillDeleteResponse,
     SkillListResponse,
     SkillUploadResponse,
     skill_manager,
 )
-
-
-class SkillListRequest(BaseModel):
-    search: str = Field("", description="Search text")
-
-
-class SkillDeleteRequest(BaseModel):
-    skill_name: str = Field(..., description="Skill name")
 
 
 def _handle_value_error(exc: ValueError) -> HTTPException:

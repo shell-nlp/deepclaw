@@ -54,6 +54,11 @@ phoenix = [
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"
 default = true
 
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]
+
 # [tool.uv.sources]
 # ag-ui-langgraph = { git = "https://github.com/ag-ui-protocol/ag-ui.git", subdirectory = "integrations/langgraph/python" }
 # ag-ui-protocol = { git = "https://github.com/ag-ui-protocol/ag-ui.git", subdirectory = "sdks/python" }

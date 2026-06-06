@@ -10,11 +10,9 @@ from fastapi.staticfiles import StaticFiles
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from langchain_api.api.routers import (
-    create_agent_router,
-    create_channels_router,
-    create_rag_router,
-)
+from langchain_api.api.agent import create_agent_router
+from langchain_api.api.channels import create_channels_router
+from langchain_api.api.rag import create_rag_router
 from langchain_api.channels.lifespan import channel_lifespan
 from langchain_api.constant import root_dir
 from langchain_api.patch.langchain import patch_langchain

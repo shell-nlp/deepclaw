@@ -1,4 +1,4 @@
-"""通用API端点
+﻿"""通用API端点
 要观察完整的响应格式请调用：
 post : http://localhost:7869/api/general_api (SSE 流式响应)
 请求体：
@@ -8,92 +8,18 @@ post : http://localhost:7869/api/general_api (SSE 流式响应)
 }
 """
 
-import uuid
-from typing import Literal, Union
-
 from fastapi import APIRouter, FastAPI
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessageChunk
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 from loguru import logger
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
-
-class TextContentBlock(BaseModel):
-    """文本内容块"""
-    type: Literal["text"] = "text"
-    text: str
-
-
-class ImageContentBlock(BaseModel):
-    """图片内容块，支持 URL 或 base64 编码"""
-    type: Literal["image"] = "image"
-    url: str | None = None
-    base64: str | None = None
-    mime_type: str | None = None
-
-
-ContentBlock = Union[TextContentBlock, ImageContentBlock]
-MessageContent = Union[str, list[ContentBlock]]
-
-
-class GeneralAPIRequest(BaseModel):
-    query: MessageContent | None = Field(
-        None,
-        description="用户输入的查询，支持字符串或结构化多模态内容（文本、图片等）",
-        examples=[
-            "请你执行如下任务：\n 1. 计算 10 + 10 的结果。\n2. 将结果乘以 5。",
-            [
-                {"type": "text", "text": "这张照片里是什么动物？"},
-                {"type": "image", "url": "https://example.com/image.jpg", "mime_type": "image/jpeg"},
-            ],
-        ],
-    )
-    resume: dict | None = Field(
-        None,
-        description="恢复信息",
-        examples=[
-            {"decisions": [{"type": "approve"}]},
-            {
-                "decisions": [
-                    {
-                        "type": "reject",
-                        # 关于操作被拒绝原因的解释
-                        "message": "不，这是错误的，因为......，而是这样做......",
-                    }
-                ]
-            },
-            {
-                "decisions": [
-                    {
-                        "type": "edit",
-                        # 使用工具名称和参数编辑操作
-                        "edited_action": {
-                            # 要调用的工具名称。
-                            # 通常与原始操作相同。
-                            "name": "new_tool_name",
-                            # 要传递给工具的参数。
-                            "args": {"key1": "new_value", "key2": "original_value"},
-                        },
-                    }
-                ]
-            },
-        ],
-    )
-    # 会话ID，用于跟踪用户会话
-    session_id: str = Field(
-        default_factory=lambda: str(uuid.uuid4()), description="会话ID"
-    )
-    stream: bool = Field(
-        default=True,
-        description="是否流式响应token",
-    )
-
-
-class StreamResponse(BaseModel):
-    event: Literal["token", "tool_calls", "tool_output", "__interrupt__"] = "token"
-    data: dict | None = None
+from langchain_api.api.common.schemas.endpoints import (
+    GeneralAPIRequest,
+    StreamResponse,
+)
 
 
 def add_general_api_endpoint(

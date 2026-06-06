@@ -3,8 +3,14 @@ from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 import httpx
-from pydantic import BaseModel
 
+from langchain_api.api.channels.schemas.weixin_clawbot import (
+    WeixinClawBotBoundUserDeleteResponse,
+    WeixinClawBotBoundUserList,
+    WeixinClawBotBoundUserRead,
+    WeixinClawBotPollRequest,
+    WeixinClawBotQRCodeRequest,
+)
 from langchain_api.channels.adapters.dingtalk import DingTalkAdapter
 from langchain_api.channels.adapters.feishu import FeishuAdapter
 from langchain_api.channels.adapters.weixin_clawbot import (
@@ -27,36 +33,6 @@ from langchain_api.channels.weixin_startup import (
     weixin_clawbot_user_id_from_state_key,
     weixin_clawbot_user_state_key,
 )
-
-
-class WeixinClawBotPollRequest(BaseModel):
-    bot_token: str
-    get_updates_buf: str = ""
-
-
-class WeixinClawBotQRCodeRequest(BaseModel):
-    local_token_list: list[str] = []
-
-
-class WeixinClawBotBoundUserRead(BaseModel):
-    user_id: str
-    state_key: str
-    connected: bool
-    status: str
-    bot_token: str | None = None
-    qrcode_url: str | None = None
-    base_url: str | None = None
-    updated_at: str
-
-
-class WeixinClawBotBoundUserList(BaseModel):
-    items: list[WeixinClawBotBoundUserRead]
-    total: int
-
-
-class WeixinClawBotBoundUserDeleteResponse(BaseModel):
-    user_id: str
-    deleted: bool
 
 
 def _mask_token(value: str | None) -> str | None:

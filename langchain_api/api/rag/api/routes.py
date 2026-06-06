@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
-from langchain_api.api.endpoints import add_general_api_endpoint
-from langchain_api.api.management.knowledge_bases import (
+from langchain_api.api.common.api.endpoints import add_general_api_endpoint
+from langchain_api.api.rag.api.knowledge_bases import (
     add_knowledge_base_management_routes,
 )
 from langchain_api.rag.agent import create_rag_agent
