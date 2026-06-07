@@ -206,8 +206,8 @@ class SkillManager:
         if settings.BACKEND_TYPE != "store":
             return
         try:
-            from langchain_api.agent.agent import store
-            from langchain_api.agent.utils import sync_skills_store
+            from langchain_api.agents.general.agent import store
+            from langchain_api.agents.general.utils import sync_skills_store
         except Exception as exc:  # noqa: BLE001
             logger.exception("Failed to import store sync helpers: {}", exc)
             return

@@ -2,8 +2,8 @@ from ag_ui_langgraph import add_langgraph_fastapi_endpoint
 from copilotkit import LangGraphAGUIAgent
 from fastapi import APIRouter
 
-from langchain_api.agent.agent import Agent
-from langchain_api.agent.context import AgentContext
+from langchain_api.agents.general.agent import Agent
+from langchain_api.agents.general.context import AgentContext
 from langchain_api.web_backend.common.endpoints import add_general_api_endpoint
 
 

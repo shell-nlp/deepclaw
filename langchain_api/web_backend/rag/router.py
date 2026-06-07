@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
-from langchain_api.rag.agent import create_rag_agent
-from langchain_api.rag.context import AgentContext
+from langchain_api.agents.rag.agent import create_rag_agent
+from langchain_api.agents.rag.context import AgentContext
 from langchain_api.web_backend.common.endpoints import add_general_api_endpoint
 
 

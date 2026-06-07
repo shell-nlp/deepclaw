@@ -11,7 +11,7 @@ from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 from loguru import logger
 
-from langchain_api.agent.context import AgentContext
+from langchain_api.agents.general.context import AgentContext
 from mcp2tool.fastmcp_to_langchain import load_langchain_tools_from_mcp_config
 
 

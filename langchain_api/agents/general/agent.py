@@ -7,7 +7,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.runtime import Runtime
 from loguru import logger
 
-from langchain_api.agent.context import AgentContext
+from langchain_api.agents.general.context import AgentContext
 from langchain_api.constant import home_path, workspace_path
 from langchain_api.middleware.common import BusinessMiddleware
 from langchain_api.middleware.mcp import MCPMiddleware
@@ -102,7 +102,7 @@ class Agent:
             )
             logger.info("使用 LocalShellBackend 作为后端")
         elif settings.BACKEND_TYPE == "store":
-            from langchain_api.agent.utils import copy_skills_to_store
+            from langchain_api.agents.general.utils import copy_skills_to_store
 
             copy_skills_to_store(skills_dir=workspace_path / "skills", store=self.store)
             logger.info("使用 StoreBackend 作为后端")

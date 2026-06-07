@@ -57,11 +57,11 @@
 
 ### 核心能力层
 
-- `langchain_api/agent/`
-  通用 Agent 组装、上下文和运行时相关逻辑。
+- `langchain_api/agents/general/`
+  通用 Agent 组装、上下文、状态与运行时相关逻辑。
 
-- `langchain_api/rag/`
-  RAG Agent 组装与上下文定义。
+- `langchain_api/agents/rag/`
+  RAG Agent 组装、上下文与状态定义。
 
 - `langchain_api/common/`
   Elasticsearch、Graph RAG、PDF 切分等通用算法实现。

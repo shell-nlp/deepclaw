@@ -3,8 +3,8 @@ import os
 from langchain.agents.middleware import AgentMiddleware
 from loguru import logger
 
-from langchain_api.agent.context import AgentContext
-from langchain_api.agent.state import StateSchema
+from langchain_api.agents.general.context import AgentContext
+from langchain_api.agents.general.state import StateSchema
 
 
 # https://github.com/CopilotKit/CopilotKit/issues/2646

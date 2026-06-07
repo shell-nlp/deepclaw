@@ -40,7 +40,7 @@ from langgraph.types import Command
 from loguru import logger
 from opensandbox.models.sandboxes import Host, Volume
 
-from langchain_api.agent.context import AgentContext as LangclawContext
+from langchain_api.agents.general.context import AgentContext as LangclawContext
 from langchain_api.backend.open_sandbox import OpenSandbox
 
 FILESYSTEM_SYSTEM_PROMPT = """## Following Conventions
