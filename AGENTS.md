@@ -62,7 +62,7 @@
   - `deep_thinking`
   - `mcp_config`
 
-- `langchain_api/agent/skill_manager.py`
+- `langchain_api/management/skill_manager.py`
   技能文件管理逻辑，供技能管理接口调用。
 
 ### RAG 相关
@@ -70,7 +70,7 @@
 - `langchain_api/rag/agent.py`
   RAG Agent 组装入口，主要接入 `RAGMiddleware` 和 `BusinessMiddleware`。
 
-- `langchain_api/rag/knowledge_base.py`
+- `langchain_api/management/knowledge_base_manager.py`
   知识库管理核心实现，负责知识库元数据、文档元数据、文档上传、切片查询和删除。
 
 - `langchain_api/rag/retriever.py`
@@ -116,10 +116,10 @@
   - `/api/channels/weixin-clawbot/*`
   - `/api/channels/sessions`
 
-- `langchain_api/api/management/skills.py`
+- `langchain_api/api/agent/api/skills.py`
   技能列表、上传、删除接口。
 
-- `langchain_api/api/management/knowledge_bases.py`
+- `langchain_api/api/rag/api/knowledge_bases.py`
   知识库和文档管理接口。
 
 ### Channels 相关
@@ -236,6 +236,8 @@ pnpm build
 
 - 只改和当前任务直接相关的代码，避免顺手重构。
 - 保持最小改动，优先修根因，不要扩散影响面。
+- 如果要重构架构或目录结构，且文件内容本身不需要大改，优先执行 `mv` / 重命名操作，再对移动后的导包错误做最小修复；不要先删除旧文件、再在新位置重写一份等价实现，这样可以减少 token 消耗并提升处理速度。
+- 写代码时要补充必要的中文代码注释，方便开发者理解关键逻辑，避免添加无意义的注释。
 - 未经用户明确要求，不要执行 `git add`、`git commit`、`git amend` 等 Git 提交类操作。
 - 测试统一使用 `pytest`，不要新增 `unittest` 风格测试，也不要为当前任务引入其他测试框架。
 - 如果当前需求可以通过成熟、稳定、维护活跃的开源库作为最佳实践来实现，优先采用开源库方案，不必重复自研；具体选型和集成方式由执行者结合仓库现状判断。

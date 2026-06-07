@@ -162,7 +162,9 @@ class SkillManager:
 
             member_paths = [self._validate_archive_path(info.filename) for info in file_infos]
             top_levels = {path.parts[0] for path in member_paths if path.parts}
-            has_single_root = len(top_levels) == 1 and all(len(path.parts) > 1 for path in member_paths)
+            has_single_root = len(top_levels) == 1 and all(
+                len(path.parts) > 1 for path in member_paths
+            )
 
             if has_single_root:
                 archive_root = next(iter(top_levels))
@@ -212,6 +214,7 @@ class SkillManager:
 
         if store is None:
             return
+        # 仅在 store 后端启用时同步技能目录，避免管理层反向侵入核心逻辑。
         sync_skills_store(self.SKILLS_ROOT, store)
 
 

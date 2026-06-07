@@ -13,7 +13,7 @@ from langchain_api.api.rag.schemas.knowledge_bases import (
     UpdateKnowledgeBaseRequest,
 )
 from langchain_api.auth.dependencies import get_current_actor
-from langchain_api.rag.knowledge_base import (
+from langchain_api.management.knowledge_base_manager import (
     BulkDeleteDocumentResponse,
     BulkDeleteKnowledgeBaseResponse,
     KnowledgeBaseDeleteResult,

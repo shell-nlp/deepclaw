@@ -609,6 +609,7 @@ class KnowledgeBaseManager:
         for index, chunk in enumerate(chunks, start=1):
             metadata = dict(chunk.metadata or {})
             segment_id = metadata.get("segment_id") or index
+            # 将管理侧元数据补齐后再交给 RAG 核心索引，避免核心目录承担管理装配职责。
             metadata.update(
                 {
                     "user_id": user_id,

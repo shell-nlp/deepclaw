@@ -5,7 +5,7 @@ from langchain_api.api.agent.schemas.skills import (
     SkillListRequest,
 )
 from langchain_api.auth.dependencies import get_current_actor
-from langchain_api.agent.skill_manager import (
+from langchain_api.management.skill_manager import (
     SkillDeleteResponse,
     SkillListResponse,
     SkillUploadResponse,
