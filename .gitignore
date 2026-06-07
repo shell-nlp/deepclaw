@@ -25,3 +25,9 @@ logs/
 node_modules/
 .next/
 *.pdf
+
+.opencode/
+.codegraph/
+.pytest_cache/
+.ruff_cache/
+*.auth_migrated_from_langchain_api
