@@ -19,6 +19,7 @@ class AuthService:
         self.admin_email = admin_email
         self.admin_password = admin_password
         self.token_expire_days = token_expire_days
+        self.store.reconcile_access_token_expiry(expire_days=token_expire_days)
 
     def register(self, *, email: str, password: str):
         normalized_email = email.strip().lower()

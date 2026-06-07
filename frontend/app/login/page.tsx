@@ -4,12 +4,15 @@ import { FormEvent, useEffect, useMemo, useState } from 'react'
 
 import styles from './login.module.css'
 import {
+  clearRememberedLogin,
   clearStoredAuthToken,
   fetchCurrentActor,
+  getRememberedLogin,
   getStoredAuthToken,
   normalizeActorPayload,
   normalizeUserToActor,
   revokeAuthToken,
+  storeRememberedLogin,
   storeAuthToken,
   submitAuthRequest,
   type ActorState,
@@ -30,6 +33,7 @@ export default function LoginPage() {
   const [token, setToken] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [rememberPassword, setRememberPassword] = useState(false)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -46,6 +50,13 @@ export default function LoginPage() {
   }, [])
 
   useEffect(() => {
+    const rememberedLogin = getRememberedLogin()
+    if (rememberedLogin) {
+      setEmail(rememberedLogin.email)
+      setPassword(rememberedLogin.password)
+      setRememberPassword(true)
+    }
+
     const storedToken = getStoredAuthToken()
     if (!storedToken) {
       setCheckingSession(false)
@@ -89,10 +100,20 @@ export default function LoginPage() {
     setError('')
     try {
       const result = await submitAuthRequest(mode, normalizedEmail, normalizedPassword)
+      if (rememberPassword) {
+        storeRememberedLogin({
+          email: normalizedEmail,
+          password: normalizedPassword,
+        })
+      } else {
+        clearRememberedLogin()
+      }
       storeAuthToken(result.token)
       setToken(result.token)
       setActor(normalizeUserToActor(result.user))
-      setPassword('')
+      if (!rememberPassword) {
+        setPassword('')
+      }
       setNotice(mode === 'login' ? '登录成功，正在返回系统。' : '注册成功，正在返回系统。')
       window.setTimeout(() => {
         window.location.assign(redirectTarget)
@@ -228,6 +249,15 @@ export default function LoginPage() {
                       mode === 'login' ? 'current-password' : 'new-password'
                     }
                   />
+                </label>
+
+                <label className={styles.rememberRow}>
+                  <input
+                    type="checkbox"
+                    checked={rememberPassword}
+                    onChange={(event) => setRememberPassword(event.target.checked)}
+                  />
+                  <span>记住密码</span>
                 </label>
 
                 <button type="submit" className={styles.primaryButton} disabled={loading}>

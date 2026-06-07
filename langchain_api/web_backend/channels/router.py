@@ -1,9 +1,10 @@
 from collections.abc import Awaitable
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 import httpx
 
+from langchain_api.web_backend.auth.dependencies import CurrentActor, get_current_actor
 from langchain_api.web_backend.channels.schemas import (
     WeixinClawBotBoundUserDeleteResponse,
     WeixinClawBotBoundUserList,
@@ -23,6 +24,7 @@ from langchain_api.web_backend.channels.adapters.weixin_clawbot import (
 from langchain_api.web_backend.channels.lifespan import start_weixin_clawbot_runtime
 from langchain_api.web_backend.channels.lifespan import stop_weixin_clawbot_runtime
 from langchain_api.web_backend.channels.models import (
+    ChannelSession,
     ChannelSessionList,
     ChannelSessionRead,
     ChannelSessionUpdate,
@@ -35,12 +37,86 @@ from langchain_api.web_backend.channels.weixin_startup import (
 )
 
 
+GUEST_MANAGER_USER_ID = "guest"
+
+
 def _mask_token(value: str | None) -> str | None:
     if not value:
         return None
     if len(value) <= 5:
         return "***"
     return f"{value[:5]}...{value[-3:]}"
+
+
+def _is_admin(actor: CurrentActor) -> bool:
+    return not actor.is_guest and actor.role == "admin"
+
+
+def _manager_user_id_from_actor(actor: CurrentActor) -> str:
+    if actor.is_guest:
+        return GUEST_MANAGER_USER_ID
+    if actor.user_id:
+        return actor.user_id
+    raise HTTPException(status_code=403, detail="当前账号缺少可用的 user_id。")
+
+
+def _runtime_state_manager_user_id(state_data: dict[str, Any], state_key: str) -> str:
+    manager_user_id = state_data.get("manager_user_id")
+    if manager_user_id:
+        return str(manager_user_id)
+
+    owner_user_id = state_data.get("owner_user_id")
+    if owner_user_id:
+        return str(owner_user_id)
+
+    return (
+        weixin_clawbot_user_id_from_state_key(state_key)
+        or GUEST_MANAGER_USER_ID
+    )
+
+
+def _ensure_runtime_state_access(
+    *,
+    actor: CurrentActor,
+    state_key: str,
+    state_data: dict[str, Any],
+) -> None:
+    if _is_admin(actor):
+        return
+    manager_user_id = _runtime_state_manager_user_id(state_data, state_key)
+    if manager_user_id != _manager_user_id_from_actor(actor):
+        raise HTTPException(status_code=404, detail="Weixin ClawBot user not found")
+
+
+def _session_manager_user_id(
+    channel_store: ChannelStore,
+    channel_session: ChannelSession,
+) -> str:
+    manager_user_id = getattr(channel_session, "manager_user_id", None)
+    if manager_user_id:
+        return str(manager_user_id)
+
+    if channel_session.channel == WEIXIN_CLAWBOT_CHANNEL:
+        states = channel_store.list_runtime_states(channel=WEIXIN_CLAWBOT_CHANNEL)
+        for state in states:
+            state_data = state.data or {}
+            owner_user_id = state_data.get("owner_user_id")
+            if owner_user_id and str(owner_user_id) == channel_session.user_id:
+                return _runtime_state_manager_user_id(state_data, state.state_key)
+
+    return channel_session.user_id
+
+
+def _ensure_session_access(
+    *,
+    actor: CurrentActor,
+    channel_store: ChannelStore,
+    channel_session: ChannelSession,
+) -> None:
+    if _is_admin(actor):
+        return
+    if _session_manager_user_id(channel_store, channel_session) != _manager_user_id_from_actor(actor):
+        raise HTTPException(status_code=404, detail="Channel session not found")
 
 
 async def _call_weixin_clawbot_api(
@@ -120,13 +196,22 @@ def create_channels_router(
         )
 
     @router.post("/weixin-clawbot/users/{user_id}/qrcode")
-    async def weixin_clawbot_user_qrcode(user_id: str):
+    async def weixin_clawbot_user_qrcode(
+        user_id: str,
+        actor: CurrentActor = Depends(get_current_actor),
+    ):
         client = weixin_client or WeixinClawBotClient()
         state_key = weixin_clawbot_user_state_key(user_id)
         runtime_state = channel_store.get_runtime_state(
             channel=WEIXIN_CLAWBOT_CHANNEL,
             state_key=state_key,
         )
+        if runtime_state is not None:
+            _ensure_runtime_state_access(
+                actor=actor,
+                state_key=state_key,
+                state_data=runtime_state.data or {},
+            )
         saved_bot_token = (
             runtime_state.data.get("bot_token")
             if runtime_state is not None and runtime_state.data
@@ -144,6 +229,7 @@ def create_channels_router(
             state_key=state_key,
             data={
                 "owner_user_id": user_id,
+                "manager_user_id": _manager_user_id_from_actor(actor),
                 "qrcode": qrcode,
                 "qrcode_url": qrcode_url,
             },
@@ -159,6 +245,7 @@ def create_channels_router(
         user_id: str,
         qrcode: str | None = None,
         verify_code: str | None = None,
+        actor: CurrentActor = Depends(get_current_actor),
     ):
         state_key = weixin_clawbot_user_state_key(user_id)
         runtime_state = channel_store.get_runtime_state(
@@ -166,6 +253,12 @@ def create_channels_router(
             state_key=state_key,
         )
         state_data = runtime_state.data if runtime_state is not None else {}
+        if runtime_state is not None:
+            _ensure_runtime_state_access(
+                actor=actor,
+                state_key=state_key,
+                state_data=state_data,
+            )
         if state_data.get("bot_token"):
             base_url = str(state_data.get("base_url") or "").rstrip("/")
             return {
@@ -190,6 +283,7 @@ def create_channels_router(
         )
         update_data = {
             "owner_user_id": user_id,
+            "manager_user_id": _manager_user_id_from_actor(actor),
             "qrcode": login_qrcode,
         }
         if status.get("bot_token"):
@@ -213,15 +307,26 @@ def create_channels_router(
         "/weixin-clawbot/users",
         response_model=WeixinClawBotBoundUserList,
     )
-    async def list_weixin_clawbot_users():
+    async def list_weixin_clawbot_users(
+        actor: CurrentActor = Depends(get_current_actor),
+    ):
         states = channel_store.list_runtime_states(channel=WEIXIN_CLAWBOT_CHANNEL)
         items: list[WeixinClawBotBoundUserRead] = []
+        current_manager_user_id: str | None = None
+        if not _is_admin(actor):
+            current_manager_user_id = _manager_user_id_from_actor(actor)
         for state in states:
             state_user_id = weixin_clawbot_user_id_from_state_key(state.state_key)
             if state_user_id is None:
                 continue
 
             state_data = state.data or {}
+            if (
+                current_manager_user_id is not None
+                and _runtime_state_manager_user_id(state_data, state.state_key)
+                != current_manager_user_id
+            ):
+                continue
             user_id = str(state_data.get("owner_user_id") or state_user_id)
             bot_token = state_data.get("bot_token")
             connected = bool(bot_token)
@@ -244,7 +349,10 @@ def create_channels_router(
         "/weixin-clawbot/users/{user_id}",
         response_model=WeixinClawBotBoundUserDeleteResponse,
     )
-    async def delete_weixin_clawbot_user(user_id: str):
+    async def delete_weixin_clawbot_user(
+        user_id: str,
+        actor: CurrentActor = Depends(get_current_actor),
+    ):
         state_key = weixin_clawbot_user_state_key(user_id)
         runtime_state = channel_store.get_runtime_state(
             channel=WEIXIN_CLAWBOT_CHANNEL,
@@ -252,6 +360,11 @@ def create_channels_router(
         )
         if runtime_state is None:
             raise HTTPException(status_code=404, detail="Weixin ClawBot user not found")
+        _ensure_runtime_state_access(
+            actor=actor,
+            state_key=state_key,
+            state_data=runtime_state.data or {},
+        )
 
         await stop_weixin_clawbot_runtime(state_key)
         deleted = channel_store.delete_runtime_state(
@@ -287,19 +400,34 @@ def create_channels_router(
         }
 
     @router.get("/sessions", response_model=ChannelSessionList)
-    async def list_sessions():
+    async def list_sessions(
+        actor: CurrentActor = Depends(get_current_actor),
+    ):
         sessions = [
             ChannelSessionRead.model_validate(item)
             for item in channel_store.list_sessions()
+            if _is_admin(actor)
+            or _session_manager_user_id(channel_store, item)
+            == _manager_user_id_from_actor(actor)
         ]
         return ChannelSessionList(items=sessions, total=len(sessions))
 
     @router.patch("/sessions/{session_id}", response_model=ChannelSessionRead)
-    async def update_session(session_id: str, update: ChannelSessionUpdate):
+    async def update_session(
+        session_id: str,
+        update: ChannelSessionUpdate,
+        actor: CurrentActor = Depends(get_current_actor),
+    ):
+        channel_session = channel_store.get_session_by_session_id(session_id)
+        if channel_session is None:
+            raise HTTPException(status_code=404, detail="Channel session not found")
+        _ensure_session_access(
+            actor=actor,
+            channel_store=channel_store,
+            channel_session=channel_session,
+        )
+
         if update.reply_mode is None:
-            channel_session = channel_store.get_session_by_session_id(session_id)
-            if channel_session is None:
-                raise HTTPException(status_code=404, detail="Channel session not found")
             return ChannelSessionRead.model_validate(channel_session)
 
         try:

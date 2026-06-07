@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 if __package__ in {None, ""}:
@@ -58,6 +59,19 @@ def init_agent_env():
     return checkpointer, store
 
 
+def _register_exported_html_routes(app: FastAPI, frontend_dir: Path) -> None:
+    for html_file in frontend_dir.glob("*.html"):
+        if html_file.name in {"index.html", "404.html"}:
+            continue
+
+        route_path = f"/{html_file.stem}"
+
+        async def serve_exported_page(file_path=html_file):
+            return FileResponse(file_path)
+
+        app.get(route_path, include_in_schema=False)(serve_exported_page)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_observability()
@@ -87,6 +101,7 @@ def create_app() -> FastAPI:
     app.include_router(create_knowledge_bases_router())
     next_frontend_path = root_dir / "frontend" / "out"
     if next_frontend_path.exists():
+        _register_exported_html_routes(app, next_frontend_path)
         app.mount(
             "/",
             StaticFiles(

@@ -30,6 +30,29 @@ class AuthStore:
         self.engine = create_engine(db_url, echo=False, **engine_kwargs)
         SQLModel.metadata.create_all(self.engine)
 
+    def reconcile_access_token_expiry(self, *, expire_days: int) -> None:
+        max_lifetime = timedelta(days=expire_days)
+        now = utc_now()
+        with Session(self.engine) as session:
+            records = list(session.exec(select(AccessTokenRecord)).all())
+            changed = False
+            for record in records:
+                normalized_expires_at = min(
+                    record.expires_at,
+                    record.created_at + max_lifetime,
+                )
+                if normalized_expires_at <= now:
+                    session.delete(record)
+                    changed = True
+                    continue
+                if normalized_expires_at != record.expires_at:
+                    record.expires_at = normalized_expires_at
+                    session.add(record)
+                    changed = True
+
+            if changed:
+                session.commit()
+
     def get_user_by_email(self, email: str) -> AuthUser | None:
         with Session(self.engine) as session:
             statement = select(AuthUser).where(AuthUser.email == email)
@@ -167,6 +190,8 @@ class AuthStore:
             if record is None:
                 raise ValueError("登录状态已失效，请重新登录。")
             if record.expires_at <= utc_now():
+                session.delete(record)
+                session.commit()
                 raise ValueError("登录状态已失效，请重新登录。")
 
             user = session.exec(

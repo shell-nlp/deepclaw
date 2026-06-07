@@ -21,10 +21,11 @@ import type {
   WeixinClawBotQrcodeResponse,
   WeixinClawBotQrcodeStatusResponse,
 } from './types'
-import { fetchJson, formatDateTime, getApiUrl } from './utils'
+import { formatDateTime } from './utils'
 
 interface ChannelManagementViewProps {
   userId: string
+  requestJson: <T>(path: string, init?: RequestInit) => Promise<T>
 }
 
 function getResponseQrcodeUrl(
@@ -72,7 +73,10 @@ function formatRawStatus(status?: WeixinClawBotQrcodeStatusResponse | null): str
   )
 }
 
-export function ChannelManagementView({ userId }: ChannelManagementViewProps) {
+export function ChannelManagementView({
+  userId,
+  requestJson,
+}: ChannelManagementViewProps) {
   const [targetUserId, setTargetUserId] = useState(userId)
   const [boundUsers, setBoundUsers] = useState<WeixinClawBotBoundUser[]>([])
   const [qrcode, setQrcode] = useState<WeixinClawBotQrcodeResponse | null>(null)
@@ -107,8 +111,8 @@ export function ChannelManagementView({ userId }: ChannelManagementViewProps) {
     setLoadingUsers(true)
     setError('')
     try {
-      const response = await fetchJson<WeixinClawBotBoundUserListResponse>(
-        getApiUrl(WEIXIN_CLAWBOT_USERS_API_PATH)
+      const response = await requestJson<WeixinClawBotBoundUserListResponse>(
+        WEIXIN_CLAWBOT_USERS_API_PATH
       )
       setBoundUsers(response.items)
     } catch (nextError) {
@@ -116,7 +120,7 @@ export function ChannelManagementView({ userId }: ChannelManagementViewProps) {
     } finally {
       setLoadingUsers(false)
     }
-  }, [])
+  }, [requestJson])
 
   const checkStatus = useCallback(
     async (userIdToCheck = targetUserId) => {
@@ -129,8 +133,8 @@ export function ChannelManagementView({ userId }: ChannelManagementViewProps) {
       setCheckingStatus(true)
       setError('')
       try {
-        const nextStatus = await fetchJson<WeixinClawBotQrcodeStatusResponse>(
-          getApiUrl(WEIXIN_CLAWBOT_USER_QRCODE_STATUS_API_PATH(normalizedUserId))
+        const nextStatus = await requestJson<WeixinClawBotQrcodeStatusResponse>(
+          WEIXIN_CLAWBOT_USER_QRCODE_STATUS_API_PATH(normalizedUserId)
         )
         setStatus(nextStatus)
         const nextQrcodeUrl = getResponseQrcodeUrl(nextStatus)
@@ -155,7 +159,7 @@ export function ChannelManagementView({ userId }: ChannelManagementViewProps) {
         setCheckingStatus(false)
       }
     },
-    [loadBoundUsers, targetUserId]
+    [loadBoundUsers, requestJson, targetUserId]
   )
 
   const generateQrcode = useCallback(
@@ -172,8 +176,8 @@ export function ChannelManagementView({ userId }: ChannelManagementViewProps) {
       setNotice('')
       setStatus(null)
       try {
-        const nextQrcode = await fetchJson<WeixinClawBotQrcodeResponse>(
-          getApiUrl(WEIXIN_CLAWBOT_USER_QRCODE_API_PATH(normalizedUserId)),
+        const nextQrcode = await requestJson<WeixinClawBotQrcodeResponse>(
+          WEIXIN_CLAWBOT_USER_QRCODE_API_PATH(normalizedUserId),
           { method: 'POST' }
         )
         setQrcode(nextQrcode)
@@ -187,7 +191,7 @@ export function ChannelManagementView({ userId }: ChannelManagementViewProps) {
         setLoadingQrcode(false)
       }
     },
-    [loadBoundUsers, targetUserId]
+    [loadBoundUsers, requestJson, targetUserId]
   )
 
   const deleteBoundUser = useCallback(
@@ -202,8 +206,8 @@ export function ChannelManagementView({ userId }: ChannelManagementViewProps) {
       setDeletingUserId(userIdToDelete)
       setError('')
       try {
-        await fetchJson<WeixinClawBotBoundUserDeleteResponse>(
-          getApiUrl(WEIXIN_CLAWBOT_USER_API_PATH(userIdToDelete)),
+        await requestJson<WeixinClawBotBoundUserDeleteResponse>(
+          WEIXIN_CLAWBOT_USER_API_PATH(userIdToDelete),
           { method: 'DELETE' }
         )
         setNotice(`用户 ${userIdToDelete} 的微信绑定已删除。`)
@@ -219,11 +223,19 @@ export function ChannelManagementView({ userId }: ChannelManagementViewProps) {
         setDeletingUserId('')
       }
     },
-    [loadBoundUsers, targetUserId]
+    [loadBoundUsers, requestJson, targetUserId]
   )
 
   useEffect(() => {
     setTargetUserId(userId)
+    setBoundUsers([])
+    setQrcode(null)
+    setStatus(null)
+    setQrcodeDataUrl('')
+    setAutoPolling(false)
+    setNotice('')
+    setError('')
+    setDeletingUserId('')
   }, [userId])
 
   useEffect(() => {

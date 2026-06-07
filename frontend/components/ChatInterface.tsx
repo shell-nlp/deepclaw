@@ -1990,7 +1990,10 @@ export default function ChatInterface() {
             </div>
           ) : viewMode === 'channels' ? (
             <div className={styles.managementViewport}>
-              <ChannelManagementView userId={currentUserId} />
+              <ChannelManagementView
+                userId={currentUserId}
+                requestJson={requestJson}
+              />
             </div>
           ) : knowledgePage === 'users' ? (
             <div className={styles.managementViewport}>

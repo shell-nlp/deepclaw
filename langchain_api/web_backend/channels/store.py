@@ -2,6 +2,7 @@ import os
 import uuid
 from typing import Optional
 
+from sqlalchemy import inspect, text
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
@@ -35,6 +36,7 @@ class ChannelStore:
 
         self.engine = create_engine(db_url, echo=False, **engine_kwargs)
         SQLModel.metadata.create_all(self.engine)
+        self._ensure_channel_session_schema()
 
     def get_or_create_user(
         self,
@@ -74,6 +76,7 @@ class ChannelStore:
         channel_conversation_id: str,
         channel_user_id: str,
         user_id: str,
+        manager_user_id: str | None = None,
         reply_mode: ReplyMode = "final",
         session_id: str | None = None,
     ) -> ChannelSession:
@@ -86,6 +89,13 @@ class ChannelStore:
             )
             existing = session.exec(statement).first()
             if existing is not None:
+                next_manager_user_id = manager_user_id or existing.user_id
+                if existing.manager_user_id != next_manager_user_id:
+                    existing.manager_user_id = next_manager_user_id
+                    existing.updated_at = utc_now()
+                    session.add(existing)
+                    session.commit()
+                    session.refresh(existing)
                 return existing
 
             now = utc_now()
@@ -94,6 +104,7 @@ class ChannelStore:
                 channel_conversation_id=channel_conversation_id,
                 channel_user_id=channel_user_id,
                 user_id=user_id,
+                manager_user_id=manager_user_id or user_id,
                 session_id=session_id or str(uuid.uuid4()),
                 reply_mode=reply_mode,
                 created_at=now,
@@ -236,9 +247,13 @@ class ChannelStore:
             session.commit()
             return True
 
-    def list_sessions(self) -> list[ChannelSession]:
+    def list_sessions(self, manager_user_id: str | None = None) -> list[ChannelSession]:
         with Session(self.engine) as session:
             statement = select(ChannelSession).order_by(ChannelSession.updated_at.desc())
+            if manager_user_id is not None:
+                statement = statement.where(
+                    ChannelSession.manager_user_id == manager_user_id
+                )
             return list(session.exec(statement).all())
 
     def get_session_by_session_id(self, session_id: str) -> ChannelSession | None:
@@ -271,6 +286,31 @@ class ChannelStore:
     def _validate_reply_mode(reply_mode: str) -> None:
         if reply_mode not in VALID_REPLY_MODES:
             raise ValueError(f"Invalid reply_mode: {reply_mode}")
+
+    def _ensure_channel_session_schema(self) -> None:
+        inspector = inspect(self.engine)
+        try:
+            columns = {column["name"] for column in inspector.get_columns("channel_sessions")}
+        except Exception:
+            return
+
+        if "manager_user_id" in columns:
+            return
+
+        with self.engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE channel_sessions "
+                    "ADD COLUMN manager_user_id VARCHAR"
+                )
+            )
+            connection.execute(
+                text(
+                    "UPDATE channel_sessions "
+                    "SET manager_user_id = user_id "
+                    "WHERE manager_user_id IS NULL OR manager_user_id = ''"
+                )
+            )
 
 
 _store: ChannelStore | None = None

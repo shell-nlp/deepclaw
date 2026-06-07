@@ -26,6 +26,21 @@ def weixin_clawbot_user_id_from_state_key(state_key: str) -> str | None:
     return user_id or None
 
 
+def weixin_clawbot_manager_user_id_from_state(
+    state_key: str,
+    state: dict[str, Any],
+) -> str | None:
+    manager_user_id = state.get("manager_user_id")
+    if manager_user_id:
+        return str(manager_user_id)
+
+    owner_user_id = state.get("owner_user_id")
+    if owner_user_id:
+        return str(owner_user_id)
+
+    return weixin_clawbot_user_id_from_state_key(state_key)
+
+
 async def fetch_startup_qrcode(
     *,
     client: WeixinClawBotClient | None = None,
@@ -68,6 +83,9 @@ class WeixinClawBotRuntime:
             or self._optional_string(state.get("owner_user_id"))
             or weixin_clawbot_user_id_from_state_key(state_key)
         )
+        self.manager_user_id = self._optional_string(
+            weixin_clawbot_manager_user_id_from_state(state_key, state)
+        )
         self.bot_token: str | None = self._optional_string(state.get("bot_token"))
         self.get_updates_buf = str(state.get("get_updates_buf") or "")
         if state.get("base_url"):
@@ -102,6 +120,7 @@ class WeixinClawBotRuntime:
         self._save_runtime_state()
         for message in adapter.iter_text_messages(updates):
             message.user_id = self.owner_user_id
+            message.manager_user_id = self.manager_user_id or self.owner_user_id
             await self.service.process_message(message, adapter)
         return True
 
@@ -142,6 +161,7 @@ class WeixinClawBotRuntime:
                 "base_url": getattr(self.client, "base_url", None),
                 "get_updates_buf": self.get_updates_buf,
                 "owner_user_id": self.owner_user_id,
+                "manager_user_id": self.manager_user_id,
             },
         )
 

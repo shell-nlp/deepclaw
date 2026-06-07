@@ -3,6 +3,7 @@ import {
   AUTH_LOGOUT_API_PATH,
   AUTH_ME_API_PATH,
   AUTH_REGISTER_API_PATH,
+  AUTH_REMEMBER_LOGIN_STORAGE_KEY,
   AUTH_TOKEN_STORAGE_KEY,
 } from './constants'
 import type { AuthLoginResponse, AuthUserSummary } from './types'
@@ -31,6 +32,11 @@ export interface ActorCapabilities {
   canManageSkills: boolean
   canManageUsers: boolean
   requiresLoginMessage: string
+}
+
+export interface RememberedLogin {
+  email: string
+  password: string
 }
 
 export function buildAuthorizationHeaders(token: string | null | undefined): HeadersInit {
@@ -98,6 +104,38 @@ export function storeAuthToken(token: string): void {
 export function clearStoredAuthToken(): void {
   if (typeof window === 'undefined') return
   localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
+}
+
+export function getRememberedLogin(): RememberedLogin | null {
+  if (typeof window === 'undefined') return null
+  const raw = localStorage.getItem(AUTH_REMEMBER_LOGIN_STORAGE_KEY)
+  if (!raw) return null
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<RememberedLogin>
+    const email = typeof parsed.email === 'string' ? parsed.email.trim().toLowerCase() : ''
+    const password = typeof parsed.password === 'string' ? parsed.password : ''
+    if (!email || !password) return null
+    return { email, password }
+  } catch {
+    return null
+  }
+}
+
+export function storeRememberedLogin(login: RememberedLogin): void {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(
+    AUTH_REMEMBER_LOGIN_STORAGE_KEY,
+    JSON.stringify({
+      email: login.email.trim().toLowerCase(),
+      password: login.password,
+    })
+  )
+}
+
+export function clearRememberedLogin(): void {
+  if (typeof window === 'undefined') return
+  localStorage.removeItem(AUTH_REMEMBER_LOGIN_STORAGE_KEY)
 }
 
 export async function submitAuthRequest(

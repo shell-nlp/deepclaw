@@ -46,6 +46,7 @@ class ChannelSession(SQLModel, table=True):
     channel_conversation_id: str = Field(index=True)
     channel_user_id: str = Field(index=True)
     user_id: str = Field(index=True)
+    manager_user_id: str = Field(index=True)
     session_id: str = Field(index=True, unique=True)
     reply_mode: str = Field(default="final")
     created_at: datetime = Field(default_factory=utc_now)
@@ -90,6 +91,7 @@ class ChannelMessage(BaseModel):
     channel_conversation_id: str
     text: str
     user_id: str | None = None
+    manager_user_id: str | None = None
     message_type: str = "text"
     raw: dict[str, Any] | None = None
 
@@ -111,6 +113,7 @@ class ChannelSessionRead(BaseModel):
     channel_conversation_id: str
     channel_user_id: str
     user_id: str
+    manager_user_id: str
     session_id: str
     reply_mode: str
     created_at: datetime

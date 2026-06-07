@@ -41,6 +41,7 @@ export const DOCUMENT_PAGE_SIZE = 10
 export const DOCUMENT_CHUNK_PAGE_SIZE = 8
 export const DEFAULT_KNOWLEDGE_PAGE: KnowledgePage = 'libraries'
 export const AUTH_TOKEN_STORAGE_KEY = 'rag_auth_token'
+export const AUTH_REMEMBER_LOGIN_STORAGE_KEY = 'rag_remember_login'
 export const DEFAULT_MCP_CONFIG_TEMPLATE = `{
   "mcpServers": {
     "cdp-bridge": {

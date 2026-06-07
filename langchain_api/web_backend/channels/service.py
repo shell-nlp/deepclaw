@@ -42,6 +42,7 @@ class ChannelService:
             channel_conversation_id=self._routing_conversation_id(message),
             channel_user_id=self._routing_channel_user_id(message),
             user_id=user.user_id,
+            manager_user_id=message.manager_user_id or user.user_id,
             reply_mode=self._default_reply_mode(message),
         )
 
