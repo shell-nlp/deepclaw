@@ -3,6 +3,15 @@ import type { KnowledgePage } from './types'
 export const DEFAULT_BACKEND_URL = 'http://localhost:7869'
 export const DEFAULT_AGENT_API_PATH = '/api/agent/general_api'
 export const DEFAULT_RAG_API_PATH = '/api/rag/general_api'
+export const AUTH_LOGIN_API_PATH = '/api/auth/login'
+export const AUTH_REGISTER_API_PATH = '/api/auth/register'
+export const AUTH_LOGOUT_API_PATH = '/api/auth/logout'
+export const AUTH_ME_API_PATH = '/api/auth/me'
+export const AUTH_USERS_CREATE_API_PATH = '/api/auth/users/create'
+export const AUTH_USERS_LIST_API_PATH = '/api/auth/users/list'
+export const AUTH_USERS_UPDATE_ROLE_API_PATH = '/api/auth/users/update-role'
+export const AUTH_USERS_UPDATE_STATUS_API_PATH = '/api/auth/users/update-status'
+export const AUTH_USERS_RESET_PASSWORD_API_PATH = '/api/auth/users/reset-password'
 export const SKILL_LIST_API_PATH = '/api/agent/skills/list'
 export const SKILL_UPLOAD_API_PATH = '/api/agent/skills/upload'
 export const SKILL_DELETE_API_PATH = '/api/agent/skills/delete'
@@ -31,6 +40,7 @@ export const KNOWLEDGE_BASE_PAGE_SIZE = 8
 export const DOCUMENT_PAGE_SIZE = 10
 export const DOCUMENT_CHUNK_PAGE_SIZE = 8
 export const DEFAULT_KNOWLEDGE_PAGE: KnowledgePage = 'libraries'
+export const AUTH_TOKEN_STORAGE_KEY = 'rag_auth_token'
 export const DEFAULT_MCP_CONFIG_TEMPLATE = `{
   "mcpServers": {
     "cdp-bridge": {

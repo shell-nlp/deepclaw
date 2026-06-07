@@ -13,6 +13,8 @@ interface SkillManagementViewProps {
   loadingSkills: boolean
   skillNotice: string
   skillError: string
+  canManageSkills: boolean
+  disabledMessage: string
   uploadInputRef: Ref<HTMLInputElement>
   onOpenUploadDialog: () => void
   onUploadSkills: (event: ChangeEvent<HTMLInputElement>) => void | Promise<void>
@@ -26,6 +28,8 @@ export function SkillManagementView({
   loadingSkills,
   skillNotice,
   skillError,
+  canManageSkills,
+  disabledMessage,
   uploadInputRef,
   onOpenUploadDialog,
   onUploadSkills,
@@ -38,14 +42,14 @@ export function SkillManagementView({
           <span className={styles.managementHeroEyebrow}>Skill Management</span>
           <h2>上传、查看和删除工作区技能</h2>
           <p>
-            上传的 zip 包会自动解压到工作空间的 `skills` 目录。压缩包根目录必须包含
+            上传的 zip 包会自动解压到工作区 `skills` 目录。压缩包根目录必须包含
             `SKILL.md`，每个压缩包对应一个技能目录。
           </p>
         </div>
         <div className={styles.managementHeroActions}>
           <button
             className={styles.managementButton}
-            disabled={uploadingSkills}
+            disabled={!canManageSkills || uploadingSkills}
             onClick={onOpenUploadDialog}
           >
             {uploadingSkills ? '上传中...' : '上传技能 zip'}
@@ -61,6 +65,9 @@ export function SkillManagementView({
       </section>
 
       <div className={styles.managementNoticeRow}>
+        {!canManageSkills ? (
+          <div className={styles.managementNotice}>{disabledMessage}</div>
+        ) : null}
         {skillNotice ? <div className={styles.managementNotice}>{skillNotice}</div> : null}
         {skillError ? <div className={styles.managementError}>{skillError}</div> : null}
       </div>
@@ -69,7 +76,7 @@ export function SkillManagementView({
         <div className={styles.managementSummaryCard}>
           <span className={styles.managementSummaryLabel}>技能总数</span>
           <strong className={styles.managementSummaryValue}>{total}</strong>
-          <span className={styles.managementMeta}>当前工作区已安装技能目录数量</span>
+          <span className={styles.managementMeta}>当前工作区已安装的技能目录数量</span>
         </div>
         <div className={styles.managementSummaryCard}>
           <span className={styles.managementSummaryLabel}>存放位置</span>
@@ -86,7 +93,7 @@ export function SkillManagementView({
           <strong className={styles.managementSummaryValue}>
             {loadingSkills ? '刷新中' : '已就绪'}
           </strong>
-          <span className={styles.managementMeta}>技能目录变更后会自动刷新列表</span>
+          <span className={styles.managementMeta}>技能目录变化后会自动刷新列表</span>
         </div>
       </div>
 
@@ -99,7 +106,7 @@ export function SkillManagementView({
         </div>
         <div className={styles.managementCardGrid}>
           {skills.length === 0 ? (
-            <div className={styles.managementEmpty}>当前工作区还没有已安装技能</div>
+            <div className={styles.managementEmpty}>当前工作区还没有已安装技能。</div>
           ) : (
             skills.map((skill) => (
               <div key={skill.skill_name} className={styles.managementTileCard}>
@@ -118,6 +125,7 @@ export function SkillManagementView({
                 <div className={styles.managementActionRow}>
                   <button
                     className={styles.managementDangerMinorButton}
+                    disabled={!canManageSkills}
                     onClick={() => void onDeleteSkill(skill.skill_name)}
                   >
                     删除技能

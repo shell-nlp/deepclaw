@@ -1,0 +1,404 @@
+.page {
+  position: relative;
+  min-height: 100vh;
+  overflow: auto;
+  background:
+    radial-gradient(circle at top left, rgba(35, 93, 73, 0.18), transparent 26%),
+    radial-gradient(circle at top right, rgba(196, 139, 38, 0.16), transparent 20%),
+    linear-gradient(180deg, #f5f4ee 0%, #ebe6da 100%);
+}
+
+.grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(31, 41, 55, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(31, 41, 55, 0.05) 1px, transparent 1px);
+  background-size: 36px 36px;
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.glowPrimary,
+.glowSecondary {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(40px);
+  pointer-events: none;
+}
+
+.glowPrimary {
+  top: 12%;
+  left: 6%;
+  width: 24rem;
+  height: 24rem;
+  background: radial-gradient(circle, rgba(15, 118, 110, 0.18), transparent 65%);
+}
+
+.glowSecondary {
+  right: 8%;
+  bottom: 12%;
+  width: 22rem;
+  height: 22rem;
+  background: radial-gradient(circle, rgba(180, 83, 9, 0.14), transparent 62%);
+}
+
+.shell {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(360px, 460px);
+  gap: 2rem;
+  align-items: center;
+  padding: 2rem;
+}
+
+.brandPanel,
+.card {
+  border: 1px solid rgba(56, 67, 54, 0.12);
+  border-radius: 32px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(18px);
+}
+
+.brandPanel {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  min-height: 560px;
+  padding: 2.5rem;
+}
+
+.brandPanel::after {
+  content: '';
+  position: absolute;
+  inset: auto -8% -18% auto;
+  width: 18rem;
+  height: 18rem;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(35, 93, 73, 0.12), transparent 68%);
+}
+
+.brandBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 4rem;
+  height: 4rem;
+  border-radius: 1.4rem;
+  background: linear-gradient(135deg, #235d49 0%, #0f766e 100%);
+  color: #f8fafc;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  box-shadow: 0 18px 35px rgba(15, 118, 110, 0.22);
+}
+
+.brandCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 40rem;
+}
+
+.kicker,
+.cardEyebrow {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.kicker {
+  color: #0f766e;
+}
+
+.brandCopy h1 {
+  margin: 0;
+  font-size: clamp(2.4rem, 4vw, 4rem);
+  line-height: 1.05;
+  color: #1f2937;
+}
+
+.description {
+  margin: 0;
+  max-width: 34rem;
+  color: #5b6473;
+  font-size: 1rem;
+  line-height: 1.8;
+}
+
+.featureList {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.featureCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 1.1rem 1rem;
+  border-radius: 22px;
+  background: rgba(248, 250, 246, 0.92);
+  border: 1px solid rgba(56, 67, 54, 0.1);
+}
+
+.featureCard strong {
+  color: #1f2937;
+  font-size: 0.96rem;
+}
+
+.featureCard span {
+  color: #5b6473;
+  font-size: 0.88rem;
+  line-height: 1.7;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 2rem;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.cardHeader h2 {
+  margin: 0.35rem 0 0;
+  font-size: 1.9rem;
+  color: #1f2937;
+}
+
+.cardEyebrow {
+  color: #8b5e1a;
+}
+
+.ghostButton,
+.modeTab,
+.primaryButton,
+.secondaryButton,
+.dangerButton {
+  border: none;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+}
+
+.ghostButton,
+.modeTab,
+.secondaryButton {
+  border: 1px solid rgba(56, 67, 54, 0.12);
+  background: rgba(255, 255, 255, 0.88);
+  color: #243041;
+}
+
+.ghostButton,
+.primaryButton,
+.secondaryButton,
+.dangerButton {
+  border-radius: 999px;
+  padding: 0.8rem 1.15rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.modeTab:hover,
+.ghostButton:hover,
+.primaryButton:hover,
+.secondaryButton:hover,
+.dangerButton:hover {
+  transform: translateY(-1px);
+}
+
+.ghostButton,
+.secondaryButton {
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+}
+
+.primaryButton {
+  background: linear-gradient(135deg, #235d49 0%, #0f766e 100%);
+  color: #f8fafc;
+  box-shadow: 0 18px 30px rgba(15, 118, 110, 0.2);
+}
+
+.dangerButton {
+  background: rgba(185, 28, 28, 0.08);
+  color: #b91c1c;
+  box-shadow: 0 8px 20px rgba(185, 28, 28, 0.08);
+}
+
+.modeTabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.modeTab {
+  border-radius: 16px;
+  padding: 0.85rem 1rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.modeTabActive {
+  background: linear-gradient(135deg, #235d49 0%, #0f766e 100%);
+  border-color: transparent;
+  color: #f8fafc;
+  box-shadow: 0 16px 26px rgba(15, 118, 110, 0.18);
+}
+
+.form,
+.accountCard {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.field span {
+  color: #374151;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.field input {
+  width: 100%;
+  border: 1px solid rgba(56, 67, 54, 0.16);
+  border-radius: 18px;
+  padding: 0.95rem 1rem;
+  background: rgba(250, 250, 248, 0.96);
+  color: #1f2937;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.field input:focus {
+  border-color: rgba(15, 118, 110, 0.55);
+  box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.12);
+}
+
+.notice,
+.error,
+.sessionPlaceholder {
+  padding: 0.95rem 1rem;
+  border-radius: 18px;
+  font-size: 0.92rem;
+  line-height: 1.7;
+}
+
+.notice {
+  background: rgba(15, 118, 110, 0.08);
+  border: 1px solid rgba(15, 118, 110, 0.15);
+  color: #115e59;
+}
+
+.error {
+  background: rgba(185, 28, 28, 0.08);
+  border: 1px solid rgba(185, 28, 28, 0.14);
+  color: #b91c1c;
+}
+
+.sessionPlaceholder {
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px dashed rgba(56, 67, 54, 0.14);
+  color: #5b6473;
+}
+
+.helperText {
+  margin: 0;
+  color: #5b6473;
+  font-size: 0.9rem;
+  line-height: 1.8;
+}
+
+.accountMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 1.25rem;
+  border-radius: 24px;
+  background: rgba(248, 250, 246, 0.92);
+  border: 1px solid rgba(56, 67, 54, 0.1);
+}
+
+.accountMeta strong {
+  font-size: 1.1rem;
+  color: #1f2937;
+}
+
+.accountMeta span {
+  color: #5b6473;
+  font-size: 0.92rem;
+}
+
+.accountRole {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.1);
+  color: #0f766e;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.actionRow {
+  display: flex;
+  gap: 0.85rem;
+}
+
+@media (max-width: 1120px) {
+  .shell {
+    grid-template-columns: 1fr;
+    padding: 1.5rem;
+  }
+
+  .brandPanel {
+    min-height: unset;
+  }
+
+  .featureList {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .shell {
+    gap: 1rem;
+    padding: 1rem;
+  }
+
+  .brandPanel,
+  .card {
+    padding: 1.35rem;
+    border-radius: 24px;
+  }
+
+  .cardHeader,
+  .actionRow {
+    flex-direction: column;
+  }
+
+  .ghostButton,
+  .primaryButton,
+  .secondaryButton,
+  .dangerButton {
+    width: 100%;
+    justify-content: center;
+  }
+}

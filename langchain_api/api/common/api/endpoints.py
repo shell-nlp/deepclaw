@@ -10,7 +10,7 @@ post : http://localhost:7869/api/general_api (SSE 流式响应)
 
 import uuid
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, Depends, FastAPI
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessageChunk
 from langgraph.graph.state import CompiledStateGraph
@@ -22,6 +22,19 @@ from langchain_api.api.common.schemas.endpoints import (
     GeneralAPIRequest,
     StreamResponse,
 )
+from langchain_api.auth.dependencies import CurrentActor, get_current_actor
+
+GUEST_USER_ID = "guest"
+
+
+def resolve_context_user_id(
+    requested_user_id: str | None, actor: CurrentActor
+) -> str:
+    if actor.is_guest:
+        return GUEST_USER_ID
+    if actor.user_id:
+        return actor.user_id
+    return requested_user_id or GUEST_USER_ID
 
 
 def add_general_api_endpoint(
@@ -71,8 +84,18 @@ def add_general_api_endpoint(
     route_name = name or f"general_api_{path.strip('/').replace('/', '_')}"
 
     @app.post(path, response_model=StreamResponse, name=route_name, tags=tags)
-    async def general_api(request: Request):
-        logger.debug(f"request: \n{request.model_dump_json(indent=2)}")
+    async def general_api(
+        request: Request,
+        actor: CurrentActor = Depends(get_current_actor),
+    ):
+        request_payload = request.model_dump()
+        if "user_id" in request_payload:
+            request_payload["user_id"] = resolve_context_user_id(
+                request_payload.get("user_id"),
+                actor,
+            )
+
+        logger.debug(f"request: \n{Request(**request_payload).model_dump_json(indent=2)}")
         config = {"configurable": {"thread_id": f"{request.session_id}"}}
 
         update = None
@@ -108,7 +131,7 @@ def add_general_api_endpoint(
                 input=input,
                 stream_mode=["messages", "updates"],
                 config=config,
-                context=Context(**request.model_dump()),
+                context=Context(**request_payload),
             ):
                 if mode == "messages":  # 只处理消息流
                     msg: AIMessageChunk
@@ -181,7 +204,7 @@ def add_general_api_endpoint(
                 input=input,
                 stream_mode=["updates"],
                 config=config,
-                context=Context(**request.model_dump()),
+                context=Context(**request_payload),
             ):
                 if mode == "updates":
                     # print(f"\n[Update]: {chunk}")

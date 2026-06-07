@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     # 是否支持工具搜索功能,（与 Claude Code 保持一致）
     USE_TOOL_SEARCH: bool = False
 
+    AUTH_ADMIN_EMAIL: str | None = None
+    AUTH_ADMIN_PASSWORD: str | None = None
+    AUTH_TOKEN_EXPIRE_DAYS: int = 30
+
     model_config = SettingsConfigDict(
         env_file=str(env_path),
         env_file_encoding="utf-8",

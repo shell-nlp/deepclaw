@@ -1,9 +1,10 @@
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from langchain_api.api.agent.schemas.skills import (
     SkillDeleteRequest,
     SkillListRequest,
 )
+from langchain_api.auth.dependencies import get_current_actor
 from langchain_api.agent.skill_manager import (
     SkillDeleteResponse,
     SkillListResponse,
@@ -20,14 +21,19 @@ def add_skill_management_routes(
     router: APIRouter, tags: list[str] | None = None
 ) -> None:
     @router.post("/skills/list", response_model=SkillListResponse, tags=tags)
-    def list_skills(request: SkillListRequest):
+    def list_skills(request: SkillListRequest, actor=Depends(get_current_actor)):
         try:
             return skill_manager.list_skills(search=request.search)
         except ValueError as exc:
             raise _handle_value_error(exc) from exc
 
     @router.post("/skills/upload", response_model=SkillUploadResponse, tags=tags)
-    async def upload_skill(file: UploadFile = File(..., description="Skill zip package")):
+    async def upload_skill(
+        file: UploadFile = File(..., description="Skill zip package"),
+        actor=Depends(get_current_actor),
+    ):
+        if actor.is_guest:
+            raise HTTPException(status_code=403, detail="登录后可上传技能。")
         data = await file.read()
         await file.close()
         try:
@@ -39,7 +45,12 @@ def add_skill_management_routes(
             raise _handle_value_error(exc) from exc
 
     @router.post("/skills/delete", response_model=SkillDeleteResponse, tags=tags)
-    def delete_skill(request: SkillDeleteRequest):
+    def delete_skill(
+        request: SkillDeleteRequest,
+        actor=Depends(get_current_actor),
+    ):
+        if actor.is_guest:
+            raise HTTPException(status_code=403, detail="登录后可删除技能。")
         try:
             return skill_manager.delete_skill(skill_name=request.skill_name)
         except ValueError as exc:

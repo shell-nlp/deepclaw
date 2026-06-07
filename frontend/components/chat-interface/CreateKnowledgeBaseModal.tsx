@@ -5,6 +5,8 @@ interface CreateKnowledgeBaseModalProps {
   knowledgeBaseName: string
   knowledgeBaseDescription: string
   savingKnowledgeBase: boolean
+  createDisabled: boolean
+  disabledMessage: string
   onClose: () => void
   onNameChange: (value: string) => void
   onDescriptionChange: (value: string) => void
@@ -16,6 +18,8 @@ export function CreateKnowledgeBaseModal({
   knowledgeBaseName,
   knowledgeBaseDescription,
   savingKnowledgeBase,
+  createDisabled,
+  disabledMessage,
   onClose,
   onNameChange,
   onDescriptionChange,
@@ -37,23 +41,28 @@ export function CreateKnowledgeBaseModal({
           </button>
         </div>
         <div className={styles.managementForm}>
+          {createDisabled ? (
+            <div className={styles.managementNotice}>{disabledMessage}</div>
+          ) : null}
           <input
             className={styles.managementInput}
             value={knowledgeBaseName}
             onChange={(event) => onNameChange(event.target.value)}
             placeholder="知识库名称"
             autoFocus
+            disabled={createDisabled}
           />
           <input
             className={styles.managementInput}
             value={knowledgeBaseDescription}
             onChange={(event) => onDescriptionChange(event.target.value)}
             placeholder="知识库描述"
+            disabled={createDisabled}
           />
           <div className={styles.managementToolbar}>
             <button
               className={styles.managementButton}
-              disabled={savingKnowledgeBase}
+              disabled={savingKnowledgeBase || createDisabled}
               onClick={() => void onCreate()}
             >
               创建知识库

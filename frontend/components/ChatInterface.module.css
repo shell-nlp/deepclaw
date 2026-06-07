@@ -765,7 +765,7 @@
 
 .header {
   position: relative;
-  z-index: 1;
+  z-index: 60;
   flex-shrink: 0;
   background: var(--bg-card);
   border-bottom: 1px solid var(--border-subtle);
@@ -2949,7 +2949,172 @@ textarea.interruptInput {
     font-size: 12px;
   }
 
-  .managementCard {
+.managementCard {
     padding: 16px;
+  }
+}
+
+.accountEntry {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.88);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.accountEntry:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent-primary);
+}
+
+.accountPanelShell {
+  position: relative;
+  z-index: 4;
+}
+
+.accountAvatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  color: white;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+.accountMeta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  color: var(--text-secondary);
+}
+
+.accountMeta strong {
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.accountMeta span {
+  font-size: 12px;
+}
+
+.accountMenu {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  width: min(360px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  border-radius: 24px;
+  border: 1px solid var(--border-subtle);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(245, 248, 244, 0.96) 100%);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(16px);
+}
+
+.accountMenuActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.accountPanelBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.18);
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+}
+
+.accountPanel {
+  width: min(100%, 440px);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  border-radius: 24px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-lg);
+  max-height: min(720px, calc(100vh - 48px));
+  overflow-y: auto;
+}
+
+.accountHint {
+  margin: 6px 0 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.accountTabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.accountTab {
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border-radius: 14px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.accountTabActive {
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  border-color: transparent;
+  color: white;
+}
+
+.accountForm,
+.accountSection {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.accountRoleBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(79, 70, 229, 0.12);
+  color: var(--accent-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+@media (max-width: 768px) {
+  .accountPanelShell {
+    width: 100%;
+  }
+
+  .accountEntry {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .accountMenu {
+    right: 0;
+    width: min(100vw - 32px, 360px);
   }
 }

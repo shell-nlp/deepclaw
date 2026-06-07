@@ -1,4 +1,4 @@
-import unittest
+import asyncio
 
 from langchain_api.channels.models import ChannelMessage
 
@@ -76,177 +76,177 @@ class FakeClawBotClient:
         return {"ok": True}
 
 
-class WeixinClawBotAdapterTest(unittest.IsolatedAsyncioTestCase):
-    def sample_raw_message(self):
-        return {
-            "message_id": "msg_1",
-            "from_user_id": {"str": "wx_user_1"},
-            "context_token": "ctx_1",
-            "message_item": {
-                "item_list": [
-                    {
-                        "text_item": {
-                            "text": "你好",
-                        }
+def sample_raw_message():
+    return {
+        "message_id": "msg_1",
+        "from_user_id": {"str": "wx_user_1"},
+        "context_token": "ctx_1",
+        "message_item": {
+            "item_list": [
+                {
+                    "text_item": {
+                        "text": "你好",
                     }
-                ]
-            },
-        }
+                }
+            ]
+        },
+    }
 
-    async def test_parse_text_update_message(self):
-        from langchain_api.channels.adapters.weixin_clawbot import (
-            WeixinClawBotAdapter,
-        )
 
-        adapter = WeixinClawBotAdapter(client=FakeClawBotClient(), token="token_1")
+def test_parse_text_update_message():
+    from langchain_api.channels.adapters.weixin_clawbot import WeixinClawBotAdapter
 
-        message = adapter.parse_update_message(self.sample_raw_message())
+    adapter = WeixinClawBotAdapter(client=FakeClawBotClient(), token="token_1")
+    message = adapter.parse_update_message(sample_raw_message())
 
-        self.assertEqual("weixin_clawbot", message.channel)
-        self.assertEqual("msg_1", message.message_id)
-        self.assertEqual("wx_user_1", message.channel_user_id)
-        self.assertEqual("wx_user_1", message.channel_conversation_id)
-        self.assertEqual("你好", message.text)
-        self.assertEqual("ctx_1", message.raw["context_token"])
+    assert message.channel == "weixin_clawbot"
+    assert message.message_id == "msg_1"
+    assert message.channel_user_id == "wx_user_1"
+    assert message.channel_conversation_id == "wx_user_1"
+    assert message.text == "你好"
+    assert message.raw["context_token"] == "ctx_1"
 
-    async def test_send_and_edit_message_use_context_token(self):
-        from langchain_api.channels.adapters.weixin_clawbot import (
-            WeixinClawBotAdapter,
-        )
 
-        client = FakeClawBotClient()
-        adapter = WeixinClawBotAdapter(client=client, token="token_1")
-        message = ChannelMessage(
-            channel="weixin_clawbot",
-            message_id="msg_1",
-            channel_user_id="wx_user_1",
-            channel_conversation_id="wx_user_1",
-            text="你好",
-            raw={"context_token": "ctx_1"},
-        )
+def test_send_and_edit_message_use_context_token():
+    from langchain_api.channels.adapters.weixin_clawbot import WeixinClawBotAdapter
 
+    client = FakeClawBotClient()
+    adapter = WeixinClawBotAdapter(client=client, token="token_1")
+    message = ChannelMessage(
+        channel="weixin_clawbot",
+        message_id="msg_1",
+        channel_user_id="wx_user_1",
+        channel_conversation_id="wx_user_1",
+        text="你好",
+        raw={"context_token": "ctx_1"},
+    )
+
+    async def run():
         reply_id = await adapter.send_message(message, "回复")
         await adapter.edit_message(reply_id, "继续回复")
+        return reply_id
 
-        self.assertEqual("reply_1", reply_id)
-        self.assertEqual(
-            [
-                {
-                    "token": "token_1",
-                    "to_user_id": "wx_user_1",
-                    "context_token": "ctx_1",
-                    "text": "回复",
-                },
-                {
-                    "token": "token_1",
-                    "to_user_id": "wx_user_1",
-                    "context_token": "ctx_1",
-                    "text": "继续回复",
-                },
-            ],
-            client.sent,
-        )
+    reply_id = asyncio.run(run())
 
-    async def test_streaming_updates_reuse_client_id_and_finish_same_message(self):
-        from langchain_api.channels.adapters.weixin_clawbot import (
-            WeixinClawBotAdapter,
-        )
+    assert reply_id == "reply_1"
+    assert client.sent == [
+        {
+            "token": "token_1",
+            "to_user_id": "wx_user_1",
+            "context_token": "ctx_1",
+            "text": "回复",
+        },
+        {
+            "token": "token_1",
+            "to_user_id": "wx_user_1",
+            "context_token": "ctx_1",
+            "text": "继续回复",
+        },
+    ]
 
-        client = FakeClawBotClient()
-        adapter = WeixinClawBotAdapter(client=client, token="token_1")
-        message = ChannelMessage(
-            channel="weixin_clawbot",
-            message_id="msg_1",
-            channel_user_id="wx_user_1",
-            channel_conversation_id="wx_user_1",
-            text="hello",
-            raw={"context_token": "ctx_1"},
-        )
 
+def test_streaming_updates_reuse_client_id_and_finish_same_message():
+    from langchain_api.channels.adapters.weixin_clawbot import WeixinClawBotAdapter
+
+    client = FakeClawBotClient()
+    adapter = WeixinClawBotAdapter(client=client, token="token_1")
+    message = ChannelMessage(
+        channel="weixin_clawbot",
+        message_id="msg_1",
+        channel_user_id="wx_user_1",
+        channel_conversation_id="wx_user_1",
+        text="hello",
+        raw={"context_token": "ctx_1"},
+    )
+
+    async def run():
         reply_id = await adapter.start_message(message, "typing")
         await adapter.edit_message(reply_id, "part one")
         await adapter.edit_message(reply_id, "part one and part two")
         await adapter.finish_message(reply_id, "part one and part two")
+        return reply_id
 
-        self.assertEqual([reply_id, reply_id, reply_id, reply_id], client.client_ids)
-        self.assertEqual([1, 1, 1, 2], client.message_states)
+    reply_id = asyncio.run(run())
 
-    async def test_typing_lifecycle_uses_get_config_and_send_typing(self):
-        from langchain_api.channels.adapters.weixin_clawbot import (
-            WeixinClawBotAdapter,
-        )
+    assert client.client_ids == [reply_id, reply_id, reply_id, reply_id]
+    assert client.message_states == [1, 1, 1, 2]
 
-        client = FakeClawBotClient()
-        adapter = WeixinClawBotAdapter(client=client, token="token_1")
-        message = ChannelMessage(
-            channel="weixin_clawbot",
-            message_id="msg_1",
-            channel_user_id="wx_user_1",
-            channel_conversation_id="wx_user_1",
-            text="hello",
-            raw={"context_token": "ctx_1"},
-        )
 
+def test_typing_lifecycle_uses_get_config_and_send_typing():
+    from langchain_api.channels.adapters.weixin_clawbot import WeixinClawBotAdapter
+
+    client = FakeClawBotClient()
+    adapter = WeixinClawBotAdapter(client=client, token="token_1")
+    message = ChannelMessage(
+        channel="weixin_clawbot",
+        message_id="msg_1",
+        channel_user_id="wx_user_1",
+        channel_conversation_id="wx_user_1",
+        text="hello",
+        raw={"context_token": "ctx_1"},
+    )
+
+    async def run():
         await adapter.start_typing(message)
         await adapter.stop_typing(message)
 
-        self.assertEqual(
-            ["ilink/bot/getconfig", "ilink/bot/sendtyping", "ilink/bot/sendtyping"],
-            [item["path"] for item in client.requests],
-        )
-        self.assertEqual([1, 2], [item["json_body"]["status"] for item in client.requests[1:]])
+    asyncio.run(run())
+
+    assert [item["path"] for item in client.requests] == [
+        "ilink/bot/getconfig",
+        "ilink/bot/sendtyping",
+        "ilink/bot/sendtyping",
+    ]
+    assert [item["json_body"]["status"] for item in client.requests[1:]] == [1, 2]
 
 
-class WeixinClawBotClientTest(unittest.IsolatedAsyncioTestCase):
-    async def test_send_message_posts_ilink_payload(self):
-        from langchain_api.channels.adapters.weixin_clawbot import WeixinClawBotClient
+def test_send_message_posts_ilink_payload():
+    from langchain_api.channels.adapters.weixin_clawbot import WeixinClawBotClient
 
-        client = WeixinClawBotClient(request_json=FakeClawBotClient().request_json)
+    fake = FakeClawBotClient()
+    client = WeixinClawBotClient(request_json=fake.request_json)
 
-        await client.send_message(
+    asyncio.run(
+        client.send_message(
             token="token_1",
             to_user_id="wx_user_1",
             context_token="ctx_1",
             text="回复",
         )
+    )
 
-        request = client.request_json.__self__.requests[0]
-        self.assertEqual("POST", request["method"])
-        self.assertEqual("ilink/bot/sendmessage", request["path"])
-        self.assertEqual("token_1", request["token"])
-        self.assertEqual("wx_user_1", request["json_body"]["msg"]["to_user_id"])
-        self.assertEqual("ctx_1", request["json_body"]["msg"]["context_token"])
-        self.assertEqual(
-            "回复",
-            request["json_body"]["msg"]["item_list"][0]["text_item"]["text"],
-        )
-
-    async def test_fetch_login_qrcode_posts_local_tokens(self):
-        from langchain_api.channels.adapters.weixin_clawbot import WeixinClawBotClient
-
-        fake = FakeClawBotClient()
-        client = WeixinClawBotClient(request_json=fake.request_json)
-
-        await client.fetch_login_qrcode(local_token_list=["old_token"])
-
-        request = fake.requests[0]
-        self.assertEqual("POST", request["method"])
-        self.assertEqual("ilink/bot/get_bot_qrcode?bot_type=3", request["path"])
-        self.assertEqual(["old_token"], request["json_body"]["local_token_list"])
-
-    async def test_get_qrcode_status_uses_query_params(self):
-        from langchain_api.channels.adapters.weixin_clawbot import WeixinClawBotClient
-
-        fake = FakeClawBotClient()
-        client = WeixinClawBotClient(request_json=fake.request_json)
-
-        await client.get_qrcode_status(qrcode="qr-content", verify_code="1234")
-
-        request = fake.requests[0]
-        self.assertEqual("GET", request["method"])
-        self.assertEqual("ilink/bot/get_qrcode_status", request["path"])
-        self.assertEqual({"qrcode": "qr-content", "verify_code": "1234"}, request["params"])
+    request = fake.requests[0]
+    assert request["method"] == "POST"
+    assert request["path"] == "ilink/bot/sendmessage"
+    assert request["token"] == "token_1"
+    assert request["json_body"]["msg"]["to_user_id"] == "wx_user_1"
+    assert request["json_body"]["msg"]["context_token"] == "ctx_1"
+    assert request["json_body"]["msg"]["item_list"][0]["text_item"]["text"] == "回复"
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_fetch_login_qrcode_posts_local_tokens():
+    from langchain_api.channels.adapters.weixin_clawbot import WeixinClawBotClient
+
+    fake = FakeClawBotClient()
+    client = WeixinClawBotClient(request_json=fake.request_json)
+
+    asyncio.run(client.fetch_login_qrcode(local_token_list=["old_token"]))
+
+    request = fake.requests[0]
+    assert request["method"] == "POST"
+    assert request["path"] == "ilink/bot/get_bot_qrcode?bot_type=3"
+    assert request["json_body"]["local_token_list"] == ["old_token"]
+
+
+def test_get_qrcode_status_uses_query_params():
+    from langchain_api.channels.adapters.weixin_clawbot import WeixinClawBotClient
+
+    fake = FakeClawBotClient()
+    client = WeixinClawBotClient(request_json=fake.request_json)
+
+    asyncio.run(client.get_qrcode_status(qrcode="qr-content", verify_code="1234"))
+
+    request = fake.requests[0]
+    assert request["method"] == "GET"
+    assert request["path"] == "ilink/bot/get_qrcode_status"
+    assert request["params"] == {"qrcode": "qr-content", "verify_code": "1234"}

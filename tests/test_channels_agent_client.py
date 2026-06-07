@@ -1,4 +1,4 @@
-import unittest
+import asyncio
 
 from langchain_api.channels.agent_client import AgentClient
 
@@ -10,11 +10,11 @@ async def fake_sender(payload):
     yield 'data: {"event": "__interrupt__", "data": {"__interrupt__": {}}}\n\n'
 
 
-class AgentClientTest(unittest.IsolatedAsyncioTestCase):
-    async def test_stream_parses_sse_data_lines_into_agent_events(self):
-        client = AgentClient(sender=fake_sender)
+def test_stream_parses_sse_data_lines_into_agent_events():
+    client = AgentClient(sender=fake_sender)
 
-        result = [
+    async def collect():
+        return [
             event
             async for event in client.stream(
                 query="hello",
@@ -23,9 +23,7 @@ class AgentClientTest(unittest.IsolatedAsyncioTestCase):
             )
         ]
 
-        self.assertEqual(["token", "tool_calls", "__interrupt__"], [item.event for item in result])
-        self.assertEqual("hello", result[0].data["token"])
+    result = asyncio.run(collect())
 
-
-if __name__ == "__main__":
-    unittest.main()
+    assert ["token", "tool_calls", "__interrupt__"] == [item.event for item in result]
+    assert result[0].data["token"] == "hello"

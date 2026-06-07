@@ -11,8 +11,10 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from langchain_api.api.agent import create_agent_router
+from langchain_api.api.auth import create_auth_router
 from langchain_api.api.channels import create_channels_router
 from langchain_api.api.rag import create_rag_router
+from langchain_api.auth.service import get_auth_service
 from langchain_api.channels.lifespan import channel_lifespan
 from langchain_api.constant import root_dir
 from langchain_api.patch.langchain import patch_langchain
@@ -56,6 +58,7 @@ def init_agent_env():
 async def lifespan(app: FastAPI):
     setup_observability()
     patch_langchain()
+    get_auth_service().bootstrap_admin_if_needed()
     async with channel_lifespan():
         yield
 
@@ -72,6 +75,7 @@ def create_app() -> FastAPI:
     # Register API routes before mounting the frontend; otherwise StaticFiles
     # would catch /api/* requests and return 405 for POST.
     checkpointer, store = init_agent_env()
+    app.include_router(create_auth_router())
     app.include_router(create_agent_router(checkpointer, store))
     app.include_router(create_rag_router(checkpointer, store))
     app.include_router(create_channels_router())

@@ -11,12 +11,30 @@ import {
 } from 'react'
 
 import styles from './ChatInterface.module.css'
+import { AccountPanel } from './chat-interface/AccountPanel'
+import {
+  buildAuthorizationHeaders,
+  clearStoredAuthToken,
+  fetchCurrentActor,
+  getActorCapabilities,
+  getStoredAuthToken,
+  GUEST_USER_ID,
+  isUnauthorizedErrorMessage,
+  normalizeActorPayload,
+  revokeAuthToken,
+  type ActorState,
+} from './chat-interface/auth'
 import { ChannelManagementView } from './chat-interface/ChannelManagementView'
 import { ChatView } from './chat-interface/ChatView'
 import {
+  AUTH_USERS_CREATE_API_PATH,
+  AUTH_USERS_LIST_API_PATH,
+  AUTH_USERS_RESET_PASSWORD_API_PATH,
+  AUTH_USERS_UPDATE_ROLE_API_PATH,
+  AUTH_USERS_UPDATE_STATUS_API_PATH,
   DEFAULT_AGENT_API_PATH,
-  DEFAULT_MCP_CONFIG_TEMPLATE,
   DEFAULT_KNOWLEDGE_PAGE,
+  DEFAULT_MCP_CONFIG_TEMPLATE,
   DEFAULT_RAG_API_PATH,
   DOCUMENT_CHUNK_PAGE_SIZE,
   DOCUMENT_PAGE_SIZE,
@@ -42,6 +60,9 @@ import { McpManagementView } from './chat-interface/McpManagementView'
 import { SkillManagementView } from './chat-interface/SkillManagementView'
 import type {
   AssistantMessageItem,
+  AuthLoginResponse,
+  AuthUserListResponse,
+  AuthUserSummary,
   BulkDeleteDocumentResponse,
   BulkDeleteKnowledgeBaseResponse,
   InterruptData,
@@ -62,9 +83,10 @@ import type {
   UploadResult,
   ViewMode,
 } from './chat-interface/types'
+import { UserManagementView } from './chat-interface/UserManagementView'
 import {
-  fetchJson,
   createClearedChatState,
+  fetchJson,
   generateMessageId,
   generateSessionId,
   getApiUrl,
@@ -190,7 +212,7 @@ type ResumeDecision =
         name: string
         args: Record<string, unknown>
       }
-    }
+}
 
 export default function ChatInterface() {
   const [viewMode, setViewMode] = useState<ViewMode>('chat')
@@ -208,8 +230,13 @@ export default function ChatInterface() {
   const [showInterrupt, setShowInterrupt] = useState(false)
   const [interruptData, setInterruptData] = useState<InterruptData | null>(null)
 
-  const [userId, setUserId] = useState('demo-user')
-  const [userIdDraft, setUserIdDraft] = useState('demo-user')
+  const [actor, setActor] = useState<ActorState>(() => normalizeActorPayload(null))
+  const [authToken, setAuthToken] = useState('')
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false)
+  const [adminUsers, setAdminUsers] = useState<AuthUserSummary[]>([])
+  const [loadingAdminUsers, setLoadingAdminUsers] = useState(false)
+  const [userAdminNotice, setUserAdminNotice] = useState('')
+  const [userAdminError, setUserAdminError] = useState('')
 
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([])
   const [knowledgeBaseTotal, setKnowledgeBaseTotal] = useState(0)
@@ -241,13 +268,14 @@ export default function ChatInterface() {
   const [knowledgeBaseDescription, setKnowledgeBaseDescription] = useState('')
   const [showCreateKnowledgeBaseModal, setShowCreateKnowledgeBaseModal] =
     useState(false)
-  const [savedUsers, setSavedUsers] = useState<string[]>([])
+
   const [mcpConfigDraft, setMcpConfigDraft] = useState('')
   const [savedMcpConfigText, setSavedMcpConfigText] = useState('')
   const [mcpConfig, setMcpConfig] = useState<Record<string, unknown> | null>(null)
   const [mcpEnabled, setMcpEnabled] = useState(false)
   const [mcpNotice, setMcpNotice] = useState('')
   const [mcpError, setMcpError] = useState('')
+
   const [skills, setSkills] = useState<SkillRecord[]>([])
   const [loadingSkills, setLoadingSkills] = useState(false)
   const [uploadingSkills, setUploadingSkills] = useState(false)
@@ -257,7 +285,6 @@ export default function ChatInterface() {
   const [managementError, setManagementError] = useState('')
   const [managementNotice, setManagementNotice] = useState('')
   const [loadingKnowledgeBases, setLoadingKnowledgeBases] = useState(false)
-  const [loadingKnowledgeBaseDetail, setLoadingKnowledgeBaseDetail] = useState(false)
   const [loadingDocuments, setLoadingDocuments] = useState(false)
   const [savingKnowledgeBase, setSavingKnowledgeBase] = useState(false)
   const [uploadingDocuments, setUploadingDocuments] = useState(false)
@@ -278,6 +305,13 @@ export default function ChatInterface() {
   const requestModeRef = useRef<RequestMode>('agent')
   const requestKnowledgeBaseRef = useRef<KnowledgeBase | null>(null)
   const requestMcpConfigRef = useRef<Record<string, unknown> | null>(null)
+
+  const actorCapabilities = getActorCapabilities(actor)
+  const currentUserId = actor.userId || GUEST_USER_ID
+  const guestKnowledgeMessage =
+    '游客可浏览知识库内容，登录后可创建、上传和管理知识库。请点击右上角头像登录。'
+  const guestSkillMessage =
+    '游客可查看技能列表，登录后可上传或删除技能。请点击右上角头像登录。'
   const mcpDraftParseResult = parseMcpConfig(mcpConfigDraft)
   const savedMcpParseResult = parseMcpConfig(savedMcpConfigText)
   const mcpConfigDirty = mcpConfigDraft !== savedMcpConfigText
@@ -301,9 +335,116 @@ export default function ChatInterface() {
     requestModeRef.current = 'agent'
     requestKnowledgeBaseRef.current = null
     requestMcpConfigRef.current = null
-    localStorage.setItem('rag_chat_session_id', clearedState.sessionId)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('rag_chat_session_id', clearedState.sessionId)
+    }
     setSessionId(clearedState.sessionId)
   }, [])
+
+  const resetUserScopedState = useCallback(() => {
+    setKnowledgeBasePage(1)
+    setKnowledgeBaseSearch('')
+    setKnowledgeBaseSearchInput('')
+    setSelectedKnowledgeBaseId('')
+    setSelectedKnowledgeBase(null)
+    setSelectedKnowledgeBaseName('')
+    setSelectedKnowledgeBaseDescription('')
+    setCheckedKnowledgeBaseIds([])
+    setKnowledgeBases([])
+    setKnowledgeBaseTotal(0)
+
+    setDocumentPage(1)
+    setDocumentSearch('')
+    setDocumentSearchInput('')
+    setCheckedDocumentIds([])
+    setDocuments([])
+    setDocumentTotal(0)
+    setSelectedDocumentId('')
+    setSelectedDocumentDetail(null)
+    setDocumentChunkPage(1)
+
+    setAdminUsers([])
+    clearChat()
+  }, [clearChat])
+
+  const applyActorState = useCallback(
+    (nextActor: ActorState) => {
+      setActor(nextActor)
+      resetUserScopedState()
+    },
+    [resetUserScopedState]
+  )
+
+  const clearAuthState = useCallback(
+    (notice = '已切换为游客模式。') => {
+      clearStoredAuthToken()
+      setAuthToken('')
+      applyActorState(normalizeActorPayload(null))
+      setAccountMenuOpen(false)
+      setUserAdminNotice('')
+      setUserAdminError('')
+      setManagementNotice(notice)
+    },
+    [applyActorState]
+  )
+
+  const withAuthHeaders = useCallback(
+    (headers?: HeadersInit) => ({
+      ...(headers || {}),
+      ...buildAuthorizationHeaders(authToken),
+    }),
+    [authToken]
+  )
+
+  const requestJson = useCallback(
+    async <T,>(path: string, init?: RequestInit): Promise<T> => {
+      try {
+        return await fetchJson<T>(getApiUrl(path), {
+          ...init,
+          headers: withAuthHeaders(init?.headers),
+        })
+      } catch (error) {
+        if (error instanceof Error && isUnauthorizedErrorMessage(error.message)) {
+          clearAuthState('登录状态已失效，已切换为游客模式。')
+        }
+        throw error
+      }
+    },
+    [clearAuthState, withAuthHeaders]
+  )
+
+  const requestStreamResponse = useCallback(
+    async (path: string, payload: Record<string, unknown>, signal?: AbortSignal) => {
+      const response = await fetch(getApiUrl(path), {
+        method: 'POST',
+        headers: withAuthHeaders({
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+        }),
+        body: JSON.stringify(payload),
+        signal,
+      })
+
+      if (!response.ok) {
+        let message = `HTTP ${response.status}`
+        try {
+          const errorPayload = await response.json()
+          if (errorPayload?.detail) {
+            message = String(errorPayload.detail)
+          }
+        } catch {
+          // ignore parse error
+        }
+        if (isUnauthorizedErrorMessage(message)) {
+          clearAuthState('登录状态已失效，已切换为游客模式。')
+        }
+        throw new Error(message)
+      }
+
+      return response
+    },
+    [clearAuthState, withAuthHeaders]
+  )
 
   const addMessage = useCallback((message: Message) => {
     setMessages((prev) => {
@@ -340,38 +481,39 @@ export default function ChatInterface() {
   useEffect(() => {
     if (typeof window === 'undefined') return
 
-    const storedUserId = localStorage.getItem('rag_user_id') || 'demo-user'
     const freshSessionId = generateSessionId()
-    const storedUsers = localStorage.getItem('rag_saved_users')
     const storedMcpConfig = localStorage.getItem('rag_mcp_config') || ''
     const storedMcpEnabled = localStorage.getItem('rag_mcp_enabled') === 'true'
-    const normalizedUsers = Array.from(
-      new Set(
-        [storedUserId, ...(storedUsers ? JSON.parse(storedUsers) : [])].filter(Boolean)
-      )
-    )
     const parsedMcpConfig = parseMcpConfig(storedMcpConfig)
 
-    localStorage.setItem('rag_user_id', storedUserId)
     localStorage.setItem('rag_chat_session_id', freshSessionId)
-    localStorage.setItem('rag_saved_users', JSON.stringify(normalizedUsers))
     localStorage.setItem(
       'rag_mcp_enabled',
       parsedMcpConfig.config && storedMcpEnabled ? 'true' : 'false'
     )
 
-    setUserId(storedUserId)
-    setUserIdDraft(storedUserId)
     setSessionId(freshSessionId)
-    setSavedUsers(normalizedUsers)
     setMcpConfigDraft(storedMcpConfig)
     setSavedMcpConfigText(storedMcpConfig)
     setMcpConfig(parsedMcpConfig.config)
     setMcpEnabled(Boolean(parsedMcpConfig.config) && storedMcpEnabled)
+
     if (storedMcpConfig && parsedMcpConfig.error) {
       setMcpError(`本地保存的 MCP 配置无效：${parsedMcpConfig.error}`)
     }
-  }, [])
+
+    const storedToken = getStoredAuthToken()
+    if (!storedToken) return
+
+    setAuthToken(storedToken)
+    void fetchCurrentActor(storedToken)
+      .then((nextActor) => {
+        applyActorState(nextActor)
+      })
+      .catch(() => {
+        clearAuthState('登录状态已失效，已切换为游客模式。')
+      })
+  }, [applyActorState, clearAuthState])
 
   const navigateTo = useCallback(
     (
@@ -417,6 +559,7 @@ export default function ChatInterface() {
         !selectedKnowledgeBase
           ? 'libraries'
           : route.knowledgePage
+
       setViewMode(route.viewMode)
       setKnowledgePage(safeKnowledgePage)
 
@@ -440,18 +583,17 @@ export default function ChatInterface() {
   }, [messages, showInterrupt, interruptData, scrollToBottom])
 
   const loadKnowledgeBases = useCallback(
-    async (targetUserId: string, page = knowledgeBasePage, search = knowledgeBaseSearch) => {
+    async (page = knowledgeBasePage, search = knowledgeBaseSearch) => {
       setLoadingKnowledgeBases(true)
       setManagementError('')
-
       try {
-        const result = await fetchJson<PaginatedKnowledgeBaseResponse>(
-          getApiUrl(KB_LIST_API_PATH),
+        const result = await requestJson<PaginatedKnowledgeBaseResponse>(
+          KB_LIST_API_PATH,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              user_id: targetUserId,
+              user_id: currentUserId,
               search,
               page,
               page_size: KNOWLEDGE_BASE_PAGE_SIZE,
@@ -475,29 +617,26 @@ export default function ChatInterface() {
           }
         }
       } catch (error) {
-        setManagementError(
-          error instanceof Error ? error.message : 'Failed to load knowledge bases.'
-        )
+        setManagementError(error instanceof Error ? error.message : '加载知识库失败。')
         setKnowledgeBases([])
         setKnowledgeBaseTotal(0)
       } finally {
         setLoadingKnowledgeBases(false)
       }
     },
-    [knowledgeBasePage, knowledgeBaseSearch, selectedKnowledgeBaseId]
+    [currentUserId, knowledgeBasePage, knowledgeBaseSearch, requestJson, selectedKnowledgeBaseId]
   )
 
   const loadKnowledgeBaseDetail = useCallback(
-    async (targetUserId: string, knowledgeBaseId: string) => {
+    async (knowledgeBaseId: string) => {
       if (!knowledgeBaseId) return
-      setLoadingKnowledgeBaseDetail(true)
       setManagementError('')
       try {
-        const result = await fetchJson<KnowledgeBase>(getApiUrl(KB_DETAIL_API_PATH), {
+        const result = await requestJson<KnowledgeBase>(KB_DETAIL_API_PATH, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            user_id: targetUserId,
+            user_id: currentUserId,
             knowledge_base_id: knowledgeBaseId,
           }),
         })
@@ -506,19 +645,14 @@ export default function ChatInterface() {
         setSelectedKnowledgeBaseName(result.name)
         setSelectedKnowledgeBaseDescription(result.description)
       } catch (error) {
-        setManagementError(
-          error instanceof Error ? error.message : 'Failed to load knowledge base.'
-        )
-      } finally {
-        setLoadingKnowledgeBaseDetail(false)
+        setManagementError(error instanceof Error ? error.message : '加载知识库详情失败。')
       }
     },
-    []
+    [currentUserId, requestJson]
   )
 
   const loadDocuments = useCallback(
     async (
-      targetUserId: string,
       knowledgeBaseId: string,
       page = documentPage,
       search = documentSearch
@@ -532,13 +666,13 @@ export default function ChatInterface() {
       setLoadingDocuments(true)
       setManagementError('')
       try {
-        const result = await fetchJson<PaginatedKnowledgeDocumentResponse>(
-          getApiUrl(KB_DOCUMENT_LIST_API_PATH),
+        const result = await requestJson<PaginatedKnowledgeDocumentResponse>(
+          KB_DOCUMENT_LIST_API_PATH,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              user_id: targetUserId,
+              user_id: currentUserId,
               knowledge_base_id: knowledgeBaseId,
               search,
               page,
@@ -549,40 +683,32 @@ export default function ChatInterface() {
         setDocuments(result.items)
         setDocumentTotal(result.total)
       } catch (error) {
-        setManagementError(
-          error instanceof Error ? error.message : 'Failed to load documents.'
-        )
+        setManagementError(error instanceof Error ? error.message : '加载文档失败。')
         setDocuments([])
         setDocumentTotal(0)
       } finally {
         setLoadingDocuments(false)
       }
     },
-    [documentPage, documentSearch]
+    [currentUserId, documentPage, documentSearch, requestJson]
   )
 
   const loadDocumentDetail = useCallback(
-    async (
-      targetUserId: string,
-      knowledgeBaseId: string,
-      documentId: string,
-      page = documentChunkPage
-    ) => {
+    async (knowledgeBaseId: string, documentId: string, page = documentChunkPage) => {
       if (!knowledgeBaseId || !documentId) {
         setSelectedDocumentDetail(null)
         return
       }
 
-      setLoadingDocumentDetail(true)
       setManagementError('')
       try {
-        const result = await fetchJson<KnowledgeDocumentDetailResponse>(
-          getApiUrl(KB_DOCUMENT_DETAIL_API_PATH),
+        const result = await requestJson<KnowledgeDocumentDetailResponse>(
+          KB_DOCUMENT_DETAIL_API_PATH,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              user_id: targetUserId,
+              user_id: currentUserId,
               knowledge_base_id: knowledgeBaseId,
               document_id: documentId,
               page,
@@ -592,40 +718,58 @@ export default function ChatInterface() {
         )
         setSelectedDocumentDetail(result)
       } catch (error) {
-        setManagementError(
-          error instanceof Error ? error.message : 'Failed to load document detail.'
-        )
+        setManagementError(error instanceof Error ? error.message : '加载文档详情失败。')
         setSelectedDocumentDetail(null)
-      } finally {
-        setLoadingDocumentDetail(false)
       }
     },
-    [documentChunkPage]
+    [currentUserId, documentChunkPage, requestJson]
   )
 
   const loadSkills = useCallback(async () => {
     setLoadingSkills(true)
     setSkillError('')
-
     try {
-      const result = await fetchJson<SkillListResponse>(getApiUrl(SKILL_LIST_API_PATH), {
+      const result = await requestJson<SkillListResponse>(SKILL_LIST_API_PATH, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ search: '' }),
       })
       setSkills(result.items)
     } catch (error) {
-      setSkillError(error instanceof Error ? error.message : 'Failed to load skills.')
+      setSkillError(error instanceof Error ? error.message : '加载技能列表失败。')
       setSkills([])
     } finally {
       setLoadingSkills(false)
     }
-  }, [])
+  }, [requestJson])
+
+  const loadAdminUsers = useCallback(
+    async (search = '') => {
+      if (actor.isGuest || actor.role !== 'admin') {
+        setAdminUsers([])
+        return
+      }
+      setLoadingAdminUsers(true)
+      setUserAdminError('')
+      try {
+        const result = await requestJson<AuthUserListResponse>(AUTH_USERS_LIST_API_PATH, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ search }),
+        })
+        setAdminUsers(result.items)
+      } catch (error) {
+        setUserAdminError(error instanceof Error ? error.message : '加载用户列表失败。')
+      } finally {
+        setLoadingAdminUsers(false)
+      }
+    },
+    [actor.isGuest, actor.role, requestJson]
+  )
 
   useEffect(() => {
-    if (!userId) return
-    void loadKnowledgeBases(userId, knowledgeBasePage, knowledgeBaseSearch)
-  }, [knowledgeBasePage, knowledgeBaseSearch, loadKnowledgeBases, userId])
+    void loadKnowledgeBases(knowledgeBasePage, knowledgeBaseSearch)
+  }, [currentUserId, knowledgeBasePage, knowledgeBaseSearch, loadKnowledgeBases])
 
   useEffect(() => {
     void loadSkills()
@@ -638,49 +782,46 @@ export default function ChatInterface() {
       setDocumentTotal(0)
       return
     }
-    void loadKnowledgeBaseDetail(userId, selectedKnowledgeBaseId)
-  }, [loadKnowledgeBaseDetail, selectedKnowledgeBaseId, userId])
+    void loadKnowledgeBaseDetail(selectedKnowledgeBaseId)
+  }, [loadKnowledgeBaseDetail, selectedKnowledgeBaseId])
 
   useEffect(() => {
     if (!selectedKnowledgeBaseId) return
-    void loadDocuments(userId, selectedKnowledgeBaseId, documentPage, documentSearch)
-  }, [documentPage, documentSearch, loadDocuments, selectedKnowledgeBaseId, userId])
+    void loadDocuments(selectedKnowledgeBaseId, documentPage, documentSearch)
+  }, [documentPage, documentSearch, loadDocuments, selectedKnowledgeBaseId])
 
   useEffect(() => {
     if (!selectedKnowledgeBaseId || !selectedDocumentId || knowledgePage !== 'document-detail') {
       return
     }
-    void loadDocumentDetail(
-      userId,
-      selectedKnowledgeBaseId,
-      selectedDocumentId,
-      documentChunkPage
-    )
+    void loadDocumentDetail(selectedKnowledgeBaseId, selectedDocumentId, documentChunkPage)
   }, [
     documentChunkPage,
     knowledgePage,
     loadDocumentDetail,
     selectedDocumentId,
     selectedKnowledgeBaseId,
-    userId,
   ])
 
-  const selectKnowledgeBase = (knowledgeBase: KnowledgeBase) => {
-    if (useKnowledgeBase && knowledgeBase.knowledge_base_id !== selectedKnowledgeBaseId) {
-      clearChat()
-      setCheckedDocumentIds([])
-    }
-    setSelectedKnowledgeBaseId(knowledgeBase.knowledge_base_id)
-    setSelectedKnowledgeBase(knowledgeBase)
-    setSelectedKnowledgeBaseName(knowledgeBase.name)
-    setSelectedKnowledgeBaseDescription(knowledgeBase.description)
-    setDocumentPage(1)
-    setDocumentSearch('')
-    setDocumentSearchInput('')
-    setSelectedDocumentId('')
-    setSelectedDocumentDetail(null)
-    setDocumentChunkPage(1)
-  }
+  const selectKnowledgeBase = useCallback(
+    (knowledgeBase: KnowledgeBase) => {
+      if (useKnowledgeBase && knowledgeBase.knowledge_base_id !== selectedKnowledgeBaseId) {
+        clearChat()
+        setCheckedDocumentIds([])
+      }
+      setSelectedKnowledgeBaseId(knowledgeBase.knowledge_base_id)
+      setSelectedKnowledgeBase(knowledgeBase)
+      setSelectedKnowledgeBaseName(knowledgeBase.name)
+      setSelectedKnowledgeBaseDescription(knowledgeBase.description)
+      setDocumentPage(1)
+      setDocumentSearch('')
+      setDocumentSearchInput('')
+      setSelectedDocumentId('')
+      setSelectedDocumentDetail(null)
+      setDocumentChunkPage(1)
+    },
+    [clearChat, selectedKnowledgeBaseId, useKnowledgeBase]
+  )
 
   const handleKnowledgeBaseToggle = (checked: boolean) => {
     if (checked !== useKnowledgeBase) {
@@ -691,53 +832,6 @@ export default function ChatInterface() {
       requestKnowledgeBaseRef.current = checked ? selectedKnowledgeBase : null
     }
     setUseKnowledgeBase(checked)
-  }
-
-  const persistSavedUsers = (nextUsers: string[]) => {
-    const normalized = Array.from(
-      new Set(nextUsers.map((item) => item.trim()).filter(Boolean))
-    )
-    setSavedUsers(normalized)
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('rag_saved_users', JSON.stringify(normalized))
-    }
-  }
-
-  const switchUser = (nextUserId: string) => {
-    const normalizedUserId = nextUserId.trim() || 'demo-user'
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('rag_user_id', normalizedUserId)
-    }
-    setUserId(normalizedUserId)
-    setUserIdDraft(normalizedUserId)
-    setKnowledgeBasePage(1)
-    setKnowledgeBaseSearch('')
-    setKnowledgeBaseSearchInput('')
-    setDocumentPage(1)
-    setDocumentSearch('')
-    setDocumentSearchInput('')
-    setSelectedKnowledgeBaseId('')
-    setSelectedKnowledgeBase(null)
-    setSelectedDocumentId('')
-    setSelectedDocumentDetail(null)
-    setKnowledgeBases([])
-    setDocuments([])
-    setCheckedKnowledgeBaseIds([])
-    setCheckedDocumentIds([])
-    persistSavedUsers([normalizedUserId, ...savedUsers])
-    setManagementNotice(`Active user switched to ${normalizedUserId}.`)
-    setManagementError('')
-    clearChat()
-    navigateTo('knowledge', 'users')
-  }
-
-  const applyUserId = () => {
-    switchUser(userIdDraft)
-  }
-
-  const removeSavedUser = (targetUserId: string) => {
-    const nextUsers = savedUsers.filter((item) => item !== targetUserId)
-    persistSavedUsers(nextUsers.length > 0 ? nextUsers : ['demo-user'])
   }
 
   const saveMcpConfig = () => {
@@ -778,20 +872,17 @@ export default function ChatInterface() {
 
   const formatMcpConfig = () => {
     const trimmed = mcpConfigDraft.trim()
-
     if (!trimmed) {
       setMcpNotice('')
       setMcpError('当前 MCP 草稿为空，没有可格式化的内容。')
       return
     }
-
     const parsed = parseMcpConfig(trimmed)
     if (!parsed.config || parsed.error) {
       setMcpNotice('')
       setMcpError(parsed.error || 'MCP 配置无效，无法格式化。')
       return
     }
-
     setMcpConfigDraft(JSON.stringify(parsed.config, null, 2))
     setMcpNotice('MCP 草稿已格式化，尚未保存到本地配置。')
     setMcpError('')
@@ -810,7 +901,7 @@ export default function ChatInterface() {
 
     if (mcpConfigDirty) {
       setMcpNotice('')
-      setMcpError('当前 MCP 草稿还未保存，请先保存后再启用。')
+      setMcpError('当前 MCP 草稿尚未保存，请先保存后再启用。')
       return
     }
 
@@ -830,7 +921,7 @@ export default function ChatInterface() {
 
   const loadMcpExample = () => {
     setMcpConfigDraft(DEFAULT_MCP_CONFIG_TEMPLATE)
-    setMcpNotice('已填入 MCP 示例配置，请根据你的服务地址修改后保存。')
+    setMcpNotice('已填入 MCP 示例配置，请按你的服务地址修改后保存。')
     setMcpError('')
   }
 
@@ -838,6 +929,92 @@ export default function ChatInterface() {
     setMcpConfigDraft('')
     setMcpNotice('已清空 MCP 草稿，点击“保存配置”后会同步清空本地配置。')
     setMcpError('')
+  }
+
+  const handleLogout = async () => {
+    try {
+      if (authToken) {
+        await revokeAuthToken(authToken)
+      }
+    } catch {
+      // ignore logout failure
+    } finally {
+      clearAuthState('已退出登录，当前为游客模式。')
+      setAccountMenuOpen(false)
+    }
+  }
+
+  const openLoginPage = useCallback(() => {
+    if (typeof window === 'undefined') return
+    const next = `${window.location.pathname}${window.location.hash || '#/chat'}`
+    window.location.assign(`/login?next=${encodeURIComponent(next)}`)
+  }, [])
+
+  const createAdminUser = async (input: {
+    email: string
+    password: string
+    role: 'admin' | 'user'
+  }) => {
+    setUserAdminNotice('')
+    setUserAdminError('')
+    try {
+      await requestJson<AuthLoginResponse>(AUTH_USERS_CREATE_API_PATH, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+      await loadAdminUsers()
+      setUserAdminNotice(`已创建账号 ${input.email}。`)
+    } catch (error) {
+      setUserAdminError(error instanceof Error ? error.message : '创建用户失败。')
+    }
+  }
+
+  const updateAdminUserRole = async (userId: string, role: 'admin' | 'user') => {
+    setUserAdminNotice('')
+    setUserAdminError('')
+    try {
+      await requestJson<AuthLoginResponse>(AUTH_USERS_UPDATE_ROLE_API_PATH, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, role }),
+      })
+      await loadAdminUsers()
+      setUserAdminNotice('用户角色已更新。')
+    } catch (error) {
+      setUserAdminError(error instanceof Error ? error.message : '更新用户角色失败。')
+    }
+  }
+
+  const updateAdminUserStatus = async (userId: string, isActive: boolean) => {
+    setUserAdminNotice('')
+    setUserAdminError('')
+    try {
+      await requestJson<AuthLoginResponse>(AUTH_USERS_UPDATE_STATUS_API_PATH, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, is_active: isActive }),
+      })
+      await loadAdminUsers()
+      setUserAdminNotice(isActive ? '用户账号已启用。' : '用户账号已停用。')
+    } catch (error) {
+      setUserAdminError(error instanceof Error ? error.message : '更新用户状态失败。')
+    }
+  }
+
+  const resetAdminUserPassword = async (userId: string, password: string) => {
+    setUserAdminNotice('')
+    setUserAdminError('')
+    try {
+      await requestJson<AuthLoginResponse>(AUTH_USERS_RESET_PASSWORD_API_PATH, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, password }),
+      })
+      setUserAdminNotice('用户密码已重置。')
+    } catch (error) {
+      setUserAdminError(error instanceof Error ? error.message : '重置密码失败。')
+    }
   }
 
   const openSkillUploadDialog = () => {
@@ -856,7 +1033,7 @@ export default function ChatInterface() {
     formData.append('file', file)
 
     try {
-      const result = await fetchJson<SkillUploadResponse>(getApiUrl(SKILL_UPLOAD_API_PATH), {
+      const result = await requestJson<SkillUploadResponse>(SKILL_UPLOAD_API_PATH, {
         method: 'POST',
         body: formData,
       })
@@ -865,7 +1042,7 @@ export default function ChatInterface() {
         `技能 "${result.skill.skill_name}" 上传完成，共解压 ${result.extracted_files} 个文件。`
       )
     } catch (error) {
-      setSkillError(error instanceof Error ? error.message : 'Failed to upload skill.')
+      setSkillError(error instanceof Error ? error.message : '上传技能失败。')
     } finally {
       setUploadingSkills(false)
       event.target.value = ''
@@ -873,12 +1050,12 @@ export default function ChatInterface() {
   }
 
   const deleteSkill = async (skillName: string) => {
-    if (!window.confirm(`Delete skill "${skillName}" from workspace?`)) return
+    if (!window.confirm(`确认删除技能 "${skillName}" 吗？`)) return
 
     setSkillNotice('')
     setSkillError('')
     try {
-      const result = await fetchJson<SkillDeleteResponse>(getApiUrl(SKILL_DELETE_API_PATH), {
+      const result = await requestJson<SkillDeleteResponse>(SKILL_DELETE_API_PATH, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ skill_name: skillName }),
@@ -886,7 +1063,7 @@ export default function ChatInterface() {
       await loadSkills()
       setSkillNotice(`技能 "${result.skill_name}" 已删除。`)
     } catch (error) {
-      setSkillError(error instanceof Error ? error.message : 'Failed to delete skill.')
+      setSkillError(error instanceof Error ? error.message : '删除技能失败。')
     }
   }
 
@@ -904,37 +1081,33 @@ export default function ChatInterface() {
   const createKnowledgeBase = async () => {
     const name = knowledgeBaseName.trim()
     if (!name) {
-      setManagementError('Knowledge base name is required.')
+      setManagementError('知识库名称不能为空。')
       return
     }
 
     setSavingKnowledgeBase(true)
     setManagementError('')
     setManagementNotice('')
-
     try {
-      const created = await fetchJson<KnowledgeBase>(getApiUrl(KB_CREATE_API_PATH), {
+      const created = await requestJson<KnowledgeBase>(KB_CREATE_API_PATH, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id: userId,
+          user_id: currentUserId,
           name,
           description: knowledgeBaseDescription.trim(),
         }),
       })
-
       setKnowledgeBasePage(1)
-      await loadKnowledgeBases(userId, 1, knowledgeBaseSearch)
+      await loadKnowledgeBases(1, knowledgeBaseSearch)
       selectKnowledgeBase(created)
       navigateTo('knowledge', 'library-detail')
       setKnowledgeBaseName('')
       setKnowledgeBaseDescription('')
       setShowCreateKnowledgeBaseModal(false)
-      setManagementNotice(`Knowledge base "${created.name}" created.`)
+      setManagementNotice(`知识库 "${created.name}" 已创建。`)
     } catch (error) {
-      setManagementError(
-        error instanceof Error ? error.message : 'Failed to create knowledge base.'
-      )
+      setManagementError(error instanceof Error ? error.message : '创建知识库失败。')
     } finally {
       setSavingKnowledgeBase(false)
     }
@@ -946,25 +1119,22 @@ export default function ChatInterface() {
     setSavingKnowledgeBase(true)
     setManagementError('')
     setManagementNotice('')
-
     try {
-      const updated = await fetchJson<KnowledgeBase>(getApiUrl(KB_UPDATE_API_PATH), {
+      const updated = await requestJson<KnowledgeBase>(KB_UPDATE_API_PATH, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id: userId,
+          user_id: currentUserId,
           knowledge_base_id: selectedKnowledgeBase.knowledge_base_id,
           name: selectedKnowledgeBaseName.trim(),
           description: selectedKnowledgeBaseDescription.trim(),
         }),
       })
-      await loadKnowledgeBases(userId, knowledgeBasePage, knowledgeBaseSearch)
+      await loadKnowledgeBases(knowledgeBasePage, knowledgeBaseSearch)
       selectKnowledgeBase(updated)
-      setManagementNotice(`Knowledge base "${updated.name}" updated.`)
+      setManagementNotice(`知识库 "${updated.name}" 已更新。`)
     } catch (error) {
-      setManagementError(
-        error instanceof Error ? error.message : 'Failed to update knowledge base.'
-      )
+      setManagementError(error instanceof Error ? error.message : '更新知识库失败。')
     } finally {
       setSavingKnowledgeBase(false)
     }
@@ -975,23 +1145,20 @@ export default function ChatInterface() {
     const targetName =
       knowledgeBases.find((item) => item.knowledge_base_id === targetId)?.name ||
       selectedKnowledgeBase?.name ||
-      'knowledge base'
+      '知识库'
 
     if (!targetId) return
-    if (!window.confirm(`Delete knowledge base "${targetName}" and all Elasticsearch data?`)) {
-      return
-    }
+    if (!window.confirm(`确认删除知识库 "${targetName}" 及其索引数据吗？`)) return
 
     setSavingKnowledgeBase(true)
     setManagementError('')
     setManagementNotice('')
-
     try {
-      await fetchJson<unknown>(getApiUrl(KB_DELETE_API_PATH), {
+      await requestJson(KB_DELETE_API_PATH, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id: userId,
+          user_id: currentUserId,
           knowledge_base_id: targetId,
         }),
       })
@@ -1008,13 +1175,11 @@ export default function ChatInterface() {
         navigateTo('knowledge', 'libraries')
       }
       setCheckedKnowledgeBaseIds((prev) => prev.filter((item) => item !== targetId))
-      await loadKnowledgeBases(userId, knowledgeBasePage, knowledgeBaseSearch)
-      setManagementNotice(`Knowledge base "${targetName}" deleted.`)
+      await loadKnowledgeBases(knowledgeBasePage, knowledgeBaseSearch)
+      setManagementNotice(`知识库 "${targetName}" 已删除。`)
       clearChat()
     } catch (error) {
-      setManagementError(
-        error instanceof Error ? error.message : 'Failed to delete knowledge base.'
-      )
+      setManagementError(error instanceof Error ? error.message : '删除知识库失败。')
     } finally {
       setSavingKnowledgeBase(false)
     }
@@ -1022,26 +1187,21 @@ export default function ChatInterface() {
 
   const bulkDeleteKnowledgeBases = async () => {
     if (checkedKnowledgeBaseIds.length === 0) return
-    if (
-      !window.confirm(
-        `Delete ${checkedKnowledgeBaseIds.length} selected knowledge base(s) and all Elasticsearch data?`
-      )
-    ) {
+    if (!window.confirm(`确认删除选中的 ${checkedKnowledgeBaseIds.length} 个知识库吗？`)) {
       return
     }
 
     setDeletingBulk(true)
     setManagementError('')
     setManagementNotice('')
-
     try {
-      const result = await fetchJson<BulkDeleteKnowledgeBaseResponse>(
-        getApiUrl(KB_BULK_DELETE_API_PATH),
+      const result = await requestJson<BulkDeleteKnowledgeBaseResponse>(
+        KB_BULK_DELETE_API_PATH,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            user_id: userId,
+            user_id: currentUserId,
             knowledge_base_ids: checkedKnowledgeBaseIds,
           }),
         }
@@ -1059,8 +1219,8 @@ export default function ChatInterface() {
         navigateTo('knowledge', 'libraries')
       }
       setCheckedKnowledgeBaseIds([])
-      await loadKnowledgeBases(userId, knowledgeBasePage, knowledgeBaseSearch)
-      setManagementNotice(`Deleted ${result.deleted_ids.length} knowledge base(s).`)
+      await loadKnowledgeBases(knowledgeBasePage, knowledgeBaseSearch)
+      setManagementNotice(`已删除 ${result.deleted_ids.length} 个知识库。`)
       if (Object.keys(result.failed).length > 0) {
         setManagementError(
           Object.entries(result.failed)
@@ -1069,11 +1229,7 @@ export default function ChatInterface() {
         )
       }
     } catch (error) {
-      setManagementError(
-        error instanceof Error
-          ? error.message
-          : 'Failed to bulk delete knowledge bases.'
-      )
+      setManagementError(error instanceof Error ? error.message : '批量删除知识库失败。')
     } finally {
       setDeletingBulk(false)
     }
@@ -1092,27 +1248,26 @@ export default function ChatInterface() {
     setManagementNotice('')
 
     const formData = new FormData()
-    formData.append('user_id', userId)
+    formData.append('user_id', currentUserId)
     formData.append('knowledge_base_id', selectedKnowledgeBase.knowledge_base_id)
     files.forEach((file) => formData.append('files', file))
 
     try {
-      const result = await fetchJson<UploadResult>(getApiUrl(KB_DOCUMENT_UPLOAD_API_PATH), {
+      const result = await requestJson<UploadResult>(KB_DOCUMENT_UPLOAD_API_PATH, {
         method: 'POST',
         body: formData,
       })
-
-      await loadKnowledgeBases(userId, knowledgeBasePage, knowledgeBaseSearch)
-      await loadKnowledgeBaseDetail(userId, selectedKnowledgeBase.knowledge_base_id)
-      await loadDocuments(userId, selectedKnowledgeBase.knowledge_base_id, 1, documentSearch)
+      await loadKnowledgeBases(knowledgeBasePage, knowledgeBaseSearch)
+      await loadKnowledgeBaseDetail(selectedKnowledgeBase.knowledge_base_id)
+      await loadDocuments(selectedKnowledgeBase.knowledge_base_id, 1, documentSearch)
       setDocumentPage(1)
 
       const successCount = result.documents.length
       const errorCount = result.errors.length
       setManagementNotice(
         errorCount
-          ? `${successCount} file(s) indexed, ${errorCount} failed.`
-          : `${successCount} file(s) indexed successfully.`
+          ? `成功入库 ${successCount} 个文件，失败 ${errorCount} 个。`
+          : `已成功入库 ${successCount} 个文件。`
       )
       if (errorCount) {
         setManagementError(
@@ -1120,9 +1275,7 @@ export default function ChatInterface() {
         )
       }
     } catch (error) {
-      setManagementError(
-        error instanceof Error ? error.message : 'Failed to upload files.'
-      )
+      setManagementError(error instanceof Error ? error.message : '上传文件失败。')
     } finally {
       setUploadingDocuments(false)
       event.target.value = ''
@@ -1131,95 +1284,74 @@ export default function ChatInterface() {
 
   const renameDocument = async (document: KnowledgeDocument) => {
     if (!selectedKnowledgeBase) return
-    const nextName = window.prompt('Document display name', document.display_name)
+    const nextName = window.prompt('请输入新的文档展示名称', document.display_name)
     if (!nextName) return
 
     setManagementError('')
     setManagementNotice('')
     try {
-      await fetchJson<KnowledgeDocument>(getApiUrl(KB_DOCUMENT_UPDATE_API_PATH), {
+      await requestJson<KnowledgeDocument>(KB_DOCUMENT_UPDATE_API_PATH, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id: userId,
+          user_id: currentUserId,
           knowledge_base_id: selectedKnowledgeBase.knowledge_base_id,
           document_id: document.document_id,
           display_name: nextName,
         }),
       })
-      await loadDocuments(
-        userId,
-        selectedKnowledgeBase.knowledge_base_id,
-        documentPage,
-        documentSearch
-      )
+      await loadDocuments(selectedKnowledgeBase.knowledge_base_id, documentPage, documentSearch)
       if (selectedDocumentId === document.document_id) {
         await loadDocumentDetail(
-          userId,
           selectedKnowledgeBase.knowledge_base_id,
           document.document_id,
           documentChunkPage
         )
       }
-      setManagementNotice(`Document "${nextName}" updated.`)
+      setManagementNotice(`文档 "${nextName}" 已更新。`)
     } catch (error) {
-      setManagementError(
-        error instanceof Error ? error.message : 'Failed to update document.'
-      )
+      setManagementError(error instanceof Error ? error.message : '重命名文档失败。')
     }
   }
 
   const deleteDocument = async (documentId?: string, documentName?: string) => {
-    if (!selectedKnowledgeBase) return
-    const targetId = documentId
-    if (!targetId) return
+    if (!selectedKnowledgeBase || !documentId) return
     const targetName =
       documentName ||
-      documents.find((item) => item.document_id === targetId)?.display_name ||
-      'document'
-    if (!window.confirm(`Delete document "${targetName}" from Elasticsearch?`)) return
+      documents.find((item) => item.document_id === documentId)?.display_name ||
+      '文档'
+    if (!window.confirm(`确认删除文档 "${targetName}" 吗？`)) return
 
     setManagementError('')
     setManagementNotice('')
     try {
-      await fetchJson<unknown>(getApiUrl(KB_DOCUMENT_DELETE_API_PATH), {
+      await requestJson(KB_DOCUMENT_DELETE_API_PATH, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id: userId,
+          user_id: currentUserId,
           knowledge_base_id: selectedKnowledgeBase.knowledge_base_id,
-          document_id: targetId,
+          document_id: documentId,
         }),
       })
-      setCheckedDocumentIds((prev) => prev.filter((item) => item !== targetId))
-      if (selectedDocumentId === targetId) {
+      setCheckedDocumentIds((prev) => prev.filter((item) => item !== documentId))
+      if (selectedDocumentId === documentId) {
         setSelectedDocumentId('')
         setSelectedDocumentDetail(null)
         navigateTo('knowledge', 'library-detail')
       }
-      await loadKnowledgeBases(userId, knowledgeBasePage, knowledgeBaseSearch)
-      await loadKnowledgeBaseDetail(userId, selectedKnowledgeBase.knowledge_base_id)
-      await loadDocuments(
-        userId,
-        selectedKnowledgeBase.knowledge_base_id,
-        documentPage,
-        documentSearch
-      )
-      setManagementNotice(`Document "${targetName}" deleted from Elasticsearch.`)
+      await loadKnowledgeBases(knowledgeBasePage, knowledgeBaseSearch)
+      await loadKnowledgeBaseDetail(selectedKnowledgeBase.knowledge_base_id)
+      await loadDocuments(selectedKnowledgeBase.knowledge_base_id, documentPage, documentSearch)
+      setManagementNotice(`文档 "${targetName}" 已删除。`)
     } catch (error) {
-      setManagementError(
-        error instanceof Error ? error.message : 'Failed to delete document.'
-      )
+      setManagementError(error instanceof Error ? error.message : '删除文档失败。')
     }
   }
 
   const bulkDeleteDocuments = async () => {
     if (!selectedKnowledgeBase || checkedDocumentIds.length === 0) return
-    if (
-      !window.confirm(
-        `Delete ${checkedDocumentIds.length} selected document(s) from Elasticsearch?`
-      )
-    ) {
+    if (!window.confirm(`确认删除选中的 ${checkedDocumentIds.length} 个文档吗？`)) {
       return
     }
 
@@ -1227,13 +1359,13 @@ export default function ChatInterface() {
     setManagementError('')
     setManagementNotice('')
     try {
-      const result = await fetchJson<BulkDeleteDocumentResponse>(
-        getApiUrl(KB_DOCUMENT_BULK_DELETE_API_PATH),
+      const result = await requestJson<BulkDeleteDocumentResponse>(
+        KB_DOCUMENT_BULK_DELETE_API_PATH,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            user_id: userId,
+            user_id: currentUserId,
             knowledge_base_id: selectedKnowledgeBase.knowledge_base_id,
             document_ids: checkedDocumentIds,
           }),
@@ -1245,15 +1377,10 @@ export default function ChatInterface() {
         setSelectedDocumentDetail(null)
         navigateTo('knowledge', 'library-detail')
       }
-      await loadKnowledgeBases(userId, knowledgeBasePage, knowledgeBaseSearch)
-      await loadKnowledgeBaseDetail(userId, selectedKnowledgeBase.knowledge_base_id)
-      await loadDocuments(
-        userId,
-        selectedKnowledgeBase.knowledge_base_id,
-        documentPage,
-        documentSearch
-      )
-      setManagementNotice(`Deleted ${result.deleted_ids.length} document(s).`)
+      await loadKnowledgeBases(knowledgeBasePage, knowledgeBaseSearch)
+      await loadKnowledgeBaseDetail(selectedKnowledgeBase.knowledge_base_id)
+      await loadDocuments(selectedKnowledgeBase.knowledge_base_id, documentPage, documentSearch)
+      setManagementNotice(`已删除 ${result.deleted_ids.length} 个文档。`)
       if (Object.keys(result.failed).length > 0) {
         setManagementError(
           Object.entries(result.failed)
@@ -1262,9 +1389,7 @@ export default function ChatInterface() {
         )
       }
     } catch (error) {
-      setManagementError(
-        error instanceof Error ? error.message : 'Failed to bulk delete documents.'
-      )
+      setManagementError(error instanceof Error ? error.message : '批量删除文档失败。')
     } finally {
       setDeletingBulk(false)
     }
@@ -1478,13 +1603,13 @@ export default function ChatInterface() {
     const requestMode: RequestMode = useKnowledgeBase ? 'rag' : 'agent'
     const requestMcpConfig = requestMode === 'agent' && mcpEnabled ? mcpConfig : null
     if (requestMode === 'rag' && !selectedKnowledgeBase) {
-      setManagementError('启用知识库后，必须先选择一个知识库。')
+      setManagementError('启用知识库问答后，必须先选择一个知识库。')
       navigateTo('knowledge', 'libraries')
       return
     }
     if (requestMode === 'agent' && mcpEnabled && !requestMcpConfig) {
       setMcpNotice('')
-      setMcpError('MCP 已启用但当前没有有效配置，请前往 MCP 管理检查并保存。')
+      setMcpError('MCP 已启用，但当前没有有效配置，请先在 MCP 管理中保存配置。')
       navigateTo('mcp')
       return
     }
@@ -1520,7 +1645,7 @@ export default function ChatInterface() {
       const payload: Record<string, unknown> = {
         query,
         session_id: sessionId,
-        user_id: userId,
+        user_id: currentUserId,
         internet_search: internetSearch,
         deep_thinking: deepThinking,
       }
@@ -1531,20 +1656,11 @@ export default function ChatInterface() {
         payload.mcp_config = requestMcpConfig
       }
 
-      const response = await fetch(
-        getApiUrl(requestMode === 'rag' ? DEFAULT_RAG_API_PATH : DEFAULT_AGENT_API_PATH),
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'text/event-stream',
-          },
-          body: JSON.stringify(payload),
-          signal: abortControllerRef.current.signal,
-        }
+      const response = await requestStreamResponse(
+        requestMode === 'rag' ? DEFAULT_RAG_API_PATH : DEFAULT_AGENT_API_PATH,
+        payload,
+        abortControllerRef.current.signal
       )
-
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
       await readEventStream(response)
       setStatus('ready')
     } catch (error: unknown) {
@@ -1553,7 +1669,7 @@ export default function ChatInterface() {
         addMessage({
           id: generateMessageId(),
           role: 'ai',
-          content: `Request failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          content: `Request failed: ${error.message}`,
         })
       } else {
         setStatus('ready')
@@ -1589,9 +1705,7 @@ export default function ChatInterface() {
     const requestKnowledgeBase = requestKnowledgeBaseRef.current
     const requestMcpConfig = requestMcpConfigRef.current
     if (requestMode === 'rag' && !requestKnowledgeBase) {
-      setManagementError(
-        '当前中断来自知识库问答，但未找到对应知识库，请重新发起知识库对话。'
-      )
+      setManagementError('当前中断来自知识库问答，但未找到对应知识库，请重新发起请求。')
       setShowInterrupt(false)
       setInterruptData(null)
       return
@@ -1603,10 +1717,10 @@ export default function ChatInterface() {
       role: 'user',
       content:
         decision === 'approve'
-          ? '已批准执行待确认的工具。'
+          ? '已批准继续执行。'
           : decision === 'reject'
-            ? '已拒绝执行待确认的工具。'
-            : '已修改工具参数并继续执行。',
+            ? '已拒绝继续执行。'
+            : '已修改参数并继续执行。',
     })
 
     setIsProcessing(true)
@@ -1639,7 +1753,7 @@ export default function ChatInterface() {
       const payload: Record<string, unknown> = {
         resume: { decisions },
         session_id: sessionId,
-        user_id: userId,
+        user_id: currentUserId,
       }
       if (requestMode === 'rag' && requestKnowledgeBase) {
         payload.index_name = requestKnowledgeBase.passage_index
@@ -1648,20 +1762,11 @@ export default function ChatInterface() {
         payload.mcp_config = requestMcpConfig
       }
 
-      const response = await fetch(
-        getApiUrl(requestMode === 'rag' ? DEFAULT_RAG_API_PATH : DEFAULT_AGENT_API_PATH),
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'text/event-stream',
-          },
-          body: JSON.stringify(payload),
-          signal: abortControllerRef.current.signal,
-        }
+      const response = await requestStreamResponse(
+        requestMode === 'rag' ? DEFAULT_RAG_API_PATH : DEFAULT_AGENT_API_PATH,
+        payload,
+        abortControllerRef.current.signal
       )
-
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
       const streamResult = await readEventStream(response)
       receivedInterrupt = streamResult.interrupted
       setStatus('ready')
@@ -1671,7 +1776,7 @@ export default function ChatInterface() {
         addMessage({
           id: generateMessageId(),
           role: 'ai',
-          content: `Resume failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          content: `Resume failed: ${error.message}`,
         })
       }
     } finally {
@@ -1716,21 +1821,21 @@ export default function ChatInterface() {
     KNOWLEDGE_BASE_PAGE_SIZE
   )
   const documentPageTotal = getPageTotal(documentTotal, DOCUMENT_PAGE_SIZE)
+  const documentChunkPageTotal = selectedDocumentDetail
+    ? getPageTotal(selectedDocumentDetail.total_chunks, selectedDocumentDetail.page_size)
+    : 1
+  const visibleChunkTotal = knowledgeBases.reduce((sum, item) => sum + item.chunk_count, 0)
   const chatDisabled = useKnowledgeBase && !selectedKnowledgeBase
   const chatModeLabel = useKnowledgeBase ? '知识库 RAG' : '通用 Agent'
   const mcpStatusLabel = mcpEnabled
     ? useKnowledgeBase
-      ? '已启用(RAG未使用)'
+      ? '已启用，但当前 RAG 不使用'
       : savedMcpParseResult.serverSummaries.length > 0
-        ? `已启用(${savedMcpParseResult.serverSummaries.length})`
+        ? `已启用 ${savedMcpParseResult.serverSummaries.length} 个服务`
         : '已启用'
     : savedMcpParseResult.serverSummaries.length > 0
-      ? `已配置(${savedMcpParseResult.serverSummaries.length})`
+      ? `已配置 ${savedMcpParseResult.serverSummaries.length} 个服务`
       : '未配置'
-  const visibleChunkTotal = knowledgeBases.reduce((sum, item) => sum + item.chunk_count, 0)
-  const documentChunkPageTotal = selectedDocumentDetail
-    ? getPageTotal(selectedDocumentDetail.total_chunks, selectedDocumentDetail.page_size)
-    : 1
 
   return (
     <div className={styles.container}>
@@ -1741,9 +1846,19 @@ export default function ChatInterface() {
         <div className={styles.headerContent}>
           <div className={styles.logoArea}>
             <span className={styles.logoIcon}>AI</span>
-            <h1 className={styles.title}>AI Agent Chat</h1>
+            <div>
+              <h1 className={styles.title}>AI Agent Chat</h1>
+              <p className={styles.subtitle}>
+                智能问答 · MCP 工具接入 · 知识库管理 · 图检索 RAG
+              </p>
+            </div>
           </div>
-          <p className={styles.subtitle}>智能问答 · MCP 工具接入 · 知识库管理 · 图检索 RAG</p>
+          <AccountPanel
+            actor={actor}
+            open={accountMenuOpen}
+            onOpenChange={setAccountMenuOpen}
+            onLogout={handleLogout}
+          />
         </div>
       </header>
 
@@ -1810,7 +1925,7 @@ export default function ChatInterface() {
             <ChatView
               messages={messages}
               sessionId={sessionId}
-              userId={userId}
+              userId={currentUserId}
               chatModeLabel={chatModeLabel}
               mcpStatusLabel={mcpStatusLabel}
               status={status}
@@ -1846,6 +1961,8 @@ export default function ChatInterface() {
                 loadingSkills={loadingSkills}
                 skillNotice={skillNotice}
                 skillError={skillError}
+                canManageSkills={actorCapabilities.canManageSkills}
+                disabledMessage={guestSkillMessage}
                 uploadInputRef={skillUploadInputRef}
                 onOpenUploadDialog={openSkillUploadDialog}
                 onUploadSkills={handleUploadSkill}
@@ -1873,7 +1990,23 @@ export default function ChatInterface() {
             </div>
           ) : viewMode === 'channels' ? (
             <div className={styles.managementViewport}>
-              <ChannelManagementView userId={userId} />
+              <ChannelManagementView userId={currentUserId} />
+            </div>
+          ) : knowledgePage === 'users' ? (
+            <div className={styles.managementViewport}>
+              <UserManagementView
+                actor={actor}
+                users={adminUsers}
+                loading={loadingAdminUsers}
+                notice={userAdminNotice}
+                error={userAdminError}
+                onOpenAuth={openLoginPage}
+                onLoadUsers={loadAdminUsers}
+                onCreateUser={createAdminUser}
+                onUpdateUserRole={updateAdminUserRole}
+                onUpdateUserStatus={updateAdminUserStatus}
+                onResetUserPassword={resetAdminUserPassword}
+              />
             </div>
           ) : (
             <div className={styles.managementViewport}>
@@ -1881,9 +2014,8 @@ export default function ChatInterface() {
                 knowledgePage={knowledgePage}
                 managementNotice={managementNotice}
                 managementError={managementError}
-                userId={userId}
-                userIdDraft={userIdDraft}
-                savedUsers={savedUsers}
+                writeDisabled={!actorCapabilities.canManageKnowledge}
+                writeDisabledMessage={guestKnowledgeMessage}
                 knowledgeBaseTotal={knowledgeBaseTotal}
                 visibleChunkTotal={visibleChunkTotal}
                 knowledgeBases={knowledgeBases}
@@ -1914,11 +2046,6 @@ export default function ChatInterface() {
                 loadingDocumentDetail={loadingDocumentDetail}
                 uploadInputRef={uploadInputRef}
                 onNavigateTo={navigateTo}
-                onUserIdDraftChange={setUserIdDraft}
-                onApplyUserId={applyUserId}
-                onPersistSavedUsers={persistSavedUsers}
-                onSwitchUser={switchUser}
-                onRemoveSavedUser={removeSavedUser}
                 onSelectedKnowledgeBaseNameChange={setSelectedKnowledgeBaseName}
                 onSelectedKnowledgeBaseDescriptionChange={
                   setSelectedKnowledgeBaseDescription

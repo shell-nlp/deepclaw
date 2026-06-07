@@ -32,6 +32,20 @@
   - `home_path = .langchain_api`
   - `workspace_path = .langchain_api/workspace`
 
+### Auth 相关
+
+- `langchain_api/auth/models.py`
+  登录鉴权的 SQLModel 模型，包含用户表和 Bearer Token 表。
+
+- `langchain_api/auth/store.py`
+  认证数据访问层，负责用户创建、Token 签发、Token 撤销和管理员初始化检查。
+
+- `langchain_api/auth/service.py`
+  认证业务入口，负责注册、登录、登出、管理员创建用户、修改角色、禁用账号和重置密码。
+
+- `langchain_api/auth/dependencies.py`
+  FastAPI 认证依赖，提供游客、已登录用户和管理员三层身份判断。
+
 ### Agent 相关
 
 - `langchain_api/agent/agent.py`
@@ -81,6 +95,14 @@
   - `/api/agent/ag_ui`
   - `/api/agent/general_api`
   - `/api/agent/skills/*`
+
+- `langchain_api/api/auth/api/routes.py`
+  注册：
+  - `/api/auth/register`
+  - `/api/auth/login`
+  - `/api/auth/logout`
+  - `/api/auth/me`
+  - `/api/auth/users/*`
 
 - `langchain_api/api/routers/rag.py`
   注册：
@@ -136,6 +158,8 @@
 - `frontend/`
   Next.js 前端源码。主要视图包括：
   - 聊天
+  - 游客模式
+  - 独立登录页 / 注册页
   - 知识库
   - 技能管理
   - MCP 管理
@@ -186,6 +210,9 @@ pnpm build
 - `LANGSMITH_API_KEY`
 - `USE_COPILOTKIT`
 - `USE_TOOL_SEARCH`
+- `AUTH_ADMIN_EMAIL`
+- `AUTH_ADMIN_PASSWORD`
+- `AUTH_TOKEN_EXPIRE_DAYS`
 
 ### 渠道配置
 
@@ -209,6 +236,7 @@ pnpm build
 
 - 只改和当前任务直接相关的代码，避免顺手重构。
 - 保持最小改动，优先修根因，不要扩散影响面。
+- 未经用户明确要求，不要执行 `git add`、`git commit`、`git amend` 等 Git 提交类操作。
 - 现有仓库没有统一测试框架配置，不要为了当前任务临时引入新测试体系。
 - 前端和后端都有对外接口时，先确认真实入口挂载位置，再写文档或改前端调用。
 - 如果修改会影响静态托管行为，记得同时检查 `frontend/out` 是否需要重新构建。
@@ -248,10 +276,12 @@ pnpm build
 ## 当前公开接口事实
 
 - 主入口同时挂载 `agent`、`rag`、`channels`
+- 主入口还挂载 `/api/auth/*` 登录鉴权接口
 - 通用 SSE 接口支持多模态 `query`
 - 技能管理归属 `/api/agent/skills/*`
 - 知识库管理归属 `/api/rag/knowledge-bases/*`
 - 渠道管理归属 `/api/channels/*`
+- 前端默认以游客模式进入，点击右上角头像会跳转到独立 `/login` 页面进入登录/注册流程
 - 渠道会话默认写本地 SQLite，而不是 Elasticsearch 或 Postgres
 
 ## 文档协作原则

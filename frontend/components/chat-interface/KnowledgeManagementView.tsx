@@ -19,12 +19,11 @@ import type {
 import { formatDateTime } from './utils'
 
 interface KnowledgeManagementViewProps {
-  knowledgePage: KnowledgePage
+  knowledgePage: Exclude<KnowledgePage, 'users'>
   managementNotice: string
   managementError: string
-  userId: string
-  userIdDraft: string
-  savedUsers: string[]
+  writeDisabled: boolean
+  writeDisabledMessage: string
   knowledgeBaseTotal: number
   visibleChunkTotal: number
   knowledgeBases: KnowledgeBase[]
@@ -59,11 +58,6 @@ interface KnowledgeManagementViewProps {
     knowledgePage?: KnowledgePage,
     replace?: boolean
   ) => void
-  onUserIdDraftChange: (value: string) => void
-  onApplyUserId: () => void
-  onPersistSavedUsers: (nextUsers: string[]) => void
-  onSwitchUser: (userId: string) => void
-  onRemoveSavedUser: (userId: string) => void
   onSelectedKnowledgeBaseNameChange: (value: string) => void
   onSelectedKnowledgeBaseDescriptionChange: (value: string) => void
   onSaveKnowledgeBase: () => void | Promise<void>
@@ -101,9 +95,8 @@ export function KnowledgeManagementView({
   knowledgePage,
   managementNotice,
   managementError,
-  userId,
-  userIdDraft,
-  savedUsers,
+  writeDisabled,
+  writeDisabledMessage,
   knowledgeBaseTotal,
   visibleChunkTotal,
   knowledgeBases,
@@ -134,11 +127,6 @@ export function KnowledgeManagementView({
   loadingDocumentDetail,
   uploadInputRef,
   onNavigateTo,
-  onUserIdDraftChange,
-  onApplyUserId,
-  onPersistSavedUsers,
-  onSwitchUser,
-  onRemoveSavedUser,
   onSelectedKnowledgeBaseNameChange,
   onSelectedKnowledgeBaseDescriptionChange,
   onSaveKnowledgeBase,
@@ -165,82 +153,6 @@ export function KnowledgeManagementView({
   onKnowledgeBaseDescriptionChange,
   onCreateKnowledgeBase,
 }: KnowledgeManagementViewProps) {
-  const renderUsersPage = () => (
-    <div className={styles.managementPageGrid}>
-      <section className={styles.managementCard}>
-        <div className={styles.managementHeader}>
-          <h3>当前用户</h3>
-          <span className={styles.managementMeta}>前端本地管理</span>
-        </div>
-        <div className={styles.managementMetaPanel}>
-          <span>当前用户: {userId}</span>
-          <span>知识库数量: {knowledgeBaseTotal}</span>
-          <span>最近切片总数: {visibleChunkTotal}</span>
-        </div>
-        <div className={styles.managementForm}>
-          <input
-            className={styles.managementInput}
-            value={userIdDraft}
-            onChange={(event) => onUserIdDraftChange(event.target.value)}
-            placeholder="输入或创建用户 ID"
-          />
-          <div className={styles.managementToolbar}>
-            <button className={styles.managementButton} onClick={onApplyUserId}>
-              切换到该用户
-            </button>
-            <button
-              className={styles.managementMinorButton}
-              onClick={() => onPersistSavedUsers([userIdDraft, ...savedUsers])}
-            >
-              保存到用户列表
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <section className={styles.managementCard}>
-        <div className={styles.managementHeader}>
-          <h3>用户列表</h3>
-          <span className={styles.managementMeta}>{savedUsers.length} 个</span>
-        </div>
-        <div className={styles.managementList}>
-          {savedUsers.length === 0 ? (
-            <div className={styles.managementEmpty}>暂无保存的用户</div>
-          ) : (
-            savedUsers.map((savedUser) => (
-              <div
-                key={savedUser}
-                className={`${styles.managementListItemStatic} ${
-                  savedUser === userId ? styles.managementListItemActive : ''
-                }`}
-              >
-                <div className={styles.managementListHeader}>
-                  <strong>{savedUser}</strong>
-                  <span>{savedUser === userId ? '当前用户' : '可切换'}</span>
-                </div>
-                <div className={styles.managementActionRow}>
-                  <button
-                    className={styles.managementMinorButton}
-                    onClick={() => onSwitchUser(savedUser)}
-                  >
-                    使用该用户
-                  </button>
-                  <button
-                    className={styles.managementDangerMinorButton}
-                    onClick={() => onRemoveSavedUser(savedUser)}
-                    disabled={savedUser === userId && savedUsers.length <= 1}
-                  >
-                    移除
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </section>
-    </div>
-  )
-
   const renderDocumentDetailPage = () =>
     selectedDocumentDetail ? (
       <div className={styles.managementPageGrid}>
@@ -257,8 +169,7 @@ export function KnowledgeManagementView({
             <span>所属知识库: {selectedDocumentDetail.knowledge_base.name}</span>
             <span>原始文件: {selectedDocumentDetail.document.file_name}</span>
             <span>
-              文件大小:{' '}
-              {Math.max(1, Math.round(selectedDocumentDetail.document.file_size / 1024))} KB
+              文件大小: {Math.max(1, Math.round(selectedDocumentDetail.document.file_size / 1024))} KB
             </span>
             <span>切片数量: {selectedDocumentDetail.document.chunk_count}</span>
             <span>更新时间: {formatDateTime(selectedDocumentDetail.document.updated_at)}</span>
@@ -272,12 +183,14 @@ export function KnowledgeManagementView({
             </button>
             <button
               className={styles.managementMinorButton}
+              disabled={writeDisabled}
               onClick={() => void onRenameDocument(selectedDocumentDetail.document)}
             >
               重命名
             </button>
             <button
               className={styles.managementDangerButton}
+              disabled={writeDisabled}
               onClick={() =>
                 void onDeleteDocument(
                   selectedDocumentDetail.document.document_id,
@@ -285,7 +198,7 @@ export function KnowledgeManagementView({
                 )
               }
             >
-              删除该知识
+              删除文档
             </button>
           </div>
         </section>
@@ -331,7 +244,7 @@ export function KnowledgeManagementView({
       </div>
     ) : (
       <div className={styles.managementEmptyState}>
-        <div className={styles.managementEmpty}>请先从知识库详情页选择一条知识</div>
+        <div className={styles.managementEmpty}>请先从知识库详情页选择一条文档。</div>
         <button
           className={styles.managementButton}
           onClick={() => onNavigateTo('knowledge', 'libraries')}
@@ -359,6 +272,7 @@ export function KnowledgeManagementView({
             </button>
             <button
               className={styles.managementDangerButton}
+              disabled={writeDisabled}
               onClick={() => void onDeleteKnowledgeBase()}
             >
               删除知识库
@@ -372,14 +286,14 @@ export function KnowledgeManagementView({
             <strong className={styles.managementSummaryValue}>
               {selectedKnowledgeBase.document_count}
             </strong>
-            <span className={styles.managementMeta}>当前知识库知识文档数量</span>
+            <span className={styles.managementMeta}>当前知识库文档数量</span>
           </div>
           <div className={styles.managementSummaryCard}>
             <span className={styles.managementSummaryLabel}>切片总数</span>
             <strong className={styles.managementSummaryValue}>
               {selectedKnowledgeBase.chunk_count}
             </strong>
-            <span className={styles.managementMeta}>切片会写入 ES 图索引</span>
+            <span className={styles.managementMeta}>切片会进入检索索引</span>
           </div>
           <div className={styles.managementSummaryCard}>
             <span className={styles.managementSummaryLabel}>图前缀</span>
@@ -393,7 +307,7 @@ export function KnowledgeManagementView({
             <strong className={styles.managementSummaryValue}>
               {formatDateTime(selectedKnowledgeBase.updated_at)}
             </strong>
-            <span className={styles.managementMeta}>最近一次知识库更新时间</span>
+            <span className={styles.managementMeta}>最近一次知识库变更时间</span>
           </div>
         </div>
 
@@ -407,6 +321,7 @@ export function KnowledgeManagementView({
               <input
                 className={styles.managementInput}
                 value={selectedKnowledgeBaseName}
+                disabled={writeDisabled}
                 onChange={(event) =>
                   onSelectedKnowledgeBaseNameChange(event.target.value)
                 }
@@ -415,6 +330,7 @@ export function KnowledgeManagementView({
               <input
                 className={styles.managementInput}
                 value={selectedKnowledgeBaseDescription}
+                disabled={writeDisabled}
                 onChange={(event) =>
                   onSelectedKnowledgeBaseDescriptionChange(event.target.value)
                 }
@@ -423,7 +339,7 @@ export function KnowledgeManagementView({
               <div className={styles.managementToolbar}>
                 <button
                   className={styles.managementButton}
-                  disabled={savingKnowledgeBase}
+                  disabled={savingKnowledgeBase || writeDisabled}
                   onClick={() => void onSaveKnowledgeBase()}
                 >
                   保存设置
@@ -440,7 +356,7 @@ export function KnowledgeManagementView({
             <div className={styles.managementToolbar}>
               <button
                 className={styles.managementButton}
-                disabled={uploadingDocuments}
+                disabled={uploadingDocuments || writeDisabled}
                 onClick={onOpenUploadDialog}
               >
                 {uploadingDocuments ? '上传中...' : '上传知识文件'}
@@ -494,7 +410,9 @@ export function KnowledgeManagementView({
               </div>
               <button
                 className={styles.managementDangerButton}
-                disabled={checkedDocumentIds.length === 0 || deletingBulk}
+                disabled={
+                  checkedDocumentIds.length === 0 || deletingBulk || writeDisabled
+                }
                 onClick={() => void onBulkDeleteDocuments()}
               >
                 批量删除
@@ -503,7 +421,7 @@ export function KnowledgeManagementView({
 
             <div className={styles.managementCardGrid}>
               {documents.length === 0 ? (
-                <div className={styles.managementEmpty}>当前知识库还没有知识文档</div>
+                <div className={styles.managementEmpty}>当前知识库还没有知识文档。</div>
               ) : (
                 documents.map((document) => (
                   <div key={document.document_id} className={styles.managementTileCard}>
@@ -544,12 +462,14 @@ export function KnowledgeManagementView({
                       </button>
                       <button
                         className={styles.managementMinorButton}
+                        disabled={writeDisabled}
                         onClick={() => void onRenameDocument(document)}
                       >
                         重命名
                       </button>
                       <button
                         className={styles.managementDangerMinorButton}
+                        disabled={writeDisabled}
                         onClick={() =>
                           void onDeleteDocument(
                             document.document_id,
@@ -578,7 +498,7 @@ export function KnowledgeManagementView({
       </div>
     ) : (
       <div className={styles.managementEmptyState}>
-        <div className={styles.managementEmpty}>请先从知识库列表选择一个知识库</div>
+        <div className={styles.managementEmpty}>请先从知识库列表选择一个知识库。</div>
         <button
           className={styles.managementButton}
           onClick={() => onNavigateTo('knowledge', 'libraries')}
@@ -595,10 +515,23 @@ export function KnowledgeManagementView({
           <span className={styles.managementHeroEyebrow}>Knowledge Bases</span>
           <h2>按知识库管理你的知识</h2>
           <p>
-            这里展示当前用户下的所有知识库。点击卡片进入详情页，在详情页中继续添加知识文件和查看具体切片。
+            这里展示当前账号下的所有知识库。点开卡片可继续上传知识文档，并查看检索切片详情。
           </p>
         </div>
       </section>
+
+      <div className={styles.managementSummaryGrid}>
+        <div className={styles.managementSummaryCard}>
+          <span className={styles.managementSummaryLabel}>知识库数量</span>
+          <strong className={styles.managementSummaryValue}>{knowledgeBaseTotal}</strong>
+          <span className={styles.managementMeta}>当前可见的知识库总数</span>
+        </div>
+        <div className={styles.managementSummaryCard}>
+          <span className={styles.managementSummaryLabel}>切片总量</span>
+          <strong className={styles.managementSummaryValue}>{visibleChunkTotal}</strong>
+          <span className={styles.managementMeta}>当前页知识库切片汇总</span>
+        </div>
+      </div>
 
       <div className={styles.managementToolbar}>
         <div className={styles.managementSearchGroup}>
@@ -626,7 +559,7 @@ export function KnowledgeManagementView({
         </div>
         <button
           className={styles.managementDangerButton}
-          disabled={checkedKnowledgeBaseIds.length === 0 || deletingBulk}
+          disabled={checkedKnowledgeBaseIds.length === 0 || deletingBulk || writeDisabled}
           onClick={() => void onBulkDeleteKnowledgeBases()}
         >
           批量删除
@@ -637,6 +570,7 @@ export function KnowledgeManagementView({
         <button
           type="button"
           className={styles.managementCreateCard}
+          disabled={writeDisabled}
           onClick={() => onShowCreateKnowledgeBaseModalChange(true)}
         >
           <span className={styles.managementCreateIcon}>+</span>
@@ -645,7 +579,7 @@ export function KnowledgeManagementView({
         </button>
 
         {knowledgeBases.length === 0 ? (
-          <div className={styles.managementEmpty}>暂无知识库</div>
+          <div className={styles.managementEmpty}>暂无知识库。</div>
         ) : (
           knowledgeBases.map((knowledgeBase) => (
             <div
@@ -695,6 +629,7 @@ export function KnowledgeManagementView({
                 </button>
                 <button
                   className={styles.managementDangerMinorButton}
+                  disabled={writeDisabled}
                   onClick={() => void onDeleteKnowledgeBase(knowledgeBase.knowledge_base_id)}
                 >
                   删除
@@ -718,7 +653,6 @@ export function KnowledgeManagementView({
   )
 
   const renderKnowledgePage = () => {
-    if (knowledgePage === 'users') return renderUsersPage()
     if (knowledgePage === 'document-detail') return renderDocumentDetailPage()
     if (knowledgePage === 'library-detail') return renderLibraryDetailPage()
     return renderLibrariesPage()
@@ -728,10 +662,13 @@ export function KnowledgeManagementView({
     <>
       <div className={styles.managementPage}>
         <div className={styles.managementNoticeRow}>
-          {managementNotice && (
+          {writeDisabled ? (
+            <div className={styles.managementNotice}>{writeDisabledMessage}</div>
+          ) : null}
+          {managementNotice ? (
             <div className={styles.managementNotice}>{managementNotice}</div>
-          )}
-          {managementError && <div className={styles.managementError}>{managementError}</div>}
+          ) : null}
+          {managementError ? <div className={styles.managementError}>{managementError}</div> : null}
         </div>
         <div className={styles.managementTopbar}>
           <div className={styles.managementRouteInfo}>
@@ -751,6 +688,8 @@ export function KnowledgeManagementView({
         knowledgeBaseName={knowledgeBaseName}
         knowledgeBaseDescription={knowledgeBaseDescription}
         savingKnowledgeBase={savingKnowledgeBase}
+        createDisabled={writeDisabled}
+        disabledMessage={writeDisabledMessage}
         onClose={() => onShowCreateKnowledgeBaseModalChange(false)}
         onNameChange={onKnowledgeBaseNameChange}
         onDescriptionChange={onKnowledgeBaseDescriptionChange}

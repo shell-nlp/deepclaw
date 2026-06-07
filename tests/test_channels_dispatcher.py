@@ -1,4 +1,6 @@
-import unittest
+import asyncio
+
+import pytest
 
 from langchain_api.channels.models import AgentEvent, ChannelMessage
 
@@ -35,25 +37,27 @@ async def events(*items: AgentEvent):
         yield item
 
 
-class ResponseDispatcherTest(unittest.IsolatedAsyncioTestCase):
-    def setUp(self):
-        self.message = ChannelMessage(
-            channel="feishu",
-            message_id="msg_1",
-            channel_user_id="ou_1",
-            channel_conversation_id="chat_a",
-            text="hello",
-        )
+@pytest.fixture
+def message():
+    return ChannelMessage(
+        channel="feishu",
+        message_id="msg_1",
+        channel_user_id="ou_1",
+        channel_conversation_id="chat_a",
+        text="hello",
+    )
 
-    async def test_final_mode_sends_one_complete_reply(self):
-        from langchain_api.channels.dispatcher import ResponseDispatcher
 
-        adapter = FakeAdapter()
-        dispatcher = ResponseDispatcher()
+def test_final_mode_sends_one_complete_reply(message):
+    from langchain_api.channels.dispatcher import ResponseDispatcher
 
+    adapter = FakeAdapter()
+    dispatcher = ResponseDispatcher()
+
+    async def run():
         await dispatcher.dispatch(
             adapter=adapter,
-            message=self.message,
+            message=message,
             reply_mode="final",
             events=events(
                 AgentEvent(event="token", data={"token": "hello"}),
@@ -62,18 +66,22 @@ class ResponseDispatcherTest(unittest.IsolatedAsyncioTestCase):
             ),
         )
 
-        self.assertEqual([(self.message, "hello world")], adapter.sent)
-        self.assertEqual([], adapter.edits)
+    asyncio.run(run())
 
-    async def test_streaming_mode_edits_a_single_channel_message(self):
-        from langchain_api.channels.dispatcher import ResponseDispatcher
+    assert adapter.sent == [(message, "hello world")]
+    assert adapter.edits == []
 
-        adapter = FakeAdapter()
-        dispatcher = ResponseDispatcher(min_interval_seconds=999, min_chars=5)
 
+def test_streaming_mode_edits_a_single_channel_message(message):
+    from langchain_api.channels.dispatcher import ResponseDispatcher
+
+    adapter = FakeAdapter()
+    dispatcher = ResponseDispatcher(min_interval_seconds=999, min_chars=5)
+
+    async def run():
         await dispatcher.dispatch(
             adapter=adapter,
-            message=self.message,
+            message=message,
             reply_mode="streaming",
             events=events(
                 AgentEvent(event="token", data={"token": "hi"}),
@@ -81,26 +89,28 @@ class ResponseDispatcherTest(unittest.IsolatedAsyncioTestCase):
             ),
         )
 
-        self.assertEqual(1, len(adapter.sent))
-        self.assertEqual((self.message, "正在处理..."), adapter.sent[0])
-        self.assertEqual(("reply_1", "hi there"), adapter.edits[-1])
+    asyncio.run(run())
 
-    async def test_interrupt_sends_manual_confirmation_fallback(self):
-        from langchain_api.channels.dispatcher import ResponseDispatcher
+    assert len(adapter.sent) == 1
+    assert adapter.sent[0] == (message, "正在处理...")
+    assert adapter.edits[-1] == ("reply_1", "hi there")
 
-        adapter = FakeAdapter()
-        dispatcher = ResponseDispatcher()
 
+def test_interrupt_sends_manual_confirmation_fallback(message):
+    from langchain_api.channels.dispatcher import ResponseDispatcher
+
+    adapter = FakeAdapter()
+    dispatcher = ResponseDispatcher()
+
+    async def run():
         await dispatcher.dispatch(
             adapter=adapter,
-            message=self.message,
+            message=message,
             reply_mode="final",
             events=events(AgentEvent(event="__interrupt__", data={"__interrupt__": {}})),
         )
 
-        self.assertEqual(1, len(adapter.sent))
-        self.assertIn("需要人工确认", adapter.sent[0][1])
+    asyncio.run(run())
 
-
-if __name__ == "__main__":
-    unittest.main()
+    assert len(adapter.sent) == 1
+    assert "需要人工确认" in adapter.sent[0][1]

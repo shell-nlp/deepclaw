@@ -1,4 +1,4 @@
-import unittest
+import asyncio
 
 from langchain_api.channels.weixin_startup import fetch_startup_qrcode
 
@@ -70,126 +70,125 @@ class FakeService:
         self.messages.append((message, adapter))
 
 
-class WeixinStartupTest(unittest.IsolatedAsyncioTestCase):
-    async def test_fetch_startup_qrcode_prefers_qrcode_image_content(self):
-        client = FakeQRCodeClient(
-            {
-                "qrcode": "raw_qrcode",
-                "qrcode_img_content": "https://example.test/qrcode.png",
-            }
-        )
+def test_fetch_startup_qrcode_prefers_qrcode_image_content():
+    client = FakeQRCodeClient(
+        {
+            "qrcode": "raw_qrcode",
+            "qrcode_img_content": "https://example.test/qrcode.png",
+        }
+    )
 
-        result = await fetch_startup_qrcode(client=client)
+    result = asyncio.run(fetch_startup_qrcode(client=client))
 
-        self.assertEqual("https://example.test/qrcode.png", result["qrcode_url"])
-        self.assertEqual("raw_qrcode", result["qrcode"])
-        self.assertEqual([], client.local_token_list)
+    assert result["qrcode_url"] == "https://example.test/qrcode.png"
+    assert result["qrcode"] == "raw_qrcode"
+    assert client.local_token_list == []
 
-    async def test_fetch_startup_qrcode_falls_back_to_qrcode(self):
-        client = FakeQRCodeClient({"qrcode": "raw_qrcode"})
 
-        result = await fetch_startup_qrcode(client=client)
+def test_fetch_startup_qrcode_falls_back_to_qrcode():
+    client = FakeQRCodeClient({"qrcode": "raw_qrcode"})
 
-        self.assertEqual("raw_qrcode", result["qrcode_url"])
+    result = asyncio.run(fetch_startup_qrcode(client=client))
 
-    async def test_runtime_logs_in_then_processes_one_update_batch(self):
-        from langchain_api.channels.weixin_startup import WeixinClawBotRuntime
+    assert result["qrcode_url"] == "raw_qrcode"
 
-        client = FakeRuntimeClient()
-        service = FakeService()
-        runtime = WeixinClawBotRuntime(
-            qrcode="qr-content",
-            client=client,
-            service=service,
-            login_poll_interval_seconds=0,
-            message_poll_interval_seconds=0,
-        )
 
-        await runtime.run_once()
+def test_runtime_logs_in_then_processes_one_update_batch():
+    from langchain_api.channels.weixin_startup import WeixinClawBotRuntime
 
-        self.assertEqual(1, client.status_calls)
-        self.assertEqual(1, client.update_calls)
-        self.assertEqual(1, len(service.messages))
-        self.assertEqual("weixin_clawbot", service.messages[0][0].channel)
-        self.assertEqual("hello", service.messages[0][0].text)
+    client = FakeRuntimeClient()
+    service = FakeService()
+    runtime = WeixinClawBotRuntime(
+        qrcode="qr-content",
+        client=client,
+        service=service,
+        login_poll_interval_seconds=0,
+        message_poll_interval_seconds=0,
+    )
 
-    async def test_runtime_reuses_persisted_token_after_process_restart(self):
-        from langchain_api.channels.store import ChannelStore
-        from langchain_api.channels.weixin_startup import (
-            WeixinClawBotRuntime,
-            weixin_clawbot_user_state_key,
-        )
+    asyncio.run(runtime.run_once())
 
-        store = ChannelStore("sqlite:///:memory:")
-        store.upsert_runtime_state(
+    assert client.status_calls == 1
+    assert client.update_calls == 1
+    assert len(service.messages) == 1
+    assert service.messages[0][0].channel == "weixin_clawbot"
+    assert service.messages[0][0].text == "hello"
+
+
+def test_runtime_reuses_persisted_token_after_process_restart():
+    from langchain_api.channels.store import ChannelStore
+    from langchain_api.channels.weixin_startup import (
+        WeixinClawBotRuntime,
+        weixin_clawbot_user_state_key,
+    )
+
+    store = ChannelStore("sqlite:///:memory:")
+    store.upsert_runtime_state(
+        channel="weixin_clawbot",
+        state_key=weixin_clawbot_user_state_key("user_1"),
+        data={
+            "bot_token": "old_token",
+            "base_url": "https://old-node.example.test",
+            "get_updates_buf": "old_buf",
+            "owner_user_id": "user_1",
+        },
+    )
+    client = FakeRuntimeClient()
+    service = FakeService()
+
+    runtime = WeixinClawBotRuntime(
+        qrcode="qr-content",
+        client=client,
+        service=service,
+        store=store,
+        state_key=weixin_clawbot_user_state_key("user_1"),
+        owner_user_id="user_1",
+        login_poll_interval_seconds=0,
+        message_poll_interval_seconds=0,
+    )
+
+    asyncio.run(runtime.run_once())
+
+    assert client.status_calls == 0
+    assert client.tokens == ["old_token"]
+    assert client.get_updates_bufs == ["old_buf"]
+    assert client.base_url == "https://old-node.example.test"
+    assert (
+        store.get_runtime_state(
             channel="weixin_clawbot",
             state_key=weixin_clawbot_user_state_key("user_1"),
-            data={
-                "bot_token": "old_token",
-                "base_url": "https://old-node.example.test",
-                "get_updates_buf": "old_buf",
-                "owner_user_id": "user_1",
-            },
-        )
-        client = FakeRuntimeClient()
-        service = FakeService()
-
-        runtime = WeixinClawBotRuntime(
-            qrcode="qr-content",
-            client=client,
-            service=service,
-            store=store,
-            state_key=weixin_clawbot_user_state_key("user_1"),
-            owner_user_id="user_1",
-            login_poll_interval_seconds=0,
-            message_poll_interval_seconds=0,
-        )
-
-        await runtime.run_once()
-
-        self.assertEqual(0, client.status_calls)
-        self.assertEqual(["old_token"], client.tokens)
-        self.assertEqual(["old_buf"], client.get_updates_bufs)
-        self.assertEqual("https://old-node.example.test", client.base_url)
-        self.assertEqual(
-            "next_buf",
-            store.get_runtime_state(
-                channel="weixin_clawbot",
-                state_key=weixin_clawbot_user_state_key("user_1"),
-            ).data["get_updates_buf"],
-        )
-        self.assertEqual("user_1", service.messages[0][0].user_id)
-
-    async def test_runtime_falls_back_to_qrcode_when_persisted_token_expires(self):
-        from langchain_api.channels.store import ChannelStore
-        from langchain_api.channels.weixin_startup import WeixinClawBotRuntime
-
-        store = ChannelStore("sqlite:///:memory:")
-        store.upsert_runtime_state(
-            channel="weixin_clawbot",
-            state_key="default",
-            data={"bot_token": "expired_token", "get_updates_buf": "old_buf"},
-        )
-        client = FakeRecoveringRuntimeClient()
-        service = FakeService()
-        runtime = WeixinClawBotRuntime(
-            qrcode="qr-content",
-            client=client,
-            service=service,
-            store=store,
-            login_poll_interval_seconds=0,
-            message_poll_interval_seconds=0,
-        )
-
-        first_result = await runtime.run_once()
-        second_result = await runtime.run_once()
-
-        self.assertFalse(first_result)
-        self.assertTrue(second_result)
-        self.assertEqual(1, client.status_calls)
-        self.assertEqual(["expired_token", "token_1"], client.tokens)
-        self.assertEqual(1, len(service.messages))
+        ).data["get_updates_buf"]
+        == "next_buf"
+    )
+    assert service.messages[0][0].user_id == "user_1"
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_runtime_falls_back_to_qrcode_when_persisted_token_expires():
+    from langchain_api.channels.store import ChannelStore
+    from langchain_api.channels.weixin_startup import WeixinClawBotRuntime
+
+    store = ChannelStore("sqlite:///:memory:")
+    store.upsert_runtime_state(
+        channel="weixin_clawbot",
+        state_key="default",
+        data={"bot_token": "expired_token", "get_updates_buf": "old_buf"},
+    )
+    client = FakeRecoveringRuntimeClient()
+    service = FakeService()
+    runtime = WeixinClawBotRuntime(
+        qrcode="qr-content",
+        client=client,
+        service=service,
+        store=store,
+        login_poll_interval_seconds=0,
+        message_poll_interval_seconds=0,
+    )
+
+    first_result = asyncio.run(runtime.run_once())
+    second_result = asyncio.run(runtime.run_once())
+
+    assert first_result is False
+    assert second_result is True
+    assert client.status_calls == 1
+    assert client.tokens == ["expired_token", "token_1"]
+    assert len(service.messages) == 1

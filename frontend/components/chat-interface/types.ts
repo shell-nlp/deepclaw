@@ -196,6 +196,23 @@ export interface SkillDeleteResponse {
   deleted_path: string
 }
 
+export interface AuthUserSummary {
+  email: string
+  role: 'admin' | 'user'
+  is_active: boolean
+  user_id: string
+}
+
+export interface AuthLoginResponse {
+  token: string
+  user: AuthUserSummary
+}
+
+export interface AuthUserListResponse {
+  items: AuthUserSummary[]
+  total: number
+}
+
 export interface WeixinClawBotQrcodeResponse {
   qrcode?: string | null
   qrcode_url?: string | null
