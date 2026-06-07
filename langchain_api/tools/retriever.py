@@ -8,6 +8,7 @@ from langchain_api.utils import get_embedding_model
 DEFAULT_INDEX_NAME = "236"
 
 embeddings = get_embedding_model()
+# 复用全局 ES 检索器，避免普通检索请求重复初始化客户端。
 es_retriever = Elasticsearch(
     url=settings.ES_URL,
     username=settings.ES_URSR,
@@ -32,6 +33,7 @@ retrieve_tool = retrieve_context
 @tool
 def retrieve_graph_context(query: str, graph_name: str = DEFAULT_INDEX_NAME):
     """使用 ES 向量图 RAG 检索与查询相关的上下文。"""
+    # 图检索依赖 graph_name 构造实例，因此按调用动态创建。
     es = Elasticsearch(
         url=settings.ES_URL,
         username=settings.ES_URSR,

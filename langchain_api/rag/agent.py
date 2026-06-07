@@ -3,8 +3,8 @@ from langchain_deepseek import ChatDeepSeek
 
 from langchain_api.middleware.common import BusinessMiddleware
 from langchain_api.middleware.rag import RAGMiddleware
-from langchain_api.rag.retriever import es_retriever
 from langchain_api.settings import settings
+from langchain_api.tools.retriever import es_retriever
 
 
 def create_rag_agent(checkpointer=None, store=None):

@@ -73,9 +73,6 @@
 - `langchain_api/management/knowledge_base_manager.py`
   知识库管理核心实现，负责知识库元数据、文档元数据、文档上传、切片查询和删除。
 
-- `langchain_api/rag/retriever.py`
-  检索入口，衔接 ES 检索与 Graph RAG。
-
 - `langchain_api/rag/elastic_graph_rag.py`
   图检索核心实现，负责 passage / entity / relation 三类索引协同。
 
@@ -154,6 +151,9 @@
 
 - `langchain_api/tools/`
   当前内置天气、网页抓取和定时任务相关工具。
+
+- `langchain_api/tools/retriever.py`
+  检索工具入口，封装 ES 检索与 Graph RAG 工具，供 Agent 侧调用。
 
 - `frontend/`
   Next.js 前端源码。主要视图包括：
