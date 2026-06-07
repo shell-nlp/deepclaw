@@ -73,12 +73,6 @@
 - `langchain_api/management/knowledge_base_manager.py`
   知识库管理核心实现，负责知识库元数据、文档元数据、文档上传、切片查询和删除。
 
-- `langchain_api/rag/elastic_graph_rag.py`
-  图检索核心实现，负责 passage / entity / relation 三类索引协同。
-
-- `langchain_api/rag/text_splitter.py`
-  PDF 解析与切分逻辑。
-
 ### API 层
 
 - `langchain_api/api/endpoints.py`
@@ -148,6 +142,15 @@
 
 - `langchain_api/middleware/`
   包含业务开关、RAG 注入、MCP、工具搜索、计划等中间件。
+
+- `langchain_api/common/elastic_utils.py`
+  公共 Elasticsearch 检索算法封装，提供普通检索与图检索所需的底层能力。
+
+- `langchain_api/common/elastic_graph_rag.py`
+  公共图检索算法实现，负责 passage / entity / relation 三类索引协同。
+
+- `langchain_api/common/text_splitter.py`
+  公共 PDF 解析与切分算法实现，供知识库入库链路复用。
 
 - `langchain_api/tools/`
   当前内置天气、网页抓取和定时任务相关工具。

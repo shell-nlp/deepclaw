@@ -12,10 +12,10 @@ from langchain_core.documents import Document
 from loguru import logger
 from pydantic import BaseModel, Field
 
+from langchain_api.common.elastic_graph_rag import ElasticGraphRAG
+from langchain_api.common.elastic_utils import Elasticsearch
+from langchain_api.common.text_splitter import PDFParser
 from langchain_api.constant import workspace_path
-from langchain_api.rag.elastic_graph_rag import ElasticGraphRAG
-from langchain_api.rag.elastic_utils import Elasticsearch
-from langchain_api.rag.text_splitter import PDFParser
 from langchain_api.settings import settings
 from langchain_api.utils import get_embedding_model
 

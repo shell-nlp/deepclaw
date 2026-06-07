@@ -13,8 +13,8 @@ from langchain_deepseek import ChatDeepSeek
 from langgraph.runtime import Runtime
 from loguru import logger
 
-from langchain_api.rag.elastic_graph_rag import ElasticGraphRAG
-from langchain_api.rag.elastic_utils import Elasticsearch
+from langchain_api.common.elastic_graph_rag import ElasticGraphRAG
+from langchain_api.common.elastic_utils import Elasticsearch
 
 RAG_SYSTEM_PROMPT = """<角色>您是一个精通文档引用的问答专家，能够精准依据来源内容构建回答。</角色>
 <任务>基于提供的内容和用户的问题,撰写一篇详细完备的最终回答.</任务>
