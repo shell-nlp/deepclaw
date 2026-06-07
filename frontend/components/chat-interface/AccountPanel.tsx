@@ -21,7 +21,7 @@ function getAccountLabel(actor: ActorState): string {
 }
 
 function getAccountSubLabel(actor: ActorState): string {
-  if (actor.isGuest) return '可直接体验，写入功能需登录'
+  if (actor.isGuest) return '游客功能受限，请登录账号使用'
   return actor.role === 'admin' ? '管理员账号' : '普通用户'
 }
 
@@ -83,7 +83,9 @@ export function AccountPanel({
         </span>
         <span className={styles.accountMeta}>
           <strong>{getAccountLabel(actor)}</strong>
-          <span>{getAccountSubLabel(actor)}</span>
+          <span className={actor.isGuest ? styles.accountGuestMeta : undefined}>
+            {getAccountSubLabel(actor)}
+          </span>
         </span>
       </button>
 

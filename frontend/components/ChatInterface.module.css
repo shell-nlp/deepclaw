@@ -3006,6 +3006,11 @@ textarea.interruptInput {
   font-size: 12px;
 }
 
+.accountGuestMeta {
+  color: #d97706;
+  font-weight: 700;
+}
+
 .accountMenu {
   position: absolute;
   top: calc(100% + 12px);
