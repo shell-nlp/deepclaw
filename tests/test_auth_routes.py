@@ -3,9 +3,9 @@ from fastapi.testclient import TestClient
 
 
 def build_client() -> TestClient:
-    from langchain_api.api.auth.api.routes import create_auth_router
-    from langchain_api.auth.service import AuthService
-    from langchain_api.auth.store import AuthStore
+    from langchain_api.web_backend.auth.router import create_auth_router
+    from langchain_api.web_backend.auth.service import AuthService
+    from langchain_api.web_backend.auth.store import AuthStore
 
     service = AuthService(
         store=AuthStore("sqlite:///:memory:"),

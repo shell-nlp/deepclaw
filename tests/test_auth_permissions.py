@@ -1,10 +1,10 @@
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
-from langchain_api.api.agent.api.skills import add_skill_management_routes
-from langchain_api.api.rag.api.knowledge_bases import (
+from langchain_api.web_backend.knowledge_bases.router import (
     add_knowledge_base_management_routes,
 )
+from langchain_api.web_backend.skills.router import add_skill_management_routes
 
 
 def test_guest_cannot_upload_skill_or_create_kb():

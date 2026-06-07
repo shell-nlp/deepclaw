@@ -2,8 +2,8 @@ import pytest
 
 
 def build_service():
-    from langchain_api.auth.service import AuthService
-    from langchain_api.auth.store import AuthStore
+    from langchain_api.web_backend.auth.service import AuthService
+    from langchain_api.web_backend.auth.store import AuthStore
 
     return AuthService(
         store=AuthStore("sqlite:///:memory:"),

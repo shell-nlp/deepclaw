@@ -1,6 +1,6 @@
 import asyncio
 
-from langchain_api.channels import lifespan as channel_lifespan_module
+from langchain_api.web_backend.channels import lifespan as channel_lifespan_module
 
 
 def test_channel_lifespan_starts_saved_weixin_user_runtimes_and_cancels_tasks(monkeypatch):

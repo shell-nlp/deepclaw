@@ -1,2 +1,0 @@
-"""Channel gateway integration package."""
-

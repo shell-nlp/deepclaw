@@ -1,6 +1,6 @@
 # AGENTS.md
 
-本文件面向协作代理和开发者，描述当前仓库的真实结构、入口、边界和最小验证要求。`README.md` 面向外部使用者；这里不重复写外部上手说明，而是聚焦工程协作。
+本文档面向仓库协作代理与开发者，记录当前仓库的真实结构、改动边界与最小验证要求。`README.md` 面向外部使用者，这里不重复写外部上手说明。
 
 ## 项目定位
 
@@ -12,19 +12,74 @@
 
 前端是一个独立的 Next.js 应用，构建后由后端静态托管。
 
-## 代码结构
+## 当前代码结构
 
-### 后端主包
+### Web 应用层
 
-- `langchain_api/main.py`
-  FastAPI 唯一启动入口。负责：
+- `langchain_api/web_backend/app.py`
+  当前 FastAPI 官方装配入口。负责：
   - 创建 `FastAPI` 应用
-  - 初始化 checkpointer 和 store
-  - 挂载 `agent`、`rag`、`channels` 三套路由
-  - 注册生命周期逻辑和前端静态文件
+  - 初始化 checkpointer 与 store
+  - 挂载 `auth`、`agent`、`rag`、`channels`、`skills`、`knowledge_bases` 路由
+  - 静态托管 `frontend/out`
+
+- `langchain_api/web_backend/lifespan.py`
+  应用生命周期入口。负责：
+  - 可观测性初始化
+  - `patch_langchain()`
+  - 管理员账号自举
+  - 渠道 runtime 生命周期接入
+
+- `langchain_api/web_backend/common/endpoints.py`
+  通用 SSE 端点封装。当前 `query` 支持：
+  - 字符串
+  - 结构化多模态数组：`text` / `image`
+
+### Web 功能目录
+
+- `langchain_api/web_backend/auth/`
+  认证相关路由、请求模型、SQLModel、存储、服务与 FastAPI 依赖。
+
+- `langchain_api/web_backend/channels/`
+  渠道路由、适配器、运行时存储、会话服务、微信 runtime 生命周期与配置。
+
+- `langchain_api/web_backend/skills/`
+  技能管理路由、请求模型与服务实现。
+
+- `langchain_api/web_backend/knowledge_bases/`
+  知识库管理路由、请求模型与服务实现。
+
+- `langchain_api/web_backend/agent/router.py`
+  Agent 的 AG-UI 与通用 SSE HTTP 入口。
+
+- `langchain_api/web_backend/rag/router.py`
+  RAG 的通用 SSE HTTP 入口。
+
+### 核心能力层
+
+- `langchain_api/agent/`
+  通用 Agent 组装、上下文和运行时相关逻辑。
+
+- `langchain_api/rag/`
+  RAG Agent 组装与上下文定义。
+
+- `langchain_api/common/`
+  Elasticsearch、Graph RAG、PDF 切分等通用算法实现。
+
+- `langchain_api/middleware/`
+  业务开关、RAG 注入、MCP、工具搜索、计划等中间件。
+
+- `langchain_api/tools/`
+  天气、网页抓取、检索、定时任务等工具。
+
+- `langchain_api/backend/`
+  执行后端相关实现。
+
+- `langchain_api/patch/`
+  第三方库补丁与适配。
 
 - `langchain_api/settings.py`
-  主服务环境变量入口，管理模型、Elasticsearch、后端类型、工具搜索、CopilotKit、Phoenix 等配置。
+  主服务环境变量入口。
 
 - `langchain_api/constant.py`
   定义：
@@ -32,142 +87,10 @@
   - `home_path = .langchain_api`
   - `workspace_path = .langchain_api/workspace`
 
-### Auth 相关
+### 兼容入口
 
-- `langchain_api/auth/models.py`
-  登录鉴权的 SQLModel 模型，包含用户表和 Bearer Token 表。
-
-- `langchain_api/auth/store.py`
-  认证数据访问层，负责用户创建、Token 签发、Token 撤销和管理员初始化检查。
-
-- `langchain_api/auth/service.py`
-  认证业务入口，负责注册、登录、登出、管理员创建用户、修改角色、禁用账号和重置密码。
-
-- `langchain_api/auth/dependencies.py`
-  FastAPI 认证依赖，提供游客、已登录用户和管理员三层身份判断。
-
-### Agent 相关
-
-- `langchain_api/agent/agent.py`
-  通用 Agent 组装入口。默认走 DeepAgent，按配置接入：
-  - `BusinessMiddleware`
-  - `MCPMiddleware`
-  - `DeferredToolMiddleware`
-  - `local_shell` / `store` / `sandbox` 后端
-
-- `langchain_api/agent/context.py`
-  通用 Agent 请求上下文，包含：
-  - `user_id`
-  - `internet_search`
-  - `deep_thinking`
-  - `mcp_config`
-
-- `langchain_api/management/skill_manager.py`
-  技能文件管理逻辑，供技能管理接口调用。
-
-### RAG 相关
-
-- `langchain_api/rag/agent.py`
-  RAG Agent 组装入口，主要接入 `RAGMiddleware` 和 `BusinessMiddleware`。
-
-- `langchain_api/management/knowledge_base_manager.py`
-  知识库管理核心实现，负责知识库元数据、文档元数据、文档上传、切片查询和删除。
-
-### API 层
-
-- `langchain_api/api/endpoints.py`
-  通用 SSE 端点封装。
-  当前 `query` 支持：
-  - 字符串
-  - 结构化多模态数组：`text` / `image`
-
-- `langchain_api/api/routers/agent.py`
-  注册：
-  - `/api/agent/ag_ui`
-  - `/api/agent/general_api`
-  - `/api/agent/skills/*`
-
-- `langchain_api/api/auth/api/routes.py`
-  注册：
-  - `/api/auth/register`
-  - `/api/auth/login`
-  - `/api/auth/logout`
-  - `/api/auth/me`
-  - `/api/auth/users/*`
-
-- `langchain_api/api/routers/rag.py`
-  注册：
-  - `/api/rag/general_api`
-  - `/api/rag/knowledge-bases/*`
-
-- `langchain_api/api/routers/channels.py`
-  注册：
-  - `/api/channels/feishu/events`
-  - `/api/channels/dingtalk/events`
-  - `/api/channels/weixin-clawbot/*`
-  - `/api/channels/sessions`
-
-- `langchain_api/api/agent/api/skills.py`
-  技能列表、上传、删除接口。
-
-- `langchain_api/api/rag/api/knowledge_bases.py`
-  知识库和文档管理接口。
-
-### Channels 相关
-
-- `langchain_api/channels/config.py`
-  渠道配置入口，管理：
-  - `CHANNEL_AGENT_API_URL`
-  - `WEIXIN_CLAWBOT_*`
-
-- `langchain_api/channels/service.py`
-  渠道消息处理主流程。
-
-- `langchain_api/channels/agent_client.py`
-  渠道侧调用 Agent 通用接口的客户端。
-
-- `langchain_api/channels/store.py`
-  渠道运行时存储，默认写入 `.langchain_api/channels.db`。
-
-- `langchain_api/channels/lifespan.py`
-  服务生命周期内恢复和管理微信 ClawBot runtime。
-
-- `langchain_api/channels/adapters/`
-  渠道适配层，当前有：
-  - `feishu.py`
-  - `dingtalk.py`
-  - `weixin_clawbot.py`
-
-### 中间件 / 工具 / 前端
-
-- `langchain_api/middleware/`
-  包含业务开关、RAG 注入、MCP、工具搜索、计划等中间件。
-
-- `langchain_api/common/elastic_utils.py`
-  公共 Elasticsearch 检索算法封装，提供普通检索与图检索所需的底层能力。
-
-- `langchain_api/common/elastic_graph_rag.py`
-  公共图检索算法实现，负责 passage / entity / relation 三类索引协同。
-
-- `langchain_api/common/text_splitter.py`
-  公共 PDF 解析与切分算法实现，供知识库入库链路复用。
-
-- `langchain_api/tools/`
-  当前内置天气、网页抓取和定时任务相关工具。
-
-- `langchain_api/tools/retriever.py`
-  检索工具入口，封装 ES 检索与 Graph RAG 工具，供 Agent 侧调用。
-
-- `frontend/`
-  Next.js 前端源码。主要视图包括：
-  - 聊天
-  - 游客模式
-  - 独立登录页 / 注册页
-  - 知识库
-  - 技能管理
-  - MCP 管理
-  - 渠道管理
-  - 用户管理
+- `langchain_api/main.py`
+  当前仍可直接启动，但官方推荐入口已切换到 `langchain_api.web_backend.app:app`。修改启动装配逻辑时，优先改 `web_backend/app.py` 与 `web_backend/lifespan.py`。
 
 ## 启动与运行
 
@@ -176,7 +99,7 @@
 ```bash
 cp .env.example .env
 uv sync --dev
-uv run uvicorn langchain_api.main:app --reload --host 0.0.0.0 --port 7869
+uv run uvicorn langchain_api.web_backend.app:app --reload --host 0.0.0.0 --port 7869
 ```
 
 ### 前端
@@ -219,7 +142,7 @@ pnpm build
 
 ### 渠道配置
 
-`langchain_api/channels/config.py` 当前识别：
+`langchain_api/web_backend/channels/config.py` 当前识别：
 
 - `CHANNEL_AGENT_API_URL`
 - `WEIXIN_CLAWBOT_API_BASE_URL`
@@ -233,22 +156,22 @@ pnpm build
 
 - `PHOENIX_COLLECTOR_ENDPOINT`
 
-注意：`.env.example` 里有一些示例值和重复项，修改配置逻辑时以实际代码为准，不要只参考示例文件。
+注意：`.env.example` 里可能有示例值或历史残留，修改配置逻辑时以实际代码为准。
 
 ## 开发约束
 
-- 只改和当前任务直接相关的代码，避免顺手重构。
+- 只改与当前任务直接相关的代码，避免顺手重构。
 - 保持最小改动，优先修根因，不要扩散影响面。
-- 如果要重构架构或目录结构，且文件内容本身不需要大改，优先执行 `mv` / 重命名操作，再对移动后的导包错误做最小修复；不要先删除旧文件、再在新位置重写一份等价实现，这样可以减少 token 消耗并提升处理速度。
-- 写代码时要补充必要的中文代码注释，方便开发者理解关键逻辑，避免添加无意义的注释。
-- 未经用户明确要求，不要执行 `git add`、`git commit`、`git amend` 等 Git 提交类操作。
-- 测试统一使用 `pytest`，不要新增 `unittest` 风格测试，也不要为当前任务引入其他测试框架。
-- 如果当前需求可以通过成熟、稳定、维护活跃的开源库作为最佳实践来实现，优先采用开源库方案，不必重复自研；具体选型和集成方式由执行者结合仓库现状判断。
-- 前端和后端都有对外接口时，先确认真实入口挂载位置，再写文档或改前端调用。
+- 目录重构时优先执行移动，再做最小导包修复。
+- 关键逻辑补充必要的中文注释，避免无意义注释。
+- 未经用户明确要求，不要执行 `git add`、`git commit`、`git amend`。
+- 测试统一使用 `pytest`，不要引入 `unittest` 风格测试。
+- 如果成熟、稳定、维护活跃的开源库能更好解决问题，优先采用开源库方案。
+- 当前 Web 目录已经统一收口到 `web_backend`，不要再新增新的根包 `auth`、`channels`、`management`、`api` 目录。
 - 如果修改会影响静态托管行为，记得同时检查 `frontend/out` 是否需要重新构建。
-- 输出的文档必须是中文，不能是英文。
-- 如果项目的代码结构有变化，必须同步更新AGENTS.md文档。
-- 代码更改后，必须使用codegraph index --force 更新索引。
+- 输出文档必须是中文。
+- 如果代码结构变化，必须同步更新 `AGENTS.md`。
+- 代码更改后，必须执行 `codegraph index --force` 更新索引。
 
 ## 最小验证
 
@@ -258,7 +181,7 @@ pnpm build
 uv run python -m py_compile <changed_file.py>
 ```
 
-代码修改后，还必须运行 Ruff 检查：
+代码修改后，还必须运行 Ruff：
 
 ```bash
 uv run ruff check .
@@ -281,7 +204,7 @@ pnpm build
 只改文档时，不需要额外构建，但必须基于最新代码核对：
 
 - 路由前缀是否真实存在
-- 环境变量名是否与 `settings.py` / `channels/config.py` 一致
+- 环境变量名是否与 `settings.py` / `web_backend/channels/config.py` 一致
 - 前端托管路径是否仍为 `/`
 - 工作区路径是否仍为 `.langchain_api/workspace`
 

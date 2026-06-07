@@ -2,8 +2,11 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
-from langchain_api.api.common.api.endpoints import GUEST_USER_ID, add_general_api_endpoint
-from langchain_api.auth.dependencies import CurrentActor, get_current_actor
+from langchain_api.web_backend.auth.dependencies import CurrentActor, get_current_actor
+from langchain_api.web_backend.common.endpoints import (
+    GUEST_USER_ID,
+    add_general_api_endpoint,
+)
 
 
 class DummyContext(BaseModel):

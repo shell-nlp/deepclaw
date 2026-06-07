@@ -1,6 +1,6 @@
 import asyncio
 
-from langchain_api.channels.agent_client import AgentClient
+from langchain_api.web_backend.channels.agent_client import AgentClient
 
 
 async def fake_sender(payload):

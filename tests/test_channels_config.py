@@ -1,5 +1,5 @@
 def test_channel_gateway_settings_are_separate_from_global_settings():
-    from langchain_api.channels.config import (
+    from langchain_api.web_backend.channels.config import (
         channel_gateway_settings,
         weixin_clawbot_settings,
     )

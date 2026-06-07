@@ -2,8 +2,8 @@ import asyncio
 
 import pytest
 
-from langchain_api.channels.models import AgentEvent, ChannelMessage
-from langchain_api.channels.store import ChannelStore
+from langchain_api.web_backend.channels.models import AgentEvent, ChannelMessage
+from langchain_api.web_backend.channels.store import ChannelStore
 
 
 class FakeAgentClient:
@@ -61,7 +61,7 @@ def service_context():
 
 
 def test_process_message_creates_mapping_and_dispatches_agent_response(service_context):
-    from langchain_api.channels.service import ChannelService
+    from langchain_api.web_backend.channels.service import ChannelService
 
     store = service_context["store"]
     agent_client = service_context["agent_client"]
@@ -82,7 +82,7 @@ def test_process_message_creates_mapping_and_dispatches_agent_response(service_c
 
 
 def test_duplicate_message_does_not_call_agent_twice(service_context):
-    from langchain_api.channels.service import ChannelService
+    from langchain_api.web_backend.channels.service import ChannelService
 
     store = service_context["store"]
     agent_client = service_context["agent_client"]
@@ -100,7 +100,7 @@ def test_duplicate_message_does_not_call_agent_twice(service_context):
 
 
 def test_user_id_override_isolated_channel_user_mappings(service_context):
-    from langchain_api.channels.service import ChannelService
+    from langchain_api.web_backend.channels.service import ChannelService
 
     store = service_context["store"]
     agent_client = service_context["agent_client"]
@@ -132,7 +132,7 @@ def test_user_id_override_isolated_channel_user_mappings(service_context):
 
 
 def test_weixin_clawbot_new_sessions_default_to_streaming_reply_mode(service_context):
-    from langchain_api.channels.service import ChannelService
+    from langchain_api.web_backend.channels.service import ChannelService
 
     store = service_context["store"]
     agent_client = service_context["agent_client"]
@@ -154,8 +154,8 @@ def test_weixin_clawbot_new_sessions_default_to_streaming_reply_mode(service_con
 
 
 def test_weixin_clawbot_default_reply_mode_can_be_configured_to_final(service_context, monkeypatch):
-    from langchain_api.channels import service as channel_service_module
-    from langchain_api.channels.service import ChannelService
+    from langchain_api.web_backend.channels import service as channel_service_module
+    from langchain_api.web_backend.channels.service import ChannelService
 
     class FakeSettings:
         WEIXIN_CLAWBOT_DEFAULT_REPLY_MODE = "final"

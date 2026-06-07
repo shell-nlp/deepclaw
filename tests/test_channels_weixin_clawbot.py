@@ -1,6 +1,6 @@
 import asyncio
 
-from langchain_api.channels.models import ChannelMessage
+from langchain_api.web_backend.channels.models import ChannelMessage
 
 
 class FakeClawBotClient:
@@ -94,7 +94,7 @@ def sample_raw_message():
 
 
 def test_parse_text_update_message():
-    from langchain_api.channels.adapters.weixin_clawbot import WeixinClawBotAdapter
+    from langchain_api.web_backend.channels.adapters.weixin_clawbot import WeixinClawBotAdapter
 
     adapter = WeixinClawBotAdapter(client=FakeClawBotClient(), token="token_1")
     message = adapter.parse_update_message(sample_raw_message())
@@ -108,7 +108,7 @@ def test_parse_text_update_message():
 
 
 def test_send_and_edit_message_use_context_token():
-    from langchain_api.channels.adapters.weixin_clawbot import WeixinClawBotAdapter
+    from langchain_api.web_backend.channels.adapters.weixin_clawbot import WeixinClawBotAdapter
 
     client = FakeClawBotClient()
     adapter = WeixinClawBotAdapter(client=client, token="token_1")
@@ -146,7 +146,7 @@ def test_send_and_edit_message_use_context_token():
 
 
 def test_streaming_updates_reuse_client_id_and_finish_same_message():
-    from langchain_api.channels.adapters.weixin_clawbot import WeixinClawBotAdapter
+    from langchain_api.web_backend.channels.adapters.weixin_clawbot import WeixinClawBotAdapter
 
     client = FakeClawBotClient()
     adapter = WeixinClawBotAdapter(client=client, token="token_1")
@@ -173,7 +173,7 @@ def test_streaming_updates_reuse_client_id_and_finish_same_message():
 
 
 def test_typing_lifecycle_uses_get_config_and_send_typing():
-    from langchain_api.channels.adapters.weixin_clawbot import WeixinClawBotAdapter
+    from langchain_api.web_backend.channels.adapters.weixin_clawbot import WeixinClawBotAdapter
 
     client = FakeClawBotClient()
     adapter = WeixinClawBotAdapter(client=client, token="token_1")
@@ -201,7 +201,7 @@ def test_typing_lifecycle_uses_get_config_and_send_typing():
 
 
 def test_send_message_posts_ilink_payload():
-    from langchain_api.channels.adapters.weixin_clawbot import WeixinClawBotClient
+    from langchain_api.web_backend.channels.adapters.weixin_clawbot import WeixinClawBotClient
 
     fake = FakeClawBotClient()
     client = WeixinClawBotClient(request_json=fake.request_json)
@@ -225,7 +225,7 @@ def test_send_message_posts_ilink_payload():
 
 
 def test_fetch_login_qrcode_posts_local_tokens():
-    from langchain_api.channels.adapters.weixin_clawbot import WeixinClawBotClient
+    from langchain_api.web_backend.channels.adapters.weixin_clawbot import WeixinClawBotClient
 
     fake = FakeClawBotClient()
     client = WeixinClawBotClient(request_json=fake.request_json)
@@ -239,7 +239,7 @@ def test_fetch_login_qrcode_posts_local_tokens():
 
 
 def test_get_qrcode_status_uses_query_params():
-    from langchain_api.channels.adapters.weixin_clawbot import WeixinClawBotClient
+    from langchain_api.web_backend.channels.adapters.weixin_clawbot import WeixinClawBotClient
 
     fake = FakeClawBotClient()
     client = WeixinClawBotClient(request_json=fake.request_json)
