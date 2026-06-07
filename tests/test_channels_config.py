@@ -1,9 +1,9 @@
 def test_channel_gateway_settings_are_separate_from_global_settings():
-    from langchain_api.web_backend.channels.config import (
+    from deepclaw.web_backend.channels.config import (
         channel_gateway_settings,
         weixin_clawbot_settings,
     )
-    from langchain_api.settings import settings
+    from deepclaw.settings import settings
 
     assert channel_gateway_settings.CHANNEL_AGENT_API_URL == "http://127.0.0.1:7869/api/agent/general_api"
     assert not hasattr(channel_gateway_settings, "WEIXIN_CLAWBOT_API_BASE_URL")
@@ -17,3 +17,4 @@ def test_channel_gateway_settings_are_separate_from_global_settings():
     assert not hasattr(settings, "WEIXIN_CLAWBOT_API_BASE_URL")
     assert not hasattr(settings, "WEIXIN_CLAWBOT_PRINT_QRCODE_ON_STARTUP")
     assert not hasattr(settings, "WEIXIN_CLAWBOT_AUTO_POLL_ON_STARTUP")
+

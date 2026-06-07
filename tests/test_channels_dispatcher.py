@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from langchain_api.web_backend.channels.models import AgentEvent, ChannelMessage
+from deepclaw.web_backend.channels.models import AgentEvent, ChannelMessage
 
 
 class FakeAdapter:
@@ -49,7 +49,7 @@ def message():
 
 
 def test_final_mode_sends_one_complete_reply(message):
-    from langchain_api.web_backend.channels.dispatcher import ResponseDispatcher
+    from deepclaw.web_backend.channels.dispatcher import ResponseDispatcher
 
     adapter = FakeAdapter()
     dispatcher = ResponseDispatcher()
@@ -73,7 +73,7 @@ def test_final_mode_sends_one_complete_reply(message):
 
 
 def test_streaming_mode_edits_a_single_channel_message(message):
-    from langchain_api.web_backend.channels.dispatcher import ResponseDispatcher
+    from deepclaw.web_backend.channels.dispatcher import ResponseDispatcher
 
     adapter = FakeAdapter()
     dispatcher = ResponseDispatcher(min_interval_seconds=999, min_chars=5)
@@ -97,7 +97,7 @@ def test_streaming_mode_edits_a_single_channel_message(message):
 
 
 def test_interrupt_sends_manual_confirmation_fallback(message):
-    from langchain_api.web_backend.channels.dispatcher import ResponseDispatcher
+    from deepclaw.web_backend.channels.dispatcher import ResponseDispatcher
 
     adapter = FakeAdapter()
     dispatcher = ResponseDispatcher()
@@ -114,3 +114,4 @@ def test_interrupt_sends_manual_confirmation_fallback(message):
 
     assert len(adapter.sent) == 1
     assert "需要人工确认" in adapter.sent[0][1]
+

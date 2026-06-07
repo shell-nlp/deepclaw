@@ -507,7 +507,7 @@ export function ChatView({
         {messages.length === 0 ? (
           <div className={styles.welcome}>
             <div className={styles.welcomeIcon}>KB</div>
-            <h2>欢迎使用 AI Agent Chat</h2>
+            <h2>欢迎使用 DeepClaw</h2>
             <p>
               默认直接使用 Agent 对话。开启知识库后，将切到 RAG 图检索，并且必须选择一个知识库。
             </p>

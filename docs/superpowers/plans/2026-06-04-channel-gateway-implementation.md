@@ -4,7 +4,7 @@
 
 **Goal:** Implement an in-repository channel gateway that maps Feishu/DingTalk messages to the existing agent API with SQLite-backed SQLModel session configuration.
 
-**Architecture:** Add a focused `langchain_api.channels` package with models, store, service orchestration, agent SSE client, response dispatcher, and placeholder adapters. Register `/api/channels/*` routes from `main.py`.
+**Architecture:** Add a focused `deepclaw.channels` package with models, store, service orchestration, agent SSE client, response dispatcher, and placeholder adapters. Register `/api/channels/*` routes from `main.py`.
 
 **Tech Stack:** FastAPI, SQLModel, SQLite, httpx-compatible SSE parsing via standard async iteration, Pydantic models.
 
@@ -15,9 +15,9 @@
 ### Task 1: Channel Models And Store
 
 **Files:**
-- Create: `langchain_api/channels/__init__.py`
-- Create: `langchain_api/channels/models.py`
-- Create: `langchain_api/channels/store.py`
+- Create: `deepclaw/channels/__init__.py`
+- Create: `deepclaw/channels/models.py`
+- Create: `deepclaw/channels/store.py`
 - Create: `tests/test_channels_store.py`
 
 - [ ] Write failing `unittest` coverage for creating users, sessions, message records, and invalid `reply_mode`.
@@ -35,13 +35,13 @@
 Verification:
 
 ```bash
-uv run python -m py_compile langchain_api/channels/models.py langchain_api/channels/store.py
+uv run python -m py_compile deepclaw/channels/models.py deepclaw/channels/store.py
 ```
 
 ### Task 2: Agent Client
 
 **Files:**
-- Create: `langchain_api/channels/agent_client.py`
+- Create: `deepclaw/channels/agent_client.py`
 
 - [ ] Implement `AgentClient.stream()` that POSTs to `/api/agent/general_api`.
 - [ ] Parse SSE lines shaped as `data: {...}` into `StreamResponse`.
@@ -51,17 +51,17 @@ uv run python -m py_compile langchain_api/channels/models.py langchain_api/chann
 Verification:
 
 ```bash
-uv run python -m py_compile langchain_api/channels/agent_client.py
+uv run python -m py_compile deepclaw/channels/agent_client.py
 ```
 
 ### Task 3: Dispatcher And Adapters
 
 **Files:**
-- Create: `langchain_api/channels/adapters/__init__.py`
-- Create: `langchain_api/channels/adapters/base.py`
-- Create: `langchain_api/channels/adapters/feishu.py`
-- Create: `langchain_api/channels/adapters/dingtalk.py`
-- Create: `langchain_api/channels/dispatcher.py`
+- Create: `deepclaw/channels/adapters/__init__.py`
+- Create: `deepclaw/channels/adapters/base.py`
+- Create: `deepclaw/channels/adapters/feishu.py`
+- Create: `deepclaw/channels/adapters/dingtalk.py`
+- Create: `deepclaw/channels/dispatcher.py`
 - Create: `tests/test_channels_dispatcher.py`
 
 - [ ] Write failing `unittest` coverage for final buffering, streaming throttled edits, and interrupt fallback.
@@ -77,13 +77,13 @@ uv run python -m py_compile langchain_api/channels/agent_client.py
 Verification:
 
 ```bash
-uv run python -m py_compile langchain_api/channels/adapters/base.py langchain_api/channels/adapters/feishu.py langchain_api/channels/adapters/dingtalk.py langchain_api/channels/dispatcher.py
+uv run python -m py_compile deepclaw/channels/adapters/base.py deepclaw/channels/adapters/feishu.py deepclaw/channels/adapters/dingtalk.py deepclaw/channels/dispatcher.py
 ```
 
 ### Task 4: Channel Service
 
 **Files:**
-- Create: `langchain_api/channels/service.py`
+- Create: `deepclaw/channels/service.py`
 - Create: `tests/test_channels_service.py`
 
 - [ ] Write failing `unittest` coverage for idempotent duplicate messages and creating channel user/session mappings.
@@ -99,14 +99,14 @@ uv run python -m py_compile langchain_api/channels/adapters/base.py langchain_ap
 Verification:
 
 ```bash
-uv run python -m py_compile langchain_api/channels/service.py
+uv run python -m py_compile deepclaw/channels/service.py
 ```
 
 ### Task 5: API Router
 
 **Files:**
-- Create: `langchain_api/api/routers/channels.py`
-- Modify: `langchain_api/main.py`
+- Create: `deepclaw/api/routers/channels.py`
+- Modify: `deepclaw/main.py`
 
 - [ ] Add `POST /api/channels/feishu/events`.
 - [ ] Add `POST /api/channels/dingtalk/events`.
@@ -117,7 +117,7 @@ uv run python -m py_compile langchain_api/channels/service.py
 Verification:
 
 ```bash
-uv run python -m py_compile langchain_api/api/routers/channels.py langchain_api/main.py
+uv run python -m py_compile deepclaw/api/routers/channels.py deepclaw/main.py
 ```
 
 ### Task 6: Final Verification
@@ -132,8 +132,9 @@ uv run python -m py_compile langchain_api/api/routers/channels.py langchain_api/
 Verification:
 
 ```bash
-uv run python -m py_compile langchain_api/channels/models.py langchain_api/channels/store.py langchain_api/channels/agent_client.py langchain_api/channels/dispatcher.py langchain_api/channels/service.py langchain_api/api/routers/channels.py langchain_api/main.py
+uv run python -m py_compile deepclaw/channels/models.py deepclaw/channels/store.py deepclaw/channels/agent_client.py deepclaw/channels/dispatcher.py deepclaw/channels/service.py deepclaw/api/routers/channels.py deepclaw/main.py
 uv run python -m unittest tests.test_channels_store tests.test_channels_dispatcher tests.test_channels_service
-uv run python -c "from langchain_api.api.routers.channels import create_channels_router; print(create_channels_router)"
+uv run python -c "from deepclaw.api.routers.channels import create_channels_router; print(create_channels_router)"
 git status --short
 ```
+

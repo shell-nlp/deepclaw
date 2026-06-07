@@ -1,10 +1,10 @@
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
-from langchain_api.web_backend.knowledge_bases.router import (
+from deepclaw.web_backend.knowledge_bases.router import (
     add_knowledge_base_management_routes,
 )
-from langchain_api.web_backend.skills.router import add_skill_management_routes
+from deepclaw.web_backend.skills.router import add_skill_management_routes
 
 
 def test_guest_cannot_upload_skill_or_create_kb():
@@ -28,3 +28,4 @@ def test_guest_cannot_upload_skill_or_create_kb():
     assert skill.json()["detail"] == "登录后可上传技能。"
     assert kb.status_code == 403
     assert kb.json()["detail"] == "登录后可创建知识库。"
+

@@ -16,81 +16,81 @@
 
 ### Web 应用层
 
-- `langchain_api/web_backend/app.py`
+- `deepclaw/web_backend/app.py`
   当前 FastAPI 官方装配入口。负责：
   - 创建 `FastAPI` 应用
   - 初始化 checkpointer 与 store
   - 挂载 `auth`、`agent`、`rag`、`channels`、`skills`、`knowledge_bases` 路由
   - 静态托管 `frontend/out`
 
-- `langchain_api/web_backend/lifespan.py`
+- `deepclaw/web_backend/lifespan.py`
   应用生命周期入口。负责：
   - 可观测性初始化
   - `patch_langchain()`
   - 管理员账号自举
   - 渠道 runtime 生命周期接入
 
-- `langchain_api/web_backend/common/endpoints.py`
+- `deepclaw/web_backend/common/endpoints.py`
   通用 SSE 端点封装。当前 `query` 支持：
   - 字符串
   - 结构化多模态数组：`text` / `image`
 
 ### Web 功能目录
 
-- `langchain_api/web_backend/auth/`
+- `deepclaw/web_backend/auth/`
   认证相关路由、请求模型、SQLModel、存储、服务与 FastAPI 依赖。
 
-- `langchain_api/web_backend/channels/`
+- `deepclaw/web_backend/channels/`
   渠道路由、适配器、运行时存储、会话服务、微信 runtime 生命周期与配置。
 
-- `langchain_api/web_backend/skills/`
+- `deepclaw/web_backend/skills/`
   技能管理路由、请求模型与服务实现。
 
-- `langchain_api/web_backend/knowledge_bases/`
+- `deepclaw/web_backend/knowledge_bases/`
   知识库管理路由、请求模型与服务实现。
 
-- `langchain_api/web_backend/agent/router.py`
+- `deepclaw/web_backend/agent/router.py`
   Agent 的 AG-UI 与通用 SSE HTTP 入口。
 
-- `langchain_api/web_backend/rag/router.py`
+- `deepclaw/web_backend/rag/router.py`
   RAG 的通用 SSE HTTP 入口。
 
 ### 核心能力层
 
-- `langchain_api/agents/general/`
+- `deepclaw/agents/general/`
   通用 Agent 组装、上下文、状态与运行时相关逻辑。
 
-- `langchain_api/agents/rag/`
+- `deepclaw/agents/rag/`
   RAG Agent 组装、上下文与状态定义。
 
-- `langchain_api/common/`
+- `deepclaw/common/`
   Elasticsearch、Graph RAG、PDF 切分等通用算法实现。
 
-- `langchain_api/middleware/`
+- `deepclaw/middleware/`
   业务开关、RAG 注入、MCP、工具搜索、计划等中间件。
 
-- `langchain_api/tools/`
+- `deepclaw/tools/`
   天气、网页抓取、检索、定时任务等工具。
 
-- `langchain_api/backend/`
+- `deepclaw/backend/`
   执行后端相关实现。
 
-- `langchain_api/patch/`
+- `deepclaw/patch/`
   第三方库补丁与适配。
 
-- `langchain_api/settings.py`
+- `deepclaw/settings.py`
   主服务环境变量入口。
 
-- `langchain_api/constant.py`
+- `deepclaw/constant.py`
   定义：
   - `root_dir`
-  - `home_path = .langchain_api`
-  - `workspace_path = .langchain_api/workspace`
+  - `home_path = .deepclaw`
+  - `workspace_path = .deepclaw/workspace`
 
 ### 兼容入口
 
-- `langchain_api/main.py`
-  当前仍可直接启动，但官方推荐入口已切换到 `langchain_api.web_backend.app:app`。修改启动装配逻辑时，优先改 `web_backend/app.py` 与 `web_backend/lifespan.py`。
+- `deepclaw/main.py`
+  当前仍可直接启动，但官方推荐入口已切换到 `deepclaw.web_backend.app:app`。修改启动装配逻辑时，优先改 `web_backend/app.py` 与 `web_backend/lifespan.py`。
 
 ## 启动与运行
 
@@ -99,7 +99,7 @@
 ```bash
 cp .env.example .env
 uv sync --dev
-uv run uvicorn langchain_api.web_backend.app:app --reload --host 0.0.0.0 --port 7869
+uv run uvicorn deepclaw.web_backend.app:app --reload --host 0.0.0.0 --port 7869
 ```
 
 ### 前端
@@ -121,7 +121,7 @@ pnpm build
 
 ### 主服务配置
 
-`langchain_api/settings.py` 当前识别：
+`deepclaw/settings.py` 当前识别：
 
 - `OPENAI_API_BASE`
 - `OPENAI_API_KEY`
@@ -142,7 +142,7 @@ pnpm build
 
 ### 渠道配置
 
-`langchain_api/web_backend/channels/config.py` 当前识别：
+`deepclaw/web_backend/channels/config.py` 当前识别：
 
 - `CHANNEL_AGENT_API_URL`
 - `WEIXIN_CLAWBOT_API_BASE_URL`
@@ -206,7 +206,7 @@ pnpm build
 - 路由前缀是否真实存在
 - 环境变量名是否与 `settings.py` / `web_backend/channels/config.py` 一致
 - 前端托管路径是否仍为 `/`
-- 工作区路径是否仍为 `.langchain_api/workspace`
+- 工作区路径是否仍为 `.deepclaw/workspace`
 
 ## 当前公开接口事实
 
@@ -224,3 +224,4 @@ pnpm build
 - `README.md` 面向外部使用者，优先写“怎么跑、怎么调、有哪些公开能力”。
 - `AGENTS.md` 面向仓库协作方，优先写“代码怎么组织、改哪里、怎么验证、有哪些边界”。
 - 两份文档职责分开，避免互相复制导致失真。
+

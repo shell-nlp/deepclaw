@@ -11,14 +11,14 @@ RUN apt-get update && apt-get install -y \
 # 设置 UV 镜像源为清华大学源以加速依赖安装
 ENV UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
 
-WORKDIR /langchain-api
+WORKDIR /deepclaw
 
-COPY ./ /langchain-api
+COPY ./ /deepclaw
 RUN uv sync --no-group dev -v && source .venv/bin/activate && \
     uv cache clean && \
     echo '[[ -f .venv/bin/activate ]] && source .venv/bin/activate' >> ~/.bashrc
 
 # 把 venv 的 bin 放进 PATH，后面可以直接用 openai-router 
-ENV PATH="/langchain-api/.venv/bin:$PATH"
+ENV PATH="/deepclaw/.venv/bin:$PATH"
 
 CMD ["/bin/bash"]

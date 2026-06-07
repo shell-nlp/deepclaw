@@ -5,13 +5,13 @@ services:
     environment:
       - POSTGRES_USER=admin  # 数据库用户名
       - POSTGRES_PASSWORD=admin # 数据库密码（必填）
-      - POSTGRES_DB=langchain_api # 默认数据库名
+      - POSTGRES_DB=deepclaw # 默认数据库名
     ports:
       - 5432:5432
     volumes:
       - postgres:/var/lib/postgresql/data
     networks:
-      - langchain_api
+      - deepclaw
   elasticsearch:
       image: docker.1ms.run/elastic/elasticsearch:8.14.2
       container_name: elasticsearch
@@ -38,7 +38,7 @@ services:
         - target: 9200
           published: 9200
       networks:
-        - langchain_api
+        - deepclaw
   phoenix:
     image: docker.1ms.run/arizephoenix/phoenix:latest
     container_name: phoenix
@@ -49,7 +49,7 @@ services:
     depends_on:
       - postgresql
     networks:
-      - langchain_api
+      - deepclaw
     environment:
       - PHOENIX_SQL_DATABASE_URL=postgresql://admin:admin@postgresql:5432/phoenix
 
@@ -80,7 +80,7 @@ volumes:
     
 
 networks:
-  langchain_api:
-    name: langchain_api
+  deepclaw:
+    name: deepclaw
     driver: bridge
     # external: true

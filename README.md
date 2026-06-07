@@ -1,4 +1,4 @@
-# LangChain API
+# DeepClaw
 
 统一的智能体服务仓库，后端基于 FastAPI，集成了：
 
@@ -30,11 +30,10 @@
 ## 项目结构
 
 ```text
-langchain-api/
-├── langchain_api/
+deepclaw/
+├── deepclaw/
 │   ├── web_backend/         # FastAPI Web 应用层与所有 Web 功能目录
-│   ├── agent/               # 通用 Agent 组装与上下文
-│   ├── rag/                 # RAG Agent 组装与上下文
+│   ├── agents/              # 通用 Agent / RAG Agent 组装、上下文与状态
 │   ├── common/              # Elasticsearch、Graph RAG、文本切分等通用实现
 │   ├── middleware/          # 业务开关、RAG 注入、MCP、工具搜索等中间件
 │   ├── tools/               # 天气、网页抓取、检索、定时任务等工具
@@ -43,7 +42,7 @@ langchain-api/
 │   ├── main.py              # 兼容启动入口
 │   └── settings.py          # 环境变量配置
 ├── frontend/                # Next.js 前端
-├── .langchain_api/          # 运行时工作区、技能目录、渠道数据库等
+├── .deepclaw/               # 运行时工作区、技能目录、渠道数据库等
 ├── assets/                  # 截图与静态资源
 └── docker-compose.yml       # PostgreSQL / Elasticsearch / Phoenix
 ```
@@ -107,7 +106,7 @@ ES_PWD=elastic@2024
 官方推荐入口：
 
 ```bash
-uv run uvicorn langchain_api.web_backend.app:app --reload --host 0.0.0.0 --port 7869
+uv run uvicorn deepclaw.web_backend.app:app --reload --host 0.0.0.0 --port 7869
 ```
 
 启动后可访问：
@@ -181,7 +180,7 @@ pnpm build
 
 ### 主服务环境变量
 
-由 `langchain_api/settings.py` 读取：
+由 `deepclaw/settings.py` 读取：
 
 - `OPENAI_API_BASE`
 - `OPENAI_API_KEY`
@@ -202,7 +201,7 @@ pnpm build
 
 ### 渠道环境变量
 
-由 `langchain_api/web_backend/channels/config.py` 读取：
+由 `deepclaw/web_backend/channels/config.py` 读取：
 
 - `CHANNEL_AGENT_API_URL`
 - `WEIXIN_CLAWBOT_API_BASE_URL`
@@ -220,10 +219,11 @@ pnpm build
 
 - 后端会直接托管 `frontend/out`。如果该目录已存在，纯运行场景不需要安装 Node.js 和 pnpm。
 - 前端修改后，必须重新执行 `pnpm build`，后端 `/` 才会提供最新页面。
-- 默认工作区位于 `.langchain_api/workspace`。
-- 渠道模块默认把 SQLite 数据库写入 `.langchain_api/channels.db`。
+- 默认工作区位于 `.deepclaw/workspace`。
+- 渠道模块默认把 SQLite 数据库写入 `.deepclaw/channels.db`。
 - 如果 `frontend/out` 不存在，后端仍可提供 API，但 `/` 不会挂载前端页面。
 
 ## License
 
 Apache-2.0
+

@@ -10,6 +10,11 @@ wheels/
 .venv
 .env
 *.db
+.deepclaw/*.db
+.deepclaw/conversation_history/
+.deepclaw/.playwright-cli/
+.deepclaw/workspace/converted_pdf/
+.deepclaw/workspace/pdf_files/knowledge_bases/
 opencode.json
 .vscode/
 .trae

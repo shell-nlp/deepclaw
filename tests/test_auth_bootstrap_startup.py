@@ -5,7 +5,7 @@ from fastapi import FastAPI
 
 
 def test_app_lifespan_bootstraps_admin(monkeypatch):
-    from langchain_api import main
+    from deepclaw import main
 
     class ServiceSpy:
         def __init__(self):
@@ -32,3 +32,4 @@ def test_app_lifespan_bootstraps_admin(monkeypatch):
     asyncio.run(run_lifespan())
 
     assert service.calls == 1
+

@@ -1,6 +1,6 @@
 import asyncio
 
-from langchain_api.web_backend.channels.agent_client import AgentClient
+from deepclaw.web_backend.channels.agent_client import AgentClient
 
 
 async def fake_sender(payload):
@@ -27,3 +27,4 @@ def test_stream_parses_sse_data_lines_into_agent_events():
 
     assert ["token", "tool_calls", "__interrupt__"] == [item.event for item in result]
     assert result[0].data["token"] == "hello"
+

@@ -43,8 +43,8 @@ Expected: 新增权限测试通过。
 ### Task 2: 修复渠道路由权限控制
 
 **Files:**
-- Modify: `langchain_api/web_backend/channels/router.py`
-- Modify: `langchain_api/web_backend/channels/store.py`
+- Modify: `deepclaw/web_backend/channels/router.py`
+- Modify: `deepclaw/web_backend/channels/store.py`
 - Test: `tests/test_channels_router.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -74,13 +74,13 @@ Expected: 会话权限测试通过，原有会话功能保持可用。
 ### Task 3: 运行仓库要求的验证
 
 **Files:**
-- Modify: `langchain_api/web_backend/channels/router.py`
-- Modify: `langchain_api/web_backend/channels/store.py`
+- Modify: `deepclaw/web_backend/channels/router.py`
+- Modify: `deepclaw/web_backend/channels/store.py`
 - Modify: `tests/test_channels_router.py`
 
 - [ ] **Step 1: Run Python syntax check**
 
-Run: `uv run python -m py_compile langchain_api/web_backend/channels/router.py langchain_api/web_backend/channels/store.py tests/test_channels_router.py`
+Run: `uv run python -m py_compile deepclaw/web_backend/channels/router.py deepclaw/web_backend/channels/store.py tests/test_channels_router.py`
 Expected: 无输出，退出码为 0。
 
 - [ ] **Step 2: Run targeted tests**
@@ -97,3 +97,4 @@ Expected: 无错误，退出码为 0。
 
 Run: `codegraph index --force`
 Expected: 索引成功刷新。
+

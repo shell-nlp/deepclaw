@@ -2,7 +2,7 @@
 
 ## 目标
 
-将当前分散在 `langchain_api/api`、`langchain_api/auth`、`langchain_api/channels`、`langchain_api/management` 的 Web 相关代码统一收口到 `langchain_api/web_backend`，采用“扁平的按功能聚合”结构，明确区分：
+将当前分散在 `deepclaw/api`、`deepclaw/auth`、`deepclaw/channels`、`deepclaw/management` 的 Web 相关代码统一收口到 `deepclaw/web_backend`，采用“扁平的按功能聚合”结构，明确区分：
 
 - `web_backend`：FastAPI 应用壳、HTTP 路由、认证、渠道、技能管理、知识库管理等面向 Web 的应用层代码
 - `agent`、`rag`、`common`、`middleware`、`tools`：智能体、RAG、算法和通用能力
@@ -12,7 +12,7 @@
 ## 目标结构
 
 ```text
-langchain_api/
+deepclaw/
   web_backend/
     app.py
     lifespan.py
@@ -63,53 +63,53 @@ langchain_api/
 
 ### 应用入口
 
-- `langchain_api/main.py` → `langchain_api/web_backend/app.py`
-- 生命周期相关初始化逻辑从 `main.py` 抽到 `langchain_api/web_backend/lifespan.py`
+- `deepclaw/main.py` → `deepclaw/web_backend/app.py`
+- 生命周期相关初始化逻辑从 `main.py` 抽到 `deepclaw/web_backend/lifespan.py`
 
 ### Agent HTTP 入口
 
-- `langchain_api/api/agent/api/routes.py` → `langchain_api/web_backend/agent/router.py`
-- `langchain_api/api/agent/api/skills.py` 中的技能管理路由拆出：
+- `deepclaw/api/agent/api/routes.py` → `deepclaw/web_backend/agent/router.py`
+- `deepclaw/api/agent/api/skills.py` 中的技能管理路由拆出：
   - Agent SSE / AG-UI 路由保留在 `web_backend/agent/router.py`
   - 技能管理路由迁移到 `web_backend/skills/router.py`
-- `langchain_api/api/common/api/endpoints.py` → `langchain_api/web_backend/common/endpoints.py`
+- `deepclaw/api/common/api/endpoints.py` → `deepclaw/web_backend/common/endpoints.py`
 
 ### Auth
 
-- `langchain_api/api/auth/api/routes.py` → `langchain_api/web_backend/auth/router.py`
-- `langchain_api/api/auth/schemas/*.py` 合并为 `langchain_api/web_backend/auth/schemas.py`
-- `langchain_api/auth/models.py` → `langchain_api/web_backend/auth/models.py`
-- `langchain_api/auth/store.py` → `langchain_api/web_backend/auth/store.py`
-- `langchain_api/auth/service.py` → `langchain_api/web_backend/auth/service.py`
-- `langchain_api/auth/security.py` → `langchain_api/web_backend/auth/security.py`
-- `langchain_api/auth/dependencies.py` → `langchain_api/web_backend/auth/dependencies.py`
+- `deepclaw/api/auth/api/routes.py` → `deepclaw/web_backend/auth/router.py`
+- `deepclaw/api/auth/schemas/*.py` 合并为 `deepclaw/web_backend/auth/schemas.py`
+- `deepclaw/auth/models.py` → `deepclaw/web_backend/auth/models.py`
+- `deepclaw/auth/store.py` → `deepclaw/web_backend/auth/store.py`
+- `deepclaw/auth/service.py` → `deepclaw/web_backend/auth/service.py`
+- `deepclaw/auth/security.py` → `deepclaw/web_backend/auth/security.py`
+- `deepclaw/auth/dependencies.py` → `deepclaw/web_backend/auth/dependencies.py`
 
 ### Channels
 
-- `langchain_api/api/channels/api/routes.py` → `langchain_api/web_backend/channels/router.py`
-- `langchain_api/api/channels/schemas/weixin_clawbot.py` → `langchain_api/web_backend/channels/schemas.py`
-- `langchain_api/channels/models.py` → `langchain_api/web_backend/channels/models.py`
-- `langchain_api/channels/store.py` → `langchain_api/web_backend/channels/store.py`
-- `langchain_api/channels/service.py` → `langchain_api/web_backend/channels/service.py`
-- `langchain_api/channels/config.py` → `langchain_api/web_backend/channels/config.py`
-- `langchain_api/channels/dispatcher.py` → `langchain_api/web_backend/channels/dispatcher.py`
-- `langchain_api/channels/lifespan.py` → `langchain_api/web_backend/channels/lifespan.py`
-- `langchain_api/channels/weixin_startup.py` → `langchain_api/web_backend/channels/weixin_startup.py`
-- `langchain_api/channels/adapters/*` → `langchain_api/web_backend/channels/adapters/*`
-- `langchain_api/channels/agent_client.py` → `langchain_api/web_backend/channels/agent_client.py`
+- `deepclaw/api/channels/api/routes.py` → `deepclaw/web_backend/channels/router.py`
+- `deepclaw/api/channels/schemas/weixin_clawbot.py` → `deepclaw/web_backend/channels/schemas.py`
+- `deepclaw/channels/models.py` → `deepclaw/web_backend/channels/models.py`
+- `deepclaw/channels/store.py` → `deepclaw/web_backend/channels/store.py`
+- `deepclaw/channels/service.py` → `deepclaw/web_backend/channels/service.py`
+- `deepclaw/channels/config.py` → `deepclaw/web_backend/channels/config.py`
+- `deepclaw/channels/dispatcher.py` → `deepclaw/web_backend/channels/dispatcher.py`
+- `deepclaw/channels/lifespan.py` → `deepclaw/web_backend/channels/lifespan.py`
+- `deepclaw/channels/weixin_startup.py` → `deepclaw/web_backend/channels/weixin_startup.py`
+- `deepclaw/channels/adapters/*` → `deepclaw/web_backend/channels/adapters/*`
+- `deepclaw/channels/agent_client.py` → `deepclaw/web_backend/channels/agent_client.py`
 
 ### Skills
 
-- `langchain_api/management/skill_manager.py` → `langchain_api/web_backend/skills/service.py`
-- `langchain_api/api/agent/schemas/skills.py` → `langchain_api/web_backend/skills/schemas.py`
-- 由 `langchain_api/api/agent/api/skills.py` 提供的路由 → `langchain_api/web_backend/skills/router.py`
+- `deepclaw/management/skill_manager.py` → `deepclaw/web_backend/skills/service.py`
+- `deepclaw/api/agent/schemas/skills.py` → `deepclaw/web_backend/skills/schemas.py`
+- 由 `deepclaw/api/agent/api/skills.py` 提供的路由 → `deepclaw/web_backend/skills/router.py`
 
 ### Knowledge Bases
 
-- `langchain_api/management/knowledge_base_manager.py` → `langchain_api/web_backend/knowledge_bases/service.py`
-- `langchain_api/api/rag/schemas/knowledge_bases.py` → `langchain_api/web_backend/knowledge_bases/schemas.py`
-- `langchain_api/api/rag/api/knowledge_bases.py` → `langchain_api/web_backend/knowledge_bases/router.py`
-- `langchain_api/api/rag/api/routes.py` → `langchain_api/web_backend/rag/router.py`
+- `deepclaw/management/knowledge_base_manager.py` → `deepclaw/web_backend/knowledge_bases/service.py`
+- `deepclaw/api/rag/schemas/knowledge_bases.py` → `deepclaw/web_backend/knowledge_bases/schemas.py`
+- `deepclaw/api/rag/api/knowledge_bases.py` → `deepclaw/web_backend/knowledge_bases/router.py`
+- `deepclaw/api/rag/api/routes.py` → `deepclaw/web_backend/rag/router.py`
 
 ## 启动与装配方式
 
@@ -232,3 +232,4 @@ pnpm build
 - `auth`、`channels` 不再挂在根包
 - `agent`、`rag` 在 `web_backend` 中只保留 HTTP 入口，在根包中保留核心实现
 - `AGENTS.md`、启动命令、测试导入、CodeGraph 索引全部与新结构一致
+

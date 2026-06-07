@@ -2,12 +2,12 @@
 
 ## 目标
 
-重组 `langchain_api/api`，让 API 代码按业务域组织，并在每个业务域内部继续按职责拆分。路由注册代码放在 `api/`，Pydantic 请求/响应模型放在 `schemas/`。本次不保留旧 `routers`、`management`、根部 `endpoints.py` 的兼容导出代码，所有内部导入和测试都迁移到新路径。
+重组 `deepclaw/api`，让 API 代码按业务域组织，并在每个业务域内部继续按职责拆分。路由注册代码放在 `api/`，Pydantic 请求/响应模型放在 `schemas/`。本次不保留旧 `routers`、`management`、根部 `endpoints.py` 的兼容导出代码，所有内部导入和测试都迁移到新路径。
 
 ## 目标结构
 
 ```text
-langchain_api/api/
+deepclaw/api/
   agent/
     api/
       routes.py
@@ -37,16 +37,16 @@ langchain_api/api/
 - `routes.py` 只负责创建和注册 FastAPI router。
 - 业务管理接口仍按业务域放置，例如 `agent/api/skills.py`、`rag/api/knowledge_bases.py`。
 - 本地定义的 Pydantic `BaseModel` 全部迁移到对应 `schemas/` 文件。
-- `langchain_api/main.py` 继续从业务包导入 `create_agent_router`、`create_rag_router`、`create_channels_router`。
+- `deepclaw/main.py` 继续从业务包导入 `create_agent_router`、`create_rag_router`、`create_channels_router`。
 - 删除旧兼容模块，不再使用 `sys.modules[__name__] = ...`。
 
 ## 不在本次范围内
 
 本次不新增空的 `models/`、`service.py`、`repository.py`。现有核心业务实现仍保留在：
 
-- `langchain_api/agent`
-- `langchain_api/rag`
-- `langchain_api/channels`
+- `deepclaw/agent`
+- `deepclaw/rag`
+- `deepclaw/channels`
 
 后续如果某个业务域需要新建 ORM、service 或 repository，再按真实需求补齐。
 
@@ -69,3 +69,4 @@ langchain_api/api/
 uv run python -m py_compile <changed-python-files>
 uv run pytest tests/test_channels_router.py
 ```
+

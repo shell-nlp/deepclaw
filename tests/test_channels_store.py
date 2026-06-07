@@ -3,7 +3,7 @@ import pytest
 
 @pytest.fixture
 def store():
-    from langchain_api.web_backend.channels.store import ChannelStore
+    from deepclaw.web_backend.channels.store import ChannelStore
 
     return ChannelStore("sqlite:///:memory:")
 
@@ -67,7 +67,7 @@ def test_update_session_reply_mode_validates_values(store):
 
 
 def test_message_record_uses_channel_message_as_logical_key(store):
-    from langchain_api.web_backend.channels.models import ChannelMessage
+    from deepclaw.web_backend.channels.models import ChannelMessage
 
     message = ChannelMessage(
         channel="feishu",
@@ -151,3 +151,4 @@ def test_delete_runtime_state_removes_channel_key(store):
         channel="weixin_clawbot",
         state_key="user:user_1",
     ) is False
+

@@ -2,8 +2,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
-from langchain_api.web_backend.auth.dependencies import CurrentActor, get_current_actor
-from langchain_api.web_backend.common.endpoints import (
+from deepclaw.web_backend.auth.dependencies import CurrentActor, get_current_actor
+from deepclaw.web_backend.common.endpoints import (
     GUEST_USER_ID,
     add_general_api_endpoint,
 )
@@ -71,3 +71,4 @@ def test_general_api_authenticated_actor_overrides_request_user_id():
     assert response.status_code == 200
     assert len(agent.contexts) == 1
     assert agent.contexts[0].user_id == "user_real_123"
+

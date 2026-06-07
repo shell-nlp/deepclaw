@@ -3,9 +3,9 @@ from fastapi.testclient import TestClient
 
 
 def build_client() -> TestClient:
-    from langchain_api.web_backend.auth.router import create_auth_router
-    from langchain_api.web_backend.auth.service import AuthService
-    from langchain_api.web_backend.auth.store import AuthStore
+    from deepclaw.web_backend.auth.router import create_auth_router
+    from deepclaw.web_backend.auth.service import AuthService
+    from deepclaw.web_backend.auth.store import AuthStore
 
     service = AuthService(
         store=AuthStore("sqlite:///:memory:"),
@@ -103,3 +103,4 @@ def test_admin_can_manage_user_accounts():
     assert status_updated.status_code == 200
     assert status_updated.json()["user"]["is_active"] is False
     assert reset.status_code == 200
+

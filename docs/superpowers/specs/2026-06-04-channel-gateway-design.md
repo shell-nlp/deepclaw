@@ -43,7 +43,7 @@ __interrupt__
 在当前仓库中新增 `channels` 子系统：
 
 ```text
-langchain_api/channels/
+deepclaw/channels/
   adapters/
     feishu.py
     dingtalk.py
@@ -53,7 +53,7 @@ langchain_api/channels/
   agent_client.py
   dispatcher.py
 
-langchain_api/api/routers/channels.py
+deepclaw/api/routers/channels.py
 ```
 
 职责划分：
@@ -383,3 +383,4 @@ streaming 模式会节流编辑，而不是每个 token 都编辑一次。
 会话配置 PATCH 会校验 reply_mode。
 修改过的 Python 文件可以通过 py_compile。
 ```
+

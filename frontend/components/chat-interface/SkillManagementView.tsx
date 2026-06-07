@@ -81,7 +81,7 @@ export function SkillManagementView({
         <div className={styles.managementSummaryCard}>
           <span className={styles.managementSummaryLabel}>存放位置</span>
           <strong className={styles.managementSummaryValue}>skills</strong>
-          <span className={styles.managementMeta}>位于 `.langchain_api/workspace/skills`</span>
+          <span className={styles.managementMeta}>位于 `.deepclaw/workspace/skills`</span>
         </div>
         <div className={styles.managementSummaryCard}>
           <span className={styles.managementSummaryLabel}>上传格式</span>
@@ -139,3 +139,4 @@ export function SkillManagementView({
     </div>
   )
 }
+

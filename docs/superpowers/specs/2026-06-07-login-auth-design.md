@@ -45,7 +45,7 @@
 建议新增一个独立认证子系统，沿用仓库当前 `sqlmodel + sqlite` 的轻量模式：
 
 ```text
-langchain_api/
+deepclaw/
   auth/
     models.py
     store.py
@@ -53,7 +53,7 @@ langchain_api/
     dependencies.py
     security.py
 
-langchain_api/api/
+deepclaw/api/
   auth/
     api/
       routes.py
@@ -80,7 +80,7 @@ langchain_api/api/
 sqlite:///<home_path>/auth.db
 ```
 
-即 `.langchain_api/auth.db`。这和当前 `channels.db` 的模式一致，便于部署与维护。
+即 `.deepclaw/auth.db`。这和当前 `channels.db` 的模式一致，便于部署与维护。
 
 ### 数据模型
 
@@ -507,3 +507,4 @@ pnpm build
 - 管理员可管理账号
 - 前端风格保持现有一致性
 - 游客可看知识库和技能页面，但写操作被明确禁止并友好提示
+

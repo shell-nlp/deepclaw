@@ -4,7 +4,7 @@
 
 **Goal:** 为仓库补齐游客态、邮箱密码注册登录、Bearer Token 鉴权和管理员用户管理，并把知识库/技能等写操作限制为登录后可用。
 
-**Architecture:** 后端新增 `langchain_api/auth` 子系统，使用本地 SQLite 保存用户和访问令牌摘要；API 层统一解析 `CurrentActor`，再把真实 `user_id` 注入现有业务逻辑。前端保留现有工作台结构，默认游客直达工作台，只在点击右上角头像时进入登录/注册流程，并在管理页中对游客展示只读禁用态和友好提示。
+**Architecture:** 后端新增 `deepclaw/auth` 子系统，使用本地 SQLite 保存用户和访问令牌摘要；API 层统一解析 `CurrentActor`，再把真实 `user_id` 注入现有业务逻辑。前端保留现有工作台结构，默认游客直达工作台，只在点击右上角头像时进入登录/注册流程，并在管理页中对游客展示只读禁用态和友好提示。
 
 **Tech Stack:** FastAPI, SQLModel, Pydantic, Next.js 15, React 19, TypeScript, Node `node:test`
 
@@ -13,19 +13,19 @@
 ### Task 1: 建立认证模型、存储和安全工具
 
 **Files:**
-- Create: `langchain_api/auth/models.py`
-- Create: `langchain_api/auth/security.py`
-- Create: `langchain_api/auth/store.py`
-- Create: `langchain_api/auth/service.py`
-- Create: `langchain_api/auth/__init__.py`
-- Modify: `langchain_api/settings.py`
+- Create: `deepclaw/auth/models.py`
+- Create: `deepclaw/auth/security.py`
+- Create: `deepclaw/auth/store.py`
+- Create: `deepclaw/auth/service.py`
+- Create: `deepclaw/auth/__init__.py`
+- Modify: `deepclaw/settings.py`
 - Test: `tests/test_auth_store.py`
 
 - [ ] **Step 1: 先写失败测试，锁定认证基础行为**
 
 ```python
-from langchain_api.auth.service import AuthService
-from langchain_api.auth.store import AuthStore
+from deepclaw.auth.service import AuthService
+from deepclaw.auth.store import AuthStore
 
 
 def build_service() -> AuthService:
@@ -66,12 +66,12 @@ def test_register_rejects_duplicate_email():
 
 Run: `uv run pytest tests/test_auth_store.py -q`
 
-Expected: `ModuleNotFoundError` 或 `ImportError`，指向 `langchain_api.auth`
+Expected: `ModuleNotFoundError` 或 `ImportError`，指向 `deepclaw.auth`
 
 - [ ] **Step 3: 写最小生产代码，覆盖用户表、token 表、哈希和服务**
 
 ```python
-# langchain_api/auth/models.py
+# deepclaw/auth/models.py
 from datetime import UTC, datetime
 
 from sqlmodel import Field, SQLModel
@@ -102,7 +102,7 @@ class AccessTokenRecord(SQLModel, table=True):
 ```
 
 ```python
-# langchain_api/auth/security.py
+# deepclaw/auth/security.py
 import hashlib
 import secrets
 
@@ -133,7 +133,7 @@ def hash_token(token: str) -> str:
 ```
 
 ```python
-# langchain_api/auth/service.py
+# deepclaw/auth/service.py
 class AuthService:
     def register(self, *, email: str, password: str):
         normalized_email = email.strip().lower()
@@ -177,7 +177,7 @@ class AuthService:
 - [ ] **Step 4: 增加配置项并通过后端测试**
 
 ```python
-# langchain_api/settings.py
+# deepclaw/settings.py
 AUTH_ADMIN_EMAIL: str | None = None
 AUTH_ADMIN_PASSWORD: str | None = None
 AUTH_TOKEN_EXPIRE_DAYS: int = 30
@@ -189,21 +189,21 @@ Expected: `2 passed`
 
 - [ ] **Step 5: 运行语法检查**
 
-Run: `uv run python -m py_compile langchain_api/auth/models.py langchain_api/auth/security.py langchain_api/auth/store.py langchain_api/auth/service.py langchain_api/settings.py`
+Run: `uv run python -m py_compile deepclaw/auth/models.py deepclaw/auth/security.py deepclaw/auth/store.py deepclaw/auth/service.py deepclaw/settings.py`
 
 Expected: no output
 
 ### Task 2: 暴露认证路由和管理员用户管理路由
 
 **Files:**
-- Create: `langchain_api/auth/dependencies.py`
-- Create: `langchain_api/api/auth/api/routes.py`
-- Create: `langchain_api/api/auth/api/__init__.py`
-- Create: `langchain_api/api/auth/schemas/auth.py`
-- Create: `langchain_api/api/auth/schemas/users.py`
-- Create: `langchain_api/api/auth/schemas/__init__.py`
-- Create: `langchain_api/api/auth/__init__.py`
-- Modify: `langchain_api/main.py`
+- Create: `deepclaw/auth/dependencies.py`
+- Create: `deepclaw/api/auth/api/routes.py`
+- Create: `deepclaw/api/auth/api/__init__.py`
+- Create: `deepclaw/api/auth/schemas/auth.py`
+- Create: `deepclaw/api/auth/schemas/users.py`
+- Create: `deepclaw/api/auth/schemas/__init__.py`
+- Create: `deepclaw/api/auth/__init__.py`
+- Modify: `deepclaw/main.py`
 - Test: `tests/test_auth_routes.py`
 
 - [ ] **Step 1: 写失败测试，锁定注册、登录、游客 `me` 和管理员创建用户**
@@ -212,9 +212,9 @@ Expected: no output
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from langchain_api.api.auth.api.routes import create_auth_router
-from langchain_api.auth.service import AuthService
-from langchain_api.auth.store import AuthStore
+from deepclaw.api.auth.api.routes import create_auth_router
+from deepclaw.auth.service import AuthService
+from deepclaw.auth.store import AuthStore
 
 
 def build_client() -> TestClient:
@@ -273,12 +273,12 @@ def test_admin_can_create_user():
 
 Run: `uv run pytest tests/test_auth_routes.py -q`
 
-Expected: `ModuleNotFoundError`，指向 `langchain_api.api.auth`
+Expected: `ModuleNotFoundError`，指向 `deepclaw.api.auth`
 
 - [ ] **Step 3: 写依赖和路由，补齐游客/登录/管理员三态**
 
 ```python
-# langchain_api/auth/dependencies.py
+# deepclaw/auth/dependencies.py
 from fastapi import Depends, Header, HTTPException
 from pydantic import BaseModel
 
@@ -325,7 +325,7 @@ def require_admin_actor(
 ```
 
 ```python
-# langchain_api/api/auth/api/routes.py
+# deepclaw/api/auth/api/routes.py
 from fastapi import APIRouter, Depends, Header
 
 
@@ -396,11 +396,11 @@ def create_auth_router(service=None) -> APIRouter:
 ```
 
 ```python
-# langchain_api/main.py
-from langchain_api.api.auth import create_auth_router
-from langchain_api.api.agent import create_agent_router
-from langchain_api.api.channels import create_channels_router
-from langchain_api.api.rag import create_rag_router
+# deepclaw/main.py
+from deepclaw.api.auth import create_auth_router
+from deepclaw.api.agent import create_agent_router
+from deepclaw.api.channels import create_channels_router
+from deepclaw.api.rag import create_rag_router
 
 checkpointer, store = init_agent_env()
 app.include_router(create_auth_router())
@@ -415,18 +415,18 @@ Run: `uv run pytest tests/test_auth_routes.py -q`
 
 Expected: `2 passed`
 
-Run: `uv run python -m py_compile langchain_api/auth/dependencies.py langchain_api/api/auth/api/routes.py langchain_api/api/auth/schemas/auth.py langchain_api/api/auth/schemas/users.py langchain_api/main.py`
+Run: `uv run python -m py_compile deepclaw/auth/dependencies.py deepclaw/api/auth/api/routes.py deepclaw/api/auth/schemas/auth.py deepclaw/api/auth/schemas/users.py deepclaw/main.py`
 
 Expected: no output
 
 ### Task 3: 给知识库、技能和聊天入口接入权限
 
 **Files:**
-- Modify: `langchain_api/api/common/api/endpoints.py`
-- Modify: `langchain_api/api/agent/api/skills.py`
-- Modify: `langchain_api/api/rag/api/knowledge_bases.py`
-- Modify: `langchain_api/api/agent/api/routes.py`
-- Modify: `langchain_api/api/rag/api/routes.py`
+- Modify: `deepclaw/api/common/api/endpoints.py`
+- Modify: `deepclaw/api/agent/api/skills.py`
+- Modify: `deepclaw/api/rag/api/knowledge_bases.py`
+- Modify: `deepclaw/api/agent/api/routes.py`
+- Modify: `deepclaw/api/rag/api/routes.py`
 - Test: `tests/test_auth_permissions.py`
 
 - [ ] **Step 1: 写失败测试，固定游客禁写行为**
@@ -435,11 +435,11 @@ Expected: no output
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from langchain_api.api.agent.api.routes import create_agent_router
-from langchain_api.api.auth.api.routes import create_auth_router
-from langchain_api.api.rag.api.routes import create_rag_router
-from langchain_api.auth.service import AuthService
-from langchain_api.auth.store import AuthStore
+from deepclaw.api.agent.api.routes import create_agent_router
+from deepclaw.api.auth.api.routes import create_auth_router
+from deepclaw.api.rag.api.routes import create_rag_router
+from deepclaw.auth.service import AuthService
+from deepclaw.auth.store import AuthStore
 
 
 def test_guest_cannot_upload_skill_or_create_kb():
@@ -480,7 +480,7 @@ Expected: 断言失败，因为当前返回不是 `403`
 - [ ] **Step 3: 扩展通用 SSE 端点，统一注入真实 user_id**
 
 ```python
-# langchain_api/api/common/api/endpoints.py
+# deepclaw/api/common/api/endpoints.py
 def add_general_api_endpoint(
     app: FastAPI | APIRouter,
     agent: CompiledStateGraph,
@@ -503,7 +503,7 @@ def add_general_api_endpoint(
 ```
 
 ```python
-# langchain_api/api/agent/api/routes.py
+# deepclaw/api/agent/api/routes.py
 add_general_api_endpoint(
     app=general_api_router,
     agent=agent,
@@ -519,7 +519,7 @@ add_general_api_endpoint(
 - [ ] **Step 4: 在技能和知识库接口里收口游客写权限**
 
 ```python
-# langchain_api/api/agent/api/skills.py
+# deepclaw/api/agent/api/skills.py
 async def upload_skill(
     file: UploadFile = File(..., description="Skill zip package"),
     actor=Depends(require_authenticated_actor),
@@ -529,7 +529,7 @@ async def upload_skill(
 ```
 
 ```python
-# langchain_api/api/rag/api/knowledge_bases.py
+# deepclaw/api/rag/api/knowledge_bases.py
 def _resolve_user_id(actor, request_user_id: str | None = None) -> str:
     if actor.is_guest:
         raise HTTPException(status_code=403, detail="登录后可创建知识库。")
@@ -550,7 +550,7 @@ Run: `uv run pytest tests/test_auth_permissions.py -q`
 
 Expected: `1 passed`
 
-Run: `uv run python -m py_compile langchain_api/api/common/api/endpoints.py langchain_api/api/agent/api/skills.py langchain_api/api/rag/api/knowledge_bases.py langchain_api/api/agent/api/routes.py langchain_api/api/rag/api/routes.py`
+Run: `uv run python -m py_compile deepclaw/api/common/api/endpoints.py deepclaw/api/agent/api/skills.py deepclaw/api/rag/api/knowledge_bases.py deepclaw/api/agent/api/routes.py deepclaw/api/rag/api/routes.py`
 
 Expected: no output
 
@@ -860,3 +860,4 @@ Expected: index refresh completes successfully
 2. Bearer Token 当前保存在 localStorage，后续如需更高安全等级，可改为 HttpOnly Cookie。
 3. 技能管理当前按“登录用户可管理”实现；如果后续改成“仅管理员可管理”，需要补后端权限规则和前端按钮权限。
 ```
+

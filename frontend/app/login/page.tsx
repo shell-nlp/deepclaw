@@ -154,8 +154,8 @@ export default function LoginPage() {
         <div className={styles.brandPanel}>
           <span className={styles.brandBadge}>AI</span>
           <div className={styles.brandCopy}>
-            <p className={styles.kicker}>Project Access</p>
-            <h1>AI Agent Chat</h1>
+            <p className={styles.kicker}>DeepClaw Access</p>
+            <h1>DeepClaw</h1>
             <p className={styles.description}>
               统一的智能体工作台，支持聊天问答、MCP 工具接入、知识库管理和图检索
               RAG。游客可直接进入系统，登录后可解锁上传与管理能力。

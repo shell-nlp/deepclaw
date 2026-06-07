@@ -1847,7 +1847,7 @@ export default function ChatInterface() {
           <div className={styles.logoArea}>
             <span className={styles.logoIcon}>AI</span>
             <div>
-              <h1 className={styles.title}>AI Agent Chat</h1>
+              <h1 className={styles.title}>DeepClaw</h1>
               <p className={styles.subtitle}>
                 智能问答 · MCP 工具接入 · 知识库管理 · 图检索 RAG
               </p>

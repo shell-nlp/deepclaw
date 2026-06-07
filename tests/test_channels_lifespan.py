@@ -1,6 +1,6 @@
 import asyncio
 
-from langchain_api.web_backend.channels import lifespan as channel_lifespan_module
+from deepclaw.web_backend.channels import lifespan as channel_lifespan_module
 
 
 def test_channel_lifespan_starts_saved_weixin_user_runtimes_and_cancels_tasks(monkeypatch):
@@ -80,3 +80,4 @@ def test_channel_lifespan_starts_saved_weixin_user_runtimes_and_cancels_tasks(mo
     assert all(item["store"] is fake_store for item in runtimes)
     assert all(item["login_poll_interval_seconds"] == 3 for item in runtimes)
     assert all(item["message_poll_interval_seconds"] == 4 for item in runtimes)
+

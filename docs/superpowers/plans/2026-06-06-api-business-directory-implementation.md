@@ -4,14 +4,14 @@
 
 ## 目标
 
-把 `langchain_api/api` 改成业务域内部包含 `api/` 和 `schemas/` 的结构，删除旧兼容导出模块，并把所有调用方迁移到新路径。
+把 `deepclaw/api` 改成业务域内部包含 `api/` 和 `schemas/` 的结构，删除旧兼容导出模块，并把所有调用方迁移到新路径。
 
 ## 任务
 
 1. 新增失败测试：
-   - 新路径 `langchain_api.api.channels.api.routes` 可导入。
-   - 新 schema 路径 `langchain_api.api.channels.schemas.weixin_clawbot` 可导入。
-   - 旧路径 `langchain_api.api.routers.channels` 不再可导入。
+   - 新路径 `deepclaw.api.channels.api.routes` 可导入。
+   - 新 schema 路径 `deepclaw.api.channels.schemas.weixin_clawbot` 可导入。
+   - 旧路径 `deepclaw.api.routers.channels` 不再可导入。
 
 2. 创建业务内部目录：
    - `agent/api`、`agent/schemas`
@@ -34,16 +34,17 @@
    - `common/schemas/endpoints.py`
 
 5. 删除旧兼容模块：
-   - `langchain_api/api/endpoints.py`
-   - `langchain_api/api/routers/*`
-   - `langchain_api/api/management/*`
+   - `deepclaw/api/endpoints.py`
+   - `deepclaw/api/routers/*`
+   - `deepclaw/api/management/*`
    - 第一轮生成的非嵌套实现文件，例如 `agent/routes.py`、`common/endpoints.py`
 
 6. 更新导入：
-   - `langchain_api/main.py`
+   - `deepclaw/main.py`
    - 各业务包 `__init__.py`
    - 测试中的 router 导入和 patch 路径
 
 7. 验证：
    - `uv run python -m py_compile <changed-python-files>`
    - `uv run pytest tests/test_channels_router.py`
+
