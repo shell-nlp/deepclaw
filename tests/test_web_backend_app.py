@@ -1,7 +1,28 @@
+import importlib
 from pathlib import Path
 
+import pytest
 from fastapi import APIRouter
 from fastapi.testclient import TestClient
+
+
+def test_importing_app_module_does_not_create_app(monkeypatch):
+    import langgraph.checkpoint.memory as checkpoint_memory
+    from deepclaw.web_backend import app as app_module
+
+    def fail_on_import(*args, **kwargs):
+        raise AssertionError("模块导入阶段不应初始化 InMemorySaver")
+
+    monkeypatch.setattr(checkpoint_memory, "InMemorySaver", fail_on_import)
+
+    importlib.reload(app_module)
+
+
+def test_app_module_does_not_export_app_instance():
+    from deepclaw.web_backend import app as app_module
+
+    with pytest.raises(AttributeError):
+        getattr(app_module, "app")
 
 
 def test_create_app_serves_exported_login_html_route(monkeypatch, tmp_path: Path):
@@ -31,4 +52,3 @@ def test_create_app_serves_exported_login_html_route(monkeypatch, tmp_path: Path
 
     assert response.status_code == 200
     assert "login" in response.text
-

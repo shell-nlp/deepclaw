@@ -1,4 +1,6 @@
-﻿from fastapi import FastAPI
+from pathlib import Path
+
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -36,7 +38,7 @@ def init_agent_env():
     return checkpointer, store
 
 
-def _register_exported_html_routes(app: FastAPI, frontend_dir) -> None:
+def _register_exported_html_routes(app: FastAPI, frontend_dir: Path) -> None:
     for html_file in frontend_dir.glob("*.html"):
         if html_file.name in {"index.html", "404.html"}:
             continue
@@ -77,7 +79,3 @@ def create_app() -> FastAPI:
             name="next_frontend",
         )
     return app
-
-
-app = create_app()
-

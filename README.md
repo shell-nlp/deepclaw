@@ -107,7 +107,7 @@ deepclaw/
 │   ├── patch/               # 第三方库补丁与适配
 │   ├── tools/               # 天气、网页抓取、检索、定时任务等工具
 │   ├── web_backend/         # FastAPI Web 应用层与所有 Web 功能目录
-│   ├── main.py              # 兼容启动入口
+│   ├── main.py              # 主启动入口
 │   └── settings.py          # 环境变量配置
 ├── frontend/                # Next.js 前端
 ├── .deepclaw/               # 运行时工作区、技能目录、渠道数据库等
@@ -169,13 +169,7 @@ ES_PWD=elastic@2024
 
 ### 5. 启动主服务
 
-官方推荐入口：
-
-```bash
-uv run uvicorn deepclaw.web_backend.app:app --reload --host 0.0.0.0 --port 7869
-```
-
-兼容入口仍可直接运行：
+统一从 `main` 入口启动：
 
 ```bash
 uv run python -m deepclaw.main

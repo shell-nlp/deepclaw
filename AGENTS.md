@@ -87,10 +87,10 @@
   - `home_path = .deepclaw`
   - `workspace_path = .deepclaw/workspace`
 
-### 兼容入口
+### 启动入口
 
 - `deepclaw/main.py`
-  当前仍可直接启动，但官方推荐入口已切换到 `deepclaw.web_backend.app:app`。修改启动装配逻辑时，优先改 `web_backend/app.py` 与 `web_backend/lifespan.py`。
+  当前对外统一从这里启动。修改启动装配逻辑时，优先改 `web_backend/app.py` 与 `web_backend/lifespan.py`。
 
 ## 启动与运行
 
@@ -99,7 +99,7 @@
 ```bash
 cp .env.example .env
 uv sync --dev
-uv run uvicorn deepclaw.web_backend.app:app --reload --host 0.0.0.0 --port 7869
+uv run python -m deepclaw.main
 ```
 
 ### 前端
@@ -224,4 +224,3 @@ pnpm build
 - `README.md` 面向外部使用者，优先写“怎么跑、怎么调、有哪些公开能力”。
 - `AGENTS.md` 面向仓库协作方，优先写“代码怎么组织、改哪里、怎么验证、有哪些边界”。
 - 两份文档职责分开，避免互相复制导致失真。
-
