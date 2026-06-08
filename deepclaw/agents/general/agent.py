@@ -1,5 +1,4 @@
-﻿import sys
-from typing import Any
+﻿from typing import Any
 
 from deepagents import create_deep_agent
 from langchain.agents import create_agent
@@ -10,19 +9,10 @@ from loguru import logger
 from deepclaw.agents.general.context import AgentContext
 from deepclaw.constant import home_path, workspace_path
 from deepclaw.middleware.common import BusinessMiddleware
+from deepclaw.middleware.deep_agent_prompt import DeepAgentPromptMiddleware
 from deepclaw.middleware.mcp import MCPMiddleware
 from deepclaw.settings import settings
-from deepclaw.utils import get_chat_model, get_current_time
-
-_platform = sys.platform
-if _platform.startswith("win"):
-    DEFUALT_OS_PROMPT = "你的运行环境是 Windows 系统, 你可以使用 Windows 相关的命令"
-elif _platform.startswith("linux"):
-    DEFUALT_OS_PROMPT = "你的运行环境是 Linux 系统, 你可以使用 Linux 相关的命令"
-elif _platform.startswith("darwin"):
-    DEFUALT_OS_PROMPT = "你的运行环境是 macOS 系统, 你可以使用 macOS 相关的命令"
-else:
-    DEFUALT_OS_PROMPT = f"你的运行环境未知: {_platform}"
+from deepclaw.utils import get_chat_model
 
 skills = ["/workspace/skills"]
 
@@ -36,18 +26,10 @@ def user_namespace_factory(runtime: Runtime[Any]) -> tuple[str, ...]:
     return ("filesystem", user_id)  # 用户隔离！
 
 
-DEFUALT_SYSTEM_PROMPT = f"""
-{DEFUALT_OS_PROMPT}
-
-## 额外要遵守的要求
-- 若工具被拒绝执行，即使你可以推理出用户问题的答案，也要拒绝。
-"""
-
-
 class Agent:
     def __init__(
         self,
-        system_prompt=DEFUALT_SYSTEM_PROMPT,
+        system_prompt="",
         tools: list = [],
         deep_agent: bool = False,
         checkpointer=None,
@@ -66,10 +48,11 @@ class Agent:
             from copilotkit import CopilotKitMiddleware
 
             middleware.append(CopilotKitMiddleware())
+
+        middleware.append(DeepAgentPromptMiddleware())
         middleware.append(BusinessMiddleware())
         middleware.append(MCPMiddleware())
 
-        system_prompt = self.system_prompt + get_current_time()
         model = get_chat_model()
         model.tags = ["agent"]
         from deepclaw.tools import get_weather, web_fetch
@@ -97,9 +80,7 @@ class Agent:
         elif settings.BACKEND_TYPE == "local_shell":
             from deepagents.backends.local_shell import LocalShellBackend
 
-            backend = LocalShellBackend(
-                root_dir=home_path, virtual_mode=True, inherit_env=True
-            )
+            backend = LocalShellBackend(root_dir=home_path, virtual_mode=True, inherit_env=True)
             logger.info("使用 LocalShellBackend 作为后端")
         elif settings.BACKEND_TYPE == "store":
             from deepclaw.agents.general.utils import copy_skills_to_store
@@ -144,7 +125,7 @@ class Agent:
             return create_deep_agent(
                 model=model,
                 tools=tools,
-                system_prompt=system_prompt,
+                system_prompt=self.system_prompt,
                 middleware=middleware,
                 backend=make_backend,
                 skills=skills,
@@ -158,7 +139,7 @@ class Agent:
             return create_agent(
                 model=model,
                 tools=tools,
-                system_prompt=system_prompt,
+                system_prompt=self.system_prompt,
                 middleware=middleware,
                 checkpointer=self.checkpointer,
                 store=self.store,
