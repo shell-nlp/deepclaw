@@ -67,10 +67,10 @@
   Elasticsearch、Graph RAG、PDF 切分等通用算法实现。
 
 - `deepclaw/middleware/`
-  业务开关、RAG 注入、MCP、工具搜索、计划等中间件。
+  业务开关、RAG 注入、MCP、工具搜索、计划，以及 `cron` 工具实现等中间件与运行时扩展。
 
 - `deepclaw/tools/`
-  天气、网页抓取、检索、定时任务等工具。
+  天气、网页抓取、检索等工具导出；`cron` 相关实现已归档到 `deepclaw/middleware/cron/`。
 
 - `deepclaw/backend/`
   执行后端相关实现。

@@ -173,4 +173,3 @@ if __name__ == "__main__":
     model = get_chat_model()
     for chunk in model.stream("1+1="):
         print(chunk)
-

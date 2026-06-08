@@ -1,8 +1,8 @@
-﻿from typing import Annotated, Literal, Optional
+from typing import Annotated, Literal, Optional
 
 from langchain_core.tools import tool
 
-from deepclaw.tools.cron.cron_manager import get_cron_manager
+from deepclaw.middleware.cron.cron_manager import get_cron_manager
 
 
 @tool
@@ -48,10 +48,10 @@ def cron_tool(
                 description=description,
             )
             return f"Cron job '{job.name}' added successfully (ID: {job.id})"
-        except Exception as e:
-            return f"Failed to add cron job: {e}"
+        except Exception as exc:
+            return f"Failed to add cron job: {exc}"
 
-    elif action == "list":
+    if action == "list":
         jobs = manager.list(enabled=enabled_only)
         if not jobs:
             return "No cron jobs found."
@@ -66,17 +66,10 @@ def cron_tool(
             )
         return "\n".join(lines)
 
-    elif action == "remove":
+    if action == "remove":
         if job_id is None and name is None:
             return "Error: Please provide either job_id or name"
         success = manager.remove(job_id=job_id, name=name)
         return "Cron job removed successfully" if success else "Cron job not found"
 
     return "Unknown action"
-
-
-if __name__ == "__main__":
-    print(cron_tool.invoke({"action": "add", "name": "daily_report", "cron_expression": "0 9 * * *", "command": "python scripts/report.py", "description": "Daily report"}))
-    # print(cron_tool.invoke({"action": "list"}))
-    # print(cron_tool.invoke({"action": "remove", "name": "daily_report"}))
-
