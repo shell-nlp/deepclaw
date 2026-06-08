@@ -19,9 +19,7 @@ async def _crawl_one(url: str) -> dict[str, Any]:
         from crawl4ai.content_filter_strategy import PruningContentFilter
         from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
     except ImportError as exc:
-        raise ImportError(
-            "crawl4ai is required for web fetching. Install with: uv add crawl4ai"
-        ) from exc
+        raise ImportError("crawl4ai is required for web fetching. Install with: uv add crawl4ai") from exc
 
     prune_filter = PruningContentFilter(
         threshold=1.0,
@@ -124,14 +122,11 @@ async def web_fetch(urls: list[str]) -> list[dict]:
     output: list[dict] = list(blocked)
     for url, res in zip(urls, results):
         if isinstance(res, Exception):
-            logger.error("Error fetching {}: {}", url, res)
+            exception_info = f"Error fetching {url}: {res}"
+            logger.error(exception_info)
             output.append(
                 {
-                    "url": url,
-                    "title": "",
-                    "description": "",
-                    "content": "",
-                    "image_url": "",
+                    "error": exception_info,
                 }
             )
         else:
@@ -142,7 +137,5 @@ async def web_fetch(urls: list[str]) -> list[dict]:
 
 
 if __name__ == "__main__":
-    value = asyncio.run(
-        web_fetch.ainvoke({"urls": ["https://www.runoob.com/rust/rust-setup.html"]})
-    )
+    value = asyncio.run(web_fetch.ainvoke({"urls": ["https://www.runoob.com/rust/rust-setup.html"]}))
     print(value)
