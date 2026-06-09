@@ -41,7 +41,16 @@
   认证相关路由、请求模型、SQLModel、存储、服务与 FastAPI 依赖。
 
 - `deepclaw/web_backend/channels/`
-  渠道路由、适配器、运行时存储、会话服务、微信 runtime 生命周期与配置。
+  渠道共享模型、会话存储、消息处理服务、共享会话接口与总装配入口。
+
+- `deepclaw/web_backend/channels/feishu/`
+  飞书渠道适配与事件路由。
+
+- `deepclaw/web_backend/channels/dingtalk/`
+  钉钉渠道适配与事件路由。
+
+- `deepclaw/web_backend/channels/weixin_clawbot/`
+  微信 ClawBot 专属适配器、API 客户端、运行时、生命周期、状态辅助与管理路由。
 
 - `deepclaw/web_backend/skills/`
   技能管理路由、请求模型与服务实现。
@@ -145,12 +154,16 @@ pnpm build
 `deepclaw/web_backend/channels/config.py` 当前识别：
 
 - `CHANNEL_AGENT_API_URL`
+
+`deepclaw/web_backend/channels/weixin_clawbot/settings.py` 当前识别：
+
 - `WEIXIN_CLAWBOT_API_BASE_URL`
 - `WEIXIN_CLAWBOT_PRINT_QRCODE_ON_STARTUP`
 - `WEIXIN_CLAWBOT_AUTO_POLL_ON_STARTUP`
 - `WEIXIN_CLAWBOT_LOGIN_POLL_INTERVAL_SECONDS`
 - `WEIXIN_CLAWBOT_MESSAGE_POLL_INTERVAL_SECONDS`
 - `WEIXIN_CLAWBOT_DEFAULT_REPLY_MODE`
+- `WEIXIN_CLAWBOT_REQUEST_TIMEOUT_SECONDS`
 
 ### 可观测性
 
@@ -204,7 +217,7 @@ pnpm build
 只改文档时，不需要额外构建，但必须基于最新代码核对：
 
 - 路由前缀是否真实存在
-- 环境变量名是否与 `settings.py` / `web_backend/channels/config.py` 一致
+- 环境变量名是否与 `settings.py` / `web_backend/channels/config.py` / `web_backend/channels/weixin_clawbot/settings.py` 一致
 - 前端托管路径是否仍为 `/`
 - 工作区路径是否仍为 `.deepclaw/workspace`
 

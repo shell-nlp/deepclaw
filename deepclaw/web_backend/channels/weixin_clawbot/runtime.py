@@ -1,44 +1,22 @@
-﻿import asyncio
+"""weixin Clawbot 代码文档参考：https://www.npmjs.com/package/@tencent-weixin/openclaw-weixin?activeTab=readme"""
+
+import asyncio
 from typing import Any
 
 from loguru import logger
 
-from deepclaw.web_backend.channels.adapters.weixin_clawbot import (
-    CHANNEL,
-    WeixinClawBotAdapter,
-    WeixinClawBotClient,
-)
 from deepclaw.web_backend.channels.service import ChannelService
 from deepclaw.web_backend.channels.store import ChannelStore
-
-
-RUNTIME_STATE_KEY = "default"
-
-
-def weixin_clawbot_user_state_key(user_id: str) -> str:
-    return f"user:{user_id}"
-
-
-def weixin_clawbot_user_id_from_state_key(state_key: str) -> str | None:
-    if not state_key.startswith("user:"):
-        return None
-    user_id = state_key.removeprefix("user:")
-    return user_id or None
-
-
-def weixin_clawbot_manager_user_id_from_state(
-    state_key: str,
-    state: dict[str, Any],
-) -> str | None:
-    manager_user_id = state.get("manager_user_id")
-    if manager_user_id:
-        return str(manager_user_id)
-
-    owner_user_id = state.get("owner_user_id")
-    if owner_user_id:
-        return str(owner_user_id)
-
-    return weixin_clawbot_user_id_from_state_key(state_key)
+from deepclaw.web_backend.channels.weixin_clawbot.adapter import (
+    CHANNEL,
+    WeixinClawBotAdapter,
+)
+from deepclaw.web_backend.channels.weixin_clawbot.client import WeixinClawBotClient
+from deepclaw.web_backend.channels.weixin_clawbot.state import (
+    RUNTIME_STATE_KEY,
+    weixin_clawbot_manager_user_id_from_state,
+    weixin_clawbot_user_id_from_state_key,
+)
 
 
 async def fetch_startup_qrcode(
@@ -47,9 +25,7 @@ async def fetch_startup_qrcode(
     local_token_list: list[str] | None = None,
 ) -> dict[str, Any]:
     qrcode_client = client or WeixinClawBotClient()
-    data = await qrcode_client.fetch_login_qrcode(
-        local_token_list=local_token_list or []
-    )
+    data = await qrcode_client.fetch_login_qrcode(local_token_list=local_token_list or [])
     return {
         "qrcode": data.get("qrcode"),
         "qrcode_url": data.get("qrcode_img_content") or data.get("qrcode"),
@@ -175,4 +151,3 @@ class WeixinClawBotRuntime:
         response = getattr(exc, "response", None)
         status_code = getattr(response, "status_code", None)
         return status_code in {401, 403}
-

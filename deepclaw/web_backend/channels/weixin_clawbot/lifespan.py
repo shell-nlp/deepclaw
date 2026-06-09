@@ -1,14 +1,16 @@
-﻿import asyncio
+import asyncio
 from contextlib import asynccontextmanager, suppress
 from typing import AsyncIterator
 
-from deepclaw.web_backend.channels.adapters.weixin_clawbot import (
+from deepclaw.web_backend.channels.store import ChannelStore, get_channel_store
+from deepclaw.web_backend.channels.weixin_clawbot.adapter import (
     CHANNEL as WEIXIN_CLAWBOT_CHANNEL,
 )
-from deepclaw.web_backend.channels.config import weixin_clawbot_settings
-from deepclaw.web_backend.channels.store import ChannelStore, get_channel_store
-from deepclaw.web_backend.channels.weixin_startup import (
-    WeixinClawBotRuntime,
+from deepclaw.web_backend.channels.weixin_clawbot.runtime import WeixinClawBotRuntime
+from deepclaw.web_backend.channels.weixin_clawbot.settings import (
+    weixin_clawbot_settings,
+)
+from deepclaw.web_backend.channels.weixin_clawbot.state import (
     weixin_clawbot_user_id_from_state_key,
 )
 
@@ -87,4 +89,3 @@ async def stop_weixin_clawbot_runtime(state_key: str) -> None:
     task.cancel()
     with suppress(asyncio.CancelledError):
         await task
-

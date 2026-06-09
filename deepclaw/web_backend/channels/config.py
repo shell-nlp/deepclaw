@@ -1,5 +1,4 @@
 from dotenv import find_dotenv, load_dotenv
-from typing import Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,34 +17,8 @@ class ChannelGatewaySettings(BaseSettings):
     )
 
 
-class WeixinClawBotSettings(BaseSettings):
-    # 微信 ClawBot iLink API 地址
-    WEIXIN_CLAWBOT_API_BASE_URL: str = "https://ilinkai.weixin.qq.com"
-    WEIXIN_CLAWBOT_REQUEST_TIMEOUT_SECONDS: float = 10.0
-
-    # 服务启动时自动获取并打印微信 ClawBot 登录二维码链接
-    WEIXIN_CLAWBOT_PRINT_QRCODE_ON_STARTUP: bool = True
-
-    # 服务启动后自动等待扫码并轮询微信 ClawBot 消息
-    WEIXIN_CLAWBOT_AUTO_POLL_ON_STARTUP: bool = True
-    WEIXIN_CLAWBOT_LOGIN_POLL_INTERVAL_SECONDS: float = 2.0
-    WEIXIN_CLAWBOT_MESSAGE_POLL_INTERVAL_SECONDS: float = 1.0
-    WEIXIN_CLAWBOT_DEFAULT_REPLY_MODE: Literal["final", "streaming"] = "streaming"
-
-    model_config = SettingsConfigDict(
-        env_file=str(env_path),
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
-
-
 def get_channel_gateway_settings() -> ChannelGatewaySettings:
     return ChannelGatewaySettings()
 
 
-def get_weixin_clawbot_settings() -> WeixinClawBotSettings:
-    return WeixinClawBotSettings()
-
-
 channel_gateway_settings = get_channel_gateway_settings()
-weixin_clawbot_settings = get_weixin_clawbot_settings()

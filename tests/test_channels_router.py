@@ -8,6 +8,7 @@ from deepclaw.web_backend.auth.dependencies import CurrentActor, get_current_act
 from deepclaw.web_backend.channels.models import ChannelMessageRecord
 from deepclaw.web_backend.channels.store import ChannelStore
 
+
 class FakeService:
 
     def __init__(self):
@@ -66,15 +67,41 @@ def build_channels_client(
 
 def test_channels_router_is_importable_from_nested_business_api_package():
     from deepclaw.web_backend.channels.router import create_channels_router
+
     assert callable(create_channels_router)
 
+
+def test_channels_router_assembles_domain_routers():
+    from deepclaw.web_backend.channels.dingtalk.router import create_dingtalk_router
+    from deepclaw.web_backend.channels.feishu.router import create_feishu_router
+    from deepclaw.web_backend.channels.session_router import (
+        create_channel_sessions_router,
+    )
+    from deepclaw.web_backend.channels.weixin_clawbot.router import (
+        create_weixin_clawbot_router,
+    )
+
+    assert callable(create_channel_sessions_router)
+    assert callable(create_feishu_router)
+    assert callable(create_dingtalk_router)
+    assert callable(create_weixin_clawbot_router)
+
+
 def test_channels_schema_is_importable_from_business_schema_package():
-    from deepclaw.web_backend.channels.schemas import WeixinClawBotPollRequest
+    from deepclaw.web_backend.channels.weixin_clawbot.schemas import (
+        WeixinClawBotPollRequest,
+    )
+
     assert 'bot_token' == next(iter(WeixinClawBotPollRequest.model_fields))
 
 def test_legacy_channels_router_module_is_removed():
     with pytest.raises(ModuleNotFoundError):
         importlib.import_module('deepclaw.api.routers.channels')
+
+
+def test_channels_schema_compat_module_is_removed():
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module('deepclaw.web_backend.channels.schemas')
 
 def test_session_config_routes_list_and_update_reply_mode():
     store = ChannelStore('sqlite:///:memory:')
@@ -282,7 +309,7 @@ def test_weixin_clawbot_user_qrcode_routes_persist_user_runtime_state(monkeypatc
         weixin_client=weixin_client,
     )
     monkeypatch.setattr(
-        "deepclaw.web_backend.channels.router.start_weixin_clawbot_runtime",
+        "deepclaw.web_backend.channels.weixin_clawbot.router.start_weixin_clawbot_runtime",
         fake_start_runtime,
     )
     qrcode_response = client.post('/api/channels/weixin-clawbot/users/user_1/qrcode')
@@ -346,7 +373,7 @@ def test_weixin_clawbot_user_management_lists_and_deletes_bound_users(monkeypatc
         ),
     )
     monkeypatch.setattr(
-        "deepclaw.web_backend.channels.router.stop_weixin_clawbot_runtime",
+        "deepclaw.web_backend.channels.weixin_clawbot.router.stop_weixin_clawbot_runtime",
         fake_stop_runtime,
     )
     list_response = client.get('/api/channels/weixin-clawbot/users')
@@ -398,7 +425,7 @@ def test_weixin_clawbot_user_management_respects_guest_and_user_scope(monkeypatc
         stopped['state_key'] = state_key
 
     monkeypatch.setattr(
-        "deepclaw.web_backend.channels.router.stop_weixin_clawbot_runtime",
+        "deepclaw.web_backend.channels.weixin_clawbot.router.stop_weixin_clawbot_runtime",
         fake_stop_runtime,
     )
 
@@ -462,7 +489,7 @@ def test_weixin_clawbot_user_management_allows_admin_override(monkeypatch):
         stopped['state_key'] = state_key
 
     monkeypatch.setattr(
-        "deepclaw.web_backend.channels.router.stop_weixin_clawbot_runtime",
+        "deepclaw.web_backend.channels.weixin_clawbot.router.stop_weixin_clawbot_runtime",
         fake_stop_runtime,
     )
 

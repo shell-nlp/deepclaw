@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 
 from deepclaw.web_backend.channels.models import ChannelMessage
 
@@ -22,5 +22,3 @@ class FeishuAdapter:
 
     async def edit_message(self, reply_message_id: str, text: str) -> None:
         return None
-
-

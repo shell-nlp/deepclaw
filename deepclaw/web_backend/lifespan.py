@@ -6,7 +6,7 @@ from loguru import logger
 
 from deepclaw.patch.langchain import patch_langchain
 from deepclaw.web_backend.auth.service import get_auth_service
-from deepclaw.web_backend.channels.lifespan import channel_lifespan
+from deepclaw.web_backend.channels.weixin_clawbot.lifespan import channel_lifespan
 
 
 def setup_observability() -> None:

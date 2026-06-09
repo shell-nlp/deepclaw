@@ -29,4 +29,3 @@ class WeixinClawBotBoundUserList(BaseModel):
 class WeixinClawBotBoundUserDeleteResponse(BaseModel):
     user_id: str
     deleted: bool
-

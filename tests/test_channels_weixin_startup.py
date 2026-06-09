@@ -1,6 +1,6 @@
 import asyncio
 
-from deepclaw.web_backend.channels.weixin_startup import fetch_startup_qrcode
+from deepclaw.web_backend.channels.weixin_clawbot.runtime import fetch_startup_qrcode
 
 
 class FakeQRCodeClient:
@@ -94,7 +94,7 @@ def test_fetch_startup_qrcode_falls_back_to_qrcode():
 
 
 def test_runtime_logs_in_then_processes_one_update_batch():
-    from deepclaw.web_backend.channels.weixin_startup import WeixinClawBotRuntime
+    from deepclaw.web_backend.channels.weixin_clawbot.runtime import WeixinClawBotRuntime
 
     client = FakeRuntimeClient()
     service = FakeService()
@@ -117,8 +117,10 @@ def test_runtime_logs_in_then_processes_one_update_batch():
 
 def test_runtime_reuses_persisted_token_after_process_restart():
     from deepclaw.web_backend.channels.store import ChannelStore
-    from deepclaw.web_backend.channels.weixin_startup import (
+    from deepclaw.web_backend.channels.weixin_clawbot.runtime import (
         WeixinClawBotRuntime,
+    )
+    from deepclaw.web_backend.channels.weixin_clawbot.state import (
         weixin_clawbot_user_state_key,
     )
 
@@ -165,7 +167,7 @@ def test_runtime_reuses_persisted_token_after_process_restart():
 
 def test_runtime_falls_back_to_qrcode_when_persisted_token_expires():
     from deepclaw.web_backend.channels.store import ChannelStore
-    from deepclaw.web_backend.channels.weixin_startup import WeixinClawBotRuntime
+    from deepclaw.web_backend.channels.weixin_clawbot.runtime import WeixinClawBotRuntime
 
     store = ChannelStore("sqlite:///:memory:")
     store.upsert_runtime_state(
