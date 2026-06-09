@@ -1,5 +1,8 @@
 from fastapi import APIRouter
 
+from deepclaw.web_backend.channels.bindings_router import (
+    create_channel_bindings_router,
+)
 from deepclaw.web_backend.channels.dingtalk.router import create_dingtalk_router
 from deepclaw.web_backend.channels.feishu.router import create_feishu_router
 from deepclaw.web_backend.channels.service import ChannelService
@@ -23,6 +26,7 @@ def create_channels_router(
     channel_store = store or get_channel_store()
     channel_service = service or ChannelService(store=channel_store)
 
+    router.include_router(create_channel_bindings_router(store=channel_store))
     router.include_router(create_channel_sessions_router(store=channel_store))
     router.include_router(
         create_feishu_router(

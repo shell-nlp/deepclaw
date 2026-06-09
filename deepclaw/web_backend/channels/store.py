@@ -2,11 +2,12 @@
 import uuid
 from typing import Optional
 
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, or_, text
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from deepclaw.web_backend.channels.models import (
+    ChannelBinding,
     ChannelMessage,
     ChannelMessageRecord,
     ChannelRuntimeState,
@@ -37,6 +38,7 @@ class ChannelStore:
         self.engine = create_engine(db_url, echo=False, **engine_kwargs)
         SQLModel.metadata.create_all(self.engine)
         self._ensure_channel_session_schema()
+        self._ensure_channel_binding_schema()
 
     def get_or_create_user(
         self,
@@ -77,6 +79,7 @@ class ChannelStore:
         channel_user_id: str,
         user_id: str,
         manager_user_id: str | None = None,
+        binding_id: int | None = None,
         reply_mode: ReplyMode = "final",
         session_id: str | None = None,
     ) -> ChannelSession:
@@ -105,6 +108,7 @@ class ChannelStore:
                 channel_user_id=channel_user_id,
                 user_id=user_id,
                 manager_user_id=manager_user_id or user_id,
+                binding_id=binding_id,
                 session_id=session_id or str(uuid.uuid4()),
                 reply_mode=reply_mode,
                 created_at=now,
@@ -114,6 +118,188 @@ class ChannelStore:
             session.commit()
             session.refresh(channel_session)
             return channel_session
+
+    def create_binding(
+        self,
+        *,
+        channel: str,
+        owner_user_id: str,
+        manager_user_id: str,
+        credentials: dict,
+        display_name: str | None = None,
+        config: dict | None = None,
+        runtime_state: dict | None = None,
+        status: str = "active",
+    ) -> ChannelBinding:
+        now = utc_now()
+        with Session(self.engine) as session:
+            binding = ChannelBinding(
+                channel=channel,
+                owner_user_id=owner_user_id,
+                manager_user_id=manager_user_id,
+                status=status,
+                display_name=display_name,
+                credentials=dict(credentials),
+                config=dict(config or {}),
+                runtime_state=dict(runtime_state or {}),
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(binding)
+            session.commit()
+            session.refresh(binding)
+            return binding
+
+    def get_binding(self, binding_id: int | None) -> ChannelBinding | None:
+        if binding_id is None:
+            return None
+        with Session(self.engine) as session:
+            return session.get(ChannelBinding, binding_id)
+
+    def upsert_binding(
+        self,
+        *,
+        channel: str,
+        owner_user_id: str,
+        manager_user_id: str,
+        credentials: dict | None = None,
+        display_name: str | None = None,
+        config: dict | None = None,
+        runtime_state: dict | None = None,
+        status: str = "active",
+    ) -> ChannelBinding:
+        with Session(self.engine) as session:
+            statement = select(ChannelBinding).where(
+                ChannelBinding.channel == channel,
+                ChannelBinding.owner_user_id == owner_user_id,
+            )
+            binding = session.exec(statement).first()
+            now = utc_now()
+            if binding is None:
+                binding = ChannelBinding(
+                    channel=channel,
+                    owner_user_id=owner_user_id,
+                    manager_user_id=manager_user_id,
+                    status=status,
+                    display_name=display_name,
+                    credentials=dict(credentials or {}),
+                    config=dict(config or {}),
+                    runtime_state=dict(runtime_state or {}),
+                    created_at=now,
+                    updated_at=now,
+                )
+            else:
+                binding.manager_user_id = manager_user_id
+                binding.status = status
+                if display_name is not None:
+                    binding.display_name = display_name
+                if credentials is not None:
+                    merged_credentials = dict(binding.credentials or {})
+                    merged_credentials.update(credentials)
+                    binding.credentials = merged_credentials
+                if config is not None:
+                    merged_config = dict(binding.config or {})
+                    merged_config.update(config)
+                    binding.config = merged_config
+                if runtime_state is not None:
+                    merged_runtime_state = dict(binding.runtime_state or {})
+                    merged_runtime_state.update(runtime_state)
+                    binding.runtime_state = merged_runtime_state
+                binding.updated_at = now
+
+            session.add(binding)
+            session.commit()
+            session.refresh(binding)
+            return binding
+
+    def list_bindings(
+        self,
+        *,
+        channel: str | None = None,
+        owner_user_id: str | None = None,
+        manager_user_id: str | None = None,
+        participant_user_id: str | None = None,
+    ) -> list[ChannelBinding]:
+        with Session(self.engine) as session:
+            statement = select(ChannelBinding).order_by(ChannelBinding.updated_at.desc())
+            if channel is not None:
+                statement = statement.where(ChannelBinding.channel == channel)
+            if owner_user_id is not None:
+                statement = statement.where(ChannelBinding.owner_user_id == owner_user_id)
+            if manager_user_id is not None:
+                statement = statement.where(ChannelBinding.manager_user_id == manager_user_id)
+            if participant_user_id is not None:
+                # 绑定协作模式下，owner 与 manager 都应能看到该记录。
+                statement = statement.where(
+                    or_(
+                        ChannelBinding.owner_user_id == participant_user_id,
+                        ChannelBinding.manager_user_id == participant_user_id,
+                    )
+                )
+            return list(session.exec(statement).all())
+
+    def delete_binding(self, binding_id: int) -> bool:
+        with Session(self.engine) as session:
+            binding = session.get(ChannelBinding, binding_id)
+            if binding is None:
+                return False
+            session.delete(binding)
+            session.commit()
+            return True
+
+    def update_binding(
+        self,
+        binding_id: int,
+        *,
+        display_name: str | None = None,
+        credentials: dict | None = None,
+        config: dict | None = None,
+        runtime_state: dict | None = None,
+        status: str | None = None,
+    ) -> ChannelBinding:
+        with Session(self.engine) as session:
+            binding = session.get(ChannelBinding, binding_id)
+            if binding is None:
+                raise ValueError("Channel binding not found")
+
+            if display_name is not None:
+                binding.display_name = display_name
+            if credentials is not None:
+                merged_credentials = dict(binding.credentials or {})
+                merged_credentials.update(credentials)
+                binding.credentials = merged_credentials
+            if config is not None:
+                merged_config = dict(binding.config or {})
+                merged_config.update(config)
+                binding.config = merged_config
+            if runtime_state is not None:
+                merged_runtime_state = dict(binding.runtime_state or {})
+                merged_runtime_state.update(runtime_state)
+                binding.runtime_state = merged_runtime_state
+            if status is not None:
+                binding.status = status
+
+            binding.updated_at = utc_now()
+            session.add(binding)
+            session.commit()
+            session.refresh(binding)
+            return binding
+
+    def update_binding_runtime_state(
+        self,
+        binding_id: int,
+        runtime_state: dict,
+    ) -> ChannelBinding:
+        with Session(self.engine) as session:
+            binding = session.get(ChannelBinding, binding_id)
+            if binding is None:
+                raise ValueError("Channel binding not found")
+            binding.runtime_state = dict(runtime_state)
+            binding.updated_at = utc_now()
+            session.add(binding)
+            session.commit()
+            session.refresh(binding)
+            return binding
 
     def get_or_create_message_record(
         self, message: ChannelMessage
@@ -309,6 +495,24 @@ class ChannelStore:
                     "UPDATE channel_sessions "
                     "SET manager_user_id = user_id "
                     "WHERE manager_user_id IS NULL OR manager_user_id = ''"
+                )
+            )
+
+    def _ensure_channel_binding_schema(self) -> None:
+        inspector = inspect(self.engine)
+        try:
+            columns = {column["name"] for column in inspector.get_columns("channel_sessions")}
+        except Exception:
+            return
+
+        if "binding_id" in columns:
+            return
+
+        with self.engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE channel_sessions "
+                    "ADD COLUMN binding_id INTEGER"
                 )
             )
 

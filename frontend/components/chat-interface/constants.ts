@@ -1,4 +1,4 @@
-import type { KnowledgePage } from './types'
+import type { KnowledgePage } from './types.ts'
 
 export const DEFAULT_BACKEND_URL = 'http://localhost:7869'
 export const DEFAULT_AGENT_API_PATH = '/api/agent/general_api'
@@ -22,6 +22,17 @@ export const WEIXIN_CLAWBOT_USER_QRCODE_STATUS_API_PATH = (userId: string) =>
 export const WEIXIN_CLAWBOT_USERS_API_PATH = '/api/channels/weixin-clawbot/users'
 export const WEIXIN_CLAWBOT_USER_API_PATH = (userId: string) =>
   `/api/channels/weixin-clawbot/users/${encodeURIComponent(userId)}`
+export const CHANNEL_BINDINGS_API_PATH = '/api/channels/bindings'
+export const FEISHU_BINDINGS_API_PATH = '/api/channels/feishu/bindings'
+export const FEISHU_BINDING_API_PATH = (bindingId: number) =>
+  `/api/channels/feishu/bindings/${bindingId}`
+export const WEIXIN_BINDINGS_API_PATH = '/api/channels/weixin-clawbot/bindings'
+export const WEIXIN_BINDING_QRCODE_API_PATH = (bindingId: number) =>
+  `/api/channels/weixin-clawbot/bindings/${bindingId}/qrcode`
+export const WEIXIN_BINDING_QRCODE_STATUS_API_PATH = (bindingId: number) =>
+  `/api/channels/weixin-clawbot/bindings/${bindingId}/qrcode/status`
+export const WEIXIN_BINDING_API_PATH = (bindingId: number) =>
+  `/api/channels/weixin-clawbot/bindings/${bindingId}`
 export const KB_LIST_API_PATH = '/api/rag/knowledge-bases/list'
 export const KB_CREATE_API_PATH = '/api/rag/knowledge-bases/create'
 export const KB_DETAIL_API_PATH = '/api/rag/knowledge-bases/detail'

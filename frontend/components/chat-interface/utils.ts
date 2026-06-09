@@ -5,13 +5,13 @@ import { marked } from 'marked'
 import {
   DEFAULT_BACKEND_URL,
   DEFAULT_KNOWLEDGE_PAGE,
-} from './constants'
+} from './constants.ts'
 import type {
   InterruptData,
   KnowledgePage,
   McpServerSummary,
   ViewMode,
-} from './types'
+} from './types.ts'
 
 export function getApiBaseUrl(): string {
   const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL

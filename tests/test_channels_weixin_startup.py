@@ -195,3 +195,86 @@ def test_runtime_falls_back_to_qrcode_when_persisted_token_expires():
     assert client.tokens == ["expired_token", "token_1"]
     assert len(service.messages) == 1
 
+
+def test_runtime_syncs_binding_credentials_and_runtime_state():
+    from deepclaw.web_backend.channels.store import ChannelStore
+    from deepclaw.web_backend.channels.weixin_clawbot.runtime import WeixinClawBotRuntime
+    from deepclaw.web_backend.channels.weixin_clawbot.state import (
+        weixin_clawbot_user_state_key,
+    )
+
+    store = ChannelStore("sqlite:///:memory:")
+    store.upsert_binding(
+        channel="weixin_clawbot",
+        owner_user_id="user_1",
+        manager_user_id="manager_1",
+        display_name="Weixin ClawBot user_1",
+    )
+    client = FakeRuntimeClient()
+    service = FakeService()
+    runtime = WeixinClawBotRuntime(
+        qrcode="qr-content",
+        client=client,
+        service=service,
+        store=store,
+        state_key=weixin_clawbot_user_state_key("user_1"),
+        owner_user_id="user_1",
+        login_poll_interval_seconds=0,
+        message_poll_interval_seconds=0,
+    )
+    runtime.manager_user_id = "manager_1"
+
+    asyncio.run(runtime.run_once())
+
+    bindings = store.list_bindings(channel="weixin_clawbot", owner_user_id="user_1")
+    assert len(bindings) == 1
+    assert bindings[0].credentials["bot_token"] == "token_1"
+    assert bindings[0].credentials["base_url"] == "https://node.example.test"
+    assert bindings[0].runtime_state["get_updates_buf"] == "next_buf"
+    assert bindings[0].runtime_state["status"] == "connected"
+
+
+def test_runtime_updates_only_target_binding():
+    from deepclaw.web_backend.channels.store import ChannelStore
+    from deepclaw.web_backend.channels.weixin_clawbot.runtime import WeixinClawBotRuntime
+
+    store = ChannelStore("sqlite:///:memory:")
+    first = store.create_binding(
+        channel="weixin_clawbot",
+        owner_user_id="user_1",
+        manager_user_id="manager_1",
+        display_name="张三主号",
+        credentials={},
+    )
+    second = store.create_binding(
+        channel="weixin_clawbot",
+        owner_user_id="user_1",
+        manager_user_id="manager_1",
+        display_name="李四代绑号",
+        credentials={},
+    )
+    client = FakeRuntimeClient()
+    service = FakeService()
+    runtime = WeixinClawBotRuntime(
+        binding_id=second.id,
+        qrcode="qr-content",
+        client=client,
+        service=service,
+        store=store,
+        owner_user_id="user_1",
+        login_poll_interval_seconds=0,
+        message_poll_interval_seconds=0,
+    )
+    runtime.manager_user_id = "manager_1"
+
+    asyncio.run(runtime.run_once())
+
+    refreshed_first = store.get_binding(first.id)
+    refreshed_second = store.get_binding(second.id)
+
+    assert refreshed_first is not None
+    assert refreshed_second is not None
+    assert refreshed_first.credentials == {}
+    assert refreshed_second.credentials["bot_token"] == "token_1"
+    assert refreshed_second.runtime_state["status"] == "connected"
+

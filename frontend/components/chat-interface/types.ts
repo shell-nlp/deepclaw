@@ -213,6 +213,25 @@ export interface AuthUserListResponse {
   total: number
 }
 
+export interface ChannelBindingRecord {
+  id: number
+  channel: string
+  owner_user_id: string
+  manager_user_id: string
+  status: string
+  display_name: string | null
+  credentials: Record<string, unknown>
+  config: Record<string, unknown>
+  runtime_state: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export interface ChannelBindingListResponse {
+  items: ChannelBindingRecord[]
+  total: number
+}
+
 export interface WeixinClawBotQrcodeResponse {
   qrcode?: string | null
   qrcode_url?: string | null

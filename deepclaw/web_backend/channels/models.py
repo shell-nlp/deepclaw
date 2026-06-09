@@ -47,6 +47,7 @@ class ChannelSession(SQLModel, table=True):
     channel_user_id: str = Field(index=True)
     user_id: str = Field(index=True)
     manager_user_id: str = Field(index=True)
+    binding_id: int | None = Field(default=None, index=True)
     session_id: str = Field(index=True, unique=True)
     reply_mode: str = Field(default="final")
     created_at: datetime = Field(default_factory=utc_now)
@@ -84,6 +85,22 @@ class ChannelRuntimeState(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utc_now)
 
 
+class ChannelBinding(SQLModel, table=True):
+    __tablename__ = "channel_bindings"
+
+    id: int | None = Field(default=None, primary_key=True)
+    channel: str = Field(index=True)
+    owner_user_id: str = Field(index=True)
+    manager_user_id: str = Field(index=True)
+    status: str = Field(default="active", index=True)
+    display_name: str | None = None
+    credentials: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    config: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    runtime_state: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
 class ChannelMessage(BaseModel):
     channel: str
     message_id: str
@@ -92,6 +109,7 @@ class ChannelMessage(BaseModel):
     text: str
     user_id: str | None = None
     manager_user_id: str | None = None
+    binding_id: int | None = None
     message_type: str = "text"
     raw: dict[str, Any] | None = None
 

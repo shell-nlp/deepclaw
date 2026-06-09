@@ -176,7 +176,7 @@ pnpm build
 - 只改与当前任务直接相关的代码，避免顺手重构。
 - 保持最小改动，优先修根因，不要扩散影响面。
 - 目录重构时优先执行移动，再做最小导包修复。
-- 关键逻辑补充必要的中文注释，避免无意义注释。
+- 生成代码时要添加必要的中文代码注释来解释关键逻辑（核心算法、函数、类、模块等）的功能。
 - 未经用户明确要求，不要执行 `git add`、`git commit`、`git amend`。
 - 测试统一使用 `pytest`，不要引入 `unittest` 风格测试。
 - 如果成熟、稳定、维护活跃的开源库能更好解决问题，优先采用开源库方案。
@@ -237,3 +237,28 @@ pnpm build
 - `README.md` 面向外部使用者，优先写“怎么跑、怎么调、有哪些公开能力”。
 - `AGENTS.md` 面向仓库协作方，优先写“代码怎么组织、改哪里、怎么验证、有哪些边界”。
 - 两份文档职责分开，避免互相复制导致失真。
+## 2026-06 Channels 补充事实
+
+- `deepclaw/web_backend/channels/models.py` 现在新增统一的 `ChannelBinding` 模型，用来承载多用户 IM 绑定的凭据、配置和运行态。
+- `deepclaw/web_backend/channels/store.py` 现在同时负责 `ChannelBinding` 的 CRUD；新渠道优先复用 `upsert_binding()`，不要重复造绑定存储。
+- `deepclaw/web_backend/channels/runtime_manager.py` 是统一 runtime task 管理入口；长连接或轮询型渠道优先接这里。
+- `deepclaw/web_backend/channels/feishu/` 现在已包含 `settings.py`、`client.py`、`adapter.py`、`runtime.py`、`router.py`，并以多用户 long connection 为主。
+- `deepclaw/web_backend/channels/weixin_clawbot/` 仍保留二维码登录和轮询实现，但绑定信息会同步写入统一 `ChannelBinding`，后续扩展应优先面向 binding。
+- `deepclaw/web_backend/channels/weixin_clawbot/lifespan.py` 现在会在应用启动时一并拉起已保存的 Feishu runtime 与 Weixin runtime。
+- 渠道层的多用户边界现在以 `binding_id` 为核心；涉及会话隔离时必须把 binding 维度带上，避免不同绑定实例复用同一条渠道会话。
+## 2026-06-10 IM 绑定中心补充事实
+
+- `deepclaw/web_backend/channels/store.py` 现在同时支持 `create_binding()`、`update_binding()`、`list_bindings()`、`delete_binding()`；新代码不要再把“每个用户每个渠道只能有一个绑定”写死。
+- `deepclaw/web_backend/channels/bindings_router.py` 提供统一的 `/api/channels/bindings` 列表接口；普通用户默认看自己的绑定，管理员可切 `scope=all` 查看全量绑定。
+- `deepclaw/web_backend/channels/feishu/router.py` 现在同时保留旧的 `/feishu/users/{user_id}/binding` 兼容路径，并新增 `/feishu/bindings` 与 `/feishu/bindings/{binding_id}` 多绑定接口。
+- `deepclaw/web_backend/channels/weixin_clawbot/router.py` 现在同时保留旧的 `user_id` 兼容路径，并新增：
+  - `/weixin-clawbot/bindings`
+  - `/weixin-clawbot/bindings/{binding_id}/qrcode`
+  - `/weixin-clawbot/bindings/{binding_id}/qrcode/status`
+  - `/weixin-clawbot/bindings/{binding_id}`
+- `deepclaw/web_backend/channels/weixin_clawbot/runtime.py` 与 `deepclaw/web_backend/channels/weixin_clawbot/lifespan.py` 现在支持按 `binding_id` 启停 runtime；同一系统用户下的多个微信绑定不能复用同一个 runtime 或同一条渠道会话。
+- 前端 [frontend/components/chat-interface/ChannelManagementView.tsx](/e:/git_dir/langchain-api/frontend/components/chat-interface/ChannelManagementView.tsx) 已从“单微信扫码管理页”升级为统一绑定中心，包含：
+  - `我的绑定`
+  - `管理员总览`
+  - 微信多绑定管理
+  - 飞书多绑定管理

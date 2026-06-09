@@ -5,9 +5,9 @@ import {
   AUTH_REGISTER_API_PATH,
   AUTH_REMEMBER_LOGIN_STORAGE_KEY,
   AUTH_TOKEN_STORAGE_KEY,
-} from './constants'
-import type { AuthLoginResponse, AuthUserSummary } from './types'
-import { fetchJson, getApiUrl } from './utils'
+} from './constants.ts'
+import type { AuthLoginResponse, AuthUserSummary } from './types.ts'
+import { fetchJson, getApiUrl } from './utils.ts'
 
 export const GUEST_USER_ID = 'guest'
 
@@ -31,6 +31,7 @@ export interface ActorCapabilities {
   canManageKnowledge: boolean
   canManageSkills: boolean
   canManageUsers: boolean
+  canManageChannelBindingsGlobally: boolean
   requiresLoginMessage: string
 }
 
@@ -83,6 +84,7 @@ export function getActorCapabilities(actor: ActorState): ActorCapabilities {
     canManageKnowledge: isSignedIn,
     canManageSkills: isSignedIn,
     canManageUsers: actor.role === 'admin',
+    canManageChannelBindingsGlobally: actor.role === 'admin',
     requiresLoginMessage: '登录后可使用此功能。',
   }
 }
