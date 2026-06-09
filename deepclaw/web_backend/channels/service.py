@@ -3,13 +3,15 @@ from collections import defaultdict
 
 from deepclaw.web_backend.channels.adapters.base import ChannelAdapter
 from deepclaw.web_backend.channels.agent_client import AgentClient
-from deepclaw.web_backend.channels.config import weixin_clawbot_settings
 from deepclaw.web_backend.channels.dispatcher import ResponseDispatcher
 from deepclaw.web_backend.channels.models import (
     ChannelMessage,
     ChannelMessageRecord,
 )
 from deepclaw.web_backend.channels.store import ChannelStore, get_channel_store
+from deepclaw.web_backend.channels.weixin_clawbot.settings import (
+    weixin_clawbot_settings,
+)
 
 
 class ChannelService:

@@ -1,6 +1,14 @@
 import asyncio
+import importlib
 
-from deepclaw.web_backend.channels import lifespan as channel_lifespan_module
+import pytest
+
+from deepclaw.web_backend.channels.weixin_clawbot import lifespan as weixin_lifespan_module
+
+
+def test_channels_lifespan_compat_module_is_removed():
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("deepclaw.web_backend.channels.lifespan")
 
 
 def test_channel_lifespan_starts_saved_weixin_user_runtimes_and_cancels_tasks(monkeypatch):
@@ -59,12 +67,12 @@ def test_channel_lifespan_starts_saved_weixin_user_runtimes_and_cancels_tasks(mo
                 raise
 
     fake_store = FakeStore()
-    monkeypatch.setattr(channel_lifespan_module, "weixin_clawbot_settings", FakeSettings())
-    monkeypatch.setattr(channel_lifespan_module, "get_channel_store", lambda: fake_store)
-    monkeypatch.setattr(channel_lifespan_module, "WeixinClawBotRuntime", FakeRuntime)
+    monkeypatch.setattr(weixin_lifespan_module, "weixin_clawbot_settings", FakeSettings())
+    monkeypatch.setattr(weixin_lifespan_module, "get_channel_store", lambda: fake_store)
+    monkeypatch.setattr(weixin_lifespan_module, "WeixinClawBotRuntime", FakeRuntime)
 
     async def run():
-        async with channel_lifespan_module.channel_lifespan():
+        async with weixin_lifespan_module.channel_lifespan():
             for _ in range(10):
                 if len(started) == 2:
                     break
