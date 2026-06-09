@@ -66,3 +66,27 @@ test('auth helpers detect expired or invalid auth responses', () => {
   assert.equal(authPkg.isUnauthorizedErrorMessage('登录状态已失效，请重新登录。'), true)
   assert.equal(authPkg.isUnauthorizedErrorMessage('登录后可使用此功能。'), false)
 })
+test('auth helpers expose channel binding admin capability only to admins', () => {
+  const guest = authPkg.getActorCapabilities({
+    isGuest: true,
+    userId: 'guest',
+    email: null,
+    role: 'guest',
+  })
+  const user = authPkg.getActorCapabilities({
+    isGuest: false,
+    userId: 'user_1',
+    email: 'user@example.com',
+    role: 'user',
+  })
+  const admin = authPkg.getActorCapabilities({
+    isGuest: false,
+    userId: 'admin_1',
+    email: 'admin@example.com',
+    role: 'admin',
+  })
+
+  assert.equal(guest.canManageChannelBindingsGlobally, false)
+  assert.equal(user.canManageChannelBindingsGlobally, false)
+  assert.equal(admin.canManageChannelBindingsGlobally, true)
+})

@@ -254,6 +254,118 @@ def test_feishu_webhook_accepts_normalized_payload():
     assert 1 == len(service.calls)
     assert 'feishu' == service.calls[0][0].channel
 
+
+def test_feishu_binding_routes_create_and_delete_binding(monkeypatch):
+    store = ChannelStore('sqlite:///:memory:')
+    started = []
+    stopped = {}
+
+    async def fake_start_runtime(*, binding_id, store):
+        started.append({'binding_id': binding_id, 'store': store})
+        return None
+
+    async def fake_stop_runtime(binding_id):
+        stopped['binding_id'] = binding_id
+
+    monkeypatch.setattr(
+        "deepclaw.web_backend.channels.feishu.router.start_feishu_runtime",
+        fake_start_runtime,
+    )
+    monkeypatch.setattr(
+        "deepclaw.web_backend.channels.feishu.router.stop_feishu_runtime",
+        fake_stop_runtime,
+    )
+
+    client = build_channels_client(
+        store=store,
+        actor=CurrentActor(
+            is_guest=False,
+            user_id='user_1',
+            email='user_1@example.com',
+            role='user',
+        ),
+    )
+
+    create_response = client.post(
+        '/api/channels/feishu/users/user_1/binding',
+        json={
+            'app_id': 'cli_x',
+            'app_secret': 'sec_x',
+            'domain': 'feishu',
+            'group_policy': 'mention',
+            'streaming': True,
+        },
+    )
+    get_response = client.get('/api/channels/feishu/users/user_1/binding')
+    delete_response = client.delete('/api/channels/feishu/users/user_1/binding')
+
+    assert 200 == create_response.status_code
+    assert 200 == get_response.status_code
+    assert 200 == delete_response.status_code
+    assert 'cli_x' == get_response.json()['credentials']['app_id']
+    assert 'mention' == get_response.json()['config']['group_policy']
+    assert started[-1]['binding_id'] == get_response.json()['id']
+    assert store is started[-1]['store']
+    assert stopped['binding_id'] == get_response.json()['id']
+
+
+def test_feishu_binding_list_respects_actor_scope():
+    store = ChannelStore('sqlite:///:memory:')
+    store.create_binding(
+        channel='feishu',
+        owner_user_id='user_1',
+        manager_user_id='helper_1',
+        display_name='owned-by-user-1',
+        credentials={'app_id': 'cli_1', 'app_secret': 'sec_1'},
+        runtime_state={'status': 'connected'},
+    )
+    store.create_binding(
+        channel='feishu',
+        owner_user_id='user_2',
+        manager_user_id='user_1',
+        display_name='Feishu user_2',
+        credentials={'app_id': 'cli_2', 'app_secret': 'sec_2'},
+        runtime_state={'status': 'connected'},
+    )
+    store.create_binding(
+        channel='feishu',
+        owner_user_id='user_3',
+        manager_user_id='helper_3',
+        display_name='hidden-from-user-1',
+        credentials={'app_id': 'cli_c', 'app_secret': 'sec_c'},
+    )
+
+    user_client = build_channels_client(
+        store=store,
+        actor=CurrentActor(
+            is_guest=False,
+            user_id='user_1',
+            email='user_1@example.com',
+            role='user',
+        ),
+    )
+    admin_client = build_channels_client(
+        store=store,
+        actor=CurrentActor(
+            is_guest=False,
+            user_id='admin_1',
+            email='admin@example.com',
+            role='admin',
+        ),
+    )
+
+    user_response = user_client.get('/api/channels/feishu/users')
+    admin_response = admin_client.get('/api/channels/feishu/users')
+
+    assert 200 == user_response.status_code
+    assert ['user_1', 'user_2'] == sorted(
+        item['owner_user_id'] for item in user_response.json()['items']
+    )
+    assert 200 == admin_response.status_code
+    assert ['user_1', 'user_2', 'user_3'] == sorted(
+        item['owner_user_id'] for item in admin_response.json()['items']
+    )
+
 def test_weixin_clawbot_poll_accepts_text_updates():
     from deepclaw.web_backend.channels.router import create_channels_router
     store = ChannelStore('sqlite:///:memory:')
@@ -317,20 +429,32 @@ def test_weixin_clawbot_user_qrcode_routes_persist_user_runtime_state(monkeypatc
     assert 200 == qrcode_response.status_code
     assert 200 == status_response.status_code
     runtime_state = store.get_runtime_state(channel='weixin_clawbot', state_key='user:user_1')
+    bindings = store.list_bindings(channel='weixin_clawbot', owner_user_id='user_1')
     assert 'user_1' == runtime_state.data['owner_user_id']
     assert 'manager_1' == runtime_state.data['manager_user_id']
     assert 'qr-content' == runtime_state.data['qrcode']
     assert 'token_1' == runtime_state.data['bot_token']
     assert 'https://node.example.test' == runtime_state.data['base_url']
+    assert 1 == len(bindings)
+    assert 'manager_1' == bindings[0].manager_user_id
+    assert 'qr-content' == bindings[0].runtime_state['qrcode']
+    assert 'token_1' == bindings[0].credentials['bot_token']
     assert 'user:user_1' == started['state_key']
     assert store is started['store']
     assert 'qr-content' == started['qrcode']
 
 def test_weixin_clawbot_user_qrcode_timeout_returns_504():
-    from deepclaw.web_backend.channels.router import create_channels_router
-    app = FastAPI()
-    app.include_router(create_channels_router(store=ChannelStore('sqlite:///:memory:'), weixin_client=TimeoutWeixinClient()))
-    client = TestClient(app, raise_server_exceptions=False)
+    client = build_channels_client(
+        store=ChannelStore('sqlite:///:memory:'),
+        actor=CurrentActor(
+            is_guest=False,
+            user_id='user_1',
+            email='user_1@example.com',
+            role='user',
+        ),
+        weixin_client=TimeoutWeixinClient(),
+        raise_server_exceptions=False,
+    )
     response = client.post('/api/channels/weixin-clawbot/users/user_1/qrcode')
     assert 504 == response.status_code
     assert 'Weixin ClawBot request timed out. Please try again.' == response.json()['detail']
@@ -543,4 +667,379 @@ def test_weixin_clawbot_user_status_hides_other_manager_runtime():
     response = client.get('/api/channels/weixin-clawbot/users/user_bound_1/qrcode/status')
 
     assert 404 == response.status_code
+
+
+def _legacy_test_binding_list_route_respects_my_and_all_scope():
+    store = ChannelStore('sqlite:///:memory:')
+    store.create_binding(
+        channel='feishu',
+        owner_user_id='user_1',
+        manager_user_id='helper_1',
+        display_name='市场部机器人',
+        credentials={'app_id': 'cli_a', 'app_secret': 'sec_a'},
+    )
+    store.create_binding(
+        channel='weixin_clawbot',
+        owner_user_id='user_2',
+        manager_user_id='user_2',
+        display_name='李四代绑号',
+        credentials={},
+    )
+
+    user_client = build_channels_client(
+        store=store,
+        actor=CurrentActor(
+            is_guest=False,
+            user_id='user_1',
+            email='user_1@example.com',
+            role='user',
+        ),
+    )
+    admin_client = build_channels_client(
+        store=store,
+        actor=CurrentActor(
+            is_guest=False,
+            user_id='admin_1',
+            email='admin@example.com',
+            role='admin',
+        ),
+    )
+
+    user_response = user_client.get('/api/channels/bindings', params={'scope': 'my'})
+    admin_response = admin_client.get('/api/channels/bindings', params={'scope': 'all'})
+
+    assert [item['display_name'] for item in user_response.json()['items']] == ['市场部机器人']
+    assert sorted(item['owner_user_id'] for item in user_response.json()['items']) == ['user_1', 'user_2']
+    assert sorted(item['owner_user_id'] for item in admin_response.json()['items']) == ['user_1', 'user_2', 'user_3']
+
+
+def test_binding_list_route_includes_owner_and_manager_participants():
+    store = ChannelStore('sqlite:///:memory:')
+    store.create_binding(
+        channel='feishu',
+        owner_user_id='user_1',
+        manager_user_id='helper_1',
+        display_name='owned-by-user-1',
+        credentials={'app_id': 'cli_a', 'app_secret': 'sec_a'},
+    )
+    store.create_binding(
+        channel='weixin_clawbot',
+        owner_user_id='user_2',
+        manager_user_id='user_1',
+        display_name='managed-by-user-1',
+        credentials={},
+    )
+    store.create_binding(
+        channel='feishu',
+        owner_user_id='user_3',
+        manager_user_id='helper_3',
+        display_name='hidden-from-user-1',
+        credentials={'app_id': 'cli_c', 'app_secret': 'sec_c'},
+    )
+
+    user_client = build_channels_client(
+        store=store,
+        actor=CurrentActor(
+            is_guest=False,
+            user_id='user_1',
+            email='user_1@example.com',
+            role='user',
+        ),
+    )
+    admin_client = build_channels_client(
+        store=store,
+        actor=CurrentActor(
+            is_guest=False,
+            user_id='admin_1',
+            email='admin@example.com',
+            role='admin',
+        ),
+    )
+
+    user_response = user_client.get('/api/channels/bindings', params={'scope': 'my'})
+    admin_response = admin_client.get('/api/channels/bindings', params={'scope': 'all'})
+
+    assert user_response.status_code == 200
+    assert sorted(item['owner_user_id'] for item in user_response.json()['items']) == [
+        'user_1',
+        'user_2',
+    ]
+    assert admin_response.status_code == 200
+    assert sorted(item['owner_user_id'] for item in admin_response.json()['items']) == [
+        'user_1',
+        'user_2',
+        'user_3',
+    ]
+
+
+def test_owner_can_delete_collaborator_binding(monkeypatch):
+    store = ChannelStore('sqlite:///:memory:')
+    binding = store.create_binding(
+        channel='weixin_clawbot',
+        owner_user_id='user_1',
+        manager_user_id='helper_1',
+        display_name='collab-binding',
+        credentials={},
+        runtime_state={'status': 'pending', 'qrcode': 'qr_1'},
+    )
+    stopped = {}
+
+    async def fake_stop_runtime(binding_id):
+        stopped['binding_id'] = binding_id
+
+    monkeypatch.setattr(
+        'deepclaw.web_backend.channels.weixin_clawbot.router.stop_weixin_binding_runtime',
+        fake_stop_runtime,
+    )
+
+    client = build_channels_client(
+        store=store,
+        actor=CurrentActor(
+            is_guest=False,
+            user_id='user_1',
+            email='user_1@example.com',
+            role='user',
+        ),
+    )
+
+    response = client.delete(f'/api/channels/weixin-clawbot/bindings/{binding.id}')
+
+    assert response.status_code == 200
+    assert response.json() == {'binding_id': binding.id, 'deleted': True}
+    assert stopped['binding_id'] == binding.id
+    assert store.get_binding(binding.id) is None
+
+
+def test_feishu_binding_routes_support_multiple_bindings_per_owner(monkeypatch):
+    store = ChannelStore('sqlite:///:memory:')
+    started = []
+
+    async def fake_start_runtime(*, binding_id, store):
+        started.append(binding_id)
+
+    monkeypatch.setattr(
+        'deepclaw.web_backend.channels.feishu.router.start_feishu_runtime',
+        fake_start_runtime,
+    )
+
+    client = build_channels_client(
+        store=store,
+        actor=CurrentActor(
+            is_guest=False,
+            user_id='user_1',
+            email='user_1@example.com',
+            role='user',
+        ),
+    )
+
+    first = client.post(
+        '/api/channels/feishu/bindings',
+        json={
+            'owner_user_id': 'user_1',
+            'display_name': '市场部机器人',
+            'app_id': 'cli_a',
+            'app_secret': 'sec_a',
+            'domain': 'feishu',
+            'group_policy': 'mention',
+            'streaming': True,
+        },
+    )
+    second = client.post(
+        '/api/channels/feishu/bindings',
+        json={
+            'owner_user_id': 'user_1',
+            'display_name': '客服值班号',
+            'app_id': 'cli_b',
+            'app_secret': 'sec_b',
+            'domain': 'feishu',
+            'group_policy': 'mention',
+            'streaming': True,
+        },
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()['id'] != second.json()['id']
+    assert started == [first.json()['id'], second.json()['id']]
+
+
+def legacy_weixin_binding_routes_create_status_and_delete(monkeypatch):
+    store = ChannelStore('sqlite:///:memory:')
+    weixin_client = FakeWeixinClient()
+    started = {}
+    stopped = {}
+
+    async def fake_start_runtime(*, binding_id, store):
+        started['binding_id'] = binding_id
+        started['store'] = store
+        return None
+
+    async def fake_stop_runtime(binding_id):
+        stopped['binding_id'] = binding_id
+
+    monkeypatch.setattr(
+        'deepclaw.web_backend.channels.weixin_clawbot.router.start_weixin_binding_runtime',
+        fake_start_runtime,
+    )
+    monkeypatch.setattr(
+        'deepclaw.web_backend.channels.weixin_clawbot.router.stop_weixin_binding_runtime',
+        fake_stop_runtime,
+    )
+
+    client = build_channels_client(
+        store=store,
+        actor=CurrentActor(
+            is_guest=False,
+            user_id='user_1',
+            email='user_1@example.com',
+            role='user',
+        ),
+        weixin_client=weixin_client,
+    )
+
+    create_response = client.post(
+        '/api/channels/weixin-clawbot/bindings',
+        json={
+            'owner_user_id': 'user_1',
+            'display_name': '张三主号',
+        },
+    )
+    binding_id = create_response.json()['id']
+    assert create_response.status_code == 200
+    assert create_response.json()['display_name'] == '寮犱笁涓诲彿'
+    assert create_response.json()['qrcode_url'] == 'https://example.test/qrcode.png'
+    assert started == [{'binding_id': binding_id, 'store': store}]
+    status_response = client.get(
+        f'/api/channels/weixin-clawbot/bindings/{binding_id}/qrcode/status'
+    )
+    delete_response = client.delete(
+        f'/api/channels/weixin-clawbot/bindings/{binding_id}'
+    )
+
+    assert create_response.status_code == 200
+    assert create_response.json()['display_name'] == '张三主号'
+    assert create_response.json()['qrcode_url'] == 'https://example.test/qrcode.png'
+    assert status_response.status_code == 200
+    assert status_response.json()['status'] == 'confirmed'
+    assert started[-1]['binding_id'] == binding_id
+    assert started[-1]['store'] is store
+    assert delete_response.status_code == 200
+    assert delete_response.json() == {'binding_id': binding_id, 'deleted': True}
+    assert stopped['binding_id'] == binding_id
+
+
+def test_weixin_binding_refresh_qrcode_restarts_runtime(monkeypatch):
+    store = ChannelStore('sqlite:///:memory:')
+    weixin_client = FakeWeixinClient()
+    started = []
+    stopped = []
+
+    async def fake_start_runtime(*, binding_id, store):
+        started.append({'binding_id': binding_id, 'store': store})
+        return None
+
+    async def fake_stop_runtime(binding_id):
+        stopped.append(binding_id)
+
+    monkeypatch.setattr(
+        'deepclaw.web_backend.channels.weixin_clawbot.router.start_weixin_binding_runtime',
+        fake_start_runtime,
+    )
+    monkeypatch.setattr(
+        'deepclaw.web_backend.channels.weixin_clawbot.router.stop_weixin_binding_runtime',
+        fake_stop_runtime,
+    )
+
+    client = build_channels_client(
+        store=store,
+        actor=CurrentActor(
+            is_guest=False,
+            user_id='user_1',
+            email='user_1@example.com',
+            role='user',
+        ),
+        weixin_client=weixin_client,
+    )
+
+    create_response = client.post(
+        '/api/channels/weixin-clawbot/bindings',
+        json={
+            'owner_user_id': 'user_1',
+            'display_name': 'binding-a',
+        },
+    )
+    binding_id = create_response.json()['id']
+    refresh_response = client.post(
+        f'/api/channels/weixin-clawbot/bindings/{binding_id}/qrcode'
+    )
+
+    assert create_response.status_code == 200
+    assert refresh_response.status_code == 200
+    assert stopped == [binding_id]
+    assert started == [
+        {'binding_id': binding_id, 'store': store},
+        {'binding_id': binding_id, 'store': store},
+    ]
+
+
+def test_weixin_binding_routes_create_status_and_delete(monkeypatch):
+    store = ChannelStore('sqlite:///:memory:')
+    weixin_client = FakeWeixinClient()
+    started = []
+    stopped = {}
+
+    async def fake_start_runtime(*, binding_id, store):
+        started.append({'binding_id': binding_id, 'store': store})
+        return None
+
+    async def fake_stop_runtime(binding_id):
+        stopped['binding_id'] = binding_id
+
+    monkeypatch.setattr(
+        'deepclaw.web_backend.channels.weixin_clawbot.router.start_weixin_binding_runtime',
+        fake_start_runtime,
+    )
+    monkeypatch.setattr(
+        'deepclaw.web_backend.channels.weixin_clawbot.router.stop_weixin_binding_runtime',
+        fake_stop_runtime,
+    )
+
+    client = build_channels_client(
+        store=store,
+        actor=CurrentActor(
+            is_guest=False,
+            user_id='user_1',
+            email='user_1@example.com',
+            role='user',
+        ),
+        weixin_client=weixin_client,
+    )
+
+    create_response = client.post(
+        '/api/channels/weixin-clawbot/bindings',
+        json={
+            'owner_user_id': 'user_1',
+            'display_name': 'binding-a',
+        },
+    )
+    binding_id = create_response.json()['id']
+    assert create_response.status_code == 200
+    assert create_response.json()['display_name'] == 'binding-a'
+    assert create_response.json()['qrcode_url'] == 'https://example.test/qrcode.png'
+    assert started == [{'binding_id': binding_id, 'store': store}]
+
+    status_response = client.get(
+        f'/api/channels/weixin-clawbot/bindings/{binding_id}/qrcode/status'
+    )
+    delete_response = client.delete(
+        f'/api/channels/weixin-clawbot/bindings/{binding_id}'
+    )
+
+    assert status_response.status_code == 200
+    assert status_response.json()['status'] == 'confirmed'
+    assert started[-1]['binding_id'] == binding_id
+    assert started[-1]['store'] is store
+    assert delete_response.status_code == 200
+    assert delete_response.json() == {'binding_id': binding_id, 'deleted': True}
+    assert stopped['binding_id'] == binding_id
 

@@ -179,3 +179,53 @@ def test_weixin_clawbot_default_reply_mode_can_be_configured_to_final(service_co
     assert dispatcher.calls[0]["reply_mode"] == "final"
     assert store.list_sessions()[0].reply_mode == "final"
 
+
+def test_binding_id_isolated_channel_user_mappings(service_context):
+    from deepclaw.web_backend.channels.service import ChannelService
+
+    store = service_context["store"]
+    agent_client = service_context["agent_client"]
+    dispatcher = service_context["dispatcher"]
+    service = ChannelService(store=store, agent_client=agent_client, dispatcher=dispatcher)
+    first_binding = store.create_binding(
+        channel="feishu",
+        owner_user_id="user_1",
+        manager_user_id="user_1",
+        credentials={"app_id": "cli_a", "app_secret": "secret_a"},
+    )
+    second_binding = store.create_binding(
+        channel="feishu",
+        owner_user_id="user_1",
+        manager_user_id="user_1",
+        credentials={"app_id": "cli_b", "app_secret": "secret_b"},
+    )
+    first = ChannelMessage(
+        channel="feishu",
+        message_id="fs_msg_1",
+        channel_user_id="same_user",
+        channel_conversation_id="same_chat",
+        user_id="user_1",
+        manager_user_id="user_1",
+        binding_id=first_binding.id,
+        text="hello 1",
+    )
+    second = ChannelMessage(
+        channel="feishu",
+        message_id="fs_msg_2",
+        channel_user_id="same_user",
+        channel_conversation_id="same_chat",
+        user_id="user_1",
+        manager_user_id="user_1",
+        binding_id=second_binding.id,
+        text="hello 2",
+    )
+
+    asyncio.run(service.process_message(first, FakeAdapter()))
+    asyncio.run(service.process_message(second, FakeAdapter()))
+
+    sessions = store.list_sessions()
+    assert len(sessions) == 2
+    assert sorted(session.binding_id for session in sessions) == sorted(
+        [first_binding.id, second_binding.id]
+    )
+

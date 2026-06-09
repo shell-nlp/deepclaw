@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import utilsPkg from '../.tmp-test/utils.js'
+import * as utilsPkg from '../components/chat-interface/utils.ts'
 
 const { createClearedChatState } = utilsPkg
 

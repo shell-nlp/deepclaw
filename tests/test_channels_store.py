@@ -152,3 +152,162 @@ def test_delete_runtime_state_removes_channel_key(store):
         state_key="user:user_1",
     ) is False
 
+
+def test_binding_crud_and_runtime_state_merge(store):
+    binding = store.create_binding(
+        channel="feishu",
+        owner_user_id="user_1",
+        manager_user_id="user_1",
+        display_name="我的飞书",
+        credentials={"app_id": "cli_x", "app_secret": "sec_x"},
+        config={"domain": "feishu", "streaming": True},
+        runtime_state={"status": "offline"},
+    )
+
+    fetched = store.get_binding(binding.id)
+    assert fetched is not None
+    assert fetched.channel == "feishu"
+    assert fetched.credentials["app_id"] == "cli_x"
+    assert fetched.runtime_state["status"] == "offline"
+
+    updated = store.update_binding_runtime_state(
+        binding.id,
+        {"status": "online", "ws": "connected"},
+    )
+    assert updated.runtime_state == {"status": "online", "ws": "connected"}
+
+
+def test_list_bindings_supports_channel_and_owner_filters(store):
+    store.create_binding(
+        channel="weixin_clawbot",
+        owner_user_id="user_1",
+        manager_user_id="manager_1",
+        credentials={"bot_token": "token_1"},
+    )
+    store.create_binding(
+        channel="weixin_clawbot",
+        owner_user_id="user_2",
+        manager_user_id="manager_2",
+        credentials={"bot_token": "token_2"},
+    )
+    store.create_binding(
+        channel="feishu",
+        owner_user_id="user_1",
+        manager_user_id="manager_1",
+        credentials={"app_id": "cli_x", "app_secret": "sec_x"},
+    )
+
+    bindings = store.list_bindings(channel="weixin_clawbot", owner_user_id="user_1")
+
+    assert len(bindings) == 1
+    assert bindings[0].channel == "weixin_clawbot"
+    assert bindings[0].owner_user_id == "user_1"
+
+
+def test_list_bindings_supports_owner_or_manager_participant_filter(store):
+    owned = store.create_binding(
+        channel="feishu",
+        owner_user_id="user_1",
+        manager_user_id="helper_1",
+        display_name="owned_by_user_1",
+        credentials={"app_id": "cli_owned", "app_secret": "sec_owned"},
+    )
+    managed = store.create_binding(
+        channel="feishu",
+        owner_user_id="user_2",
+        manager_user_id="user_1",
+        display_name="managed_by_user_1",
+        credentials={"app_id": "cli_managed", "app_secret": "sec_managed"},
+    )
+    store.create_binding(
+        channel="feishu",
+        owner_user_id="user_3",
+        manager_user_id="helper_3",
+        display_name="hidden_from_user_1",
+        credentials={"app_id": "cli_hidden", "app_secret": "sec_hidden"},
+    )
+
+    bindings = store.list_bindings(
+        channel="feishu",
+        participant_user_id="user_1",
+    )
+
+    assert {item.id for item in bindings} == {owned.id, managed.id}
+
+
+def test_upsert_binding_reuses_channel_and_owner(store):
+    first = store.upsert_binding(
+        channel="weixin_clawbot",
+        owner_user_id="user_1",
+        manager_user_id="manager_1",
+        display_name="微信 1",
+        credentials={"bot_token": "token_1"},
+        runtime_state={"status": "pending"},
+    )
+    second = store.upsert_binding(
+        channel="weixin_clawbot",
+        owner_user_id="user_1",
+        manager_user_id="manager_2",
+        display_name="微信 2",
+        credentials={"bot_token": "token_2"},
+        runtime_state={"status": "connected"},
+    )
+
+    assert first.id == second.id
+    assert second.manager_user_id == "manager_2"
+    assert second.display_name == "微信 2"
+    assert second.credentials["bot_token"] == "token_2"
+    assert second.runtime_state["status"] == "connected"
+
+def test_store_allows_multiple_bindings_for_same_owner_and_channel(store):
+    first = store.create_binding(
+        channel="feishu",
+        owner_user_id="user_1",
+        manager_user_id="user_1",
+        display_name="市场部机器人",
+        credentials={"app_id": "cli_a", "app_secret": "sec_a"},
+        config={"domain": "feishu"},
+    )
+    second = store.create_binding(
+        channel="feishu",
+        owner_user_id="user_1",
+        manager_user_id="user_1",
+        display_name="客服值班号",
+        credentials={"app_id": "cli_b", "app_secret": "sec_b"},
+        config={"domain": "feishu"},
+    )
+
+    items = store.list_bindings(channel="feishu", owner_user_id="user_1")
+
+    assert first.id != second.id
+    assert [item.display_name for item in items] == ["客服值班号", "市场部机器人"]
+
+
+def test_store_updates_only_target_binding(store):
+    first = store.create_binding(
+        channel="weixin_clawbot",
+        owner_user_id="user_1",
+        manager_user_id="user_1",
+        display_name="张三主号",
+        credentials={},
+    )
+    second = store.create_binding(
+        channel="weixin_clawbot",
+        owner_user_id="user_1",
+        manager_user_id="user_1",
+        display_name="李四代绑号",
+        credentials={},
+    )
+
+    updated = store.update_binding(
+        second.id,
+        display_name="李四备用机",
+        runtime_state={"status": "pending"},
+    )
+    deleted = store.delete_binding(second.id)
+    remaining = store.list_bindings(channel="weixin_clawbot", owner_user_id="user_1")
+
+    assert updated.display_name == "李四备用机"
+    assert deleted is True
+    assert store.get_binding(first.id).display_name == "张三主号"
+    assert [item.display_name for item in remaining] == ["张三主号"]
