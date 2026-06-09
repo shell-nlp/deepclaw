@@ -10,7 +10,7 @@ from deepagents.middleware.summarization import (
     SummarizationMiddleware,
     compute_summarization_defaults,
 )
-from deepclaw.middleware.sandbox.sandbox_system_tool import get_backend
+from deepclaw.middleware.sandbox.opensandbox_kill import get_backend
 
 logger = logging.getLogger(__name__)
 
@@ -60,14 +60,10 @@ class LangClawSummarizationMiddleware(SummarizationMiddleware):
 
         # Step 2: Check if summarization should happen
         counted_messages = (
-            [request.system_message, *truncated_messages]
-            if request.system_message is not None
-            else truncated_messages
+            [request.system_message, *truncated_messages] if request.system_message is not None else truncated_messages
         )
         try:
-            total_tokens = self.token_counter(
-                counted_messages, tools=request.tools
-            )  # ty: ignore[unknown-argument]
+            total_tokens = self.token_counter(counted_messages, tools=request.tools)  # ty: ignore[unknown-argument]
         except TypeError:
             total_tokens = self.token_counter(counted_messages)
         should_summarize = self._should_summarize(truncated_messages, total_tokens)
@@ -86,9 +82,7 @@ class LangClawSummarizationMiddleware(SummarizationMiddleware):
             # Can't summarize, return truncated messages
             return handler(request.override(messages=truncated_messages))
 
-        messages_to_summarize, preserved_messages = self._partition_messages(
-            truncated_messages, cutoff_index
-        )
+        messages_to_summarize, preserved_messages = self._partition_messages(truncated_messages, cutoff_index)
 
         # Offload to backend first so history is preserved before summarization.
         # If offload fails, summarization still proceeds (with file_path=None).
@@ -111,9 +105,7 @@ class LangClawSummarizationMiddleware(SummarizationMiddleware):
         # Create new summarization event
         new_event: SummarizationEvent = {
             "cutoff_index": state_cutoff_index,
-            "summary_message": new_messages[
-                0
-            ],  # The HumanMessage with summary  # ty: ignore[invalid-argument-type]
+            "summary_message": new_messages[0],  # The HumanMessage with summary  # ty: ignore[invalid-argument-type]
             "file_path": file_path,
         }
 
@@ -144,14 +136,10 @@ class LangClawSummarizationMiddleware(SummarizationMiddleware):
 
         # Step 2: Check if summarization should happen
         counted_messages = (
-            [request.system_message, *truncated_messages]
-            if request.system_message is not None
-            else truncated_messages
+            [request.system_message, *truncated_messages] if request.system_message is not None else truncated_messages
         )
         try:
-            total_tokens = self.token_counter(
-                counted_messages, tools=request.tools
-            )  # ty: ignore[unknown-argument]
+            total_tokens = self.token_counter(counted_messages, tools=request.tools)  # ty: ignore[unknown-argument]
         except TypeError:
             total_tokens = self.token_counter(counted_messages)
         should_summarize = self._should_summarize(truncated_messages, total_tokens)
@@ -170,9 +158,7 @@ class LangClawSummarizationMiddleware(SummarizationMiddleware):
             # Can't summarize, return truncated messages
             return await handler(request.override(messages=truncated_messages))
 
-        messages_to_summarize, preserved_messages = self._partition_messages(
-            truncated_messages, cutoff_index
-        )
+        messages_to_summarize, preserved_messages = self._partition_messages(truncated_messages, cutoff_index)
 
         # Offload to backend and generate summary concurrently -- they are independent.
         # If offload fails, summarization still proceeds (with file_path=None).
@@ -195,9 +181,7 @@ class LangClawSummarizationMiddleware(SummarizationMiddleware):
         # Create new summarization event
         new_event: SummarizationEvent = {
             "cutoff_index": state_cutoff_index,
-            "summary_message": new_messages[
-                0
-            ],  # The HumanMessage with summary  # ty: ignore[invalid-argument-type]
+            "summary_message": new_messages[0],  # The HumanMessage with summary  # ty: ignore[invalid-argument-type]
             "file_path": file_path,
         }
 
@@ -210,4 +194,3 @@ class LangClawSummarizationMiddleware(SummarizationMiddleware):
             model_response=response,
             command=Command(update={"_summarization_event": new_event}),
         )
-

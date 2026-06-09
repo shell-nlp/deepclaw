@@ -63,19 +63,11 @@ class Agent:
         if not workspace_path.exists():
             workspace_path.mkdir(parents=True, exist_ok=True)
         if settings.BACKEND_TYPE == "sandbox":
-            from opensandbox.models.sandboxes import Host, Volume
-
             from deepclaw.backend.open_sandbox import OpenSandbox
+            from deepclaw.middleware.sandbox.opensandbox_kill import OpenSandboxKillMiddleware
 
-            backend = OpenSandbox(
-                volumes=[
-                    Volume(
-                        name="workspace-root",
-                        host=Host(path=str(workspace_path)),
-                        mount_path="/workspace",
-                    )
-                ]
-            )
+            middleware.append(OpenSandboxKillMiddleware())
+            backend = OpenSandbox()
             logger.info("使用 OpenSandbox 作为后端")
         elif settings.BACKEND_TYPE == "local_shell":
             from deepagents.backends.local_shell import LocalShellBackend

@@ -1,7 +1,7 @@
-﻿from datetime import timedelta
+﻿import tomllib
+from datetime import timedelta
 from pathlib import Path
 
-import tomllib
 from deepagents.backends.sandbox import (
     BaseSandbox,
     ExecuteResponse,
@@ -9,6 +9,8 @@ from deepagents.backends.sandbox import (
     FileUploadResponse,
     WriteResult,
 )
+from langgraph.runtime import get_runtime
+from loguru import logger
 from opensandbox import SandboxSync
 from opensandbox.config import ConnectionConfigSync
 from opensandbox.models import WriteEntry
@@ -17,10 +19,14 @@ from opensandbox.models.execd import (
 )
 from opensandbox.models.sandboxes import Host, Volume
 
-with open(Path(__file__).parent.parent.parent / ".sandbox.toml", "rb") as f:
+from deepclaw.constant import root_dir
+
+with open(root_dir / ".sandbox.toml", "rb") as f:
     config = tomllib.load(f)
 
 DOMAIN = config["server"]["host"] + ":" + str(config["server"]["port"])
+
+workspace_path = root_dir / "user_workspace"
 
 
 class OpenSandbox(BaseSandbox):
@@ -39,23 +45,63 @@ class OpenSandbox(BaseSandbox):
         self.volumes = volumes
         # 1. 配置连接信息
         self.config = ConnectionConfigSync(domain=DOMAIN)
-        self.sandbox = SandboxSync.create(
+
+    def get_user_workspace_path(self, user_id: str) -> str:
+        new_workspace_path = Path(f"{workspace_path}/{user_id}/.deepclaw")
+        new_workspace_path.mkdir(parents=True, exist_ok=True)
+        conversation_history = new_workspace_path / "conversation_history"
+        conversation_history.mkdir(parents=True, exist_ok=True)
+        return str(new_workspace_path)
+
+    def create_sandbox(self, user_id) -> SandboxSync:
+        workspace_path = self.get_user_workspace_path(user_id)
+        return SandboxSync.create(
             "sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/code-interpreter:v1.0.2",
             entrypoint=["/opt/opensandbox/code-interpreter.sh"],
             env=self.env,
-            timeout=timedelta(seconds=timeout or self.timeout),
+            timeout=timedelta(seconds=self.timeout),
             connection_config=self.config,
-            volumes=self.volumes,
+            volumes=[
+                Volume(
+                    name=f"deepclaw-{user_id}",
+                    host=Host(path=workspace_path),
+                    mount_path="/.deepclaw",
+                ),
+                Volume(
+                    name=f"deepclaw-conversation-history-{user_id}",
+                    host=Host(path=workspace_path + "/conversation_history"),
+                    mount_path="/conversation_history",
+                ),
+            ],
         )
 
+    def connect_sandbox(self, sandbox_id: str) -> SandboxSync:
+        return SandboxSync.connect(sandbox_id=sandbox_id, connection_config=self.config)
+
+    def get_sandbox(self) -> SandboxSync:
+        runtime = get_runtime()
+        user_id = runtime.context.user_id
+        user_store_item = runtime.store.get((f"user_{user_id}",), "sandbox_id")
+        if user_store_item:
+            logger.debug(f"得到用户:{user_id} 已存在的沙箱ID: {user_store_item.value['sandbox_id']}")
+            return self.connect_sandbox(user_store_item.value["sandbox_id"])
+
+        else:
+            sandbox = self.create_sandbox(user_id)
+            sandbox_id = sandbox.id
+            runtime.store.put((f"user_{user_id}",), "sandbox_id", {"sandbox_id": sandbox_id})
+            logger.debug(f"为用户: {user_id} 创建新沙箱, 沙箱 ID 为 {sandbox_id}")
+            return sandbox
+
     def execute(self, command: str, *, timeout: int | None = None) -> ExecuteResponse:
-        with self.sandbox:
+        sandbox = self.get_sandbox()
+        with sandbox:
             exit_code = 0
             if timeout is None:
                 timeout = 60 * 10
             try:
                 # TODO 内部调用 http 沙盒的接口的超时，官方未传递 timeout 参数
-                execution = self.sandbox.commands.run(
+                execution = sandbox.commands.run(
                     command,
                     opts=RunCommandOpts(timeout=timedelta(seconds=timeout or self.timeout)),
                 )
@@ -68,7 +114,7 @@ class OpenSandbox(BaseSandbox):
             except Exception as e:
                 output = str(e)
                 exit_code = 1
-            # self.sandbox.kill()
+            # sandbox.kill()
             return ExecuteResponse(
                 output=output,
                 exit_code=exit_code,
@@ -76,8 +122,24 @@ class OpenSandbox(BaseSandbox):
             )
 
     def write(self, file_path: str, content: str) -> WriteResult:
-        self.sandbox.files.write_file(path=file_path, data=content)
+        sandbox = self.get_sandbox()
+        sandbox.files.write_file(path=file_path, data=content)
         return WriteResult(path=file_path)
+
+    def ls(self, path: str):
+        return super().ls(path)
+
+    def read(self, file_path: str, offset: int = 0, limit: int = 2000):
+        return super().read(file_path, offset, limit)
+
+    def edit(self, file_path: str, old_string: str, new_string: str, replace_all: bool = False):
+        return super().edit(file_path, old_string, new_string, replace_all)
+
+    def glob(self, pattern: str, path: str | None = None):
+        return super().glob(pattern, path)
+
+    def grep(self, pattern: str, path: str | None = None):
+        return super().grep(pattern, path)
 
     @property
     def id(self) -> str:
@@ -93,7 +155,7 @@ class OpenSandbox(BaseSandbox):
             List of FileUploadResponse objects, one per input file.
             Response order matches input order.
         """
-
+        sandbox = self.get_sandbox()
         responses: list[FileUploadResponse] = []
         write_entries = []
 
@@ -101,13 +163,13 @@ class OpenSandbox(BaseSandbox):
             write_entries.append(WriteEntry(path=path, data=content, mode=644))
 
         try:
-            self.sandbox.files.write_files(write_entries)
+            sandbox.files.write_files(write_entries)
             for path, _ in files:
                 responses.append(FileUploadResponse(path=path, error=None))
         except Exception:
             for path, content in files:
                 try:
-                    self.sandbox.files.write_file(path=path, data=content)
+                    sandbox.files.write_file(path=path, data=content)
                     responses.append(FileUploadResponse(path=path, error=None))
                 except Exception:
                     responses.append(FileUploadResponse(path=path, error="unknown_error"))
@@ -124,10 +186,11 @@ class OpenSandbox(BaseSandbox):
             List of FileDownloadResponse objects, one per input path.
         """
         # TODO 上传和下载的异常处理存在问题，暂未处理
+        sandbox = self.get_sandbox()
         responses: list[FileDownloadResponse] = []
         for path in paths:
             try:
-                content = self.sandbox.files.read_bytes(path)
+                content = sandbox.files.read_bytes(path)
                 responses.append(FileDownloadResponse(path=path, content=content, error=None))
             except Exception:
                 responses.append(FileDownloadResponse(path=path, content=None, error="unknown_error"))
@@ -147,8 +210,9 @@ if __name__ == "__main__":
     ]
     # volumes = None
     sandbox = OpenSandbox(volumes=volumes)
-    value = sandbox.execute("env")
-    sandbox.sandbox.kill()
-    # value = sandbox.write("/workspace/script.py", "print('Hello OpenSandbox!')")
-    # value = sandbox.read("script.py")
+    # value = sandbox.execute("env")
+
+    value = sandbox.write("/workspace/script.py", "print('Hello OpenSandbox!')")
+    value = sandbox.read("script.py")
+    # sandbox.sandbox.kill()
     print(value)
