@@ -40,7 +40,7 @@ class OpenSandbox(BaseSandbox):
         # 1. 配置连接信息
         self.config = ConnectionConfigSync(domain=DOMAIN)
         self.sandbox = SandboxSync.create(
-            "gpu-server:180/opensandbox/code-interpreter:v1.0.1",
+            "sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/code-interpreter:v1.0.2",
             entrypoint=["/opt/opensandbox/code-interpreter.sh"],
             env=self.env,
             timeout=timedelta(seconds=timeout or self.timeout),
@@ -57,9 +57,7 @@ class OpenSandbox(BaseSandbox):
                 # TODO 内部调用 http 沙盒的接口的超时，官方未传递 timeout 参数
                 execution = self.sandbox.commands.run(
                     command,
-                    opts=RunCommandOpts(
-                        timeout=timedelta(seconds=timeout or self.timeout)
-                    ),
+                    opts=RunCommandOpts(timeout=timedelta(seconds=timeout or self.timeout)),
                 )
                 output = str(execution)
                 # output = execution.logs.stdout
@@ -112,9 +110,7 @@ class OpenSandbox(BaseSandbox):
                     self.sandbox.files.write_file(path=path, data=content)
                     responses.append(FileUploadResponse(path=path, error=None))
                 except Exception:
-                    responses.append(
-                        FileUploadResponse(path=path, error="unknown_error")
-                    )
+                    responses.append(FileUploadResponse(path=path, error="unknown_error"))
 
         return responses
 
@@ -132,30 +128,27 @@ class OpenSandbox(BaseSandbox):
         for path in paths:
             try:
                 content = self.sandbox.files.read_bytes(path)
-                responses.append(
-                    FileDownloadResponse(path=path, content=content, error=None)
-                )
+                responses.append(FileDownloadResponse(path=path, content=content, error=None))
             except Exception:
-                responses.append(
-                    FileDownloadResponse(path=path, content=None, error="unknown_error")
-                )
+                responses.append(FileDownloadResponse(path=path, content=None, error="unknown_error"))
 
         return responses
 
 
 if __name__ == "__main__":
+    # docker pull sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/code-interpreter:v1.0.2 && docker pull docker.1ms.run/opensandbox/execd:v1.0.16 && docker pull docker.1ms.run/opensandbox/egress:v1.0.12
     # opensandbox-server --config .sandbox.toml
     volumes = [
         Volume(
             name="workspace-root",
-            host=Host(path="/home/dev/liuyu/project/deepclaw"),
+            host=Host(path="/home/dev/liuyu/project/langchain-api"),
             mount_path="/workspace2",
         )
     ]
     # volumes = None
     sandbox = OpenSandbox(volumes=volumes)
     value = sandbox.execute("env")
+    sandbox.sandbox.kill()
     # value = sandbox.write("/workspace/script.py", "print('Hello OpenSandbox!')")
     # value = sandbox.read("script.py")
     print(value)
-

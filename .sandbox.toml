@@ -22,19 +22,27 @@
 host = "127.0.0.1"
 port = 8089
 log_level = "INFO"
-# api_key = "your-secret-api-key"  # Optional: Uncomment to enable API key authentication
+max_sandbox_timeout_seconds = 86400
+
+# Optional: Uncomment to enable API key authentication
+# api_key = "your-secret-api-key"
+# If api_key stays empty, startup requires explicit acknowledgment:
+# - Interactive TTY: type YES when prompted
+# - Non-interactive: set OPENSANDBOX_INSECURE_SERVER=YES
+
+[log]
+level = "INFO"
 
 [runtime]
 # Runtime selection (docker | kubernetes)
 # -----------------------------------------------------------------
 type = "docker"
-execd_image = "gpu-server:180/opensandbox/execd:v1.0.6"
-
+execd_image = "docker.1ms.run/opensandbox/execd:v1.0.16"
 [egress]
 # Egress configuration
 # -----------------------------------------------------------------
-image = "gpu-server:180/opensandbox/egress:v1.0.1"
-
+image = "docker.1ms.run/opensandbox/egress:v1.0.12"
+mode = "dns"
 [storage]
 # 卷存储配置
 # -----------------------------------------------------------------
@@ -42,12 +50,14 @@ image = "gpu-server:180/opensandbox/egress:v1.0.1"
 # 仅匹配这些前缀的路径才能被挂载到沙箱中。
 # 如果为空，则允许所有路径（不建议在生产环境使用）。
 # 示例：allowed_host_paths = ["/data/opensandbox", "/tmp/sandbox"]
-allowed_host_paths = []
+allowed_host_paths = ["/home/dev/liuyu/project/langchain-api"]
+# Default storage size for auto-created Kubernetes PVCs (when caller omits size).
+volume_default_size = "1Gi"
+[store]
+type = "sqlite"
+path = "~/.opensandbox/opensandbox.db"
 
 [docker]
-# Docker-specific knobs
-# -----------------------------------------------------------------
-# Supported values for network_mode: "host", "bridge"
 network_mode = "bridge"
 # Drop dangerous capabilities and block privilege escalation
 drop_capabilities = [
@@ -65,9 +75,10 @@ no_new_privileges = true
 # Optional: set an AppArmor profile name (e.g., "docker-default") when AppArmor is enabled
 apparmor_profile = ""
 # Limit process count to reduce host impact from fork bombs; set to null to disable
-pids_limit = 512
+pids_limit = 4096
 # Seccomp profile: empty string uses Docker default; set to an absolute path for a custom profile
 seccomp_profile = ""
+
 
 [ingress]
 # Ingress exposure mode: direct (default) or gateway
