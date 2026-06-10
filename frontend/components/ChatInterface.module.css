@@ -864,6 +864,10 @@
   box-shadow: var(--shadow-sm);
 }
 
+.sidebarButton {
+  position: relative;
+}
+
 .sidebarButton:hover,
 .sidebarAction:hover {
   transform: translateY(-1px);
@@ -876,6 +880,68 @@
   border-color: transparent;
   color: white;
   box-shadow: 0 6px 20px rgba(79, 70, 229, 0.28);
+}
+
+.sidebarChevron,
+.sidebarChevronExpanded {
+  position: absolute;
+  right: 12px;
+  margin-left: 0;
+  font-size: 12px;
+  transition: transform 0.18s ease;
+}
+
+.sidebarChevronExpanded {
+  transform: rotate(0deg);
+}
+
+.channelSubnav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 0 0 10px;
+}
+
+.channelSubnavItem {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.channelSubnavItem:hover {
+  border-color: rgba(15, 118, 110, 0.22);
+  transform: translateY(-1px);
+}
+
+.channelSubnavItemActive {
+  border-color: rgba(15, 118, 110, 0.22);
+  background: linear-gradient(
+    180deg,
+    rgba(15, 118, 110, 0.12),
+    rgba(15, 118, 110, 0.06)
+  );
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.channelSubnavLabel {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.channelSubnavMeta {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .sidebarInput,
@@ -2036,6 +2102,15 @@ textarea.interruptInput {
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-sm);
+}
+
+.managementSummaryCardActive {
+  border-color: rgba(15, 118, 110, 0.24);
+  background: linear-gradient(
+    180deg,
+    rgba(15, 118, 110, 0.12),
+    rgba(15, 118, 110, 0.05)
+  );
 }
 
 .managementSummaryLabel {

@@ -138,6 +138,7 @@ export interface BulkDeleteDocumentResponse {
 }
 
 export type ViewMode = 'chat' | 'knowledge' | 'mcp' | 'skills' | 'channels'
+export type ChannelManagementPage = 'weixin' | 'feishu'
 export type KnowledgePage =
   | 'libraries'
   | 'library-detail'

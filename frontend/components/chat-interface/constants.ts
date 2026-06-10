@@ -1,4 +1,4 @@
-import type { KnowledgePage } from './types.ts'
+import type { ChannelManagementPage, KnowledgePage } from './types.ts'
 
 export const DEFAULT_BACKEND_URL = 'http://localhost:7869'
 export const DEFAULT_AGENT_API_PATH = '/api/agent/general_api'
@@ -51,6 +51,7 @@ export const KNOWLEDGE_BASE_PAGE_SIZE = 8
 export const DOCUMENT_PAGE_SIZE = 10
 export const DOCUMENT_CHUNK_PAGE_SIZE = 8
 export const DEFAULT_KNOWLEDGE_PAGE: KnowledgePage = 'libraries'
+export const DEFAULT_CHANNEL_PAGE: ChannelManagementPage = 'weixin'
 export const AUTH_TOKEN_STORAGE_KEY = 'rag_auth_token'
 export const AUTH_REMEMBER_LOGIN_STORAGE_KEY = 'rag_remember_login'
 export const DEFAULT_MCP_CONFIG_TEMPLATE = `{

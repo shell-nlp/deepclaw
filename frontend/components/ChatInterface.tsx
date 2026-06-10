@@ -24,6 +24,7 @@ import {
   revokeAuthToken,
   type ActorState,
 } from './chat-interface/auth'
+import { resolveChannelEntryPage } from './chat-interface/channelManagement'
 import { ChannelManagementView } from './chat-interface/ChannelManagementView'
 import { ChatView } from './chat-interface/ChatView'
 import {
@@ -33,6 +34,7 @@ import {
   AUTH_USERS_UPDATE_ROLE_API_PATH,
   AUTH_USERS_UPDATE_STATUS_API_PATH,
   DEFAULT_AGENT_API_PATH,
+  DEFAULT_CHANNEL_PAGE,
   DEFAULT_KNOWLEDGE_PAGE,
   DEFAULT_MCP_CONFIG_TEMPLATE,
   DEFAULT_RAG_API_PATH,
@@ -60,6 +62,7 @@ import { McpManagementView } from './chat-interface/McpManagementView'
 import { SkillManagementView } from './chat-interface/SkillManagementView'
 import type {
   AssistantMessageItem,
+  ChannelManagementPage,
   AuthLoginResponse,
   AuthUserListResponse,
   AuthUserSummary,
@@ -216,6 +219,11 @@ type ResumeDecision =
 
 export default function ChatInterface() {
   const [viewMode, setViewMode] = useState<ViewMode>('chat')
+  const [channelPage, setChannelPage] =
+    useState<ChannelManagementPage>(DEFAULT_CHANNEL_PAGE)
+  const [lastChannelPage, setLastChannelPage] =
+    useState<ChannelManagementPage>(DEFAULT_CHANNEL_PAGE)
+  const [channelNavExpanded, setChannelNavExpanded] = useState(false)
   const [knowledgePage, setKnowledgePage] =
     useState<KnowledgePage>(DEFAULT_KNOWLEDGE_PAGE)
 
@@ -519,6 +527,7 @@ export default function ChatInterface() {
     (
       nextViewMode: ViewMode,
       nextKnowledgePage: KnowledgePage = DEFAULT_KNOWLEDGE_PAGE,
+      nextChannelPage: ChannelManagementPage = channelPage,
       replace = false
     ) => {
       const safeKnowledgePage =
@@ -532,9 +541,14 @@ export default function ChatInterface() {
 
       setViewMode(nextViewMode)
       setKnowledgePage(safeKnowledgePage)
+      setChannelPage(nextChannelPage)
+      if (nextViewMode === 'channels') {
+        setLastChannelPage(nextChannelPage)
+        setChannelNavExpanded(true)
+      }
 
       if (typeof window === 'undefined') return
-      const nextHash = getRouteHash(nextViewMode, safeKnowledgePage)
+      const nextHash = getRouteHash(nextViewMode, safeKnowledgePage, nextChannelPage)
       if (window.location.hash === nextHash) return
 
       if (replace) {
@@ -562,21 +576,55 @@ export default function ChatInterface() {
 
       setViewMode(route.viewMode)
       setKnowledgePage(safeKnowledgePage)
+      setChannelPage(route.channelPage)
+      if (route.viewMode === 'channels') {
+        setLastChannelPage(route.channelPage)
+        setChannelNavExpanded(true)
+      }
 
-      const expectedHash = getRouteHash(route.viewMode, safeKnowledgePage)
+      const expectedHash = getRouteHash(
+        route.viewMode,
+        safeKnowledgePage,
+        route.channelPage
+      )
       if (window.location.hash !== expectedHash) {
         window.history.replaceState(null, '', expectedHash)
       }
     }
 
     if (!window.location.hash) {
-      window.history.replaceState(null, '', getRouteHash('chat'))
+      window.history.replaceState(
+        null,
+        '',
+        getRouteHash('chat', DEFAULT_KNOWLEDGE_PAGE, DEFAULT_CHANNEL_PAGE)
+      )
     }
 
     syncRoute()
     window.addEventListener('hashchange', syncRoute)
     return () => window.removeEventListener('hashchange', syncRoute)
   }, [selectedKnowledgeBase])
+
+  const handleChannelsNavClick = useCallback(() => {
+    if (viewMode !== 'channels') {
+      const nextPage = resolveChannelEntryPage(undefined, lastChannelPage)
+      navigateTo('channels', DEFAULT_KNOWLEDGE_PAGE, nextPage)
+      return
+    }
+
+    setChannelNavExpanded((current) => !current)
+  }, [lastChannelPage, navigateTo, viewMode])
+
+  const navigateToKnowledgeView = useCallback(
+    (
+      nextViewMode: ViewMode,
+      nextKnowledgePage: KnowledgePage = DEFAULT_KNOWLEDGE_PAGE,
+      replace = false
+    ) => {
+      navigateTo(nextViewMode, nextKnowledgePage, channelPage, replace)
+    },
+    [channelPage, navigateTo]
+  )
 
   useEffect(() => {
     scrollToBottom()
@@ -1903,10 +1951,49 @@ export default function ChatInterface() {
               className={`${styles.sidebarButton} ${
                 viewMode === 'channels' ? styles.sidebarButtonActive : ''
               }`}
-              onClick={() => navigateTo('channels')}
+              onClick={handleChannelsNavClick}
             >
-              渠道管理
+              <span>渠道管理</span>
+              <span
+                className={
+                  channelNavExpanded
+                    ? styles.sidebarChevronExpanded
+                    : styles.sidebarChevron
+                }
+              >
+                ▾
+              </span>
             </button>
+            {channelNavExpanded ? (
+              <div className={styles.channelSubnav}>
+                <button
+                  className={`${styles.channelSubnavItem} ${
+                    viewMode === 'channels' && channelPage === 'weixin'
+                      ? styles.channelSubnavItemActive
+                      : ''
+                  }`}
+                  onClick={() =>
+                    navigateTo('channels', DEFAULT_KNOWLEDGE_PAGE, 'weixin')
+                  }
+                >
+                  <span className={styles.channelSubnavLabel}>微信绑定</span>
+                  <span className={styles.channelSubnavMeta}>扫码与状态</span>
+                </button>
+                <button
+                  className={`${styles.channelSubnavItem} ${
+                    viewMode === 'channels' && channelPage === 'feishu'
+                      ? styles.channelSubnavItemActive
+                      : ''
+                  }`}
+                  onClick={() =>
+                    navigateTo('channels', DEFAULT_KNOWLEDGE_PAGE, 'feishu')
+                  }
+                >
+                  <span className={styles.channelSubnavLabel}>飞书绑定</span>
+                  <span className={styles.channelSubnavMeta}>配置与状态</span>
+                </button>
+              </div>
+            ) : null}
             <button
               className={`${styles.sidebarButton} ${
                 viewMode === 'knowledge' && knowledgePage === 'users'
@@ -1993,6 +2080,7 @@ export default function ChatInterface() {
               <ChannelManagementView
                 actor={actor}
                 userId={currentUserId}
+                channelPage={channelPage}
                 requestJson={requestJson}
               />
             </div>
@@ -2049,7 +2137,7 @@ export default function ChatInterface() {
                 loadingDocuments={loadingDocuments}
                 loadingDocumentDetail={loadingDocumentDetail}
                 uploadInputRef={uploadInputRef}
-                onNavigateTo={navigateTo}
+                onNavigateTo={navigateToKnowledgeView}
                 onSelectedKnowledgeBaseNameChange={setSelectedKnowledgeBaseName}
                 onSelectedKnowledgeBaseDescriptionChange={
                   setSelectedKnowledgeBaseDescription
