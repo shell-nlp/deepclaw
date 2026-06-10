@@ -55,6 +55,12 @@ class ChannelStore:
             )
             existing = session.exec(statement).first()
             if existing is not None:
+                if user_id and existing.user_id != user_id:
+                    existing.user_id = user_id
+                    existing.updated_at = utc_now()
+                    session.add(existing)
+                    session.commit()
+                    session.refresh(existing)
                 return existing
 
             now = utc_now()
@@ -92,9 +98,18 @@ class ChannelStore:
             )
             existing = session.exec(statement).first()
             if existing is not None:
+                changed = False
+                if existing.user_id != user_id:
+                    existing.user_id = user_id
+                    changed = True
+                if existing.binding_id != binding_id:
+                    existing.binding_id = binding_id
+                    changed = True
                 next_manager_user_id = manager_user_id or existing.user_id
                 if existing.manager_user_id != next_manager_user_id:
                     existing.manager_user_id = next_manager_user_id
+                    changed = True
+                if changed:
                     existing.updated_at = utc_now()
                     session.add(existing)
                     session.commit()
@@ -525,4 +540,3 @@ def get_channel_store(db_url: Optional[str] = None) -> ChannelStore:
     if _store is None or db_url is not None:
         _store = ChannelStore(db_url)
     return _store
-

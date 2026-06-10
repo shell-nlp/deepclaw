@@ -229,3 +229,45 @@ def test_binding_id_isolated_channel_user_mappings(service_context):
         [first_binding.id, second_binding.id]
     )
 
+
+def test_existing_binding_session_upgrades_guest_user_id_to_bound_user(service_context):
+    from deepclaw.web_backend.channels.service import ChannelService
+
+    store = service_context["store"]
+    agent_client = service_context["agent_client"]
+    dispatcher = service_context["dispatcher"]
+    service = ChannelService(store=store, agent_client=agent_client, dispatcher=dispatcher)
+    binding = store.create_binding(
+        channel="weixin_clawbot",
+        owner_user_id="user_bound",
+        manager_user_id="user_bound",
+        credentials={"bot_token": "token"},
+    )
+    first = ChannelMessage(
+        channel="weixin_clawbot",
+        message_id="wx_msg_guest",
+        channel_user_id="wx_user_same",
+        channel_conversation_id="wx_chat_same",
+        user_id="guest",
+        manager_user_id="guest",
+        binding_id=binding.id,
+        text="hello as guest",
+    )
+    second = ChannelMessage(
+        channel="weixin_clawbot",
+        message_id="wx_msg_bound",
+        channel_user_id="wx_user_same",
+        channel_conversation_id="wx_chat_same",
+        user_id="user_bound",
+        manager_user_id="user_bound",
+        binding_id=binding.id,
+        text="hello as bound user",
+    )
+
+    asyncio.run(service.process_message(first, FakeAdapter()))
+    asyncio.run(service.process_message(second, FakeAdapter()))
+
+    sessions = store.list_sessions()
+    assert len(sessions) == 1
+    assert sessions[0].user_id == "user_bound"
+    assert [call["user_id"] for call in agent_client.calls] == ["guest", "user_bound"]
