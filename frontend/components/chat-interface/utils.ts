@@ -3,10 +3,12 @@
 import { marked } from 'marked'
 
 import {
+  DEFAULT_CHANNEL_PAGE,
   DEFAULT_BACKEND_URL,
   DEFAULT_KNOWLEDGE_PAGE,
 } from './constants.ts'
 import type {
+  ChannelManagementPage,
   InterruptData,
   KnowledgePage,
   McpServerSummary,
@@ -44,18 +46,20 @@ export function normalizeKnowledgePage(value?: string): KnowledgePage {
 
 export function getRouteHash(
   viewMode: ViewMode,
-  knowledgePage: KnowledgePage = DEFAULT_KNOWLEDGE_PAGE
+  knowledgePage: KnowledgePage = DEFAULT_KNOWLEDGE_PAGE,
+  channelPage: ChannelManagementPage = DEFAULT_CHANNEL_PAGE
 ): string {
   if (viewMode === 'chat') return '#/chat'
   if (viewMode === 'mcp') return '#/mcp'
   if (viewMode === 'skills') return '#/skills'
-  if (viewMode === 'channels') return '#/channels'
+  if (viewMode === 'channels') return `#/channels/${channelPage}`
   return `#/knowledge/${knowledgePage}`
 }
 
 export function parseRouteHash(hash: string): {
   viewMode: ViewMode
   knowledgePage: KnowledgePage
+  channelPage: ChannelManagementPage
 } {
   const normalized = hash.replace(/^#/, '').replace(/^\/+/, '')
   const parts = normalized.split('/').filter(Boolean)
@@ -64,6 +68,7 @@ export function parseRouteHash(hash: string): {
     return {
       viewMode: 'mcp',
       knowledgePage: DEFAULT_KNOWLEDGE_PAGE,
+      channelPage: DEFAULT_CHANNEL_PAGE,
     }
   }
 
@@ -71,6 +76,7 @@ export function parseRouteHash(hash: string): {
     return {
       viewMode: 'skills',
       knowledgePage: DEFAULT_KNOWLEDGE_PAGE,
+      channelPage: DEFAULT_CHANNEL_PAGE,
     }
   }
 
@@ -78,6 +84,7 @@ export function parseRouteHash(hash: string): {
     return {
       viewMode: 'channels',
       knowledgePage: DEFAULT_KNOWLEDGE_PAGE,
+      channelPage: parts[1] === 'feishu' ? 'feishu' : DEFAULT_CHANNEL_PAGE,
     }
   }
 
@@ -85,12 +92,14 @@ export function parseRouteHash(hash: string): {
     return {
       viewMode: 'knowledge',
       knowledgePage: normalizeKnowledgePage(parts[1]),
+      channelPage: DEFAULT_CHANNEL_PAGE,
     }
   }
 
   return {
     viewMode: 'chat',
     knowledgePage: DEFAULT_KNOWLEDGE_PAGE,
+    channelPage: DEFAULT_CHANNEL_PAGE,
   }
 }
 

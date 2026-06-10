@@ -3,6 +3,8 @@ export interface ChannelManagementBootstrapActions {
   generateQrcodeUserId: string | null
 }
 
+export type ChannelManagementPage = 'weixin' | 'feishu'
+
 interface ChannelManagementQrRenderStateInput {
   qrcode?: string | null
   qrcodeUrl?: string | null
@@ -18,14 +20,43 @@ export interface ChannelManagementQrRenderState {
 interface ChannelBindingLike {
   channel: string
   owner_user_id?: string
+  manager_user_id?: string
+  display_name?: string | null
   status?: string
   runtime_state?: Record<string, unknown> | null
+  updated_at?: string
 }
 
 interface ChannelBindingFilters {
   ownerUserId: string
   channel: string
   status: string
+}
+
+interface ChannelNavItem {
+  page: ChannelManagementPage
+  label: string
+  total: number
+  summary: {
+    total: number
+    connected: number
+    pending: number
+    error: number
+  }
+}
+
+export interface ChannelBindingOwnerRow {
+  ownerUserId: string
+  total: number
+  displayNames: string[]
+  summary: {
+    total: number
+    connected: number
+    pending: number
+    error: number
+  }
+  latestUpdatedAt: string
+  managerUserIds: string[]
 }
 
 function isDirectImageUrl(value: string): boolean {
@@ -73,6 +104,20 @@ export function getChannelManagementQrRenderState({
   }
 }
 
+export function normalizeChannelManagementPage(
+  value?: string
+): ChannelManagementPage {
+  return value === 'feishu' ? 'feishu' : 'weixin'
+}
+
+export function resolveChannelEntryPage(
+  requestedPage?: string,
+  lastVisitedPage: ChannelManagementPage = 'weixin'
+): ChannelManagementPage {
+  if (requestedPage) return normalizeChannelManagementPage(requestedPage)
+  return normalizeChannelManagementPage(lastVisitedPage)
+}
+
 export function mergeGeneratedQrcodes(
   current: Record<number, string>,
   next: Record<number, string>
@@ -116,6 +161,95 @@ export function summarizeChannelBindings(bindings: ChannelBindingLike[]) {
     },
     { total: 0, connected: 0, pending: 0, error: 0 }
   )
+}
+
+export function selectBindingsByChannelPage<T extends ChannelBindingLike>(
+  bindings: T[],
+  page: ChannelManagementPage
+) {
+  const targetChannel = page === 'feishu' ? 'feishu' : 'weixin_clawbot'
+  return bindings.filter((binding) => binding.channel === targetChannel)
+}
+
+export function buildChannelNavItems(
+  bindings: ChannelBindingLike[]
+): ChannelNavItem[] {
+  const weixinBindings = selectBindingsByChannelPage(bindings, 'weixin')
+  const feishuBindings = selectBindingsByChannelPage(bindings, 'feishu')
+
+  return [
+    {
+      page: 'weixin',
+      label: '微信绑定',
+      total: weixinBindings.length,
+      summary: summarizeChannelBindings(weixinBindings),
+    },
+    {
+      page: 'feishu',
+      label: '飞书绑定',
+      total: feishuBindings.length,
+      summary: summarizeChannelBindings(feishuBindings),
+    },
+  ]
+}
+
+export function buildBindingOwnerRows<T extends ChannelBindingLike>(
+  bindings: T[]
+): ChannelBindingOwnerRow[] {
+  const groups = bindings.reduce<
+    Record<
+      string,
+      {
+        bindings: T[]
+        latestUpdatedAt: string
+        managerUserIds: Set<string>
+        displayNames: Set<string>
+      }
+    >
+  >((accumulator, binding) => {
+    const ownerUserId = String(binding.owner_user_id || '').trim()
+    if (!ownerUserId) return accumulator
+
+    const existing =
+      accumulator[ownerUserId] ||
+      {
+        bindings: [],
+        latestUpdatedAt: '',
+        managerUserIds: new Set<string>(),
+        displayNames: new Set<string>(),
+      }
+    existing.bindings.push(binding)
+    if (binding.updated_at && binding.updated_at > existing.latestUpdatedAt) {
+      existing.latestUpdatedAt = binding.updated_at
+    }
+    if (binding.manager_user_id) {
+      existing.managerUserIds.add(binding.manager_user_id)
+    }
+    if (binding.display_name) {
+      existing.displayNames.add(binding.display_name)
+    }
+    accumulator[ownerUserId] = existing
+    return accumulator
+  }, {})
+
+  return Object.entries(groups)
+    .map(([ownerUserId, group]) => ({
+      ownerUserId,
+      total: group.bindings.length,
+      displayNames: Array.from(group.displayNames),
+      summary: summarizeChannelBindings(group.bindings),
+      latestUpdatedAt: group.latestUpdatedAt,
+      managerUserIds: Array.from(group.managerUserIds).sort(),
+    }))
+    .sort((left, right) => {
+      if (left.latestUpdatedAt !== right.latestUpdatedAt) {
+        return right.latestUpdatedAt.localeCompare(left.latestUpdatedAt)
+      }
+      if (left.total !== right.total) {
+        return right.total - left.total
+      }
+      return left.ownerUserId.localeCompare(right.ownerUserId)
+    })
 }
 
 export function filterBindingsForAdminOverview<T extends ChannelBindingLike>(
