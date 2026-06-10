@@ -1,4 +1,6 @@
-﻿import tomllib
+﻿import hashlib
+import re
+import tomllib
 from datetime import timedelta
 from pathlib import Path
 
@@ -28,6 +30,23 @@ with open(root_dir / ".sandbox.toml", "rb") as f:
 DOMAIN = config["server"]["host"] + ":" + str(config["server"]["port"])
 
 workspace_path = root_dir / "user_workspace"
+
+_SANDBOX_NAME_MAX_LENGTH = 63
+_SANDBOX_NAME_HASH_LENGTH = 8
+
+
+def build_sandbox_volume_name(prefix: str, user_id: str) -> str:
+    """构造符合资源命名约束的 volume 名称，并通过哈希避免不同用户清洗后重名。"""
+    normalized_prefix = re.sub(r"[^a-z0-9-]+", "-", prefix.lower()).strip("-") or "sandbox"
+    normalized_user = re.sub(r"[^a-z0-9-]+", "-", user_id.lower()).strip("-") or "user"
+    digest = hashlib.sha1(user_id.encode("utf-8")).hexdigest()[:_SANDBOX_NAME_HASH_LENGTH]
+
+    available = _SANDBOX_NAME_MAX_LENGTH - len(digest) - 2
+    prefix_max_length = max(1, available - 2)
+    trimmed_prefix = normalized_prefix[:prefix_max_length].rstrip("-") or "sandbox"
+    user_max_length = max(1, available - len(trimmed_prefix) - 1)
+    trimmed_user = normalized_user[:user_max_length].rstrip("-") or "user"
+    return f"{trimmed_prefix}-{trimmed_user}-{digest}"
 
 
 class OpenSandbox(BaseSandbox):
@@ -69,12 +88,12 @@ class OpenSandbox(BaseSandbox):
             connection_config=self.config,
             volumes=[
                 Volume(
-                    name=f"deepclaw-{user_id}",
+                    name=build_sandbox_volume_name("deepclaw", user_id),
                     host=Host(path=workspace_path),
                     mount_path="/.deepclaw",
                 ),
                 Volume(
-                    name=f"deepclaw-conversation-history-{user_id}",
+                    name=build_sandbox_volume_name("deepclaw-conversation-history", user_id),
                     host=Host(path=workspace_path + "/conversation_history"),
                     mount_path="/conversation_history",
                 ),
