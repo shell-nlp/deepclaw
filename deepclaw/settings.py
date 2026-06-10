@@ -41,6 +41,10 @@ class Settings(BaseSettings):
 
     # 是否支持工具搜索功能,（与 Claude Code 保持一致）
     USE_TOOL_SEARCH: bool = False
+    # opensandbox 配置
+    OPEN_SANDBOX_CODE_INTERPRETER_IMAGE: str = (
+        "sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/code-interpreter:v1.0.2"
+    )
 
     AUTH_ADMIN_EMAIL: str | None = None
     AUTH_ADMIN_PASSWORD: str | None = None

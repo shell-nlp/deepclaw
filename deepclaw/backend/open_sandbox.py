@@ -20,6 +20,7 @@ from opensandbox.models.execd import (
 from opensandbox.models.sandboxes import Host, Volume
 
 from deepclaw.constant import root_dir
+from deepclaw.settings import settings
 
 with open(root_dir / ".sandbox.toml", "rb") as f:
     config = tomllib.load(f)
@@ -47,16 +48,21 @@ class OpenSandbox(BaseSandbox):
         self.config = ConnectionConfigSync(domain=DOMAIN)
 
     def get_user_workspace_path(self, user_id: str) -> str:
+        """为用户提前创建工作空间"""
         new_workspace_path = Path(f"{workspace_path}/{user_id}/.deepclaw")
         new_workspace_path.mkdir(parents=True, exist_ok=True)
+        # conversation_history
         conversation_history = new_workspace_path / "conversation_history"
         conversation_history.mkdir(parents=True, exist_ok=True)
+        #  skill 保存目录
+        new_skills_path = new_workspace_path / "workspace" / "skills"
+        new_skills_path.mkdir(parents=True, exist_ok=True)
         return str(new_workspace_path)
 
     def create_sandbox(self, user_id) -> SandboxSync:
         workspace_path = self.get_user_workspace_path(user_id)
         return SandboxSync.create(
-            "sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/code-interpreter:v1.0.2",
+            image=settings.OPEN_SANDBOX_CODE_INTERPRETER_IMAGE,
             entrypoint=["/opt/opensandbox/code-interpreter.sh"],
             env=self.env,
             timeout=timedelta(seconds=self.timeout),
