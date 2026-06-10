@@ -48,6 +48,19 @@ class AuthService:
     def authenticate_token(self, token: str):
         return self.store.get_actor_by_token(token)
 
+    def issue_user_access_token(self, *, user_id: str):
+        """为仓库内的受信任调用方签发短生命周期用户令牌。"""
+        user = self.store.get_user_by_user_id(user_id)
+        if user is None:
+            raise ValueError("用户不存在。")
+        if not user.is_active:
+            raise ValueError("当前账号已被禁用，请联系管理员。")
+        return self.store.issue_access_token(
+            user=user,
+            raw_token=generate_access_token(),
+            expire_days=1,
+        )
+
     def revoke_token(self, token: str) -> bool:
         return self.store.revoke_token(token)
 
@@ -107,4 +120,3 @@ def get_auth_service() -> AuthService:
             token_expire_days=settings.AUTH_TOKEN_EXPIRE_DAYS,
         )
     return _auth_service
-

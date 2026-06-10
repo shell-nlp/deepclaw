@@ -3,6 +3,8 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 from deepclaw.web_backend.auth.dependencies import CurrentActor, get_current_actor
+from deepclaw.web_backend.auth.service import AuthService, get_auth_service
+from deepclaw.web_backend.auth.store import AuthStore
 from deepclaw.web_backend.common.endpoints import (
     GUEST_USER_ID,
     add_general_api_endpoint,
@@ -72,3 +74,41 @@ def test_general_api_authenticated_actor_overrides_request_user_id():
     assert len(agent.contexts) == 1
     assert agent.contexts[0].user_id == "user_real_123"
 
+
+def test_general_api_accepts_internal_user_token():
+    service = AuthService(
+        store=AuthStore("sqlite:///:memory:"),
+        admin_email=None,
+        admin_password=None,
+        token_expire_days=30,
+    )
+    user = service.register(email="channel-user@example.com", password="secret-123")
+
+    app = FastAPI()
+    agent = DummyAgent()
+    add_general_api_endpoint(
+        app=app,
+        agent=agent,
+        path="/api/test/general_api",
+        context=DummyContext,
+        name="test_general_api",
+        tags=["tests"],
+    )
+    issued = service.issue_user_access_token(user_id=user.user_id)
+    app.dependency_overrides[get_auth_service] = lambda: service
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/test/general_api",
+        json={
+            "query": "hello",
+            "session_id": "session-3",
+            "user_id": "spoofed",
+            "stream": True,
+        },
+        headers={"Authorization": f"Bearer {issued.token}"},
+    )
+
+    assert response.status_code == 200
+    assert len(agent.contexts) == 1
+    assert agent.contexts[0].user_id == user.user_id

@@ -1,11 +1,12 @@
 ﻿import json
 from collections.abc import AsyncIterator, Callable
 
+from deepclaw.web_backend.auth.service import AuthService, get_auth_service
 from deepclaw.web_backend.channels.config import channel_gateway_settings
 from deepclaw.web_backend.channels.models import AgentEvent
 
 
-AgentSender = Callable[[dict], AsyncIterator[str]]
+AgentSender = Callable[[dict, dict[str, str]], AsyncIterator[str]]
 
 
 class AgentClient:
@@ -14,9 +15,11 @@ class AgentClient:
         *,
         agent_api_url: str | None = None,
         sender: AgentSender | None = None,
+        auth_service: AuthService | None = None,
     ):
         self.agent_api_url = agent_api_url or channel_gateway_settings.CHANNEL_AGENT_API_URL
         self.sender = sender or self._http_sender
+        self.auth_service = auth_service or get_auth_service()
 
     async def stream(
         self,
@@ -31,10 +34,16 @@ class AgentClient:
             "session_id": session_id,
             "stream": True,
         }
-        async for line in self.sender(payload):
-            event = self._parse_sse_line(line)
-            if event is not None:
-                yield event
+        issued_token = self._issue_user_token(user_id)
+        headers = self._build_headers(issued_token.token if issued_token else None)
+        try:
+            async for line in self.sender(payload, headers):
+                event = self._parse_sse_line(line)
+                if event is not None:
+                    yield event
+        finally:
+            if issued_token is not None:
+                self.auth_service.revoke_token(issued_token.token)
 
     def _parse_sse_line(self, line: str) -> AgentEvent | None:
         stripped = line.strip()
@@ -47,12 +56,31 @@ class AgentClient:
 
         return AgentEvent.model_validate(json.loads(raw))
 
-    async def _http_sender(self, payload: dict) -> AsyncIterator[str]:
+    def _issue_user_token(self, user_id: str):
+        # 渠道内部转发需要带真实登录态，避免通用接口把绑定用户降级为 guest。
+        if not user_id or user_id == "guest":
+            return None
+        return self.auth_service.issue_user_access_token(user_id=user_id)
+
+    def _build_headers(self, token: str | None) -> dict[str, str]:
+        if not token:
+            return {}
+        return {"Authorization": f"Bearer {token}"}
+
+    async def _http_sender(
+        self,
+        payload: dict,
+        headers: dict[str, str],
+    ) -> AsyncIterator[str]:
         import httpx
 
         async with httpx.AsyncClient(timeout=None) as client:
-            async with client.stream("POST", self.agent_api_url, json=payload) as response:
+            async with client.stream(
+                "POST",
+                self.agent_api_url,
+                json=payload,
+                headers=headers,
+            ) as response:
                 response.raise_for_status()
                 async for line in response.aiter_lines():
                     yield line
-
