@@ -14,7 +14,7 @@ from deepclaw.middleware.mcp import MCPMiddleware
 from deepclaw.settings import settings
 from deepclaw.utils import get_chat_model
 
-skills = ["/workspace/skills"]
+skills = ["/workspace/skills", "/.deepclaw/workspace/skills"]
 
 
 def user_namespace_factory(runtime: Runtime[Any]) -> tuple[str, ...]:

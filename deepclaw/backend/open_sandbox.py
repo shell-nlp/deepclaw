@@ -79,7 +79,7 @@ class OpenSandbox(BaseSandbox):
         return str(new_workspace_path)
 
     def create_sandbox(self, user_id) -> SandboxSync:
-        """创建用户沙箱 skills 用户单独目录"""
+        """创建用户沙箱 skills 私有,没有公共沙箱"""
         _user_workspace_path = self.get_user_workspace_path(user_id)
         return SandboxSync.create(
             image=settings.OPEN_SANDBOX_CODE_INTERPRETER_IMAGE,
@@ -88,6 +88,7 @@ class OpenSandbox(BaseSandbox):
             timeout=timedelta(seconds=self.timeout),
             connection_config=self.config,
             volumes=[
+                # 私有 skills 目录
                 Volume(
                     name=build_sandbox_volume_name("deepclaw", user_id),
                     host=Host(path=_user_workspace_path),
@@ -102,7 +103,7 @@ class OpenSandbox(BaseSandbox):
         )
 
     def create_sandbox_v2(self, user_id) -> SandboxSync:
-        """创建用户沙箱 skills 使用共享"""
+        """创建用户沙箱 skills 共享 + skills 私有"""
         _user_workspace_path = self.get_user_workspace_path(user_id)
         return SandboxSync.create(
             image=settings.OPEN_SANDBOX_CODE_INTERPRETER_IMAGE,
@@ -111,6 +112,7 @@ class OpenSandbox(BaseSandbox):
             timeout=timedelta(seconds=self.timeout),
             connection_config=self.config,
             volumes=[
+                # 私有 skills 目录
                 Volume(
                     name=build_sandbox_volume_name("deepclaw", user_id),
                     host=Host(path=_user_workspace_path),
@@ -121,6 +123,7 @@ class OpenSandbox(BaseSandbox):
                     host=Host(path=_user_workspace_path + "/conversation_history"),
                     mount_path="/conversation_history",
                 ),
+                # 公共 skills 目录
                 Volume(
                     name=build_sandbox_volume_name("deepclaw-skills", user_id),
                     host=Host(path=str(workspace_path / "skills")),
