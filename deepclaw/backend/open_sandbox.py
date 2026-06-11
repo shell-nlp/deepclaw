@@ -21,7 +21,7 @@ from opensandbox.models.execd import (
 )
 from opensandbox.models.sandboxes import Host, Volume
 
-from deepclaw.constant import root_dir
+from deepclaw.constant import root_dir, workspace_path
 from deepclaw.settings import settings
 
 with open(root_dir / ".sandbox.toml", "rb") as f:
@@ -29,7 +29,7 @@ with open(root_dir / ".sandbox.toml", "rb") as f:
 
 DOMAIN = config["server"]["host"] + ":" + str(config["server"]["port"])
 
-workspace_path = root_dir / "user_workspace"
+user_workspace_path = root_dir / "user_workspace"
 
 _SANDBOX_NAME_MAX_LENGTH = 63
 _SANDBOX_NAME_HASH_LENGTH = 8
@@ -68,7 +68,7 @@ class OpenSandbox(BaseSandbox):
 
     def get_user_workspace_path(self, user_id: str) -> str:
         """为用户提前创建工作空间"""
-        new_workspace_path = Path(f"{workspace_path}/{user_id}/.deepclaw")
+        new_workspace_path = Path(f"{user_workspace_path}/{user_id}/.deepclaw")
         new_workspace_path.mkdir(parents=True, exist_ok=True)
         # conversation_history
         conversation_history = new_workspace_path / "conversation_history"
@@ -79,7 +79,8 @@ class OpenSandbox(BaseSandbox):
         return str(new_workspace_path)
 
     def create_sandbox(self, user_id) -> SandboxSync:
-        workspace_path = self.get_user_workspace_path(user_id)
+        """创建用户沙箱 skills 用户单独目录"""
+        _user_workspace_path = self.get_user_workspace_path(user_id)
         return SandboxSync.create(
             image=settings.OPEN_SANDBOX_CODE_INTERPRETER_IMAGE,
             entrypoint=["/opt/opensandbox/code-interpreter.sh"],
@@ -89,13 +90,41 @@ class OpenSandbox(BaseSandbox):
             volumes=[
                 Volume(
                     name=build_sandbox_volume_name("deepclaw", user_id),
-                    host=Host(path=workspace_path),
+                    host=Host(path=_user_workspace_path),
                     mount_path="/.deepclaw",
                 ),
                 Volume(
                     name=build_sandbox_volume_name("deepclaw-conversation-history", user_id),
-                    host=Host(path=workspace_path + "/conversation_history"),
+                    host=Host(path=_user_workspace_path + "/conversation_history"),
                     mount_path="/conversation_history",
+                ),
+            ],
+        )
+
+    def create_sandbox_v2(self, user_id) -> SandboxSync:
+        """创建用户沙箱 skills 使用共享"""
+        _user_workspace_path = self.get_user_workspace_path(user_id)
+        return SandboxSync.create(
+            image=settings.OPEN_SANDBOX_CODE_INTERPRETER_IMAGE,
+            entrypoint=["/opt/opensandbox/code-interpreter.sh"],
+            env=self.env,
+            timeout=timedelta(seconds=self.timeout),
+            connection_config=self.config,
+            volumes=[
+                Volume(
+                    name=build_sandbox_volume_name("deepclaw", user_id),
+                    host=Host(path=_user_workspace_path),
+                    mount_path="/.deepclaw",
+                ),
+                Volume(
+                    name=build_sandbox_volume_name("deepclaw-conversation-history", user_id),
+                    host=Host(path=_user_workspace_path + "/conversation_history"),
+                    mount_path="/conversation_history",
+                ),
+                Volume(
+                    name=build_sandbox_volume_name("deepclaw-skills", user_id),
+                    host=Host(path=str(workspace_path / "skills")),
+                    mount_path="/workspace/skills",
                 ),
             ],
         )
@@ -112,7 +141,7 @@ class OpenSandbox(BaseSandbox):
             return self.connect_sandbox(user_store_item.value["sandbox_id"])
 
         else:
-            sandbox = self.create_sandbox(user_id)
+            sandbox = self.create_sandbox_v2(user_id)
             sandbox_id = sandbox.id
             runtime.store.put((f"user_{user_id}",), "sandbox_id", {"sandbox_id": sandbox_id})
             logger.debug(f"为用户: {user_id} 创建新沙箱, 沙箱 ID 为 {sandbox_id}")
@@ -224,7 +253,7 @@ class OpenSandbox(BaseSandbox):
 
 
 if __name__ == "__main__":
-    # docker pull sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/code-interpreter:v1.0.2 && docker pull docker.1ms.run/opensandbox/execd:v1.0.16 && docker pull docker.1ms.run/opensandbox/egress:v1.0.12
+    # docker pull sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/code-interpreter:v1.0.2 && docker pull opensandbox/execd:v1.0.16 && docker pull opensandbox/egress:v1.0.12
     # opensandbox-server --config .sandbox.toml
     volumes = [
         Volume(
