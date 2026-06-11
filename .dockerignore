@@ -1,0 +1,13 @@
+.codegraph/
+.playwright-cli/
+.pytest_cache/
+.ruff_cache/
+.trae/
+assets/
+docs/
+.opencode/
+node_modules/
+.next/
+*.pdf
+logs/
+.langgraph_api
