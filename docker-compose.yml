@@ -1,4 +1,17 @@
 services:
+  deepclaw:
+    image: deepclaw:latest
+    container_name: deepclaw
+    restart: always
+    ports:
+      - 7869:7869
+    command: python deepclaw/main.py
+    networks:
+      - deepclaw
+    depends_on:
+      - postgresql
+      - elasticsearch
+      - phoenix
   postgresql:
     image: docker.1ms.run/postgres:16
     restart: always
