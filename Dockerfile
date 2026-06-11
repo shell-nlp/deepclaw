@@ -14,11 +14,11 @@ ENV UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
 WORKDIR /deepclaw
 
 COPY ./ /deepclaw
-RUN uv sync --no-group dev -v && source .venv/bin/activate && \
+RUN uv sync --no-group dev --all-extras -v && source .venv/bin/activate && \
     uv cache clean && \
     echo '[[ -f .venv/bin/activate ]] && source .venv/bin/activate' >> ~/.bashrc
 
-# 把 venv 的 bin 放进 PATH，后面可以直接用 openai-router 
+# 把 venv 的 bin 放进 PATH
 ENV PATH="/deepclaw/.venv/bin:$PATH"
 
 CMD ["/bin/bash"]
