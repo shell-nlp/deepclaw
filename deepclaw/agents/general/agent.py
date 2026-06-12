@@ -42,6 +42,7 @@ class Agent:
 
     def init_agent(self) -> CompiledStateGraph:
         skills = None
+        memory = None
         middleware = []
         if settings.USE_COPILOTKIT:
             from copilotkit import CopilotKitMiddleware
@@ -66,6 +67,7 @@ class Agent:
             from deepclaw.middleware.sandbox.opensandbox_kill import OpenSandboxKillMiddleware
 
             skills = ["/workspace/skills", "/.deepclaw/workspace/skills"]
+            memory = ["/.deepclaw/workspace/AGENTS.md"]
             middleware.append(OpenSandboxKillMiddleware())
             backend = OpenSandbox()
             logger.info("使用 OpenSandbox 作为后端")
@@ -75,6 +77,7 @@ class Agent:
             skills = [
                 str(workspace_path / "skills"),
             ]
+            memory = [str(workspace_path / "AGENTS.md")]
             backend = LocalShellBackend(root_dir=home_path, virtual_mode=False, inherit_env=True)
             logger.info("使用 LocalShellBackend 作为后端")
         elif settings.BACKEND_TYPE == "store":
@@ -124,6 +127,7 @@ class Agent:
                 middleware=middleware,
                 backend=make_backend,
                 skills=skills,
+                memory=memory,
                 checkpointer=self.checkpointer,
                 store=self.store,
                 context_schema=AgentContext,

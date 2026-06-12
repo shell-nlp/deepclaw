@@ -17,8 +17,11 @@ class OpenSandboxKillMiddleware(AgentMiddleware):
         user_id = runtime.context.user_id
         user_store_item = runtime.store.get((f"user_{user_id}",), "sandbox_id")
         if user_store_item:
-            sandbox = open_sandbox.connect_sandbox(user_store_item.value["sandbox_id"])
-            sandbox.kill()
+            try:
+                sandbox = open_sandbox.connect_sandbox(user_store_item.value["sandbox_id"])
+                sandbox.kill()
+            except Exception as e:
+                logger.warning(f"杀死沙箱 {user_store_item.value['sandbox_id']} 失败({e})，清理 store 记录")
             runtime.store.delete((f"user_{user_id}",), "sandbox_id")
             logger.debug(f"用户: {user_id} 的沙箱已被杀死, ID 为 {user_store_item.value['sandbox_id']} ")
 

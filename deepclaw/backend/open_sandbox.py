@@ -83,7 +83,7 @@ class OpenSandbox(BaseSandbox):
         _user_workspace_path = self.get_user_workspace_path(user_id)
         return SandboxSync.create(
             image=settings.OPEN_SANDBOX_CODE_INTERPRETER_IMAGE,
-            entrypoint=["/opt/opensandbox/code-interpreter.sh"],
+            entrypoint=["/opt/code-interpreter/code-interpreter.sh"],
             env=self.env,
             timeout=timedelta(seconds=self.timeout),
             connection_config=self.config,
@@ -107,7 +107,7 @@ class OpenSandbox(BaseSandbox):
         _user_workspace_path = self.get_user_workspace_path(user_id)
         return SandboxSync.create(
             image=settings.OPEN_SANDBOX_CODE_INTERPRETER_IMAGE,
-            entrypoint=["/opt/opensandbox/code-interpreter.sh"],
+            entrypoint=["/opt/code-interpreter/code-interpreter.sh"],
             env=self.env,
             timeout=timedelta(seconds=self.timeout),
             connection_config=self.config,
@@ -141,14 +141,17 @@ class OpenSandbox(BaseSandbox):
         user_store_item = runtime.store.get((f"user_{user_id}",), "sandbox_id")
         if user_store_item:
             logger.debug(f"得到用户:{user_id} 已存在的沙箱ID: {user_store_item.value['sandbox_id']}")
-            return self.connect_sandbox(user_store_item.value["sandbox_id"])
+            try:
+                return self.connect_sandbox(user_store_item.value["sandbox_id"])
+            except Exception as e:
+                logger.warning(f"连接已有沙箱失败({e})，将为用户: {user_id} 创建新沙箱")
+                runtime.store.delete((f"user_{user_id}",), "sandbox_id")
 
-        else:
-            sandbox = self.create_sandbox_v2(user_id)
-            sandbox_id = sandbox.id
-            runtime.store.put((f"user_{user_id}",), "sandbox_id", {"sandbox_id": sandbox_id})
-            logger.debug(f"为用户: {user_id} 创建新沙箱, 沙箱 ID 为 {sandbox_id}")
-            return sandbox
+        sandbox = self.create_sandbox_v2(user_id)
+        sandbox_id = sandbox.id
+        runtime.store.put((f"user_{user_id}",), "sandbox_id", {"sandbox_id": sandbox_id})
+        logger.debug(f"为用户: {user_id} 创建新沙箱, 沙箱 ID 为 {sandbox_id}")
+        return sandbox
 
     def execute(self, command: str, *, timeout: int | None = None) -> ExecuteResponse:
         sandbox = self.get_sandbox()
@@ -256,7 +259,7 @@ class OpenSandbox(BaseSandbox):
 
 
 if __name__ == "__main__":
-    # docker pull sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/code-interpreter:v1.0.2 && docker pull opensandbox/execd:v1.0.16 && docker pull opensandbox/egress:v1.0.12
+    # docker pull sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/code-interpreter:v1.1.0 && docker pull sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/execd:v1.0.18 && docker pull sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/egress:v1.0.13
     # opensandbox-server --config .sandbox.toml
     volumes = [
         Volume(
