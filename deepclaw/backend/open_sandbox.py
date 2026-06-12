@@ -126,8 +126,8 @@ class OpenSandbox(BaseSandbox):
                 # 公共 skills 目录
                 Volume(
                     name=build_sandbox_volume_name("deepclaw-skills", user_id),
-                    host=Host(path=str(workspace_path / "skills")),
-                    mount_path="/workspace/skills",
+                    host=Host(path=str(workspace_path)),
+                    mount_path="/shared_workspace",
                 ),
             ],
         )

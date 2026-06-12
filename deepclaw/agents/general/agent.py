@@ -66,8 +66,8 @@ class Agent:
             from deepclaw.backend.open_sandbox import OpenSandbox
             from deepclaw.middleware.sandbox.opensandbox_kill import OpenSandboxKillMiddleware
 
-            skills = ["/workspace/skills", "/.deepclaw/workspace/skills"]
-            memory = ["/.deepclaw/workspace/AGENTS.md"]
+            skills = ["/shared_workspace/skills", "/.deepclaw/workspace/skills"]
+            memory = ["/shared_workspace/AGENTS.md"]
             middleware.append(OpenSandboxKillMiddleware())
             backend = OpenSandbox()
             logger.info("使用 OpenSandbox 作为后端")
