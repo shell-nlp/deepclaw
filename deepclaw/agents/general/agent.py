@@ -14,8 +14,6 @@ from deepclaw.middleware.mcp import MCPMiddleware
 from deepclaw.settings import settings
 from deepclaw.utils import get_chat_model
 
-skills = ["/workspace/skills", "/.deepclaw/workspace/skills"]
-
 
 def user_namespace_factory(runtime: Runtime[Any]) -> tuple[str, ...]:
     """动态生成用户namespace：('user123', 'filesystem')"""
@@ -43,6 +41,7 @@ class Agent:
         self.agent = self.init_agent()
 
     def init_agent(self) -> CompiledStateGraph:
+        skills = None
         middleware = []
         if settings.USE_COPILOTKIT:
             from copilotkit import CopilotKitMiddleware
@@ -66,13 +65,17 @@ class Agent:
             from deepclaw.backend.open_sandbox import OpenSandbox
             from deepclaw.middleware.sandbox.opensandbox_kill import OpenSandboxKillMiddleware
 
+            skills = ["/workspace/skills", "/.deepclaw/workspace/skills"]
             middleware.append(OpenSandboxKillMiddleware())
             backend = OpenSandbox()
             logger.info("使用 OpenSandbox 作为后端")
         elif settings.BACKEND_TYPE == "local_shell":
             from deepagents.backends.local_shell import LocalShellBackend
 
-            backend = LocalShellBackend(root_dir=home_path, virtual_mode=True, inherit_env=True)
+            skills = [
+                str(workspace_path / "skills"),
+            ]
+            backend = LocalShellBackend(root_dir=home_path, virtual_mode=False, inherit_env=True)
             logger.info("使用 LocalShellBackend 作为后端")
         elif settings.BACKEND_TYPE == "store":
             from deepclaw.agents.general.utils import copy_skills_to_store
