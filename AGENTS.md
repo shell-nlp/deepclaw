@@ -101,6 +101,15 @@
 - `deepclaw/main.py`
   当前对外统一从这里启动。修改启动装配逻辑时，优先改 `web_backend/app.py` 与 `web_backend/lifespan.py`。
 
+### CLI 层
+
+- `deepclaw/cli/main.py`
+  Typer CLI 工具，提供 `deepclaw install` 命令一键安装运行依赖：
+  - `deepclaw install playwright` — 安装 Playwright Chromium（含系统依赖）
+  - `deepclaw install docker` — 拉取 sandbox Docker 镜像
+  - `deepclaw install` — 同时执行 playwright 和 docker
+  入口点注册在 `pyproject.toml` 的 `[project.scripts]` 中，`uv sync` 后可直接通过 `deepclaw` 命令调用。
+
 ## 启动与运行
 
 ### 后端
