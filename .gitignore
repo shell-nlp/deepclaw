@@ -15,6 +15,7 @@ wheels/
 .deepclaw/.playwright-cli/
 .deepclaw/workspace/converted_pdf/
 .deepclaw/workspace/pdf_files/knowledge_bases/
+.deepclaw/workspace/skills/
 opencode.json
 .vscode/
 .trae
@@ -31,4 +32,3 @@ node_modules/
 .pytest_cache/
 .ruff_cache/
 *.auth_migrated_from_langchain_api
-.deepclaw/
