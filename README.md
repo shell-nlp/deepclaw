@@ -1,3 +1,7 @@
+<p align="right">
+  <strong>🇨🇳 中文</strong> | <a href="README_EN.md">🇬🇧 English</a>
+</p>
+
 <h1 align="center">DeepClaw</h1>
 
 <p align="center">
@@ -35,6 +39,7 @@ DeepClaw 是一个面向二次开发的智能体服务。项目把通用 Agent�
 | 技能管理 | 支持技能列表、上传和删除 |
 | 渠道接入 | 内置飞书、钉钉、微信 ClawBot 路由和会话管理 |
 | 多执行后端 | 支持 `local_shell`、`store`、`sandbox` 三种执行模式 |
+| 多用户沙箱隔离 | `sandbox` 模式下每个用户拥有独立的 OpenSandbox 容器，工作区、技能目录和会话历史完全隔离 |
 | 前端界面 | Next.js + React 聊天 UI，构建后由 FastAPI 的 `/` 统一托管 |
 | 可观测性 | 可选接入 Phoenix tracing、Postgres 长期记忆和 Tavily 搜索 |
 
@@ -91,8 +96,9 @@ DeepClaw 是一个面向二次开发的智能体服务。项目把通用 Agent�
 | 后端 | FastAPI, LangGraph, DeepAgents, LangChain |
 | RAG | Elasticsearch, Dense Vector, BM25, Graph RAG |
 | 前端 | Next.js 15, React 19, TypeScript |
-| 执行后端 | Local Shell, Store Backend, OpenSandbox |
-| 可选组件 | Phoenix, Tavily, PostgresStore |
+| 执行后端 | Local Shell, Store Backend, OpenSandbox（Docker 容器沙箱） |
+| 多用户隔离 | 基于 OpenSandbox 的每用户独立容器 + 绑定卷隔离 |
+| 可选组件 | Phoenix, Tavily, PostgresStore, OpenSandbox Server |
 | 包管理 | uv, pnpm |
 
 ## 项目结构
@@ -101,9 +107,9 @@ DeepClaw 是一个面向二次开发的智能体服务。项目把通用 Agent�
 deepclaw/
 ├── deepclaw/
 │   ├── agents/              # 通用 Agent / RAG Agent 组装、上下文与状态
-│   ├── backend/             # 执行后端相关实现
+│   ├── backend/             # 执行后端（含 OpenSandbox 沙箱隔离实现）
 │   ├── common/              # Elasticsearch、Graph RAG、文本切分等通用实现
-│   ├── middleware/          # 业务开关、RAG 注入、MCP、工具搜索等中间件
+│   ├── middleware/          # 业务开关、RAG 注入、MCP、工具搜索、沙箱清理等中间件
 │   ├── patch/               # 第三方库补丁与适配
 │   ├── tools/               # 天气、网页抓取、检索、定时任务等工具
 │   ├── web_backend/         # FastAPI Web 应用层与所有 Web 功能目录
@@ -111,6 +117,8 @@ deepclaw/
 │   └── settings.py          # 环境变量配置
 ├── frontend/                # Next.js 前端
 ├── .deepclaw/               # 运行时工作区、技能目录、渠道数据库等
+├── .sandbox.toml            # OpenSandbox Server 配置（sandbox 模式必需）
+├── user_workspace/          # 用户工作区目录（sandbox 模式每用户独立子目录）
 ├── assets/                  # 截图和 Elasticsearch 插件
 └── docker-compose.yml       # PostgreSQL / Elasticsearch / Phoenix
 ```
@@ -167,7 +175,21 @@ ES_URSR=elastic
 ES_PWD=elastic@2024
 ```
 
-### 5. 启动主服务
+### 5. 启动 OpenSandbox 服务（可选，仅 sandbox 模式需要）
+
+如果使用 `BACKEND_TYPE=sandbox`，需要额外启动 OpenSandbox Server 并拉取镜像：
+
+```bash
+# 拉取所需镜像
+docker pull sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/code-interpreter:v1.0.2
+docker pull opensandbox/execd:v1.0.16
+docker pull opensandbox/egress:v1.0.12
+
+# 启动 OpenSandbox Server（需先配置 .sandbox.toml）
+opensandbox-server --config .sandbox.toml
+```
+
+### 6. 启动主服务
 
 统一从 `main` 入口启动：
 
@@ -183,7 +205,7 @@ uv run python -m deepclaw.main
 - RAG SSE：`POST /api/rag/general_api`
 - Channels API：`/api/channels/*`
 
-### 6. 前端开发
+### 7. 前端开发
 
 仅在你需要开发或重新构建前端时执行：
 
@@ -336,7 +358,8 @@ curl -N -X POST http://localhost:7869/api/rag/general_api \
 
 | 变量 | 说明 |
 |------|------|
-| `BACKEND_TYPE` | 执行后端：`local_shell` / `store` / `sandbox` |
+| `BACKEND_TYPE` | 执行后端：`local_shell`（默认）/ `store` / `sandbox` |
+| `OPEN_SANDBOX_CODE_INTERPRETER_IMAGE` | Sandbox 代码解释器镜像地址（默认：`sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/code-interpreter:v1.0.2`） |
 | `PG_DATABASE_URL` | 启用 PostgresStore 长期记忆 |
 | `TAVILY_API_KEY` | 启用联网搜索工具 |
 | `USE_TOOL_SEARCH` | 启用延迟工具搜索 |
@@ -348,6 +371,54 @@ curl -N -X POST http://localhost:7869/api/rag/general_api \
 | `CHANNEL_AGENT_API_URL` | 渠道网关调用 Agent 的地址 |
 | `WEIXIN_CLAWBOT_*` | 微信 ClawBot 相关配置 |
 
+## 沙箱模式（多用户工作隔离）
+
+当 `BACKEND_TYPE=sandbox` 时，系统使用 [OpenSandbox](https://github.com/opensandbox/opensandbox) 为每个用户创建独立的 Docker 容器作为执行环境，实现多用户工作隔离。
+
+### 隔离机制
+
+| 隔离维度 | 说明 |
+|----------|------|
+| 容器隔离 | 每个用户拥有独立的 OpenSandbox 容器，进程和文件系统完全隔离 |
+| 工作区隔离 | 每个用户的工作区映射到 `user_workspace/{user_id}/.deepclaw/`，通过 Docker bind mount 挂载 |
+| 技能目录隔离 | 私有技能目录（`/.deepclaw/workspace/skills`）随用户独立挂载，同时共享公共技能目录（`/workspace/skills`） |
+| 会话历史隔离 | 对话历史写入各自独立的 `conversation_history` 目录 |
+| 生命周期管理 | 每次 Agent 执行完毕后，`OpenSandboxKillMiddleware` 自动杀死当前用户沙箱并清理状态 |
+
+### 执行流程
+
+1. Agent 启动时检查 `BACKEND_TYPE`，若为 `sandbox` 则加载 `OpenSandbox` 后端
+2. 首次执行时，`get_sandbox()` 为当前 `user_id` 创建新沙箱，在 runtime store 中持久化 `sandbox_id`
+3. 后续执行复用已有沙箱（通过 `sandbox_id` 重连）
+4. 沙箱内支持：命令执行（`execute`）、文件读写（`write`/`read`）、文件编辑（`edit`）、文件上传下载（`upload_files`/`download_files`）
+5. Agent 执行完毕后，`OpenSandboxKillMiddleware.after_agent` 自动杀死沙箱并删除 store 中的记录
+
+### 前提条件
+
+- Docker 环境
+- OpenSandbox Server 已启动（参考上文步骤 5）
+- 正确配置 `.sandbox.toml`（项目根目录已有示例配置）
+- 安装 `opensandbox` 额外依赖：`uv sync --dev --extra opensandbox`
+
+### 配置文件 `.sandbox.toml`
+
+项目根目录的 `.sandbox.toml` 是 OpenSandbox Server 的配置文件，关键项：
+
+```toml
+[server]
+host = "127.0.0.1"
+port = 8089
+
+[runtime]
+type = "docker"
+execd_image = "docker.1ms.run/opensandbox/execd:v1.0.16"
+
+[storage]
+allowed_host_paths = ["/home/dev/liuyu/project/langchain-api"]
+```
+
+`allowed_host_paths` 必须包含项目根目录，否则 bind mount 会被拒绝。
+
 ## 常见说明
 
 - 后端会直接挂载 `frontend/out`。如果该目录已经存在，纯运行场景不需要安装 Node.js 和 pnpm。
@@ -355,6 +426,7 @@ curl -N -X POST http://localhost:7869/api/rag/general_api \
 - 默认工作区位于 `.deepclaw/workspace`。
 - 渠道模块默认把 SQLite 数据库写入 `.deepclaw/channels.db`。
 - 如果 `frontend/out` 不存在，后端仍可提供 API，但 `/` 不会挂载前端页面。
+- 沙箱模式（`BACKEND_TYPE=sandbox`）需要先启动 OpenSandbox Server 并正确配置 `.sandbox.toml`，详见上方的「沙箱模式」章节。
 
 ## License
 
