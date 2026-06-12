@@ -37,11 +37,11 @@ level = "INFO"
 # Runtime selection (docker | kubernetes)
 # -----------------------------------------------------------------
 type = "docker"
-execd_image = "docker.1ms.run/opensandbox/execd:v1.0.16"
+execd_image = "sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/execd:v1.0.18"
 [egress]
 # Egress configuration
 # -----------------------------------------------------------------
-image = "docker.1ms.run/opensandbox/egress:v1.0.12"
+image = "sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/egress:v1.0.13"
 mode = "dns"
 [storage]
 # 卷存储配置
