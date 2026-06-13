@@ -27,7 +27,7 @@
   <a href="#project-structure">Project Structure</a>
 </p>
 
-DeepClaw is a second-development-oriented agent service. It integrates general-purpose Agent, RAG knowledge bases, skill management, channel integration, MCP configuration, and a static frontend into a single FastAPI service — ideal for quickly building enterprise knowledge Q&A, automation assistants, internal Copilots, and multi-tool agent applications.
+DeepClaw is an open-source Agent / RAG scaffold. It integrates general-purpose Agent, RAG knowledge bases, skill management, channel integration, MCP configuration, and a static frontend into a single FastAPI service — ideal for quickly building enterprise knowledge Q&A, automation assistants, internal Copilots, and multi-tool agent applications.
 
 ## Core Features
 
@@ -121,6 +121,62 @@ deepclaw/
 └── docker-compose.yml       # PostgreSQL / Elasticsearch / Phoenix
 ```
 
+## System Architecture
+
+```text
+┌──────────────────────────────────────────────────────────────────────┐
+│                          Access Layer                                 │
+│  ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐     │
+│  │  Next.js Frontend │ │  Feishu Adapter  │ │  DingTalk        │     │
+│  │  (frontend/out)  │ │ (Long Conn+WS)   │ │ (Webhook)        │     │
+│  └────────┬─────────┘ └────────┬─────────┘ └────────┬─────────┘     │
+│  ┌──────────────────┐ ┌──────────────────┐          │               │
+│  │  WeChat ClawBot   │ │  Other Channels  │          │               │
+│  │ (QR+Polling)     │ │                  │          │               │
+│  └────────┬─────────┘ └────────┬─────────┘          │               │
+│           │                    │                    │               │
+│           └────────────┬───────┴────────────────────┘               │
+│                        ▼                                            │
+└──────────────────────────────────────────────────────────────────────┘
+              ┌──────────────────────────────────────────────────┐
+              │  POST /api/agent/general_api                      │
+              │  POST /api/rag/general_api                        │
+              │  POST /api/auth/*                                 │
+              │  POST /api/channels/sessions                      │
+              └─────────────────────┬────────────────────────────┘
+                                    │
+┌──────────────────────────────────────────────────────────────────────┐
+│                         API Layer / FastAPI                           │
+│  ┌──────────┐ ┌──────────────┐ ┌──────────────┐ ┌────────────────┐  │
+│  │Auth Route│ │ Agent Route  │ │  RAG Route   │ │Channel Mgmt   │  │
+│  │/api/auth │ │ /api/agent   │ │ /api/rag     │ │/api/channels  │  │
+│  └────┬─────┘ └──────┬───────┘ └──────┬───────┘ └───────┬────────┘  │
+│       │              │               │                 │            │
+└───────┼──────────────┼───────────────┼─────────────────┼────────────┘
+        ▼              ▼               ▼                 ▼
+┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
+│   Auth Service   │ │  General Agent   │ │   RAG Agent      │ │  Channel Service │
+│   SQLModel       │ │ LangGraph+Agent  │ │   LangChain      │ │Binding·Session   │
+└──────────────────┘ │  Middleware Pipe │ │   RAGMiddleware  │ │Dispatcher        │
+                     │  Prompt→Biz→     │ └────────┬─────────┘ └──────────────────┘
+                     │  MCP→RAG→Plan→   │          │
+                     │  Cron→Sandbox    │          │
+                     └────────┬─────────┘          │
+                              │                    │
+                              ▼                    ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                        Infrastructure                                │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐  │
+│  │ES Vector │ │PostgreSQL│ │  SQLite  │ │  Docker  │ │LLM API   │  │
+│  │+ Keyword │ │ Memory   │ │Channel   │ │ Sandbox  │ │OpenAI    │  │
+│  │ Search   │ │Checkpoints│ │  Data    │ │Containers│ │Compatible│  │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘  │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │  Phoenix Distributed Tracing                                  │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
 ## Quick Start
 
 ### 1. Prerequisites
@@ -132,21 +188,7 @@ deepclaw/
 
 If `frontend/out` already exists in the repository and you are not modifying frontend code, you can skip the frontend installation and build steps.
 
-### 2. Start Dependencies
-
-```bash
-docker-compose up -d postgresql elasticsearch
-```
-
-For Phoenix observability:
-
-```bash
-docker-compose up -d phoenix
-```
-
-Phoenix console: `http://localhost:6006`
-
-### 3. Initialize Backend
+### 2. Initialize Backend
 
 ```bash
 cp .env.example .env
@@ -159,7 +201,7 @@ To enable OpenSandbox:
 uv sync --dev --extra opensandbox
 ```
 
-### 4. Configure `.env`
+### 3. Configure `.env`
 
 At minimum, fill in:
 
@@ -173,21 +215,7 @@ ES_URSR=elastic
 ES_PWD=elastic@2024
 ```
 
-### 5. Start OpenSandbox Server (optional, sandbox mode only)
-
-If using `BACKEND_TYPE=sandbox`, you need to start OpenSandbox Server and pull the required images:
-
-```bash
-# Pull required images
-docker pull sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/code-interpreter:v1.0.2
-docker pull opensandbox/execd:v1.0.16
-docker pull opensandbox/egress:v1.0.12
-
-# Start OpenSandbox Server (configure .sandbox.toml first)
-opensandbox-server --config .sandbox.toml
-```
-
-### 6. Start the Main Service
+### 4. Start the Main Service
 
 Start from the unified `main` entry point:
 
@@ -202,6 +230,36 @@ After the service starts:
 - Agent AG-UI: `POST /api/agent/ag_ui`
 - RAG SSE: `POST /api/rag/general_api`
 - Channels API: `/api/channels/*`
+
+### 5. Start Dependencies (optional but recommended)
+
+If you need Elasticsearch knowledge bases or Postgres long-term memory, start the required services:
+
+```bash
+docker-compose up -d postgresql elasticsearch
+```
+
+For Phoenix observability:
+
+```bash
+docker-compose up -d phoenix
+```
+
+Phoenix console: `http://localhost:6006`
+
+### 6. Start OpenSandbox Server (optional, sandbox mode only)
+
+If using `BACKEND_TYPE=sandbox`, you need to start OpenSandbox Server and pull the required images:
+
+```bash
+# Pull required images
+docker pull sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/code-interpreter:v1.0.2
+docker pull opensandbox/execd:v1.0.16
+docker pull opensandbox/egress:v1.0.12
+
+# Start OpenSandbox Server (configure .sandbox.toml first)
+opensandbox-server --config .sandbox.toml
+```
 
 ### 7. Frontend Development
 
