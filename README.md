@@ -27,7 +27,7 @@
   <a href="#项目结构">项目结构</a>
 </p>
 
-DeepClaw 是一个面向二次开发的智能体服务。项目把通用 Agent、RAG 知识库、技能管理、渠道接入、MCP 配置和静态前端整合到同一个 FastAPI 服务中，适合快速搭建企业知识问答、自动化助手、内部 Copilot 和多工具智能体应用。
+DeepClaw 是一个开源的 Agent / RAG 脚手架，把通用 Agent、RAG 知识库、技能管理、渠道接入、MCP 配置和静态前端整合到同一个 FastAPI 服务中，适合快速搭建企业知识问答、自动化助手、内部 Copilot 和多工具智能体应用。
 
 ## 核心能力
 
@@ -123,6 +123,61 @@ deepclaw/
 └── docker-compose.yml       # PostgreSQL / Elasticsearch / Phoenix
 ```
 
+## 系统架构
+
+```text
+┌──────────────────────────────────────────────────────────────────────┐
+│                         接入层 Access                                 │
+│  ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐     │
+│  │  Next.js 前端     │ │  飞书适配        │ │  钉钉适配        │     │
+│  │  (frontend/out)  │ │ (长连接+WebSocket)│ │ (Webhook)       │     │
+│  └────────┬─────────┘ └────────┬─────────┘ └────────┬─────────┘     │
+│  ┌──────────────────┐ ┌──────────────────┐          │               │
+│  │  微信 ClawBot     │ │  其他渠道...     │          │               │
+│  │ (二维码+轮询)     │ │                  │          │               │
+│  └────────┬─────────┘ └────────┬─────────┘          │               │
+│           │                    │                    │               │
+│           └────────────┬───────┴────────────────────┘               │
+│                        ▼                                            │
+└──────────────────────────────────────────────────────────────────────┘
+              ┌────────────────────────────────────┐
+              │        POST /api/agent/general_api  │
+              │        POST /api/rag/general_api    │
+              │        POST /api/auth/*             │
+              │        POST /api/channels/sessions  │
+              └────────────────┬───────────────────┘
+                               │
+┌──────────────────────────────────────────────────────────────────────┐
+│                       API 层 / FastAPI                                │
+│  ┌──────────┐ ┌──────────────┐ ┌──────────────┐ ┌────────────────┐  │
+│  │  认证路由  │ │  Agent 路由   │ │  RAG 路由     │ │  渠道管理路由   │  │
+│  │ /api/auth │ │ /api/agent   │ │ /api/rag     │ │ /api/channels │  │
+│  └────┬─────┘ └──────┬───────┘ └──────┬───────┘ └───────┬────────┘  │
+│       │              │               │                 │            │
+└───────┼──────────────┼───────────────┼─────────────────┼────────────┘
+        ▼              ▼               ▼                 ▼
+┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
+│   认证服务         │ │   通用 Agent     │ │   RAG Agent      │ │   渠道服务        │
+│   SQLModel        │ │ LangGraph+Agent  │ │   LangChain      │ │ Binding · Session│
+└──────────────────┘ │  中间件流水线     │ │   RAGMiddleware  │ │ Dispatcher       │
+                     │  Prompt→业务→    │ └────────┬─────────┘ └──────────────────┘
+                     │  MCP→RAG→规划→   │          │
+                     │  Cron→沙箱       │          │
+                     └────────┬─────────┘          │
+                              │                    │
+                              ▼                    ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                      基础设施 Infrastructure                         │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐  │
+│  │ES 向量检索│ │PostgreSQL│ │  SQLite  │ │  Docker  │ │LLM API   │  │
+│  │+关键词检索│ │长期记忆   │ │渠道数据   │ │沙箱容器   │ │OpenAI兼容│  │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘  │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │  Phoenix 分布式追踪                                           │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
 ## 快速开始
 
 ### 1. 环境要求
@@ -134,21 +189,7 @@ deepclaw/
 
 如果仓库里的 `frontend/out` 已经存在，且你不修改前端代码，可以直接跳过前端安装和构建步骤。
 
-### 2. 启动依赖服务
-
-```bash
-docker-compose up -d postgresql elasticsearch
-```
-
-如需 Phoenix 观测：
-
-```bash
-docker-compose up -d phoenix
-```
-
-Phoenix 控制台默认地址：`http://localhost:6006`
-
-### 3. 初始化后端
+### 2. 初始化后端
 
 ```bash
 cp .env.example .env
@@ -161,7 +202,7 @@ uv sync --dev
 uv sync --dev --extra opensandbox
 ```
 
-### 4. 配置 `.env`
+### 3. 配置 `.env`
 
 至少填入：
 
@@ -175,21 +216,7 @@ ES_URSR=elastic
 ES_PWD=elastic@2024
 ```
 
-### 5. 启动 OpenSandbox 服务（可选，仅 sandbox 模式需要）
-
-如果使用 `BACKEND_TYPE=sandbox`，需要额外启动 OpenSandbox Server 并拉取镜像：
-
-```bash
-# 拉取所需镜像
-docker pull sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/code-interpreter:v1.0.2
-docker pull opensandbox/execd:v1.0.16
-docker pull opensandbox/egress:v1.0.12
-
-# 启动 OpenSandbox Server（需先配置 .sandbox.toml）
-opensandbox-server --config .sandbox.toml
-```
-
-### 6. 启动主服务
+### 4. 启动主服务
 
 统一从 `main` 入口启动：
 
@@ -204,6 +231,36 @@ uv run python -m deepclaw.main
 - Agent AG-UI：`POST /api/agent/ag_ui`
 - RAG SSE：`POST /api/rag/general_api`
 - Channels API：`/api/channels/*`
+
+### 5. 启动依赖服务（可选，但推荐）
+
+如果用到 Elasticsearch 知识库或 Postgres 长期记忆，需启动对应服务：
+
+```bash
+docker-compose up -d postgresql elasticsearch
+```
+
+如需 Phoenix 观测：
+
+```bash
+docker-compose up -d phoenix
+```
+
+Phoenix 控制台默认地址：`http://localhost:6006`
+
+### 6. 启动 OpenSandbox 服务（可选，仅 sandbox 模式需要）
+
+如果使用 `BACKEND_TYPE=sandbox`，需要额外启动 OpenSandbox Server 并拉取镜像：
+
+```bash
+# 拉取所需镜像
+docker pull sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/code-interpreter:v1.0.2
+docker pull opensandbox/execd:v1.0.16
+docker pull opensandbox/egress:v1.0.12
+
+# 启动 OpenSandbox Server（需先配置 .sandbox.toml）
+opensandbox-server --config .sandbox.toml
+```
 
 ### 7. 前端开发
 
