@@ -1,0 +1,4 @@
+FROM sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/code-interpreter:v1.1.0
+  
+RUN ln -sf /usr/bin/python3 /usr/bin/python
+# 或者添加自定义脚本  
