@@ -1,4 +1,8 @@
 FROM sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/code-interpreter:v1.1.0
-  
-RUN ln -sf /usr/bin/python3 /usr/bin/python
+
+RUN curl -sSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py && \
+    python3 /tmp/get-pip.py --break-system-packages && \
+    rm /tmp/get-pip.py && \
+    ln -sf /usr/bin/pip3 /usr/bin/pip && \
+    ln -sf /usr/bin/python3 /usr/bin/python
 # 或者添加自定义脚本  
