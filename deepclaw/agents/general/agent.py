@@ -1,7 +1,5 @@
 ﻿from typing import Any
 
-from deepagents import create_deep_agent
-from langchain.agents import create_agent
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.runtime import Runtime
 from loguru import logger
@@ -119,6 +117,7 @@ class Agent:
 
         if self.deep_agent:
             logger.info("使用 DeepAgent")
+            from deepagents import FilesystemPermission, create_deep_agent
 
             return create_deep_agent(
                 model=model,
@@ -131,9 +130,11 @@ class Agent:
                 checkpointer=self.checkpointer,
                 store=self.store,
                 context_schema=AgentContext,
+                permissions=[FilesystemPermission(operations=["read", "write"], paths=["/**"], mode="allow")],
             )
         else:
             logger.info("正在使用 ReactAgent")
+            from langchain.agents import create_agent
 
             return create_agent(
                 model=model,

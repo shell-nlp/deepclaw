@@ -1,7 +1,7 @@
 import sys
 from typing import cast
 
-from deepagents import HarnessProfile, register_harness_profile
+from deepagents import HarnessProfile, register_harness_profile, GeneralPurposeSubagentProfile
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.messages import SystemMessage
 
@@ -72,6 +72,7 @@ register_harness_profile(
     "deepseek",  # 成功
     HarnessProfile(
         base_system_prompt=BASE_AGENT_PROMPT,  # 静态字符串
+        general_purpose_subagent=GeneralPurposeSubagentProfile(enabled=None),
     ),
 )
 
