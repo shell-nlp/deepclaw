@@ -81,11 +81,11 @@ class OpenSandbox(BaseSandbox):
     def create_sandbox(self, user_id) -> SandboxSync:
         """创建用户沙箱 skills 私有,没有公共沙箱"""
         _user_workspace_path = self.get_user_workspace_path(user_id)
-        env = self.env.update({"USER_ID": user_id})
+        self.env.update({"USER_ID": user_id})
         return SandboxSync.create(
             image=settings.OPEN_SANDBOX_CODE_INTERPRETER_IMAGE,
             entrypoint=["/opt/code-interpreter/code-interpreter.sh"],
-            env=env,
+            env=self.env,
             timeout=timedelta(seconds=self.timeout),
             connection_config=self.config,
             volumes=[
@@ -106,6 +106,7 @@ class OpenSandbox(BaseSandbox):
     def create_sandbox_v2(self, user_id) -> SandboxSync:
         """创建用户沙箱 skills 共享 + skills 私有"""
         _user_workspace_path = self.get_user_workspace_path(user_id)
+        self.env.update({"USER_ID": user_id})
         return SandboxSync.create(
             image=settings.OPEN_SANDBOX_CODE_INTERPRETER_IMAGE,
             entrypoint=["/opt/code-interpreter/code-interpreter.sh"],
