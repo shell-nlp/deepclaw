@@ -29,6 +29,7 @@ def init_agent_env():
         store_ctx = PostgresStore.from_conn_string(settings.PG_DATABASE_URL)
         store = store_ctx.__enter__()
         store.setup()
+        store._store_cm = store_ctx
         logger.info("使用 PostgresStore 作为长期记忆")
     else:
         from langgraph.store.memory import InMemoryStore

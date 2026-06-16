@@ -119,6 +119,7 @@ class Agent:
             logger.info("使用 DeepAgent")
             from deepagents import FilesystemPermission, create_deep_agent
 
+            memory.append("/memories/preferences.md")
             return create_deep_agent(
                 model=model,
                 tools=tools,
