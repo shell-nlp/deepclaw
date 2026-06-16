@@ -11,7 +11,7 @@ class CurrentActor(BaseModel):
     role: str
 
 
-def get_current_actor(
+async def get_current_actor(
     authorization: str | None = Header(default=None),
     service: AuthService = Depends(get_auth_service),
 ) -> CurrentActor:
@@ -23,7 +23,7 @@ def get_current_actor(
         raise HTTPException(status_code=401, detail="登录状态已失效，请重新登录。")
 
     try:
-        actor = service.authenticate_token(token)
+        actor = await service.authenticate_token(token)
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 

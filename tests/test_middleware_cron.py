@@ -11,19 +11,19 @@ def build_manager(db_path: Path):
 def test_cron_manager_add_list_remove_roundtrip(tmp_path):
     manager = build_manager(tmp_path / "cron.db")
 
-    created = manager.add(
+    created = asyncio.run(manager.add(
         name="daily-report",
         cron_expression="0 9 * * *",
         command="python scripts/report.py",
         description="日报任务",
-    )
-    listed = manager.list()
-    removed = manager.remove(job_id=created.id)
+    ))
+    listed = asyncio.run(manager.list())
+    removed = asyncio.run(manager.remove(job_id=created.id))
 
     assert created.id is not None
     assert [job.name for job in listed] == ["daily-report"]
     assert removed is True
-    assert manager.list() == []
+    assert asyncio.run(manager.list()) == []
 
 
 def test_cron_tool_supports_add_list_remove(tmp_path):
@@ -32,16 +32,16 @@ def test_cron_tool_supports_add_list_remove(tmp_path):
 
     get_cron_manager(f"sqlite:///{tmp_path / 'cron-tool.db'}")
 
-    added = cron_tool.invoke(
+    added = asyncio.run(cron_tool.ainvoke(
         {
             "action": "add",
             "name": "cleanup",
             "cron_expression": "*/15 * * * *",
             "command": "python scripts/cleanup.py",
         }
-    )
-    listed = cron_tool.invoke({"action": "list"})
-    removed = cron_tool.invoke({"action": "remove", "name": "cleanup"})
+    ))
+    listed = asyncio.run(cron_tool.ainvoke({"action": "list"}))
+    removed = asyncio.run(cron_tool.ainvoke({"action": "remove", "name": "cleanup"}))
 
     assert "added successfully" in added
     assert "cleanup" in listed
@@ -51,7 +51,7 @@ def test_cron_tool_supports_add_list_remove(tmp_path):
 def test_cron_tool_requires_identifier_for_remove():
     from deepclaw.middleware.cron.cron_tool import cron_tool
 
-    result = cron_tool.invoke({"action": "remove"})
+    result = asyncio.run(cron_tool.ainvoke({"action": "remove"}))
 
     assert result == "Error: Please provide either job_id or name"
 

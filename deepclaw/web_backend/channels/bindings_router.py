@@ -26,7 +26,7 @@ def create_channel_bindings_router(
 
         items = [
             binding.model_dump()
-            for binding in channel_store.list_bindings(
+            for binding in await channel_store.list_bindings(
                 channel=channel,
                 owner_user_id=owner_user_id,
                 participant_user_id=(

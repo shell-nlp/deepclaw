@@ -21,7 +21,7 @@ def create_auth_router(service: AuthService | None = None) -> APIRouter:
     router = APIRouter(prefix="/api/auth", tags=["auth"])
     auth_service = service or get_auth_service()
 
-    def current_actor_from_service(
+    async def current_actor_from_service(
         authorization: str | None = Header(default=None),
     ) -> CurrentActor:
         if not authorization:
@@ -32,7 +32,7 @@ def create_auth_router(service: AuthService | None = None) -> APIRouter:
             raise HTTPException(status_code=401, detail="登录状态已失效，请重新登录。")
 
         try:
-            actor = auth_service.authenticate_token(token)
+            actor = await auth_service.authenticate_token(token)
         except ValueError as exc:
             raise HTTPException(status_code=401, detail=str(exc)) from exc
 
@@ -43,14 +43,14 @@ def create_auth_router(service: AuthService | None = None) -> APIRouter:
             role=actor.user.role,
         )
 
-    def authenticated_actor_from_service(
+    async def authenticated_actor_from_service(
         actor: CurrentActor = Depends(current_actor_from_service),
     ) -> CurrentActor:
         if actor.is_guest:
             raise HTTPException(status_code=403, detail="请先登录后再使用该功能。")
         return actor
 
-    def admin_actor_from_service(
+    async def admin_actor_from_service(
         actor: CurrentActor = Depends(authenticated_actor_from_service),
     ) -> CurrentActor:
         if actor.role != "admin":
@@ -58,10 +58,10 @@ def create_auth_router(service: AuthService | None = None) -> APIRouter:
         return actor
 
     @router.post("/register")
-    def register(request: RegisterRequest):
+    async def register(request: RegisterRequest):
         try:
-            user = auth_service.register(email=request.email, password=request.password)
-            issued = auth_service.login(email=request.email, password=request.password)
+            user = await auth_service.register(email=request.email, password=request.password)
+            issued = await auth_service.login(email=request.email, password=request.password)
         except ValueError as exc:
             raise _handle_value_error(exc) from exc
 
@@ -76,9 +76,9 @@ def create_auth_router(service: AuthService | None = None) -> APIRouter:
         }
 
     @router.post("/login")
-    def login(request: LoginRequest):
+    async def login(request: LoginRequest):
         try:
-            issued = auth_service.login(email=request.email, password=request.password)
+            issued = await auth_service.login(email=request.email, password=request.password)
         except ValueError as exc:
             raise _handle_value_error(exc) from exc
 
@@ -93,25 +93,25 @@ def create_auth_router(service: AuthService | None = None) -> APIRouter:
         }
 
     @router.post("/logout")
-    def logout(
+    async def logout(
         actor=Depends(authenticated_actor_from_service),
         authorization: str | None = Header(default=None),
     ):
         token = (authorization or "").split(" ", 1)[1]
-        auth_service.revoke_token(token)
+        await auth_service.revoke_token(token)
         return {"ok": True}
 
     @router.get("/me")
-    def me(actor=Depends(current_actor_from_service)):
+    async def me(actor=Depends(current_actor_from_service)):
         return actor.model_dump()
 
     @router.post("/users/create")
-    def create_user(
+    async def create_user(
         request: AdminCreateUserRequest,
         actor=Depends(admin_actor_from_service),
     ):
         try:
-            user = auth_service.create_user_as_admin(
+            user = await auth_service.create_user_as_admin(
                 email=request.email,
                 password=request.password,
                 role=request.role,
@@ -129,11 +129,11 @@ def create_auth_router(service: AuthService | None = None) -> APIRouter:
         }
 
     @router.post("/users/list")
-    def list_users(
+    async def list_users(
         request: AdminListUsersRequest,
         actor=Depends(admin_actor_from_service),
     ):
-        users = auth_service.list_users(search=request.search)
+        users = await auth_service.list_users(search=request.search)
         return {
             "items": [
                 {
@@ -148,12 +148,12 @@ def create_auth_router(service: AuthService | None = None) -> APIRouter:
         }
 
     @router.post("/users/update-role")
-    def update_user_role(
+    async def update_user_role(
         request: AdminUpdateUserRoleRequest,
         actor=Depends(admin_actor_from_service),
     ):
         try:
-            user = auth_service.update_user_role(
+            user = await auth_service.update_user_role(
                 user_id=request.user_id,
                 role=request.role,
             )
@@ -170,12 +170,12 @@ def create_auth_router(service: AuthService | None = None) -> APIRouter:
         }
 
     @router.post("/users/update-status")
-    def update_user_status(
+    async def update_user_status(
         request: AdminUpdateUserStatusRequest,
         actor=Depends(admin_actor_from_service),
     ):
         try:
-            user = auth_service.update_user_status(
+            user = await auth_service.update_user_status(
                 user_id=request.user_id,
                 is_active=request.is_active,
             )
@@ -192,12 +192,12 @@ def create_auth_router(service: AuthService | None = None) -> APIRouter:
         }
 
     @router.post("/users/reset-password")
-    def reset_user_password(
+    async def reset_user_password(
         request: AdminResetUserPasswordRequest,
         actor=Depends(admin_actor_from_service),
     ):
         try:
-            user = auth_service.reset_user_password(
+            user = await auth_service.reset_user_password(
                 user_id=request.user_id,
                 password=request.password,
             )

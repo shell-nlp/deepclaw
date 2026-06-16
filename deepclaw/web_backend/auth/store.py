@@ -5,8 +5,7 @@ import uuid
 from datetime import timedelta
 from pathlib import Path
 
-from sqlalchemy.pool import StaticPool
-from sqlmodel import Session, SQLModel, create_engine, select
+from sqlmodel import select
 
 from deepclaw.constant import home_path
 from deepclaw.web_backend.auth.models import (
@@ -17,6 +16,7 @@ from deepclaw.web_backend.auth.models import (
     utc_now,
 )
 from deepclaw.web_backend.auth.security import hash_token
+from deepclaw.web_backend.db import build_async_sessionmaker, create_async_engine_from_url
 
 LEGACY_HOME_NAME = ".langchain_api"
 AUTH_MIGRATION_MARKER = ".auth_migrated_from_langchain_api"
@@ -120,7 +120,6 @@ def migrate_legacy_auth_db_if_needed(current_home_path: Path) -> None:
     current_home_path.mkdir(parents=True, exist_ok=True)
     current_db_path = _get_auth_db_path(current_home_path)
 
-    # 重命名后的首启阶段，以旧认证库为准合并到新目录，避免历史账号数据丢失。
     if not current_db_path.exists():
         shutil.copy2(legacy_db_path, current_db_path)
     else:
@@ -136,19 +135,25 @@ class AuthStore:
             os.makedirs(home_path, exist_ok=True)
             db_url = f"sqlite:///{os.path.join(home_path, 'auth.db')}"
 
-        connect_args = {"check_same_thread": False} if db_url.startswith("sqlite") else {}
-        engine_kwargs: dict[str, object] = {"connect_args": connect_args}
-        if db_url == "sqlite:///:memory:":
-            engine_kwargs["poolclass"] = StaticPool
+        self.engine = create_async_engine_from_url(db_url)
+        self.async_session = build_async_sessionmaker(self.engine)
+        self._init_done = False
 
-        self.engine = create_engine(db_url, echo=False, **engine_kwargs)
-        SQLModel.metadata.create_all(self.engine)
+    async def _ensure_init(self):
+        if self._init_done:
+            return
+        from sqlmodel import SQLModel
+        async with self.engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
+        self._init_done = True
 
-    def reconcile_access_token_expiry(self, *, expire_days: int) -> None:
+    async def reconcile_access_token_expiry(self, *, expire_days: int) -> None:
+        await self._ensure_init()
         max_lifetime = timedelta(days=expire_days)
         now = utc_now()
-        with Session(self.engine) as session:
-            records = list(session.exec(select(AccessTokenRecord)).all())
+        async with self.async_session() as session:
+            result = await session.exec(select(AccessTokenRecord))
+            records = list(result.all())
             changed = False
             for record in records:
                 normalized_expires_at = min(
@@ -156,7 +161,7 @@ class AuthStore:
                     record.created_at + max_lifetime,
                 )
                 if normalized_expires_at <= now:
-                    session.delete(record)
+                    await session.delete(record)
                     changed = True
                     continue
                 if normalized_expires_at != record.expires_at:
@@ -165,25 +170,35 @@ class AuthStore:
                     changed = True
 
             if changed:
-                session.commit()
+                await session.commit()
 
-    def get_user_by_email(self, email: str) -> AuthUser | None:
-        with Session(self.engine) as session:
-            statement = select(AuthUser).where(AuthUser.email == email)
-            return session.exec(statement).first()
+    async def get_user_by_email(self, email: str) -> AuthUser | None:
+        await self._ensure_init()
+        async with self.async_session() as session:
+            result = await session.exec(
+                select(AuthUser).where(AuthUser.email == email)
+            )
+            return result.first()
 
-    def get_user_by_user_id(self, user_id: str) -> AuthUser | None:
-        with Session(self.engine) as session:
-            statement = select(AuthUser).where(AuthUser.user_id == user_id)
-            return session.exec(statement).first()
+    async def get_user_by_user_id(self, user_id: str) -> AuthUser | None:
+        await self._ensure_init()
+        async with self.async_session() as session:
+            result = await session.exec(
+                select(AuthUser).where(AuthUser.user_id == user_id)
+            )
+            return result.first()
 
-    def has_admin_user(self) -> bool:
-        with Session(self.engine) as session:
-            statement = select(AuthUser).where(AuthUser.role == "admin")
-            return session.exec(statement).first() is not None
+    async def has_admin_user(self) -> bool:
+        await self._ensure_init()
+        async with self.async_session() as session:
+            result = await session.exec(
+                select(AuthUser).where(AuthUser.role == "admin")
+            )
+            return result.first() is not None
 
-    def create_user(self, *, email: str, password_hash: str, role: str) -> AuthUser:
-        with Session(self.engine) as session:
+    async def create_user(self, *, email: str, password_hash: str, role: str) -> AuthUser:
+        await self._ensure_init()
+        async with self.async_session() as session:
             now = utc_now()
             user = AuthUser(
                 user_id=f"user_{uuid.uuid4().hex}",
@@ -195,92 +210,103 @@ class AuthStore:
                 updated_at=now,
             )
             session.add(user)
-            session.commit()
-            session.refresh(user)
+            await session.commit()
+            await session.refresh(user)
             return user
 
-    def list_users(self, *, search: str = "") -> list[AuthUser]:
-        with Session(self.engine) as session:
+    async def list_users(self, *, search: str = "") -> list[AuthUser]:
+        await self._ensure_init()
+        async with self.async_session() as session:
             statement = select(AuthUser).order_by(AuthUser.created_at.desc())
             if search:
                 like = f"%{search}%"
                 statement = statement.where(AuthUser.email.like(like))
-            return list(session.exec(statement).all())
+            result = await session.exec(statement)
+            return list(result.all())
 
-    def update_user_role(self, *, user_id: str, role: str) -> AuthUser:
-        with Session(self.engine) as session:
-            user = session.exec(
+    async def update_user_role(self, *, user_id: str, role: str) -> AuthUser:
+        await self._ensure_init()
+        async with self.async_session() as session:
+            result = await session.exec(
                 select(AuthUser).where(AuthUser.user_id == user_id)
-            ).first()
+            )
+            user = result.first()
             if user is None:
                 raise ValueError("用户不存在。")
             user.role = role
             user.updated_at = utc_now()
             session.add(user)
-            session.commit()
-            session.refresh(user)
+            await session.commit()
+            await session.refresh(user)
             return user
 
-    def update_user_status(self, *, user_id: str, is_active: bool) -> AuthUser:
-        with Session(self.engine) as session:
-            user = session.exec(
+    async def update_user_status(self, *, user_id: str, is_active: bool) -> AuthUser:
+        await self._ensure_init()
+        async with self.async_session() as session:
+            result = await session.exec(
                 select(AuthUser).where(AuthUser.user_id == user_id)
-            ).first()
+            )
+            user = result.first()
             if user is None:
                 raise ValueError("用户不存在。")
             user.is_active = is_active
             user.updated_at = utc_now()
             session.add(user)
-            session.commit()
-            session.refresh(user)
+            await session.commit()
+            await session.refresh(user)
             return user
 
-    def update_user_password(self, *, user_id: str, password_hash: str) -> AuthUser:
-        with Session(self.engine) as session:
-            user = session.exec(
+    async def update_user_password(self, *, user_id: str, password_hash: str) -> AuthUser:
+        await self._ensure_init()
+        async with self.async_session() as session:
+            result = await session.exec(
                 select(AuthUser).where(AuthUser.user_id == user_id)
-            ).first()
+            )
+            user = result.first()
             if user is None:
                 raise ValueError("用户不存在。")
             user.password_hash = password_hash
             user.updated_at = utc_now()
             session.add(user)
-            session.commit()
-            session.refresh(user)
+            await session.commit()
+            await session.refresh(user)
             return user
 
-    def revoke_token(self, token: str) -> bool:
-        token_hash = hash_token(token)
-        with Session(self.engine) as session:
-            record = session.exec(
-                select(AccessTokenRecord).where(AccessTokenRecord.token_hash == token_hash)
-            ).first()
+    async def revoke_token(self, token: str) -> bool:
+        await self._ensure_init()
+        token_hash_value = hash_token(token)
+        async with self.async_session() as session:
+            result = await session.exec(
+                select(AccessTokenRecord).where(AccessTokenRecord.token_hash == token_hash_value)
+            )
+            record = result.first()
             if record is None:
                 return False
-            session.delete(record)
-            session.commit()
+            await session.delete(record)
+            await session.commit()
             return True
 
-    def revoke_tokens_by_user_id(self, user_id: str) -> int:
-        with Session(self.engine) as session:
-            records = list(
-                session.exec(
-                    select(AccessTokenRecord).where(AccessTokenRecord.user_id == user_id)
-                ).all()
+    async def revoke_tokens_by_user_id(self, user_id: str) -> int:
+        await self._ensure_init()
+        async with self.async_session() as session:
+            result = await session.exec(
+                select(AccessTokenRecord).where(AccessTokenRecord.user_id == user_id)
             )
+            records = list(result.all())
             for record in records:
-                session.delete(record)
-            session.commit()
+                await session.delete(record)
+            await session.commit()
             return len(records)
 
-    def issue_access_token(
+    async def issue_access_token(
         self,
         *,
         user: AuthUser,
         raw_token: str,
         expire_days: int,
     ) -> IssuedAccessToken:
-        with Session(self.engine) as session:
+        await self._ensure_init()
+        async with self.async_session() as session:
             now = utc_now()
             record = AccessTokenRecord(
                 user_id=user.user_id,
@@ -290,33 +316,37 @@ class AuthStore:
                 created_at=now,
             )
             session.add(record)
-            session.commit()
-            session.refresh(record)
+            await session.commit()
+            await session.refresh(record)
             return IssuedAccessToken(token=raw_token, user=user, record=record)
 
-    def get_actor_by_token(self, token: str) -> AuthenticatedActor:
-        token_hash = hash_token(token)
-        with Session(self.engine) as session:
-            statement = select(AccessTokenRecord).where(
-                AccessTokenRecord.token_hash == token_hash
+    async def get_actor_by_token(self, token: str) -> AuthenticatedActor:
+        await self._ensure_init()
+        token_hash_value = hash_token(token)
+        async with self.async_session() as session:
+            result = await session.exec(
+                select(AccessTokenRecord).where(
+                    AccessTokenRecord.token_hash == token_hash_value
+                )
             )
-            record = session.exec(statement).first()
+            record = result.first()
             if record is None:
                 raise ValueError("登录状态已失效，请重新登录。")
             if record.expires_at <= utc_now():
-                session.delete(record)
-                session.commit()
+                await session.delete(record)
+                await session.commit()
                 raise ValueError("登录状态已失效，请重新登录。")
 
-            user = session.exec(
+            result = await session.exec(
                 select(AuthUser).where(AuthUser.user_id == record.user_id)
-            ).first()
+            )
+            user = result.first()
             if user is None:
                 raise ValueError("登录状态已失效，请重新登录。")
 
             record.last_used_at = utc_now()
             session.add(record)
-            session.commit()
-            session.refresh(record)
-            session.refresh(user)
+            await session.commit()
+            await session.refresh(record)
+            await session.refresh(user)
             return AuthenticatedActor(user=user, record=record)

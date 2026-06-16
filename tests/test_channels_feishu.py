@@ -152,13 +152,13 @@ def test_feishu_runtime_syncs_binding_runtime_state_on_start_and_stop():
             return FakeWsClient()
 
     store = ChannelStore("sqlite:///:memory:")
-    binding = store.create_binding(
+    binding = asyncio.run(store.create_binding(
         channel="feishu",
         owner_user_id="user_1",
         manager_user_id="user_1",
         credentials={"app_id": "cli_x", "app_secret": "sec_x"},
         config={"group_policy": "mention"},
-    )
+    ))
     runtime = FeishuRuntime(binding=binding, store=store, gateway=FakeGateway())
 
     async def run():
@@ -169,7 +169,7 @@ def test_feishu_runtime_syncs_binding_runtime_state_on_start_and_stop():
 
     asyncio.run(run())
 
-    updated = store.get_binding(binding.id)
+    updated = asyncio.run(store.get_binding(binding.id))
     assert updated is not None
     assert updated.runtime_state["status"] == "stopped"
     assert updated.runtime_state["bot_open_id"] == "ou_bot_1"
@@ -191,22 +191,22 @@ def test_feishu_runtime_updates_only_target_binding_for_same_owner():
             return FakeWsClient()
 
     store = ChannelStore("sqlite:///:memory:")
-    first = store.create_binding(
+    first = asyncio.run(store.create_binding(
         channel="feishu",
         owner_user_id="user_1",
         manager_user_id="user_1",
         display_name="binding-a",
         credentials={"app_id": "cli_a", "app_secret": "sec_a"},
         config={"group_policy": "mention"},
-    )
-    second = store.create_binding(
+    ))
+    second = asyncio.run(store.create_binding(
         channel="feishu",
         owner_user_id="user_1",
         manager_user_id="user_1",
         display_name="binding-b",
         credentials={"app_id": "cli_b", "app_secret": "sec_b"},
         config={"group_policy": "mention"},
-    )
+    ))
     runtime = FeishuRuntime(
         binding=second,
         store=store,
@@ -221,8 +221,8 @@ def test_feishu_runtime_updates_only_target_binding_for_same_owner():
 
     asyncio.run(run())
 
-    refreshed_first = store.get_binding(first.id)
-    refreshed_second = store.get_binding(second.id)
+    refreshed_first = asyncio.run(store.get_binding(first.id))
+    refreshed_second = asyncio.run(store.get_binding(second.id))
     assert refreshed_first is not None
     assert refreshed_second is not None
     assert refreshed_first.runtime_state == {}

@@ -25,9 +25,9 @@ def create_channel_sessions_router(*, store: ChannelStore | None = None) -> APIR
     ):
         sessions = [
             ChannelSessionRead.model_validate(item)
-            for item in channel_store.list_sessions()
+            for item in await channel_store.list_sessions()
             if is_admin(actor)
-            or session_manager_user_id(channel_store, item)
+            or await session_manager_user_id(channel_store, item)
             == manager_user_id_from_actor(actor)
         ]
         return ChannelSessionList(items=sessions, total=len(sessions))
@@ -38,10 +38,10 @@ def create_channel_sessions_router(*, store: ChannelStore | None = None) -> APIR
         update: ChannelSessionUpdate,
         actor: CurrentActor = Depends(get_current_actor),
     ):
-        channel_session = channel_store.get_session_by_session_id(session_id)
+        channel_session = await channel_store.get_session_by_session_id(session_id)
         if channel_session is None:
             raise HTTPException(status_code=404, detail="Channel session not found")
-        ensure_session_access(
+        await ensure_session_access(
             actor=actor,
             channel_store=channel_store,
             channel_session=channel_session,
@@ -51,7 +51,7 @@ def create_channel_sessions_router(*, store: ChannelStore | None = None) -> APIR
             return ChannelSessionRead.model_validate(channel_session)
 
         try:
-            channel_session = channel_store.update_session_reply_mode(
+            channel_session = await channel_store.update_session_reply_mode(
                 session_id,
                 update.reply_mode,
             )

@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 
 import pytest
@@ -105,7 +106,7 @@ def test_channels_schema_compat_module_is_removed():
 
 def test_session_config_routes_list_and_update_reply_mode():
     store = ChannelStore('sqlite:///:memory:')
-    session = store.get_or_create_session(channel='feishu', channel_conversation_id='chat_a', channel_user_id='ou_1', user_id='user_1', manager_user_id='user_1')
+    session = asyncio.run(store.get_or_create_session(channel='feishu', channel_conversation_id='chat_a', channel_user_id='ou_1', user_id='user_1', manager_user_id='user_1'))
     client = build_channels_client(
         store=store,
         actor=CurrentActor(
@@ -124,7 +125,7 @@ def test_session_config_routes_list_and_update_reply_mode():
 
 def test_session_config_rejects_invalid_reply_mode():
     store = ChannelStore('sqlite:///:memory:')
-    session = store.get_or_create_session(channel='feishu', channel_conversation_id='chat_a', channel_user_id='ou_1', user_id='user_1', manager_user_id='user_1')
+    session = asyncio.run(store.get_or_create_session(channel='feishu', channel_conversation_id='chat_a', channel_user_id='ou_1', user_id='user_1', manager_user_id='user_1'))
     client = build_channels_client(
         store=store,
         actor=CurrentActor(
@@ -140,27 +141,27 @@ def test_session_config_rejects_invalid_reply_mode():
 
 def test_session_routes_respect_actor_scope():
     store = ChannelStore('sqlite:///:memory:')
-    guest_session = store.get_or_create_session(
+    guest_session = asyncio.run(store.get_or_create_session(
         channel='weixin_clawbot',
         channel_conversation_id='guest:chat_a',
         channel_user_id='guest:wx_1',
         user_id='guest',
         manager_user_id='guest',
-    )
-    user_session = store.get_or_create_session(
+    ))
+    user_session = asyncio.run(store.get_or_create_session(
         channel='feishu',
         channel_conversation_id='chat_b',
         channel_user_id='ou_2',
         user_id='user_1',
         manager_user_id='user_1',
-    )
-    other_session = store.get_or_create_session(
+    ))
+    other_session = asyncio.run(store.get_or_create_session(
         channel='feishu',
         channel_conversation_id='chat_c',
         channel_user_id='ou_3',
         user_id='user_2',
         manager_user_id='user_2',
-    )
+    ))
 
     guest_client = build_channels_client(
         store=store,
@@ -204,20 +205,20 @@ def test_session_routes_respect_actor_scope():
 
 def test_session_routes_allow_admin_override():
     store = ChannelStore('sqlite:///:memory:')
-    first = store.get_or_create_session(
+    first = asyncio.run(store.get_or_create_session(
         channel='feishu',
         channel_conversation_id='chat_a',
         channel_user_id='ou_1',
         user_id='user_1',
         manager_user_id='user_1',
-    )
-    second = store.get_or_create_session(
+    ))
+    second = asyncio.run(store.get_or_create_session(
         channel='weixin_clawbot',
         channel_conversation_id='guest:chat_b',
         channel_user_id='guest:wx_2',
         user_id='guest',
         manager_user_id='guest',
-    )
+    ))
 
     admin_client = build_channels_client(
         store=store,
@@ -311,29 +312,29 @@ def test_feishu_binding_routes_create_and_delete_binding(monkeypatch):
 
 def test_feishu_binding_list_respects_actor_scope():
     store = ChannelStore('sqlite:///:memory:')
-    store.create_binding(
+    asyncio.run(store.create_binding(
         channel='feishu',
         owner_user_id='user_1',
         manager_user_id='helper_1',
         display_name='owned-by-user-1',
         credentials={'app_id': 'cli_1', 'app_secret': 'sec_1'},
         runtime_state={'status': 'connected'},
-    )
-    store.create_binding(
+    ))
+    asyncio.run(store.create_binding(
         channel='feishu',
         owner_user_id='user_2',
         manager_user_id='user_1',
         display_name='Feishu user_2',
         credentials={'app_id': 'cli_2', 'app_secret': 'sec_2'},
         runtime_state={'status': 'connected'},
-    )
-    store.create_binding(
+    ))
+    asyncio.run(store.create_binding(
         channel='feishu',
         owner_user_id='user_3',
         manager_user_id='helper_3',
         display_name='hidden-from-user-1',
         credentials={'app_id': 'cli_c', 'app_secret': 'sec_c'},
-    )
+    ))
 
     user_client = build_channels_client(
         store=store,
@@ -428,8 +429,8 @@ def test_weixin_clawbot_user_qrcode_routes_persist_user_runtime_state(monkeypatc
     status_response = client.get('/api/channels/weixin-clawbot/users/user_1/qrcode/status')
     assert 200 == qrcode_response.status_code
     assert 200 == status_response.status_code
-    runtime_state = store.get_runtime_state(channel='weixin_clawbot', state_key='user:user_1')
-    bindings = store.list_bindings(channel='weixin_clawbot', owner_user_id='user_1')
+    runtime_state = asyncio.run(store.get_runtime_state(channel='weixin_clawbot', state_key='user:user_1'))
+    bindings = asyncio.run(store.list_bindings(channel='weixin_clawbot', owner_user_id='user_1'))
     assert 'user_1' == runtime_state.data['owner_user_id']
     assert 'manager_1' == runtime_state.data['manager_user_id']
     assert 'qr-content' == runtime_state.data['qrcode']
@@ -461,7 +462,7 @@ def test_weixin_clawbot_user_qrcode_timeout_returns_504():
 
 def test_weixin_clawbot_user_status_uses_local_runtime_when_connected():
     store = ChannelStore('sqlite:///:memory:')
-    store.upsert_runtime_state(channel='weixin_clawbot', state_key='user:user_1', data={'owner_user_id': 'user_1', 'manager_user_id': 'user_1', 'qrcode': 'qr_1', 'qrcode_url': 'https://liteapp.weixin.qq.com/q/test?qrcode=qr_1', 'bot_token': 'token_1', 'base_url': 'https://node.example.test'})
+    asyncio.run(store.upsert_runtime_state(channel='weixin_clawbot', state_key='user:user_1', data={'owner_user_id': 'user_1', 'manager_user_id': 'user_1', 'qrcode': 'qr_1', 'qrcode_url': 'https://liteapp.weixin.qq.com/q/test?qrcode=qr_1', 'bot_token': 'token_1', 'base_url': 'https://node.example.test'}))
     client = build_channels_client(
         store=store,
         actor=CurrentActor(
@@ -481,8 +482,8 @@ def test_weixin_clawbot_user_status_uses_local_runtime_when_connected():
 
 def test_weixin_clawbot_user_management_lists_and_deletes_bound_users(monkeypatch):
     store = ChannelStore('sqlite:///:memory:')
-    store.upsert_runtime_state(channel='weixin_clawbot', state_key='user:user_1', data={'owner_user_id': 'user_1', 'manager_user_id': 'user_1', 'bot_token': 'token_1', 'qrcode': 'qr_1', 'qrcode_url': 'https://example.test/qr_1.png', 'base_url': 'https://node.example.test'})
-    store.upsert_runtime_state(channel='weixin_clawbot', state_key='default', data={'bot_token': 'legacy_token'})
+    asyncio.run(store.upsert_runtime_state(channel='weixin_clawbot', state_key='user:user_1', data={'owner_user_id': 'user_1', 'manager_user_id': 'user_1', 'bot_token': 'token_1', 'qrcode': 'qr_1', 'qrcode_url': 'https://example.test/qr_1.png', 'base_url': 'https://node.example.test'}))
+    asyncio.run(store.upsert_runtime_state(channel='weixin_clawbot', state_key='default', data={'bot_token': 'legacy_token'}))
     stopped = {}
 
     async def fake_stop_runtime(state_key):
@@ -510,12 +511,12 @@ def test_weixin_clawbot_user_management_lists_and_deletes_bound_users(monkeypatc
     assert 200 == delete_response.status_code
     assert {'user_id': 'user_1', 'deleted': True} == delete_response.json()
     assert 'user:user_1' == stopped['state_key']
-    assert store.get_runtime_state(channel='weixin_clawbot', state_key='user:user_1') is None
+    assert asyncio.run(store.get_runtime_state(channel='weixin_clawbot', state_key='user:user_1')) is None
 
 
 def test_weixin_clawbot_user_management_respects_guest_and_user_scope(monkeypatch):
     store = ChannelStore('sqlite:///:memory:')
-    store.upsert_runtime_state(
+    asyncio.run(store.upsert_runtime_state(
         channel='weixin_clawbot',
         state_key='user:guest_demo_1',
         data={
@@ -523,8 +524,8 @@ def test_weixin_clawbot_user_management_respects_guest_and_user_scope(monkeypatc
             'manager_user_id': 'guest',
             'bot_token': 'token_guest_1',
         },
-    )
-    store.upsert_runtime_state(
+    ))
+    asyncio.run(store.upsert_runtime_state(
         channel='weixin_clawbot',
         state_key='user:guest_demo_2',
         data={
@@ -532,8 +533,8 @@ def test_weixin_clawbot_user_management_respects_guest_and_user_scope(monkeypatc
             'manager_user_id': 'guest',
             'bot_token': 'token_guest_2',
         },
-    )
-    store.upsert_runtime_state(
+    ))
+    asyncio.run(store.upsert_runtime_state(
         channel='weixin_clawbot',
         state_key='user:user_bound_1',
         data={
@@ -541,7 +542,7 @@ def test_weixin_clawbot_user_management_respects_guest_and_user_scope(monkeypatc
             'manager_user_id': 'user_1',
             'bot_token': 'token_user_1',
         },
-    )
+    ))
     stopped = {'count': 0}
 
     async def fake_stop_runtime(state_key):
@@ -589,7 +590,7 @@ def test_weixin_clawbot_user_management_respects_guest_and_user_scope(monkeypatc
 
 def test_weixin_clawbot_user_management_allows_admin_override(monkeypatch):
     store = ChannelStore('sqlite:///:memory:')
-    store.upsert_runtime_state(
+    asyncio.run(store.upsert_runtime_state(
         channel='weixin_clawbot',
         state_key='user:user_bound_1',
         data={
@@ -597,8 +598,8 @@ def test_weixin_clawbot_user_management_allows_admin_override(monkeypatch):
             'manager_user_id': 'user_1',
             'bot_token': 'token_user_1',
         },
-    )
-    store.upsert_runtime_state(
+    ))
+    asyncio.run(store.upsert_runtime_state(
         channel='weixin_clawbot',
         state_key='user:guest_demo_1',
         data={
@@ -606,7 +607,7 @@ def test_weixin_clawbot_user_management_allows_admin_override(monkeypatch):
             'manager_user_id': 'guest',
             'bot_token': 'token_guest_1',
         },
-    )
+    ))
     stopped = {}
 
     async def fake_stop_runtime(state_key):
@@ -641,7 +642,7 @@ def test_weixin_clawbot_user_management_allows_admin_override(monkeypatch):
 
 def test_weixin_clawbot_user_status_hides_other_manager_runtime():
     store = ChannelStore('sqlite:///:memory:')
-    store.upsert_runtime_state(
+    asyncio.run(store.upsert_runtime_state(
         channel='weixin_clawbot',
         state_key='user:user_bound_1',
         data={
@@ -651,7 +652,7 @@ def test_weixin_clawbot_user_status_hides_other_manager_runtime():
             'bot_token': 'token_1',
             'base_url': 'https://node.example.test',
         },
-    )
+    ))
     client = build_channels_client(
         store=store,
         actor=CurrentActor(
@@ -671,20 +672,20 @@ def test_weixin_clawbot_user_status_hides_other_manager_runtime():
 
 def _legacy_test_binding_list_route_respects_my_and_all_scope():
     store = ChannelStore('sqlite:///:memory:')
-    store.create_binding(
+    asyncio.run(store.create_binding(
         channel='feishu',
         owner_user_id='user_1',
         manager_user_id='helper_1',
-        display_name='市场部机器人',
+        display_name='owned-by-user-1',
         credentials={'app_id': 'cli_a', 'app_secret': 'sec_a'},
-    )
-    store.create_binding(
+    ))
+    asyncio.run(store.create_binding(
         channel='weixin_clawbot',
         owner_user_id='user_2',
         manager_user_id='user_2',
         display_name='李四代绑号',
         credentials={},
-    )
+    ))
 
     user_client = build_channels_client(
         store=store,
@@ -715,27 +716,27 @@ def _legacy_test_binding_list_route_respects_my_and_all_scope():
 
 def test_binding_list_route_includes_owner_and_manager_participants():
     store = ChannelStore('sqlite:///:memory:')
-    store.create_binding(
+    asyncio.run(store.create_binding(
         channel='feishu',
         owner_user_id='user_1',
         manager_user_id='helper_1',
         display_name='owned-by-user-1',
         credentials={'app_id': 'cli_a', 'app_secret': 'sec_a'},
-    )
-    store.create_binding(
+    ))
+    asyncio.run(store.create_binding(
         channel='weixin_clawbot',
         owner_user_id='user_2',
         manager_user_id='user_1',
         display_name='managed-by-user-1',
         credentials={},
-    )
-    store.create_binding(
+    ))
+    asyncio.run(store.create_binding(
         channel='feishu',
         owner_user_id='user_3',
         manager_user_id='helper_3',
         display_name='hidden-from-user-1',
         credentials={'app_id': 'cli_c', 'app_secret': 'sec_c'},
-    )
+    ))
 
     user_client = build_channels_client(
         store=store,
@@ -774,14 +775,14 @@ def test_binding_list_route_includes_owner_and_manager_participants():
 
 def test_owner_can_delete_collaborator_binding(monkeypatch):
     store = ChannelStore('sqlite:///:memory:')
-    binding = store.create_binding(
+    binding = asyncio.run(store.create_binding(
         channel='weixin_clawbot',
         owner_user_id='user_1',
         manager_user_id='helper_1',
         display_name='collab-binding',
         credentials={},
         runtime_state={'status': 'pending', 'qrcode': 'qr_1'},
-    )
+    ))
     stopped = {}
 
     async def fake_stop_runtime(binding_id):
@@ -807,7 +808,7 @@ def test_owner_can_delete_collaborator_binding(monkeypatch):
     assert response.status_code == 200
     assert response.json() == {'binding_id': binding.id, 'deleted': True}
     assert stopped['binding_id'] == binding.id
-    assert store.get_binding(binding.id) is None
+    assert asyncio.run(store.get_binding(binding.id)) is None
 
 
 def test_feishu_binding_routes_support_multiple_bindings_per_owner(monkeypatch):

@@ -191,6 +191,7 @@ pnpm build
 - 如果成熟、稳定、维护活跃的开源库能更好解决问题，优先采用开源库方案。
 - 当前 Web 目录已经统一收口到 `web_backend`，不要再新增新的根包 `auth`、`channels`、`management`、`api` 目录。
 - 如果修改会影响静态托管行为，记得同时检查 `frontend/out` 是否需要重新构建。
+- 所有数据库操作必须使用 SQLModel 的原生异步功能：`async_sessionmaker` 用 `class_=AsyncSession`（`from sqlmodel.ext.asyncio.session import AsyncSession`），查询用 `await session.exec(select(...))`（`select` 从 `sqlmodel` 导入而非 `sqlalchemy`），结果直接用 `.one()/.first()/.all()` 获取模型实例（不使用 `.scalars()`），写入用 `session.add()` + `commit()` + `refresh()`。
 - 输出文档必须是中文。
 - 如果代码结构变化，必须同步更新 `AGENTS.md`。
 - 代码更改后，必须执行 `codegraph index --force` 更新索引。

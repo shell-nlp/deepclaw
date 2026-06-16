@@ -30,16 +30,16 @@ class ChannelService:
     async def process_message(
         self, message: ChannelMessage, adapter: ChannelAdapter
     ) -> ChannelMessageRecord:
-        record = self.store.get_or_create_message_record(message)
+        record = await self.store.get_or_create_message_record(message)
         if record.status in {"processing", "done", "failed"}:
             return record
 
-        user = self.store.get_or_create_user(
+        user = await self.store.get_or_create_user(
             channel=message.channel,
             channel_user_id=self._routing_channel_user_id(message),
             user_id=message.user_id,
         )
-        channel_session = self.store.get_or_create_session(
+        channel_session = await self.store.get_or_create_session(
             channel=message.channel,
             channel_conversation_id=self._routing_conversation_id(message),
             channel_user_id=self._routing_channel_user_id(message),
@@ -50,7 +50,7 @@ class ChannelService:
         )
 
         async with self._locks[channel_session.session_id]:
-            self.store.mark_message_status(message.channel, message.message_id, "processing")
+            await self.store.mark_message_status(message.channel, message.message_id, "processing")
             try:
                 await self.dispatcher.dispatch(
                     adapter=adapter,
@@ -63,14 +63,14 @@ class ChannelService:
                     ),
                 )
             except Exception as exc:
-                return self.store.mark_message_status(
+                return await self.store.mark_message_status(
                     message.channel,
                     message.message_id,
                     "failed",
                     error=str(exc),
                 )
 
-            return self.store.mark_message_status(
+            return await self.store.mark_message_status(
                 message.channel,
                 message.message_id,
                 "done",
@@ -94,4 +94,3 @@ class ChannelService:
         if message.channel == "weixin_clawbot":
             return weixin_clawbot_settings.WEIXIN_CLAWBOT_DEFAULT_REPLY_MODE
         return "final"
-

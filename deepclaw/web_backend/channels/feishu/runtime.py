@@ -58,9 +58,9 @@ class FeishuRuntime:
     async def run_forever(self) -> None:
         self._running = True
         self._loop = asyncio.get_running_loop()
-        self._sync_binding_state(runtime_state={"status": "starting"})
+        await self._sync_binding_state(runtime_state={"status": "starting"})
         self._bot_open_id = await self.gateway.fetch_bot_open_id(binding=self.binding)
-        self._sync_binding_state(
+        await self._sync_binding_state(
             runtime_state={
                 "status": "connected",
                 "bot_open_id": self._bot_open_id,
@@ -72,7 +72,7 @@ class FeishuRuntime:
 
     async def stop(self) -> None:
         self._running = False
-        self._sync_binding_state(runtime_state={"status": "stopped", "bot_open_id": self._bot_open_id})
+        await self._sync_binding_state(runtime_state={"status": "stopped", "bot_open_id": self._bot_open_id})
 
     def _start_ws_thread(self) -> None:
         if self._ws_thread is not None and self._ws_thread.is_alive():
@@ -143,7 +143,7 @@ class FeishuRuntime:
             "mentions": mentions,
         }
 
-    def _sync_binding_state(
+    async def _sync_binding_state(
         self,
         *,
         runtime_state: dict[str, Any] | None = None,
@@ -152,7 +152,7 @@ class FeishuRuntime:
         if self.store is None:
             return
         if self.binding.id is not None:
-            binding = self.store.update_binding(
+            binding = await self.store.update_binding(
                 self.binding.id,
                 display_name=self.binding.display_name,
                 credentials=credentials,
@@ -161,7 +161,7 @@ class FeishuRuntime:
                 status="active",
             )
         else:
-            binding = self.store.upsert_binding(
+            binding = await self.store.upsert_binding(
                 channel=self.binding.channel,
                 owner_user_id=self.binding.owner_user_id,
                 manager_user_id=self.binding.manager_user_id,
@@ -194,7 +194,7 @@ async def start_feishu_runtime(
     binding_id: int,
     store: ChannelStore,
 ) -> asyncio.Task[Any]:
-    binding = store.get_binding(binding_id)
+    binding = await store.get_binding(binding_id)
     if binding is None:
         raise ValueError("Channel binding not found")
 
@@ -217,7 +217,7 @@ async def stop_feishu_runtime(binding_id: int) -> None:
 
 async def start_saved_feishu_runtimes(*, store: ChannelStore | None = None) -> None:
     channel_store = store or get_channel_store()
-    for binding in channel_store.list_bindings(channel="feishu"):
+    for binding in await channel_store.list_bindings(channel="feishu"):
         if not binding.credentials.get("app_id") or not binding.credentials.get("app_secret"):
             continue
         await start_feishu_runtime(binding_id=binding.id, store=channel_store)

@@ -6,7 +6,7 @@ from deepclaw.middleware.cron.cron_manager import get_cron_manager
 
 
 @tool
-def cron_tool(
+async def cron_tool(
     action: Annotated[
         Literal["add", "list", "remove"],
         "The action to perform: add a new cron job, list existing jobs, or remove a job",
@@ -41,7 +41,7 @@ def cron_tool(
                 "Error: name, cron_expression, and command are required for add action"
             )
         try:
-            job = manager.add(
+            job = await manager.add(
                 name=name,
                 cron_expression=cron_expression,
                 command=command,
@@ -52,7 +52,7 @@ def cron_tool(
             return f"Failed to add cron job: {exc}"
 
     if action == "list":
-        jobs = manager.list(enabled=enabled_only)
+        jobs = await manager.list(enabled=enabled_only)
         if not jobs:
             return "No cron jobs found."
         lines = []
@@ -69,7 +69,7 @@ def cron_tool(
     if action == "remove":
         if job_id is None and name is None:
             return "Error: Please provide either job_id or name"
-        success = manager.remove(job_id=job_id, name=name)
+        success = await manager.remove(job_id=job_id, name=name)
         return "Cron job removed successfully" if success else "Cron job not found"
 
     return "Unknown action"

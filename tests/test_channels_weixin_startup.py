@@ -125,7 +125,7 @@ def test_runtime_reuses_persisted_token_after_process_restart():
     )
 
     store = ChannelStore("sqlite:///:memory:")
-    store.upsert_runtime_state(
+    asyncio.run(store.upsert_runtime_state(
         channel="weixin_clawbot",
         state_key=weixin_clawbot_user_state_key("user_1"),
         data={
@@ -134,7 +134,7 @@ def test_runtime_reuses_persisted_token_after_process_restart():
             "get_updates_buf": "old_buf",
             "owner_user_id": "user_1",
         },
-    )
+    ))
     client = FakeRuntimeClient()
     service = FakeService()
 
@@ -156,10 +156,10 @@ def test_runtime_reuses_persisted_token_after_process_restart():
     assert client.get_updates_bufs == ["old_buf"]
     assert client.base_url == "https://old-node.example.test"
     assert (
-        store.get_runtime_state(
+        asyncio.run(store.get_runtime_state(
             channel="weixin_clawbot",
             state_key=weixin_clawbot_user_state_key("user_1"),
-        ).data["get_updates_buf"]
+        )).data["get_updates_buf"]
         == "next_buf"
     )
     assert service.messages[0][0].user_id == "user_1"
@@ -170,11 +170,11 @@ def test_runtime_falls_back_to_qrcode_when_persisted_token_expires():
     from deepclaw.web_backend.channels.weixin_clawbot.runtime import WeixinClawBotRuntime
 
     store = ChannelStore("sqlite:///:memory:")
-    store.upsert_runtime_state(
+    asyncio.run(store.upsert_runtime_state(
         channel="weixin_clawbot",
         state_key="default",
         data={"bot_token": "expired_token", "get_updates_buf": "old_buf"},
-    )
+    ))
     client = FakeRecoveringRuntimeClient()
     service = FakeService()
     runtime = WeixinClawBotRuntime(
@@ -204,12 +204,12 @@ def test_runtime_syncs_binding_credentials_and_runtime_state():
     )
 
     store = ChannelStore("sqlite:///:memory:")
-    store.upsert_binding(
+    asyncio.run(store.upsert_binding(
         channel="weixin_clawbot",
         owner_user_id="user_1",
         manager_user_id="manager_1",
         display_name="Weixin ClawBot user_1",
-    )
+    ))
     client = FakeRuntimeClient()
     service = FakeService()
     runtime = WeixinClawBotRuntime(
@@ -226,7 +226,7 @@ def test_runtime_syncs_binding_credentials_and_runtime_state():
 
     asyncio.run(runtime.run_once())
 
-    bindings = store.list_bindings(channel="weixin_clawbot", owner_user_id="user_1")
+    bindings = asyncio.run(store.list_bindings(channel="weixin_clawbot", owner_user_id="user_1"))
     assert len(bindings) == 1
     assert bindings[0].credentials["bot_token"] == "token_1"
     assert bindings[0].credentials["base_url"] == "https://node.example.test"
@@ -239,20 +239,20 @@ def test_runtime_updates_only_target_binding():
     from deepclaw.web_backend.channels.weixin_clawbot.runtime import WeixinClawBotRuntime
 
     store = ChannelStore("sqlite:///:memory:")
-    first = store.create_binding(
+    first = asyncio.run(store.create_binding(
         channel="weixin_clawbot",
         owner_user_id="user_1",
         manager_user_id="manager_1",
         display_name="张三主号",
         credentials={},
-    )
-    second = store.create_binding(
+    ))
+    second = asyncio.run(store.create_binding(
         channel="weixin_clawbot",
         owner_user_id="user_1",
         manager_user_id="manager_1",
         display_name="李四代绑号",
         credentials={},
-    )
+    ))
     client = FakeRuntimeClient()
     service = FakeService()
     runtime = WeixinClawBotRuntime(
@@ -269,8 +269,8 @@ def test_runtime_updates_only_target_binding():
 
     asyncio.run(runtime.run_once())
 
-    refreshed_first = store.get_binding(first.id)
-    refreshed_second = store.get_binding(second.id)
+    refreshed_first = asyncio.run(store.get_binding(first.id))
+    refreshed_second = asyncio.run(store.get_binding(second.id))
 
     assert refreshed_first is not None
     assert refreshed_second is not None

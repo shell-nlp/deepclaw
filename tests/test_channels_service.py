@@ -70,7 +70,7 @@ def test_process_message_creates_mapping_and_dispatches_agent_response(service_c
     service = ChannelService(store=store, agent_client=agent_client, dispatcher=dispatcher)
 
     record = asyncio.run(service.process_message(message, FakeAdapter()))
-    sessions = store.list_sessions()
+    sessions = asyncio.run(store.list_sessions())
 
     assert record.status == "done"
     assert len(sessions) == 1
@@ -126,7 +126,7 @@ def test_user_id_override_isolated_channel_user_mappings(service_context):
     asyncio.run(service.process_message(first, FakeAdapter()))
     asyncio.run(service.process_message(second, FakeAdapter()))
 
-    sessions = store.list_sessions()
+    sessions = asyncio.run(store.list_sessions())
     assert len(sessions) == 2
     assert [call["user_id"] for call in agent_client.calls] == ["user_1", "user_2"]
 
@@ -150,7 +150,7 @@ def test_weixin_clawbot_new_sessions_default_to_streaming_reply_mode(service_con
     asyncio.run(service.process_message(message, FakeAdapter()))
 
     assert dispatcher.calls[0]["reply_mode"] == "streaming"
-    assert store.list_sessions()[0].reply_mode == "streaming"
+    assert asyncio.run(store.list_sessions())[0].reply_mode == "streaming"
 
 
 def test_weixin_clawbot_default_reply_mode_can_be_configured_to_final(service_context, monkeypatch):
@@ -177,7 +177,7 @@ def test_weixin_clawbot_default_reply_mode_can_be_configured_to_final(service_co
     asyncio.run(service.process_message(message, FakeAdapter()))
 
     assert dispatcher.calls[0]["reply_mode"] == "final"
-    assert store.list_sessions()[0].reply_mode == "final"
+    assert asyncio.run(store.list_sessions())[0].reply_mode == "final"
 
 
 def test_binding_id_isolated_channel_user_mappings(service_context):
@@ -187,18 +187,18 @@ def test_binding_id_isolated_channel_user_mappings(service_context):
     agent_client = service_context["agent_client"]
     dispatcher = service_context["dispatcher"]
     service = ChannelService(store=store, agent_client=agent_client, dispatcher=dispatcher)
-    first_binding = store.create_binding(
+    first_binding = asyncio.run(store.create_binding(
         channel="feishu",
         owner_user_id="user_1",
         manager_user_id="user_1",
         credentials={"app_id": "cli_a", "app_secret": "secret_a"},
-    )
-    second_binding = store.create_binding(
+    ))
+    second_binding = asyncio.run(store.create_binding(
         channel="feishu",
         owner_user_id="user_1",
         manager_user_id="user_1",
         credentials={"app_id": "cli_b", "app_secret": "secret_b"},
-    )
+    ))
     first = ChannelMessage(
         channel="feishu",
         message_id="fs_msg_1",
@@ -223,7 +223,7 @@ def test_binding_id_isolated_channel_user_mappings(service_context):
     asyncio.run(service.process_message(first, FakeAdapter()))
     asyncio.run(service.process_message(second, FakeAdapter()))
 
-    sessions = store.list_sessions()
+    sessions = asyncio.run(store.list_sessions())
     assert len(sessions) == 2
     assert sorted(session.binding_id for session in sessions) == sorted(
         [first_binding.id, second_binding.id]
@@ -237,12 +237,12 @@ def test_existing_binding_session_upgrades_guest_user_id_to_bound_user(service_c
     agent_client = service_context["agent_client"]
     dispatcher = service_context["dispatcher"]
     service = ChannelService(store=store, agent_client=agent_client, dispatcher=dispatcher)
-    binding = store.create_binding(
+    binding = asyncio.run(store.create_binding(
         channel="weixin_clawbot",
         owner_user_id="user_bound",
         manager_user_id="user_bound",
         credentials={"bot_token": "token"},
-    )
+    ))
     first = ChannelMessage(
         channel="weixin_clawbot",
         message_id="wx_msg_guest",
@@ -267,7 +267,7 @@ def test_existing_binding_session_upgrades_guest_user_id_to_bound_user(service_c
     asyncio.run(service.process_message(first, FakeAdapter()))
     asyncio.run(service.process_message(second, FakeAdapter()))
 
-    sessions = store.list_sessions()
+    sessions = asyncio.run(store.list_sessions())
     assert len(sessions) == 1
     assert sessions[0].user_id == "user_bound"
     assert [call["user_id"] for call in agent_client.calls] == ["guest", "user_bound"]
