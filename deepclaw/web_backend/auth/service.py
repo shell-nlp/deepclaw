@@ -19,86 +19,91 @@ class AuthService:
         self.admin_email = admin_email
         self.admin_password = admin_password
         self.token_expire_days = token_expire_days
-        self.store.reconcile_access_token_expiry(expire_days=token_expire_days)
 
-    def register(self, *, email: str, password: str):
+    async def initialize(self):
+        await self.store.reconcile_access_token_expiry(expire_days=self.token_expire_days)
+
+    async def register(self, *, email: str, password: str):
         normalized_email = email.strip().lower()
-        if self.store.get_user_by_email(normalized_email):
+        existing = await self.store.get_user_by_email(normalized_email)
+        if existing:
             raise ValueError("该邮箱已注册，请直接登录。")
-        return self.store.create_user(
+        return await self.store.create_user(
             email=normalized_email,
             password_hash=hash_password(password),
             role="user",
         )
 
-    def login(self, *, email: str, password: str):
+    async def login(self, *, email: str, password: str):
         normalized_email = email.strip().lower()
-        user = self.store.get_user_by_email(normalized_email)
+        user = await self.store.get_user_by_email(normalized_email)
         if user is None or not verify_password(password, user.password_hash):
             raise ValueError("邮箱或密码错误。")
         if not user.is_active:
             raise ValueError("当前账号已被禁用，请联系管理员。")
 
-        return self.store.issue_access_token(
+        return await self.store.issue_access_token(
             user=user,
             raw_token=generate_access_token(),
             expire_days=self.token_expire_days,
         )
 
-    def authenticate_token(self, token: str):
-        return self.store.get_actor_by_token(token)
+    async def authenticate_token(self, token: str):
+        return await self.store.get_actor_by_token(token)
 
-    def issue_user_access_token(self, *, user_id: str):
+    async def issue_user_access_token(self, *, user_id: str):
         """为仓库内的受信任调用方签发短生命周期用户令牌。"""
-        user = self.store.get_user_by_user_id(user_id)
+        user = await self.store.get_user_by_user_id(user_id)
         if user is None:
             raise ValueError("用户不存在。")
         if not user.is_active:
             raise ValueError("当前账号已被禁用，请联系管理员。")
-        return self.store.issue_access_token(
+        return await self.store.issue_access_token(
             user=user,
             raw_token=generate_access_token(),
             expire_days=1,
         )
 
-    def revoke_token(self, token: str) -> bool:
-        return self.store.revoke_token(token)
+    async def revoke_token(self, token: str) -> bool:
+        return await self.store.revoke_token(token)
 
-    def create_user_as_admin(self, *, email: str, password: str, role: str):
+    async def create_user_as_admin(self, *, email: str, password: str, role: str):
         normalized_email = email.strip().lower()
-        if self.store.get_user_by_email(normalized_email):
+        existing = await self.store.get_user_by_email(normalized_email)
+        if existing:
             raise ValueError("该邮箱已注册，请直接登录。")
-        return self.store.create_user(
+        return await self.store.create_user(
             email=normalized_email,
             password_hash=hash_password(password),
             role=role,
         )
 
-    def list_users(self, *, search: str = ""):
-        return self.store.list_users(search=search)
+    async def list_users(self, *, search: str = ""):
+        return await self.store.list_users(search=search)
 
-    def update_user_role(self, *, user_id: str, role: str):
-        return self.store.update_user_role(user_id=user_id, role=role)
+    async def update_user_role(self, *, user_id: str, role: str):
+        return await self.store.update_user_role(user_id=user_id, role=role)
 
-    def update_user_status(self, *, user_id: str, is_active: bool):
-        user = self.store.update_user_status(user_id=user_id, is_active=is_active)
+    async def update_user_status(self, *, user_id: str, is_active: bool):
+        user = await self.store.update_user_status(user_id=user_id, is_active=is_active)
         if not is_active:
-            self.store.revoke_tokens_by_user_id(user_id)
+            await self.store.revoke_tokens_by_user_id(user_id)
         return user
 
-    def reset_user_password(self, *, user_id: str, password: str):
-        self.store.revoke_tokens_by_user_id(user_id)
-        return self.store.update_user_password(
+    async def reset_user_password(self, *, user_id: str, password: str):
+        await self.store.revoke_tokens_by_user_id(user_id)
+        return await self.store.update_user_password(
             user_id=user_id,
             password_hash=hash_password(password),
         )
 
-    def bootstrap_admin_if_needed(self):
-        if self.store.has_admin_user():
+    async def bootstrap_admin_if_needed(self):
+        has_admin = await self.store.has_admin_user()
+        if has_admin:
             return None
         if not self.admin_email or not self.admin_password:
             return None
-        return self.store.create_user(
+        return await self.store.create_user(
             email=self.admin_email.strip().lower(),
             password_hash=hash_password(self.admin_password),
             role="admin",

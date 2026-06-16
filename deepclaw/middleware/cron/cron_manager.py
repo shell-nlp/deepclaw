@@ -2,9 +2,11 @@ import os
 from datetime import datetime
 from typing import Optional
 
-from sqlmodel import Field, Session, SQLModel, create_engine, select
+from sqlmodel import select
+from sqlmodel import Field, SQLModel
 
 from deepclaw.constant import home_path
+from deepclaw.web_backend.db import build_async_sessionmaker, create_async_engine_from_url
 
 
 class CronJob(SQLModel, table=True):
@@ -26,17 +28,26 @@ class CronManager:
             os.makedirs(home_path, exist_ok=True)
             db_url = f"sqlite:///{os.path.join(home_path, 'cron.db')}"
 
-        self.engine = create_engine(db_url, echo=False)
-        SQLModel.metadata.create_all(self.engine)
+        self.engine = create_async_engine_from_url(db_url)
+        self.async_session = build_async_sessionmaker(self.engine)
+        self._init_done = False
 
-    def add(
+    async def _ensure_init(self):
+        if self._init_done:
+            return
+        async with self.engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
+        self._init_done = True
+
+    async def add(
         self,
         name: str,
         cron_expression: str,
         command: str,
         description: Optional[str] = None,
     ) -> CronJob:
-        with Session(self.engine) as session:
+        await self._ensure_init()
+        async with self.async_session() as session:
             job = CronJob(
                 name=name,
                 cron_expression=cron_expression,
@@ -44,60 +55,71 @@ class CronManager:
                 description=description,
             )
             session.add(job)
-            session.commit()
-            session.refresh(job)
+            await session.commit()
+            await session.refresh(job)
             return job
 
-    def list(self, enabled: Optional[bool] = None) -> list[CronJob]:
-        with Session(self.engine) as session:
+    async def list(self, enabled: Optional[bool] = None) -> list[CronJob]:
+        await self._ensure_init()
+        async with self.async_session() as session:
             statement = select(CronJob)
             if enabled is not None:
                 statement = statement.where(CronJob.enabled == enabled)
             statement = statement.order_by(CronJob.created_at.desc())
-            return session.exec(statement).all()
+            result = await session.exec(statement)
+            return list(result.all())
 
-    def get(
+    async def get(
         self,
         job_id: Optional[int] = None,
         name: Optional[str] = None,
     ) -> Optional[CronJob]:
-        with Session(self.engine) as session:
+        await self._ensure_init()
+        async with self.async_session() as session:
             if job_id is not None:
-                return session.get(CronJob, job_id)
+                return await session.get(CronJob, job_id)
             if name:
-                statement = select(CronJob).where(CronJob.name == name)
-                return session.exec(statement).first()
+                result = await session.exec(
+                    select(CronJob).where(CronJob.name == name)
+                )
+                return result.first()
         return None
 
-    def remove(self, job_id: Optional[int] = None, name: Optional[str] = None) -> bool:
-        with Session(self.engine) as session:
+    async def remove(self, job_id: Optional[int] = None, name: Optional[str] = None) -> bool:
+        await self._ensure_init()
+        async with self.async_session() as session:
             if job_id is not None:
-                job = session.get(CronJob, job_id)
+                job = await session.get(CronJob, job_id)
             elif name:
-                statement = select(CronJob).where(CronJob.name == name)
-                job = session.exec(statement).first()
+                result = await session.exec(
+                    select(CronJob).where(CronJob.name == name)
+                )
+                job = result.first()
             else:
                 return False
 
             if job is None:
                 return False
 
-            session.delete(job)
-            session.commit()
+            await session.delete(job)
+            await session.commit()
             return True
 
-    def update(
+    async def update(
         self,
         job_id: Optional[int] = None,
         name: Optional[str] = None,
         **kwargs,
     ) -> Optional[CronJob]:
-        with Session(self.engine) as session:
+        await self._ensure_init()
+        async with self.async_session() as session:
             if job_id is not None:
-                job = session.get(CronJob, job_id)
+                job = await session.get(CronJob, job_id)
             elif name:
-                statement = select(CronJob).where(CronJob.name == name)
-                job = session.exec(statement).first()
+                result = await session.exec(
+                    select(CronJob).where(CronJob.name == name)
+                )
+                job = result.first()
             else:
                 return None
 
@@ -110,8 +132,8 @@ class CronManager:
 
             job.updated_at = datetime.utcnow()
             session.add(job)
-            session.commit()
-            session.refresh(job)
+            await session.commit()
+            await session.refresh(job)
             return job
 
 

@@ -25,7 +25,7 @@ def manager_user_id_from_actor(actor: CurrentActor) -> str:
     raise HTTPException(status_code=403, detail="当前账号缺少可用的 user_id。")
 
 
-def session_manager_user_id(
+async def session_manager_user_id(
     channel_store: ChannelStore,
     channel_session: ChannelSession,
 ) -> str:
@@ -34,7 +34,7 @@ def session_manager_user_id(
         return str(manager_user_id)
 
     if channel_session.channel == "weixin_clawbot":
-        states = channel_store.list_runtime_states(channel="weixin_clawbot")
+        states = await channel_store.list_runtime_states(channel="weixin_clawbot")
         for state in states:
             state_data = state.data or {}
             owner_user_id = state_data.get("owner_user_id")
@@ -44,7 +44,7 @@ def session_manager_user_id(
     return channel_session.user_id
 
 
-def ensure_session_access(
+async def ensure_session_access(
     *,
     actor: CurrentActor,
     channel_store: ChannelStore,
@@ -52,7 +52,7 @@ def ensure_session_access(
 ) -> None:
     if is_admin(actor):
         return
-    if session_manager_user_id(channel_store, channel_session) != manager_user_id_from_actor(actor):
+    if await session_manager_user_id(channel_store, channel_session) != manager_user_id_from_actor(actor):
         raise HTTPException(status_code=404, detail="Channel session not found")
 
 
@@ -119,7 +119,6 @@ def ensure_binding_owner_or_manager_match(
         raise HTTPException(status_code=422, detail="owner_user_id is required")
     if owner_user_id == manager_user_id_from_actor(actor):
         return
-    # 协作绑定模式允许代他人录入，只要后续仍由 owner 或 manager 管理。
     return
 
 

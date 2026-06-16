@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -13,7 +15,7 @@ def build_client() -> TestClient:
         admin_password="admin-pass-123",
         token_expire_days=30,
     )
-    service.bootstrap_admin_if_needed()
+    asyncio.run(service.bootstrap_admin_if_needed())
 
     app = FastAPI()
     app.include_router(create_auth_router(service=service))

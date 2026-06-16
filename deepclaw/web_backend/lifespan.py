@@ -26,7 +26,7 @@ def setup_observability() -> None:
 async def app_lifespan(app: FastAPI):
     setup_observability()
     patch_langchain()
-    get_auth_service().bootstrap_admin_if_needed()
+    await get_auth_service().bootstrap_admin_if_needed()
     async with channel_lifespan():
         yield
 

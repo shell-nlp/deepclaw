@@ -55,7 +55,7 @@ def create_feishu_router(
         actor: CurrentActor = Depends(get_current_actor),
     ):
         ensure_binding_owner_or_manager_match(actor=actor, owner_user_id=user_id)
-        binding = channel_store.upsert_binding(
+        binding = await channel_store.upsert_binding(
             channel="feishu",
             owner_user_id=user_id,
             manager_user_id=manager_user_id_from_actor(actor),
@@ -86,7 +86,7 @@ def create_feishu_router(
             actor=actor,
             owner_user_id=owner_user_id,
         )
-        binding = channel_store.create_binding(
+        binding = await channel_store.create_binding(
             channel="feishu",
             owner_user_id=owner_user_id,
             manager_user_id=manager_user_id_from_actor(actor),
@@ -112,7 +112,7 @@ def create_feishu_router(
         user_id: str,
         actor: CurrentActor = Depends(get_current_actor),
     ):
-        bindings = channel_store.list_bindings(channel="feishu", owner_user_id=user_id)
+        bindings = await channel_store.list_bindings(channel="feishu", owner_user_id=user_id)
         binding = bindings[0] if bindings else None
         ensure_binding_access(actor=actor, binding=binding, not_found_detail="Feishu binding not found")
         return binding.model_dump()
@@ -123,7 +123,7 @@ def create_feishu_router(
     ):
         items = [
             binding.model_dump()
-            for binding in channel_store.list_bindings(
+            for binding in await channel_store.list_bindings(
                 channel="feishu",
                 participant_user_id=(
                     None if is_admin(actor) else manager_user_id_from_actor(actor)
@@ -137,11 +137,11 @@ def create_feishu_router(
         user_id: str,
         actor: CurrentActor = Depends(get_current_actor),
     ):
-        bindings = channel_store.list_bindings(channel="feishu", owner_user_id=user_id)
+        bindings = await channel_store.list_bindings(channel="feishu", owner_user_id=user_id)
         binding = bindings[0] if bindings else None
         ensure_binding_access(actor=actor, binding=binding, not_found_detail="Feishu binding not found")
         await stop_feishu_runtime(binding.id)
-        deleted = channel_store.delete_binding(binding.id)
+        deleted = await channel_store.delete_binding(binding.id)
         return {"user_id": user_id, "deleted": deleted}
 
     @router.delete("/feishu/bindings/{binding_id}")
@@ -149,14 +149,14 @@ def create_feishu_router(
         binding_id: int,
         actor: CurrentActor = Depends(get_current_actor),
     ):
-        binding = channel_store.get_binding(binding_id)
+        binding = await channel_store.get_binding(binding_id)
         ensure_binding_access(
             actor=actor,
             binding=binding,
             not_found_detail="Feishu binding not found",
         )
         await stop_feishu_runtime(binding_id)
-        deleted = channel_store.delete_binding(binding_id)
+        deleted = await channel_store.delete_binding(binding_id)
         return {"binding_id": binding_id, "deleted": deleted}
 
     return router

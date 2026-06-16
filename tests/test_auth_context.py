@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
@@ -82,7 +84,7 @@ def test_general_api_accepts_internal_user_token():
         admin_password=None,
         token_expire_days=30,
     )
-    user = service.register(email="channel-user@example.com", password="secret-123")
+    user = asyncio.run(service.register(email="channel-user@example.com", password="secret-123"))
 
     app = FastAPI()
     agent = DummyAgent()
@@ -94,7 +96,7 @@ def test_general_api_accepts_internal_user_token():
         name="test_general_api",
         tags=["tests"],
     )
-    issued = service.issue_user_access_token(user_id=user.user_id)
+    issued = asyncio.run(service.issue_user_access_token(user_id=user.user_id))
     app.dependency_overrides[get_auth_service] = lambda: service
     client = TestClient(app)
 

@@ -41,7 +41,7 @@ async def channel_lifespan() -> AsyncIterator[None]:
 
 async def start_saved_weixin_clawbot_runtimes(*, store: ChannelStore) -> None:
     bindings = (
-        store.list_bindings(channel=WEIXIN_CLAWBOT_CHANNEL)
+        await store.list_bindings(channel=WEIXIN_CLAWBOT_CHANNEL)
         if hasattr(store, "list_bindings")
         else []
     )
@@ -54,7 +54,7 @@ async def start_saved_weixin_clawbot_runtimes(*, store: ChannelStore) -> None:
             await start_weixin_binding_runtime(binding_id=binding.id, store=store)
         return
 
-    states = store.list_runtime_states(channel=WEIXIN_CLAWBOT_CHANNEL)
+    states = await store.list_runtime_states(channel=WEIXIN_CLAWBOT_CHANNEL)
     for state in states:
         if not state.state_key.startswith("user:"):
             continue
@@ -100,7 +100,7 @@ async def start_weixin_binding_runtime(
     binding_id: int,
     store: ChannelStore,
 ) -> asyncio.Task | None:
-    binding = store.get_binding(binding_id)
+    binding = await store.get_binding(binding_id)
     if binding is None:
         return None
 

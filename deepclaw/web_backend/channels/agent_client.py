@@ -34,7 +34,7 @@ class AgentClient:
             "session_id": session_id,
             "stream": True,
         }
-        issued_token = self._issue_user_token(user_id)
+        issued_token = await self._issue_user_token(user_id)
         headers = self._build_headers(issued_token.token if issued_token else None)
         try:
             async for line in self.sender(payload, headers):
@@ -43,7 +43,7 @@ class AgentClient:
                     yield event
         finally:
             if issued_token is not None:
-                self.auth_service.revoke_token(issued_token.token)
+                await self.auth_service.revoke_token(issued_token.token)
 
     def _parse_sse_line(self, line: str) -> AgentEvent | None:
         stripped = line.strip()
@@ -56,11 +56,10 @@ class AgentClient:
 
         return AgentEvent.model_validate(json.loads(raw))
 
-    def _issue_user_token(self, user_id: str):
-        # 渠道内部转发需要带真实登录态，避免通用接口把绑定用户降级为 guest。
+    async def _issue_user_token(self, user_id: str):
         if not user_id or user_id == "guest":
             return None
-        return self.auth_service.issue_user_access_token(user_id=user_id)
+        return await self.auth_service.issue_user_access_token(user_id=user_id)
 
     def _build_headers(self, token: str | None) -> dict[str, str]:
         if not token:

@@ -137,22 +137,22 @@ def test_start_saved_weixin_runtimes_prefers_binding_records(monkeypatch):
     from deepclaw.web_backend.channels.store import ChannelStore
 
     store = ChannelStore("sqlite:///:memory:")
-    first = store.create_binding(
+    first = asyncio.run(store.create_binding(
         channel="weixin_clawbot",
         owner_user_id="user_1",
         manager_user_id="user_1",
         display_name="张三主号",
         credentials={"bot_token": "token_1"},
         runtime_state={"qrcode": "qr_1", "status": "connected"},
-    )
-    second = store.create_binding(
+    ))
+    second = asyncio.run(store.create_binding(
         channel="weixin_clawbot",
         owner_user_id="user_1",
         manager_user_id="user_1",
         display_name="李四代绑号",
         credentials={"bot_token": "token_2"},
         runtime_state={"qrcode": "qr_2", "status": "connected"},
-    )
+    ))
     started = []
 
     async def fake_start_runtime(*, binding_id, store):

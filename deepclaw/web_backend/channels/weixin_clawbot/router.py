@@ -76,7 +76,7 @@ async def _refresh_weixin_binding_qrcode(
     )
     qrcode = data.get("qrcode")
     qrcode_url = data.get("qrcode_img_content") or qrcode
-    updated = channel_store.update_binding(
+    updated = await channel_store.update_binding(
         binding.id,
         runtime_state={
             "status": "pending",
@@ -84,7 +84,7 @@ async def _refresh_weixin_binding_qrcode(
             "qrcode_url": qrcode_url,
         },
     )
-    channel_store.upsert_runtime_state(
+    await channel_store.upsert_runtime_state(
         channel=WEIXIN_CLAWBOT_CHANNEL,
         state_key=weixin_binding_state_key(binding.id),
         data={
@@ -172,7 +172,7 @@ def create_weixin_clawbot_router(
             owner_user_id=request.owner_user_id,
         )
         client = weixin_client or WeixinClawBotClient()
-        binding = channel_store.create_binding(
+        binding = await channel_store.create_binding(
             channel=WEIXIN_CLAWBOT_CHANNEL,
             owner_user_id=request.owner_user_id,
             manager_user_id=manager_user_id_from_actor(actor),
@@ -194,7 +194,7 @@ def create_weixin_clawbot_router(
         binding_id: int,
         actor: CurrentActor = Depends(get_current_actor),
     ):
-        binding = channel_store.get_binding(binding_id)
+        binding = await channel_store.get_binding(binding_id)
         ensure_binding_access(
             actor=actor,
             binding=binding,
@@ -217,14 +217,14 @@ def create_weixin_clawbot_router(
         verify_code: str | None = None,
         actor: CurrentActor = Depends(get_current_actor),
     ):
-        binding = channel_store.get_binding(binding_id)
+        binding = await channel_store.get_binding(binding_id)
         ensure_binding_access(
             actor=actor,
             binding=binding,
             not_found_detail="Weixin ClawBot binding not found",
         )
         state_key = weixin_binding_state_key(binding_id)
-        runtime_state = channel_store.get_runtime_state(
+        runtime_state = await channel_store.get_runtime_state(
             channel=WEIXIN_CLAWBOT_CHANNEL,
             state_key=state_key,
         )
@@ -266,7 +266,7 @@ def create_weixin_clawbot_router(
             update_data["bot_token"] = str(status["bot_token"])
         if status.get("baseurl"):
             update_data["base_url"] = str(status["baseurl"]).rstrip("/")
-        channel_store.upsert_runtime_state(
+        await channel_store.upsert_runtime_state(
             channel=WEIXIN_CLAWBOT_CHANNEL,
             state_key=state_key,
             data=update_data,
@@ -282,7 +282,7 @@ def create_weixin_clawbot_router(
             base_url = str(status["baseurl"]).rstrip("/")
             credentials["base_url"] = base_url
             binding_runtime_state["base_url"] = base_url
-        channel_store.update_binding(
+        await channel_store.update_binding(
             binding_id,
             credentials=credentials,
             runtime_state=binding_runtime_state,
@@ -297,18 +297,18 @@ def create_weixin_clawbot_router(
         binding_id: int,
         actor: CurrentActor = Depends(get_current_actor),
     ):
-        binding = channel_store.get_binding(binding_id)
+        binding = await channel_store.get_binding(binding_id)
         ensure_binding_access(
             actor=actor,
             binding=binding,
             not_found_detail="Weixin ClawBot binding not found",
         )
         await stop_weixin_binding_runtime(binding_id)
-        channel_store.delete_runtime_state(
+        await channel_store.delete_runtime_state(
             channel=WEIXIN_CLAWBOT_CHANNEL,
             state_key=weixin_binding_state_key(binding_id),
         )
-        deleted = channel_store.delete_binding(binding_id)
+        deleted = await channel_store.delete_binding(binding_id)
         return {"binding_id": binding_id, "deleted": deleted}
 
     @router.post("/weixin-clawbot/users/{user_id}/qrcode")
@@ -319,7 +319,7 @@ def create_weixin_clawbot_router(
         ensure_binding_owner_or_manager_match(actor=actor, owner_user_id=user_id)
         client = weixin_client or WeixinClawBotClient()
         state_key = weixin_clawbot_user_state_key(user_id)
-        runtime_state = channel_store.get_runtime_state(
+        runtime_state = await channel_store.get_runtime_state(
             channel=WEIXIN_CLAWBOT_CHANNEL,
             state_key=state_key,
         )
@@ -341,7 +341,7 @@ def create_weixin_clawbot_router(
         )
         qrcode = data.get("qrcode")
         qrcode_url = data.get("qrcode_img_content") or qrcode
-        channel_store.upsert_runtime_state(
+        await channel_store.upsert_runtime_state(
             channel=WEIXIN_CLAWBOT_CHANNEL,
             state_key=state_key,
             data={
@@ -351,7 +351,7 @@ def create_weixin_clawbot_router(
                 "qrcode_url": qrcode_url,
             },
         )
-        channel_store.upsert_binding(
+        await channel_store.upsert_binding(
             channel=WEIXIN_CLAWBOT_CHANNEL,
             owner_user_id=user_id,
             manager_user_id=manager_user_id_from_actor(actor),
@@ -375,7 +375,7 @@ def create_weixin_clawbot_router(
         actor: CurrentActor = Depends(get_current_actor),
     ):
         state_key = weixin_clawbot_user_state_key(user_id)
-        runtime_state = channel_store.get_runtime_state(
+        runtime_state = await channel_store.get_runtime_state(
             channel=WEIXIN_CLAWBOT_CHANNEL,
             state_key=state_key,
         )
@@ -417,7 +417,7 @@ def create_weixin_clawbot_router(
             update_data["bot_token"] = str(status["bot_token"])
         if status.get("baseurl"):
             update_data["base_url"] = str(status["baseurl"]).rstrip("/")
-        channel_store.upsert_runtime_state(
+        await channel_store.upsert_runtime_state(
             channel=WEIXIN_CLAWBOT_CHANNEL,
             state_key=state_key,
             data=update_data,
@@ -432,7 +432,7 @@ def create_weixin_clawbot_router(
             base_url = str(status["baseurl"]).rstrip("/")
             credentials["base_url"] = base_url
             binding_runtime_state["base_url"] = base_url
-        channel_store.upsert_binding(
+        await channel_store.upsert_binding(
             channel=WEIXIN_CLAWBOT_CHANNEL,
             owner_user_id=user_id,
             manager_user_id=manager_user_id_from_actor(actor),
@@ -455,7 +455,7 @@ def create_weixin_clawbot_router(
     async def list_weixin_clawbot_users(
         actor: CurrentActor = Depends(get_current_actor),
     ):
-        states = channel_store.list_runtime_states(channel=WEIXIN_CLAWBOT_CHANNEL)
+        states = await channel_store.list_runtime_states(channel=WEIXIN_CLAWBOT_CHANNEL)
         items: list[WeixinClawBotBoundUserRead] = []
         current_manager_user_id: str | None = None
         if not actor.is_guest and actor.role == "admin":
@@ -501,7 +501,7 @@ def create_weixin_clawbot_router(
         actor: CurrentActor = Depends(get_current_actor),
     ):
         state_key = weixin_clawbot_user_state_key(user_id)
-        runtime_state = channel_store.get_runtime_state(
+        runtime_state = await channel_store.get_runtime_state(
             channel=WEIXIN_CLAWBOT_CHANNEL,
             state_key=state_key,
         )
@@ -514,7 +514,7 @@ def create_weixin_clawbot_router(
         )
 
         await stop_weixin_clawbot_runtime(state_key)
-        deleted = channel_store.delete_runtime_state(
+        deleted = await channel_store.delete_runtime_state(
             channel=WEIXIN_CLAWBOT_CHANNEL,
             state_key=state_key,
         )
