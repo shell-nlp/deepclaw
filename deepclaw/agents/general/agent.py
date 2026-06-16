@@ -1,11 +1,19 @@
-﻿from typing import Any
+from typing import Any
 
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.runtime import Runtime
 from loguru import logger
 
 from deepclaw.agents.general.context import AgentContext
-from deepclaw.constant import home_path, workspace_path
+from deepclaw.constant import (
+    AGENT_VIRTUAL_PREFERENCES,
+    SANDBOX_SHARED_AGENTS,
+    SANDBOX_SHARED_SKILLS,
+    SANDBOX_USER_AGENTS,
+    SANDBOX_USER_SKILLS,
+    home_path,
+    workspace_path,
+)
 from deepclaw.middleware.common import BusinessMiddleware
 from deepclaw.middleware.deep_agent_prompt import DeepAgentPromptMiddleware
 from deepclaw.middleware.mcp import MCPMiddleware
@@ -64,17 +72,18 @@ class Agent:
             from deepclaw.backend.open_sandbox import OpenSandbox
             from deepclaw.middleware.sandbox.opensandbox_kill import OpenSandboxKillMiddleware
 
-            skills = ["/shared_workspace/skills", "/.deepclaw/workspace/skills"]
-            memory = ["/shared_workspace/AGENTS.md"]
+            # 注意：以下是 Docker 容器内路径（容器 OS 永远为 Linux），
+            # 与宿主 OS 无关，不要替换为 workspace_path 等 host 路径。
+            skills = [SANDBOX_SHARED_SKILLS, SANDBOX_USER_SKILLS]
+            memory = [SANDBOX_SHARED_AGENTS, SANDBOX_USER_AGENTS]
             middleware.append(OpenSandboxKillMiddleware())
             backend = OpenSandbox()
             logger.info("使用 OpenSandbox 作为后端")
         elif settings.BACKEND_TYPE == "local_shell":
             from deepagents.backends.local_shell import LocalShellBackend
 
-            skills = [
-                str(workspace_path / "skills"),
-            ]
+            # 宿主机路径，使用 pathlib.Path 自动处理 Windows / Linux / macOS 分隔符
+            skills = [str(workspace_path / "skills")]
             memory = [str(workspace_path / "AGENTS.md")]
             backend = LocalShellBackend(root_dir=home_path, virtual_mode=False, inherit_env=True)
             logger.info("使用 LocalShellBackend 作为后端")
@@ -119,7 +128,7 @@ class Agent:
             logger.info("使用 DeepAgent")
             from deepagents import FilesystemPermission, create_deep_agent
 
-            memory.append("/memories/preferences.md")
+            memory.append(AGENT_VIRTUAL_PREFERENCES)
             return create_deep_agent(
                 model=model,
                 tools=tools,
