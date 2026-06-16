@@ -26,9 +26,19 @@ def init_agent_env():
     if settings.PG_DATABASE_URL:
         from langgraph.store.postgres import PostgresStore
 
-        store_ctx = PostgresStore.from_conn_string(settings.PG_DATABASE_URL)
+        # 使用连接池而不是单连接：
+        # 池子默认按 max_lifetime=3600s / max_idle=600s 自动回收连接，
+        # 避免 server 端因空闲超时或重启杀掉长连接后所有请求都失败
+        store_ctx = PostgresStore.from_conn_string(
+            settings.PG_DATABASE_URL,
+            pool_config={"min_size": 1, "max_size": 10},
+        )
         store = store_ctx.__enter__()
         store.setup()
+        # 关键：from_conn_string 是 @contextmanager，连接 / 连接池资源都握在
+        # generator frame 里。如果不把 store_ctx 挂在 store 上，
+        # init_agent_env() 返回后 store_ctx 会被立即 GC，触发 __exit__ 把连接关掉，
+        # 后续 store.put / store.batch 会报 "the connection is closed"。
         store._store_cm = store_ctx
         logger.info("使用 PostgresStore 作为长期记忆")
     else:
