@@ -8,6 +8,7 @@ from deepclaw.settings import settings
 
 shanghai_tz = ZoneInfo("Asia/Shanghai")  # 设置亚洲/上海时区
 
+
 def get_current_time() -> str:
     # 星期几的映射表
     weekday_map = {
@@ -34,6 +35,9 @@ def get_chat_model() -> ChatDeepSeek:
         api_base=settings.OPENAI_API_BASE,
         api_key=settings.OPENAI_API_KEY,
         extra_body={"enable_thinking": False},
+        # default_headers={
+        #     "Host": "default-model.ai.api",
+        # },
     )
 
 
@@ -42,4 +46,3 @@ def get_embedding_model() -> OpenAIEmbeddings:
     return OpenAIEmbeddings(
         model=settings.EMBEDDING_MODEL_NAME,
     )
-
