@@ -1,3 +1,3 @@
-from deepclaw.middleware.nl2sql.nl2sql import BusinessMiddleware
+from deepclaw.middleware.nl2sql.nl2sql import NL2SQLMiddleware
 
-__all__ = ["BusinessMiddleware"]
+__all__ = ["NL2SQLMiddleware"]
