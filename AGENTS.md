@@ -77,6 +77,7 @@
 
 - `deepclaw/middleware/`
   业务开关、RAG 注入、MCP、工具搜索、计划，以及 `cron` 工具实现等中间件与运行时扩展。
+  NL2SQL 相关逻辑在 `deepclaw/middleware/nl2sql/`，DDL 拉取采用可注册 fetcher 架构（`ddl/base.py` + 各数据库实现如 `ddl/pgsql.py`）。
 
 - `deepclaw/tools/`
   天气、网页抓取、检索等工具导出；`cron` 相关实现已归档到 `deepclaw/middleware/cron/`。
