@@ -1,10 +1,13 @@
 ﻿import os
+from typing import cast
 
 from langchain.agents.middleware import AgentMiddleware
+from langchain_core.messages import SystemMessage
 from loguru import logger
 
 from deepclaw.agents.general.context import AgentContext
 from deepclaw.agents.general.state import StateSchema
+from deepclaw.utils import get_current_time
 
 
 # https://github.com/CopilotKit/CopilotKit/issues/2646
@@ -21,15 +24,28 @@ class BusinessMiddleware(AgentMiddleware[None, AgentContext, None]):
 
             self.tools.append(TavilySearch())
 
+    def _override_system_message(self, request):
+
+        current_time = get_current_time()
+        prompt_suffix = f"## 系统时间{current_time}"
+        if request.system_message is not None:
+            new_system_content = [
+                *request.system_message.content_blocks,
+                {"type": "text", "text": f"\n\n{prompt_suffix}"},
+            ]
+        else:
+            new_system_content = [{"type": "text", "text": prompt_suffix}]
+
+        new_system_message = SystemMessage(content=cast("list[str | dict[str, str]]", new_system_content))
+        return new_system_message
+
     def wrap_model_call(self, request, handler):
         context: AgentContext = request.runtime.context
         internet_search = context.internet_search
         deep_thinking = context.deep_thinking
         if not internet_search:
             # 禁用互联网搜索相关的工具调用
-            filtered_tools = [
-                tool for tool in request.tools if tool.name != "tavily_search"
-            ]
+            filtered_tools = [tool for tool in request.tools if tool.name != "tavily_search"]
             request = request.override(tools=filtered_tools)
 
         # 处理深度思考
@@ -47,8 +63,7 @@ class BusinessMiddleware(AgentMiddleware[None, AgentContext, None]):
             model_settings["extra_body"] = model_settings.get("extra_body", {})
             model_settings["extra_body"]["enable_thinking"] = False
             request = request.override(model_settings=model_settings)
-        return handler(request)
+        return handler(request.override(system_message=self._override_system_message(request)))
 
     async def awrap_model_call(self, request, handler):
         return await self.wrap_model_call(request, handler)
-
