@@ -47,10 +47,9 @@ async def init_agent_env(app: FastAPI) -> None:
         )
         checkpointer = await _ctx.__aenter__()
         await checkpointer.setup()
-        # 关键：AsyncPostgresSaver.from_conn_string() 返回的是异步上下文管理器。
-        # 如果不把 _ctx 挂到 app.state 上保活，函数返回后它可能被回收并触发 __aexit__，
-        # 后续请求读 checkpoint 时就会报 "the connection is closed"。
-        app.state.agent_checkpointer_ctx = _ctx
+
+        checkpointer._checkpointer_cm = _ctx  # 如果不把 _ctx 挂到 checkpointer._checkpointer_cm 上保活，函数返回后它可能被回收并触发 __aexit__，后续请求读 checkpoint 时就会报 "the connection is closed"。
+        app.state.checkpointer = checkpointer
         logger.info("使用 AsyncPostgresSaver 作为检查点")
         # ------------------------------------------------------
         from langgraph.store.postgres.aio import AsyncPostgresStore
@@ -69,7 +68,7 @@ async def init_agent_env(app: FastAPI) -> None:
         # init_agent_env() 返回后 store_ctx 会被立即 GC，触发 __exit__ 把连接关掉，
         # 后续 store.put / store.batch 会报 "the connection is closed"。
         store._store_cm = store_ctx
-        app.state.agent_store_ctx = store_ctx
+        app.state.store = store
         logger.info("使用 AsyncPostgresStore 作为长期记忆")
     else:
         from langgraph.checkpoint.memory import InMemorySaver
