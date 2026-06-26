@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 把 `deepclaw/common/elastic_utils.py` 中的通用向量库能力抽成稳定抽象，保留 Elasticsearch 兼容入口，并新增一个支持多 `index_name` 联查的 `PgVectorStore` 实现。
+**Goal:** 把通用向量库能力抽成稳定抽象，新增一个支持多 `index_name` 联查的 `PgVectorStore` 实现，并让普通检索链路优先依赖抽象层与统一创建入口，方便后续切库。
 
-**Architecture:** 新增 `deepclaw/common/vector_store/` 目录，里面定义 `AbstractVectorStore`、`ElasticsearchVectorStore`、`PgVectorStore`。`elastic_utils.py` 退化为 ES 兼容层，继续导出 `Elasticsearch` 名称和 ES 专属图检索方法。PgSQL 版本使用 PostgreSQL + pgvector + Full Text Search，并在物理存储上按 `index_name` 分区，同时在接口上支持单索引和多索引联查。
+**Architecture:** 新增 `deepclaw/common/vector_store/` 目录，里面定义 `AbstractVectorStore`、`ElasticsearchVectorStore`、`PgVectorStore` 与统一创建入口 `create_vector_store()`。普通检索链路依赖抽象接口，ES 专属图检索继续显式依赖 `ElasticsearchVectorStore`。PgSQL 版本使用 PostgreSQL + pgvector + Full Text Search，并在物理存储上按 `index_name` 分区，同时在接口上支持单索引和多索引联查。
 
 **Tech Stack:** Python 3.12, Elasticsearch 8.x client, PostgreSQL, pgvector, psycopg, pytest, Ruff, CodeGraph.
 

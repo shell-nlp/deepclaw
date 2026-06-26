@@ -56,7 +56,7 @@
   技能管理路由、请求模型与服务实现。
 
 - `deepclaw/web_backend/knowledge_bases/`
-  知识库管理路由、请求模型与服务实现。
+ 知识库管理路由、请求模型、元数据存储与服务实现。
 
 - `deepclaw/web_backend/agent/router.py`
   Agent 的 AG-UI 与通用 SSE HTTP 入口。
@@ -76,10 +76,10 @@
   Elasticsearch、向量数据库抽象、Graph RAG、PDF 切分等通用算法实现。
 
 - `deepclaw/common/vector_store/`
-  向量数据库抽象层，包含通用 `AbstractVectorStore`、Elasticsearch 实现，以及基于 PostgreSQL + pgvector + pg_search 的实现。
+  向量数据库抽象层，包含通用 `AbstractVectorStore`、统一创建入口 `create_vector_store()`、Elasticsearch 实现，以及基于 PostgreSQL + pgvector + pg_search 的实现。
 
-- `deepclaw/common/elastic_utils.py`
-  Elasticsearch 向量库的兼容导出层，保留历史导入路径，并继续承载 ES 专属的图检索扩展能力。
+- `deepclaw/common/elastic_graph_rag.py`
+  Elasticsearch 专属的 Graph RAG 实现。普通检索链路优先依赖 `AbstractVectorStore`，只有图检索路径才依赖 `ElasticsearchVectorStore`。
 
 - `deepclaw/middleware/`
   业务开关、RAG 注入、MCP、工具搜索、计划，以及 `cron` 工具实现等中间件与运行时扩展。
@@ -158,6 +158,7 @@ pnpm build
 - `TAVILY_API_KEY`
 - `BACKEND_TYPE`
 - `PG_DATABASE_URL`
+- `VECTOR_STORE_BACKEND`
 - `LANGSMITH_API_KEY`
 - `USE_COPILOTKIT`
 - `USE_TOOL_SEARCH`

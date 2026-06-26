@@ -7,7 +7,7 @@ from langchain_core.documents import Document
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from deepclaw.common.elastic_utils import Elasticsearch
+from deepclaw.common.vector_store.elasticsearch import ElasticsearchVectorStore
 from deepclaw.utils import get_chat_model
 
 TRIPLET_PROMPT = """从文本中抽取知识图谱三元组。
@@ -50,7 +50,7 @@ class QueryEntityExtractionResult(BaseModel):
 class ElasticGraphRAG:
     """基于 Elasticsearch 的轻量 Vector Graph RAG。"""
 
-    def __init__(self, es: Elasticsearch, graph_name: str, chat_model=None):
+    def __init__(self, es: ElasticsearchVectorStore, graph_name: str, chat_model=None):
         self.es = es
         self.graph_name = graph_name
         self.chat_model = chat_model
@@ -566,7 +566,7 @@ if __name__ == "__main__":
 
     from deepclaw.settings import settings
 
-    es = Elasticsearch(
+    es = ElasticsearchVectorStore(
         url=settings.ES_URL,
         username=settings.ES_URSR,
         password=settings.ES_PWD,

@@ -1,18 +1,19 @@
 ﻿from langchain.tools import tool
 
 from deepclaw.common.elastic_graph_rag import ElasticGraphRAG
-from deepclaw.common.elastic_utils import Elasticsearch
+from deepclaw.common.vector_store import (
+    AbstractVectorStore,
+    create_default_vector_store,
+)
+from deepclaw.common.vector_store.elasticsearch import ElasticsearchVectorStore
 from deepclaw.settings import settings
 from deepclaw.utils import get_embedding_model
 
 DEFAULT_INDEX_NAME = "236"
 
 embeddings = get_embedding_model()
-# 复用全局 ES 检索器，避免普通检索请求重复初始化客户端。
-es_retriever = Elasticsearch(
-    url=settings.ES_URL,
-    username=settings.ES_URSR,
-    password=settings.ES_PWD,
+# 复用全局检索器，普通检索统一走抽象接口，后续切库只需改后端类型。
+default_retriever: AbstractVectorStore = create_default_vector_store(
     embedding_model=embeddings,
 )
 
@@ -20,7 +21,7 @@ es_retriever = Elasticsearch(
 @tool
 def retrieve_context(query: str):
     """检索与查询相关的信息。"""
-    docs = es_retriever.retrieve(query=query, k=3, index_name=DEFAULT_INDEX_NAME)
+    docs = default_retriever.retrieve(query=query, k=3, index_name=DEFAULT_INDEX_NAME)
     context = ""
     for idx, doc in enumerate(docs, start=1):
         context += f"文档 {idx}: \n{doc.get('content', '')}\n\n"
@@ -34,7 +35,7 @@ retrieve_tool = retrieve_context
 def retrieve_graph_context(query: str, graph_name: str = DEFAULT_INDEX_NAME):
     """使用 ES 向量图 RAG 检索与查询相关的上下文。"""
     # 图检索依赖 graph_name 构造实例，因此按调用动态创建。
-    es = Elasticsearch(
+    es = ElasticsearchVectorStore(
         url=settings.ES_URL,
         username=settings.ES_URSR,
         password=settings.ES_PWD,

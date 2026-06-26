@@ -2,7 +2,7 @@
 
 **日期：** 2026-06-25
 
-**目标：** 在保留现有 Elasticsearch 路径可用性的前提下，把 `deepclaw/common/elastic_utils.py` 中“通用向量库能力”抽成稳定接口，并新增一个基于 PostgreSQL + pgvector + Full Text Search 的实现，为后续接入更多向量数据库提供长期兼容边界。
+**目标：** 把原先散落在 Elasticsearch 实现中的“通用向量库能力”抽成稳定接口，并新增一个基于 PostgreSQL + pgvector + Full Text Search 的实现；同时让普通检索链路优先依赖抽象层，保证后续切换底层向量库时不需要大改业务代码。
 
 ## 1. 背景与问题
 
@@ -83,11 +83,11 @@
 deepclaw/common/
 ├── __init__.py
 ├── elastic_graph_rag.py
-├── elastic_utils.py
 └── vector_store/
     ├── __init__.py
     ├── base.py
     ├── elasticsearch.py
+    ├── factory.py
     └── pgsql.py
 ```
 
@@ -102,8 +102,8 @@ deepclaw/common/
 - `deepclaw/common/vector_store/pgsql.py`
   定义 `PgVectorStore`，实现 PostgreSQL + pgvector + FTS 的通用能力。
 
-- `deepclaw/common/elastic_utils.py`
-  作为兼容层保留，对外继续导出 `Elasticsearch`，内部复用 `ElasticsearchVectorStore`，降低现有代码改动面。
+- `deepclaw/common/vector_store/factory.py`
+  提供统一的 `create_vector_store()` 创建入口，让普通检索链路不直接依赖具体实现类。
 
 - `deepclaw/common/elastic_graph_rag.py`
   继续依赖 ES 实现，保留 `vector_graph_retrieve` 的调用语义。
@@ -217,15 +217,14 @@ deepclaw/common/
 - 它们服务于 graph-RAG，而不是所有向量库的公共需求
 - 未来如果要统一 graph-RAG，应单独抽象图检索层，而不是污染向量库基类
 
-### 7.3 兼容层策略
+### 7.3 业务侧依赖策略
 
-`deepclaw/common/elastic_utils.py` 暂时保留 `Elasticsearch` 名称，对现有调用方保持兼容：
+为保证后续切换到 `PgVectorStore` 时业务代码不需要大改，消费方分两类处理：
 
-- 外部 import 路径先不强制变化
-- 内部实现复用新的 `ElasticsearchVectorStore`
-- 图检索方法继续可用
+- 普通检索链路（如 `retrieve()`、`vector_search()`、`keyword_search()`）统一依赖 `AbstractVectorStore`，实例创建集中走 `create_vector_store()`。
+- ES 专属能力（如 `ElasticGraphRAG`、当前知识库元数据索引维护）允许继续显式依赖 `ElasticsearchVectorStore`。
 
-这能避免一次性修改 `deepclaw/common/__init__.py`、`deepclaw/common/elastic_graph_rag.py`、`deepclaw/middleware/rag.py`、`deepclaw/tools/retriever.py`、`deepclaw/web_backend/knowledge_bases/service.py` 等所有现有引用点。
+这样后续如果普通 RAG 由 ES 切到 PG，主要变更点只会收敛在工厂配置与少量 ES 专属路径，而不是扩散到所有消费方。
 
 ## 8. PgSQL 实现设计
 
