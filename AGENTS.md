@@ -30,6 +30,12 @@
   - 管理员账号自举
   - 渠道 runtime 生命周期接入
 
+- `deepclaw/web_backend/db.py`
+  Web 侧统一异步数据库辅助入口。负责：
+  - 同步/异步数据库 URL 转换
+  - `auth` / `channels` / `knowledge_bases` 默认元数据数据库选择
+  - 当配置 `PG_DATABASE_URL` 时，优先落统一 PG；未配置时回退各自 SQLite
+
 - `deepclaw/web_backend/common/endpoints.py`
   通用 SSE 端点封装。当前 `query` 支持：
   - 字符串
@@ -248,7 +254,7 @@ pnpm build
 - 知识库管理归属 `/api/rag/knowledge-bases/*`
 - 渠道管理归属 `/api/channels/*`
 - 前端默认以游客模式进入，点击右上角头像会跳转到独立 `/login` 页面进入登录/注册流程
-- 渠道会话默认写本地 SQLite，而不是 Elasticsearch 或 Postgres
+- `auth`、`channels`、`knowledge_bases` 元数据默认优先使用 `PG_DATABASE_URL`；未配置时各自回退到 `.deepclaw` 下的 SQLite，并在默认初始化路径上兼容导入历史 SQLite 数据
 
 ## 文档协作原则
 

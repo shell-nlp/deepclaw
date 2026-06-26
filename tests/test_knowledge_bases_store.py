@@ -1,4 +1,79 @@
 import asyncio
+from types import SimpleNamespace
+
+
+def test_sqlmodel_metadata_store_defaults_to_pg_database_url_when_configured(monkeypatch):
+    import deepclaw.web_backend.db as db_module
+    import deepclaw.web_backend.knowledge_bases.store as kb_store_module
+
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        db_module,
+        "settings",
+        SimpleNamespace(
+            PG_DATABASE_URL="postgresql://admin:admin@localhost:55432/deepclaw"
+        ),
+    )
+    monkeypatch.setattr(
+        kb_store_module,
+        "create_async_engine_from_url",
+        lambda db_url: captured.setdefault("db_url", db_url) or object(),
+    )
+    monkeypatch.setattr(
+        kb_store_module,
+        "build_async_sessionmaker",
+        lambda engine: captured.setdefault("engine", engine) or object(),
+    )
+
+    kb_store_module.SQLModelKnowledgeBaseMetadataStore()
+
+    assert captured["db_url"] == "postgresql://admin:admin@localhost:55432/deepclaw"
+
+
+def test_sqlmodel_metadata_store_imports_existing_home_sqlite_data(tmp_path, monkeypatch):
+    async def _run():
+        import deepclaw.web_backend.db as db_module
+        import deepclaw.web_backend.knowledge_bases.store as kb_store_module
+
+        monkeypatch.setattr(db_module, "home_path", tmp_path)
+        monkeypatch.setattr(
+            db_module,
+            "settings",
+            SimpleNamespace(PG_DATABASE_URL=f"sqlite:///{tmp_path / 'metadata.db'}"),
+        )
+        monkeypatch.setattr(kb_store_module, "home_path", tmp_path)
+
+        legacy_store = kb_store_module.SQLModelKnowledgeBaseMetadataStore(
+            f"sqlite:///{tmp_path / 'knowledge_bases.db'}"
+        )
+        await legacy_store.create_knowledge_base(
+            {
+                "knowledge_base_id": "kb-legacy",
+                "user_id": "user-1",
+                "name": "刘宇的知识",
+                "description": "legacy",
+                "index_prefix": "kb_legacy",
+                "passage_index": "kb_legacy_passages",
+                "entity_index": "kb_legacy_entities",
+                "relation_index": "kb_legacy_relations",
+                "document_count": 0,
+                "chunk_count": 0,
+                "created_at": "2026-06-26T22:00:00+08:00",
+                "updated_at": "2026-06-26T22:00:00+08:00",
+            }
+        )
+
+        store = kb_store_module.SQLModelKnowledgeBaseMetadataStore()
+        loaded = await store.get_knowledge_base(
+            user_id="user-1",
+            knowledge_base_id="kb-legacy",
+            error_message="not found",
+        )
+
+        assert loaded["name"] == "刘宇的知识"
+
+    asyncio.run(_run())
 
 
 def test_sqlmodel_metadata_store_crud_roundtrip():

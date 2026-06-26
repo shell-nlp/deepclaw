@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import os
+import sqlite3
+from pathlib import Path
 from typing import Any, Protocol
 
 from elasticsearch import NotFoundError
@@ -8,11 +9,27 @@ from sqlmodel import SQLModel, or_, select
 
 from deepclaw.common.vector_store.elasticsearch import ElasticsearchVectorStore
 from deepclaw.constant import home_path
-from deepclaw.web_backend.db import build_async_sessionmaker, create_async_engine_from_url
+from deepclaw.web_backend.db import (
+    build_async_sessionmaker,
+    create_async_engine_from_url,
+    resolve_metadata_db_url,
+    should_import_home_sqlite,
+)
 from deepclaw.web_backend.knowledge_bases.models import (
     KnowledgeBaseDocumentMetadata,
     KnowledgeBaseMetadata,
 )
+
+
+KNOWLEDGE_BASES_METADATA_IMPORT_MARKER = ".knowledge_bases_imported_to_metadata_db"
+
+
+def _sqlite_table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
+    row = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ).fetchone()
+    return row is not None
 
 
 class KnowledgeBaseMetadataStore(Protocol):
@@ -396,20 +413,68 @@ class ElasticsearchKnowledgeBaseMetadataStore:
 
 class SQLModelKnowledgeBaseMetadataStore:
     def __init__(self, db_url: str | None = None):
+        should_import_home_db = db_url is None
         if db_url is None:
-            os.makedirs(home_path, exist_ok=True)
-            db_url = f"sqlite:///{os.path.join(home_path, 'knowledge_bases.db')}"
+            db_url = resolve_metadata_db_url("knowledge_bases.db")
 
+        self.db_url = db_url
         self.engine = create_async_engine_from_url(db_url)
         self.async_session = build_async_sessionmaker(self.engine)
         self._init_done = False
+        self._sqlite_import_path = (
+            should_import_home_sqlite(
+                filename="knowledge_bases.db",
+                target_db_url=self.db_url,
+            )
+            if should_import_home_db
+            else None
+        )
+        self._sqlite_import_marker = Path(home_path) / KNOWLEDGE_BASES_METADATA_IMPORT_MARKER
 
     async def _ensure_init(self):
         if self._init_done:
             return
         async with self.engine.begin() as conn:
             await conn.run_sync(SQLModel.metadata.create_all)
+        await self._import_home_sqlite_if_needed()
         self._init_done = True
+
+    async def _import_home_sqlite_if_needed(self) -> None:
+        if self._sqlite_import_path is None or self._sqlite_import_marker.exists():
+            return
+
+        async with self.async_session() as session:
+            with sqlite3.connect(self._sqlite_import_path) as connection:
+                connection.row_factory = sqlite3.Row
+                for table_name, model_class, identity_column in [
+                    ("knowledge_bases", KnowledgeBaseMetadata, "knowledge_base_id"),
+                    (
+                        "knowledge_base_documents",
+                        KnowledgeBaseDocumentMetadata,
+                        "document_id",
+                    ),
+                ]:
+                    if not _sqlite_table_exists(connection, table_name):
+                        continue
+                    rows = connection.execute(f"SELECT * FROM {table_name}").fetchall()
+                    for row in rows:
+                        payload = dict(row)
+                        result = await session.exec(
+                            select(model_class).where(
+                                getattr(model_class, identity_column)
+                                == payload[identity_column]
+                            )
+                        )
+                        model = result.first()
+                        if model is None:
+                            model = model_class(**payload)
+                        else:
+                            for key, value in payload.items():
+                                setattr(model, key, value)
+                        session.add(model)
+                await session.commit()
+
+        self._sqlite_import_marker.write_text("imported\n", encoding="utf-8")
 
     async def list_knowledge_bases(self, *, user_id: str) -> list[dict[str, Any]]:
         await self._ensure_init()

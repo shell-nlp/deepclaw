@@ -1,8 +1,7 @@
-import os
 import shutil
 import sqlite3
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from sqlmodel import select
@@ -16,10 +15,16 @@ from deepclaw.web_backend.auth.models import (
     utc_now,
 )
 from deepclaw.web_backend.auth.security import hash_token
-from deepclaw.web_backend.db import build_async_sessionmaker, create_async_engine_from_url
+from deepclaw.web_backend.db import (
+    build_async_sessionmaker,
+    create_async_engine_from_url,
+    resolve_metadata_db_url,
+    should_import_home_sqlite,
+)
 
 LEGACY_HOME_NAME = ".langchain_api"
 AUTH_MIGRATION_MARKER = ".auth_migrated_from_langchain_api"
+AUTH_METADATA_IMPORT_MARKER = ".auth_imported_to_metadata_db"
 
 
 def _get_auth_db_path(base_path: Path) -> Path:
@@ -37,6 +42,14 @@ def _table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
 def _get_table_columns(connection: sqlite3.Connection, table_name: str) -> list[str]:
     rows = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
     return [str(row[1]) for row in rows]
+
+
+def _deserialize_datetime_value(value):
+    if value is None or isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        return datetime.fromisoformat(value)
+    return value
 
 
 def _merge_table_rows(
@@ -130,14 +143,24 @@ def migrate_legacy_auth_db_if_needed(current_home_path: Path) -> None:
 
 class AuthStore:
     def __init__(self, db_url: str | None = None):
+        should_import_home_db = db_url is None
         if db_url is None:
             migrate_legacy_auth_db_if_needed(home_path)
-            os.makedirs(home_path, exist_ok=True)
-            db_url = f"sqlite:///{os.path.join(home_path, 'auth.db')}"
+            db_url = resolve_metadata_db_url("auth.db")
 
+        self.db_url = db_url
         self.engine = create_async_engine_from_url(db_url)
         self.async_session = build_async_sessionmaker(self.engine)
         self._init_done = False
+        self._sqlite_import_path = (
+            should_import_home_sqlite(
+                filename="auth.db",
+                target_db_url=self.db_url,
+            )
+            if should_import_home_db
+            else None
+        )
+        self._sqlite_import_marker = Path(home_path) / AUTH_METADATA_IMPORT_MARKER
 
     async def _ensure_init(self):
         if self._init_done:
@@ -145,7 +168,58 @@ class AuthStore:
         from sqlmodel import SQLModel
         async with self.engine.begin() as conn:
             await conn.run_sync(SQLModel.metadata.create_all)
+        await self._import_home_sqlite_if_needed()
         self._init_done = True
+
+    async def _import_home_sqlite_if_needed(self) -> None:
+        if self._sqlite_import_path is None or self._sqlite_import_marker.exists():
+            return
+
+        with sqlite3.connect(self._sqlite_import_path) as connection:
+            connection.row_factory = sqlite3.Row
+            user_rows = connection.execute("SELECT * FROM authuser").fetchall()
+            token_rows = connection.execute("SELECT * FROM accesstokenrecord").fetchall()
+
+        async with self.async_session() as session:
+            for row in user_rows:
+                payload = dict(row)
+                for column in ["created_at", "updated_at"]:
+                    payload[column] = _deserialize_datetime_value(payload[column])
+                result = await session.exec(
+                    select(AuthUser).where(AuthUser.email == payload["email"])
+                )
+                model = result.first()
+                if model is None:
+                    model = AuthUser(**{k: v for k, v in payload.items() if k != "id"})
+                else:
+                    for key, value in payload.items():
+                        if key != "id":
+                            setattr(model, key, value)
+                session.add(model)
+
+            for row in token_rows:
+                payload = dict(row)
+                for column in ["expires_at", "last_used_at", "created_at"]:
+                    payload[column] = _deserialize_datetime_value(payload[column])
+                result = await session.exec(
+                    select(AccessTokenRecord).where(
+                        AccessTokenRecord.token_hash == payload["token_hash"]
+                    )
+                )
+                model = result.first()
+                if model is None:
+                    model = AccessTokenRecord(
+                        **{k: v for k, v in payload.items() if k != "id"}
+                    )
+                else:
+                    for key, value in payload.items():
+                        if key != "id":
+                            setattr(model, key, value)
+                session.add(model)
+
+            await session.commit()
+
+        self._sqlite_import_marker.write_text("imported\n", encoding="utf-8")
 
     async def reconcile_access_token_expiry(self, *, expire_days: int) -> None:
         await self._ensure_init()
