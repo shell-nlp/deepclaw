@@ -14,7 +14,8 @@ from langgraph.runtime import Runtime
 from loguru import logger
 
 from deepclaw.common.elastic_graph_rag import ElasticGraphRAG
-from deepclaw.common.elastic_utils import Elasticsearch
+from deepclaw.common.vector_store import AbstractVectorStore
+from deepclaw.common.vector_store.elasticsearch import ElasticsearchVectorStore
 
 RAG_SYSTEM_PROMPT = """<角色>您是一个精通文档引用的问答专家，能够精准依据来源内容构建回答。</角色>
 <任务>基于提供的内容和用户的问题,撰写一篇详细完备的最终回答.</任务>
@@ -207,17 +208,17 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
 
     def __init__(
         self,
-        es: Elasticsearch,
+        vector_store: AbstractVectorStore,
         rewrite_query: bool = False,
         model: BaseChatModel = None,
         retrieve_router: bool = False,
     ):
-        """RAG 中间件，使用 Elasticsearch 执行检索。
+        """RAG 中间件，使用向量库执行检索。
 
         Parameters
         ----------
-        es : Elasticsearch
-            Elasticsearch 检索封装实例。
+        vector_store : AbstractVectorStore
+            通用向量库检索封装实例。
         rewrite_query : bool, optional
             是否重写 query，默认 False。
         model : BaseChatModel, optional
@@ -226,7 +227,7 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
             是否启用检索路由判断，默认 False。
 
         """
-        self.es = es
+        self.vector_store = vector_store
         self.rewrite_query = rewrite_query
         self.model: ChatDeepSeek = model
         self.retrieve_router = retrieve_router
@@ -336,11 +337,26 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
         """
         try:
             if graph_name:
-                rag = ElasticGraphRAG(self.es, graph_name)
-                raw_result = rag.retrieve(query=query, k=k)
-                hits = raw_result["passages"] if isinstance(raw_result, dict) else raw_result
+                if isinstance(self.vector_store, ElasticsearchVectorStore):
+                    rag = ElasticGraphRAG(self.vector_store, graph_name)
+                    raw_result = rag.retrieve(query=query, k=k)
+                    hits = (
+                        raw_result["passages"]
+                        if isinstance(raw_result, dict)
+                        else raw_result
+                    )
+                else:
+                    logger.info(
+                        "当前向量库不支持图检索，已降级为普通检索：{}",
+                        type(self.vector_store).__name__,
+                    )
+                    hits = self.vector_store.retrieve(
+                        query=query, k=k, index_name=index_name
+                    )
             else:
-                hits = self.es.retrieve(query=query, k=k, index_name=index_name)
+                hits = self.vector_store.retrieve(
+                    query=query, k=k, index_name=index_name
+                )
             results = []
             for item in hits:
                 results.append(
