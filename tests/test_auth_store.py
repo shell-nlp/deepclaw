@@ -1,6 +1,7 @@
 import asyncio
 from datetime import timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from sqlmodel import select
@@ -62,6 +63,7 @@ def build_file_service(
 
 
 def test_auth_store_migrates_legacy_auth_db_to_deepclaw_home(tmp_path, monkeypatch):
+    import deepclaw.web_backend.db as db_module
     import deepclaw.web_backend.auth.store as auth_store_module
 
     async def _test():
@@ -78,6 +80,7 @@ def test_auth_store_migrates_legacy_auth_db_to_deepclaw_home(tmp_path, monkeypat
         await legacy_service.register(email="user@example.com", password="user-pass-123")
 
         monkeypatch.setattr(auth_store_module, "home_path", current_home)
+        monkeypatch.setattr(db_module, "home_path", current_home)
 
         migrated_service = build_service(store=auth_store_module.AuthStore())
         issued = await migrated_service.login(email="user@example.com", password="user-pass-123")
@@ -91,6 +94,7 @@ def test_auth_store_migrates_legacy_auth_db_to_deepclaw_home(tmp_path, monkeypat
 def test_auth_store_prefers_legacy_auth_data_when_current_db_already_exists(
     tmp_path, monkeypatch
 ):
+    import deepclaw.web_backend.db as db_module
     import deepclaw.web_backend.auth.store as auth_store_module
 
     async def _test():
@@ -116,6 +120,7 @@ def test_auth_store_prefers_legacy_auth_data_when_current_db_already_exists(
         await current_service.register(email="current-user@example.com", password="current-user-pass")
 
         monkeypatch.setattr(auth_store_module, "home_path", current_home)
+        monkeypatch.setattr(db_module, "home_path", current_home)
 
         migrated_service = build_service(store=auth_store_module.AuthStore())
 
@@ -140,6 +145,40 @@ def test_auth_store_prefers_legacy_auth_data_when_current_db_already_exists(
         assert current_user_issued.user.email == "current-user@example.com"
 
     asyncio.run(_test())
+
+
+def test_auth_store_defaults_to_pg_database_url_when_configured(monkeypatch):
+    import deepclaw.web_backend.db as db_module
+    import deepclaw.web_backend.auth.store as auth_store_module
+
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        db_module,
+        "settings",
+        SimpleNamespace(
+            PG_DATABASE_URL="postgresql://admin:admin@localhost:55432/deepclaw"
+        ),
+    )
+    monkeypatch.setattr(
+        auth_store_module,
+        "migrate_legacy_auth_db_if_needed",
+        lambda target_home: None,
+    )
+    monkeypatch.setattr(
+        auth_store_module,
+        "create_async_engine_from_url",
+        lambda db_url: captured.setdefault("db_url", db_url) or object(),
+    )
+    monkeypatch.setattr(
+        auth_store_module,
+        "build_async_sessionmaker",
+        lambda engine: captured.setdefault("engine", engine) or object(),
+    )
+
+    auth_store_module.AuthStore()
+
+    assert captured["db_url"] == "postgresql://admin:admin@localhost:55432/deepclaw"
 
 
 def test_register_rejects_duplicate_email():
