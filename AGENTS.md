@@ -73,7 +73,13 @@
   RAG Agent 组装、上下文与状态定义。
 
 - `deepclaw/common/`
-  Elasticsearch、Graph RAG、PDF 切分等通用算法实现。
+  Elasticsearch、向量数据库抽象、Graph RAG、PDF 切分等通用算法实现。
+
+- `deepclaw/common/vector_store/`
+  向量数据库抽象层，包含通用 `AbstractVectorStore`、Elasticsearch 实现，以及基于 PostgreSQL + pgvector + pg_search 的实现。
+
+- `deepclaw/common/elastic_utils.py`
+  Elasticsearch 向量库的兼容导出层，保留历史导入路径，并继续承载 ES 专属的图检索扩展能力。
 
 - `deepclaw/middleware/`
   业务开关、RAG 注入、MCP、工具搜索、计划，以及 `cron` 工具实现等中间件与运行时扩展。
