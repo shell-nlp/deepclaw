@@ -13,10 +13,7 @@ services:
       - elasticsearch
       - phoenix
   postgresql:
-    build:
-      context: .
-      dockerfile: docker/postgresql/Dockerfile
-    image: deepclaw-postgresql-hybrid:pg16
+    image: docker.1ms.run/postgres:16
     restart: always
     environment:
       - POSTGRES_USER=admin  # 数据库用户名
@@ -26,8 +23,6 @@ services:
       - 5432:5432
     volumes:
       - postgres:/var/lib/postgresql/data
-      # 默认库启动后自动启用 pgvector 和 pg_search（BM25）扩展
-      - ./docker/postgresql/initdb:/docker-entrypoint-initdb.d
     networks:
       - deepclaw
   elasticsearch:
