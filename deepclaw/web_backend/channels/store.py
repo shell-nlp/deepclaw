@@ -1,5 +1,8 @@
-﻿import os
+﻿import json
+import sqlite3
 import uuid
+from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from sqlmodel import or_, select, text
@@ -15,23 +18,64 @@ from deepclaw.web_backend.channels.models import (
     ReplyMode,
     utc_now,
 )
-from deepclaw.web_backend.db import build_async_sessionmaker, create_async_engine_from_url
+from deepclaw.web_backend.db import (
+    build_async_sessionmaker,
+    create_async_engine_from_url,
+    resolve_metadata_db_url,
+    should_import_home_sqlite,
+)
 from deepclaw.constant import home_path
 
 
 VALID_REPLY_MODES = {"final", "streaming"}
 VALID_MESSAGE_STATUSES = {"received", "processing", "done", "failed"}
+CHANNELS_METADATA_IMPORT_MARKER = ".channels_imported_to_metadata_db"
+
+
+def _sqlite_table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
+    row = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
+def _deserialize_json_value(value):
+    if not isinstance(value, str):
+        return value
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return value
+
+
+def _deserialize_datetime_value(value):
+    if value is None or isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        return datetime.fromisoformat(value)
+    return value
 
 
 class ChannelStore:
     def __init__(self, db_url: Optional[str] = None):
+        should_import_home_db = db_url is None
         if db_url is None:
-            os.makedirs(home_path, exist_ok=True)
-            db_url = f"sqlite:///{os.path.join(home_path, 'channels.db')}"
+            db_url = resolve_metadata_db_url("channels.db")
 
+        self.db_url = db_url
         self.engine = create_async_engine_from_url(db_url)
         self.async_session = build_async_sessionmaker(self.engine)
         self._init_done = False
+        self._sqlite_import_path = (
+            should_import_home_sqlite(
+                filename="channels.db",
+                target_db_url=self.db_url,
+            )
+            if should_import_home_db
+            else None
+        )
+        self._sqlite_import_marker = Path(home_path) / CHANNELS_METADATA_IMPORT_MARKER
 
     async def _ensure_init(self):
         if self._init_done:
@@ -41,7 +85,77 @@ class ChannelStore:
             await conn.run_sync(SQLModel.metadata.create_all)
         await self._ensure_channel_session_schema()
         await self._ensure_channel_binding_schema()
+        await self._import_home_sqlite_if_needed()
         self._init_done = True
+
+    async def _import_home_sqlite_if_needed(self) -> None:
+        if self._sqlite_import_path is None or self._sqlite_import_marker.exists():
+            return
+
+        table_specs = [
+            (ChannelUser, "channel_users", ["channel", "channel_user_id"], []),
+            (
+                ChannelSession,
+                "channel_sessions",
+                ["channel", "channel_conversation_id", "channel_user_id"],
+                [],
+            ),
+            (
+                ChannelMessageRecord,
+                "channel_message_records",
+                ["channel", "message_id"],
+                [],
+            ),
+            (
+                ChannelRuntimeState,
+                "channel_runtime_states",
+                ["channel", "state_key"],
+                ["data"],
+            ),
+            (
+                ChannelBinding,
+                "channel_bindings",
+                ["id"],
+                ["credentials", "config", "runtime_state"],
+            ),
+        ]
+
+        async with self.async_session() as session:
+            with sqlite3.connect(self._sqlite_import_path) as connection:
+                connection.row_factory = sqlite3.Row
+                for model_class, table_name, identity_columns, json_columns in table_specs:
+                    if not _sqlite_table_exists(connection, table_name):
+                        continue
+                    rows = connection.execute(f"SELECT * FROM {table_name}").fetchall()
+                    for row in rows:
+                        payload = dict(row)
+                        for column in ["created_at", "updated_at"]:
+                            if column in payload:
+                                payload[column] = _deserialize_datetime_value(
+                                    payload[column]
+                                )
+                        for column in json_columns:
+                            if column in payload:
+                                payload[column] = _deserialize_json_value(payload[column])
+                        result = await session.exec(
+                            select(model_class).where(
+                                *[
+                                    getattr(model_class, column) == payload[column]
+                                    for column in identity_columns
+                                ]
+                            )
+                        )
+                        model = result.first()
+                        if model is None:
+                            model = model_class(**{k: v for k, v in payload.items() if k != "id"})
+                        else:
+                            for key, value in payload.items():
+                                if key != "id":
+                                    setattr(model, key, value)
+                        session.add(model)
+                await session.commit()
+
+        self._sqlite_import_marker.write_text("imported\n", encoding="utf-8")
 
     async def get_or_create_user(
         self,

@@ -1,6 +1,36 @@
 import asyncio
+from types import SimpleNamespace
 
 import pytest
+
+
+def test_channel_store_defaults_to_pg_database_url_when_configured(monkeypatch):
+    import deepclaw.web_backend.db as db_module
+    import deepclaw.web_backend.channels.store as channel_store_module
+
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        db_module,
+        "settings",
+        SimpleNamespace(
+            PG_DATABASE_URL="postgresql://admin:admin@localhost:55432/deepclaw"
+        ),
+    )
+    monkeypatch.setattr(
+        channel_store_module,
+        "create_async_engine_from_url",
+        lambda db_url: captured.setdefault("db_url", db_url) or object(),
+    )
+    monkeypatch.setattr(
+        channel_store_module,
+        "build_async_sessionmaker",
+        lambda engine: captured.setdefault("engine", engine) or object(),
+    )
+
+    channel_store_module.ChannelStore()
+
+    assert captured["db_url"] == "postgresql://admin:admin@localhost:55432/deepclaw"
 
 
 @pytest.fixture

@@ -4,7 +4,7 @@ from langchain_deepseek import ChatDeepSeek
 from deepclaw.middleware.common import BusinessMiddleware
 from deepclaw.middleware.rag import RAGMiddleware
 from deepclaw.settings import settings
-from deepclaw.tools.retriever import es_retriever
+from deepclaw.tools.retriever import default_retriever
 
 
 def create_rag_agent(checkpointer=None, store=None):
@@ -24,7 +24,7 @@ def create_rag_agent(checkpointer=None, store=None):
         model=model,
         middleware=[
             RAGMiddleware(
-                es=es_retriever,
+                vector_store=default_retriever,
                 rewrite_query=True,
                 model=rewrite_model,
                 retrieve_router=True,
