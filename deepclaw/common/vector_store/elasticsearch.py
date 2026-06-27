@@ -1,9 +1,12 @@
+import json
+from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 from elasticsearch import Elasticsearch as ESClient
 from loguru import logger
 
 from deepclaw.common.vector_store.base import AbstractVectorStore
+from deepclaw.constant import home_path
 
 
 class ElasticsearchVectorStore(AbstractVectorStore):
@@ -759,3 +762,264 @@ class ElasticsearchVectorStore(AbstractVectorStore):
             search_body = {"query": {"match_all": {}}}
         result = self.es_client.count(index=target_indexes, body=search_body)
         return result["count"]
+
+    def _list_index_names(self) -> list[str]:
+        """列出 ES 中所有非系统索引（跳过 . 开头索引）。"""
+        result = self.es_client.indices.get_alias(index="*")
+        return sorted([idx for idx in result if not idx.startswith(".")])
+
+    def _resolve_refresh_indexes(
+        self, *, index_names: list[str] | None = None
+    ) -> list[str]:
+        """解析 refresh 的目标索引列表。None=全量，空列表抛异常。"""
+        if index_names is not None:
+            normalized = [name.strip() for name in index_names if name and name.strip()]
+            unique = list(dict.fromkeys(normalized))
+            if not unique:
+                raise ValueError("index_names 不能为空列表")
+            return unique
+        return self._list_index_names()
+
+    def _init_refresh_batch(self, index_name: str, batch_size: int) -> None:
+        """ES 批次初始化：清理该索引的旧 scroll 上下文，防止泄漏。"""
+        if not hasattr(self, "_scroll_contexts"):
+            self._scroll_contexts = {}
+        if index_name in self._scroll_contexts:
+            self.es_client.clear_scroll(scroll_id=self._scroll_contexts[index_name])
+            del self._scroll_contexts[index_name]
+
+    def _fetch_refresh_batch(
+        self, index_name: str, batch_size: int
+    ) -> list[dict[str, Any]]:
+        """ES 批次获取：scroll 翻页，首次调用发起 search，后续 scroll。"""
+        if not hasattr(self, "_scroll_contexts"):
+            self._scroll_contexts = {}
+
+        if index_name not in self._scroll_contexts:
+            # 首次：发起带 scroll 的 search
+            result = self.es_client.search(
+                index=index_name,
+                body={"query": {"match_all": {}}, "sort": ["_doc"]},
+                size=batch_size,
+                scroll="5m",
+                _source=["content", "metadata.id"],
+            )
+            self._scroll_contexts[index_name] = result["_scroll_id"]
+            hits = result["hits"]["hits"]
+        else:
+            # 后续：使用 scroll_id 继续翻页
+            scroll_id = self._scroll_contexts[index_name]
+            result = self.es_client.scroll(scroll_id=scroll_id, scroll="5m")
+            hits = result["hits"]["hits"]
+
+        if not hits:
+            # 无更多数据，清理 scroll 上下文
+            if index_name in self._scroll_contexts:
+                self.es_client.clear_scroll(
+                    scroll_id=self._scroll_contexts.pop(index_name)
+                )
+            return []
+
+        return [
+            {
+                "id": hit["_source"].get("metadata", {}).get("id") or hit["_id"],
+                "content": hit["_source"].get("content", ""),
+                "index_name": index_name,
+            }
+            for hit in hits
+        ]
+
+    def _ensure_refresh_dimensions(
+        self, new_dim: int, index_names: list[str]
+    ) -> None:
+        """ES 维度适配：读取各索引 mapping 的 embedding.dims，如果与新维度不匹配则标记为需重建。"""
+        self._needs_reindex = set()
+        for idx in index_names:
+            try:
+                mapping = self.es_client.indices.get_mapping(index=idx)
+                props = mapping[idx]["mappings"]["properties"]
+                emb = props.get("embedding", {})
+                current_dim = emb.get("dims", 0)
+                if current_dim == new_dim:
+                    continue
+            except Exception:
+                pass
+            # 维度不一致或读取 mapping 失败时标记为需重建索引
+            self._needs_reindex.add(idx)
+        self.embedding_dimensions = new_dim
+
+    def _refresh_embeddings_batch(
+        self,
+        docs: list[dict[str, Any]],
+        new_embedding_model,
+        index_name: str,
+    ) -> tuple[int, int]:
+        """ES 批量更新：用 bulk API 逐文档 update embedding 字段。
+
+        不刷新 refresh=False 以提升写入吞吐，维度变化时写入旧的 index，
+        后续 _finalize_refresh 会做全量迁移到新索引。
+        """
+        if not docs:
+            return (0, 0)
+        try:
+            embeddings = new_embedding_model.embed_documents(
+                [doc["content"] for doc in docs]
+            )
+        except Exception:
+            logger.error("嵌入失败: {}", [doc.get("id", "unknown") for doc in docs])
+            return (0, len(docs))
+
+        # 构造 bulk update operations
+        operations = []
+        for doc, emb in zip(docs, embeddings):
+            operations.append({"update": {"_index": index_name, "_id": doc["id"]}})
+            operations.append({"doc": {"embedding": emb}})
+
+        try:
+            result = self.es_client.bulk(operations=operations, refresh=False)
+        except Exception as exc:
+            logger.warning("批量嵌入写入失败: {}", exc)
+            return (0, len(docs))
+
+        if not result.get("errors"):
+            return (len(docs), 0)
+
+        # 部分失败时逐项检查 error 字段
+        success = 0
+        fail = 0
+        for item in result.get("items", []):
+            if "error" in item.get("update", {}):
+                fail += 1
+            else:
+                success += 1
+        return (success, fail)
+
+    def _finalize_refresh(self) -> None:
+        """ES refresh 收尾：对维度变化的索引做重建迁移。
+
+        流程（每索引独立）：
+        1. 读旧索引 setting 和 mapping，更新 embedding.dims
+        2. 以 {原名}_v2 建新索引
+        3. scroll 旧索引全部文档 → 重新嵌入 → bulk index 到 v2
+        4. 删旧索引，建 v2→原名 别名（后续通过别名读写透明迁移）
+        """
+        if not self._needs_reindex:
+            return
+        for idx in list(self._needs_reindex):
+            v2_name = f"{idx}_v2"
+            old_settings = self.es_client.indices.get_settings(index=idx)
+            old_mapping = self.es_client.indices.get_mapping(index=idx)
+            settings = old_settings[idx]["settings"]["index"]
+            mapping_body = old_mapping[idx]["mappings"]
+
+            # 更新 embedding 维度到新值
+            if (
+                "properties" in mapping_body
+                and "embedding" in mapping_body["properties"]
+            ):
+                mapping_body["properties"]["embedding"]["dims"] = (
+                    self.embedding_dimensions
+                )
+
+            # 创建新索引 v2，使用新维度的 mapping
+            self.es_client.indices.create(
+                index=v2_name,
+                settings={
+                    "number_of_shards": settings.get("number_of_shards", 1),
+                    "number_of_replicas": 0,
+                },
+                mappings=mapping_body,
+            )
+
+            # scroll 旧索引全部文档，重新嵌入后写入 v2
+            scroll = self.es_client.search(
+                index=idx,
+                body={"query": {"match_all": {}}, "sort": ["_doc"]},
+                size=100,
+                scroll="5m",
+                _source=True,
+            )
+            sid = scroll["_scroll_id"]
+            while scroll["hits"]["hits"]:
+                ops = []
+                for hit in scroll["hits"]["hits"]:
+                    src = hit["_source"]
+                    emb = self.embedding_model.embed_query(src.get("content", ""))
+                    src["embedding"] = emb
+                    ops.append({"index": {"_index": v2_name, "_id": hit["_id"]}})
+                    ops.append(src)
+                if ops:
+                    self.es_client.bulk(operations=ops, refresh=False)
+                scroll = self.es_client.scroll(scroll_id=sid, scroll="5m")
+                sid = scroll["_scroll_id"]
+            self.es_client.clear_scroll(scroll_id=sid)
+
+            # 删旧物理索引，将别名指向 v2
+            self.es_client.indices.delete(index=idx)
+            self.es_client.indices.put_alias(index=v2_name, name=idx)
+
+    def refresh_embeddings(
+        self,
+        new_embedding_model=None,
+        *,
+        batch_size: int = 50,
+        index_names: list[str] | None = None,
+    ) -> tuple[int, int]:
+        """用新嵌入模型刷新所有已有文档的向量。
+
+        ES 实现：维度不变时直接 bulk update，维度变化时重建索引
+        （_finalize_refresh 完成 v2 索引创建 + 别名切换）。
+        """
+        if new_embedding_model is not None:
+            old_model = self._embedding_model
+            self._embedding_model = new_embedding_model
+        else:
+            old_model = None
+
+        success_count = 0
+        fail_count = 0
+        fail_records: list[dict[str, Any]] = []
+
+        self._needs_reindex = set()
+
+        try:
+            probe_embedding = self.embedding_model.embed_query("测试")
+            new_dim = len(probe_embedding)
+            target_indexes = self._resolve_refresh_indexes(index_names=index_names)
+            self._ensure_refresh_dimensions(new_dim, target_indexes)
+
+            for index_name in target_indexes:
+                self._init_refresh_batch(index_name, batch_size)
+                while True:
+                    batch = self._fetch_refresh_batch(index_name, batch_size)
+                    if not batch:
+                        break
+                    try:
+                        suc, fail = self._refresh_embeddings_batch(
+                            batch, self.embedding_model, index_name
+                        )
+                        success_count += suc
+                        fail_count += fail
+                    except Exception as exc:
+                        fail_count += len(batch)
+                        for doc in batch:
+                            fail_records.append({
+                                "id": doc.get("id", "unknown"),
+                                "index_name": index_name,
+                                "content_preview": doc.get("content", "")[:100],
+                                "error": str(exc),
+                            })
+        finally:
+            if old_model is not None:
+                self._embedding_model = old_model
+
+        if fail_records:
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            fail_path = home_path / f"refresh_failed_{ts}.jsonl"
+            home_path.mkdir(parents=True, exist_ok=True)
+            with open(fail_path, "w", encoding="utf-8") as f:
+                for rec in fail_records:
+                    f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+        self._finalize_refresh()
+        return success_count, fail_count

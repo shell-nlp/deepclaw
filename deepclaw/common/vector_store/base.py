@@ -144,3 +144,16 @@ class AbstractVectorStore(ABC):
             keyword_results=keyword_results,
             k=k,
         )
+
+    def refresh_embeddings(
+        self,
+        new_embedding_model=None,
+        *,
+        batch_size: int = 50,
+        index_names: list[str] | None = None,
+    ) -> tuple[int, int]:
+        """用新嵌入模型刷新所有已有文档的向量。
+
+        默认不支持，需要此能力的存储子类自行覆盖实现。
+        """
+        raise NotImplementedError(f"{type(self).__name__} 不支持 refresh_embeddings")

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from datetime import datetime
 from typing import Any
 
 import psycopg
@@ -9,6 +11,7 @@ from psycopg.types.json import Json
 from loguru import logger
 
 from deepclaw.common.vector_store.base import AbstractVectorStore
+from deepclaw.constant import home_path
 
 
 class PgVectorStore(AbstractVectorStore):
@@ -174,6 +177,157 @@ class PgVectorStore(AbstractVectorStore):
             )
             rows = cur.fetchall()
         return [row["index_name"] for row in rows]
+
+    def _resolve_refresh_indexes(
+        self, *, index_names: list[str] | None = None
+    ) -> list[str]:
+        """解析 refresh 的目标索引列表。None=全量，空列表抛异常。"""
+        if index_names is not None:
+            normalized = [name.strip() for name in index_names if name and name.strip()]
+            unique = list(dict.fromkeys(normalized))
+            if not unique:
+                raise ValueError("index_names 不能为空列表")
+            return unique
+        return self._list_index_names()
+
+    def _ensure_refresh_dimensions(self, new_dim: int, index_names: list[str]) -> None:
+        """PG 维度适配：同维度跳过，不同维度则添加 embedding_new 列并删除旧索引。"""
+        if self.embedding_dimensions == new_dim:
+            self._needs_reindex = set()
+            return
+        # 维度变化时：先删旧索引，再新增临时列 embedding_new(vector(new_dim))
+        for index_name in index_names:
+            partition_table = self._qualified_partition_name(index_name)
+            vector_idx = self._vector_index_name(index_name)
+            uid_idx = f"{self._partition_table_name(index_name)}_id_uidx"
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(f"DROP INDEX IF EXISTS {vector_idx}")
+                cur.execute(f"DROP INDEX IF EXISTS {uid_idx}")
+                cur.execute(
+                    f"ALTER TABLE {partition_table} "
+                    f"ADD COLUMN IF NOT EXISTS embedding_new vector({new_dim})"
+                )
+            self._needs_reindex.add(index_name)
+        self.embedding_dimensions = new_dim
+
+    def _init_refresh_batch(self, index_name: str, batch_size: int) -> None:
+        """PG 批次初始化：重置 OFFSET 游标。"""
+        self._pg_refresh_offset = 0
+
+    def _fetch_refresh_batch(self, index_name: str, batch_size: int) -> list[dict[str, Any]]:
+        """PG 批次获取：OFFSET/LIMIT 翻页，按 id 排序保证顺序稳定。"""
+        self._ensure_base_schema()
+        self._ensure_partition(index_name)
+        table = self._qualified_table_name()
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                f"SELECT id, content, index_name "
+                f"FROM {table} "
+                f"WHERE index_name = %(index_name)s "
+                f"ORDER BY id "
+                f"OFFSET %(offset)s LIMIT %(limit)s",
+                {
+                    "index_name": index_name,
+                    "offset": self._pg_refresh_offset,
+                    "limit": batch_size,
+                },
+            )
+            rows = cur.fetchall()
+        self._pg_refresh_offset += batch_size
+        return [
+            {"id": str(row["id"]), "content": row["content"], "index_name": row["index_name"]}
+            for row in rows
+        ]
+
+    def _refresh_embeddings_batch(
+        self,
+        docs: list[dict[str, Any]],
+        new_embedding_model,
+        index_name: str,
+    ) -> tuple[int, int]:
+        """PG 批量更新：用 VALUES 构造临时表一次 UPDATE 全部文档的向量。
+
+        维度和前一致时写 embedding 列，否则写 embedding_new 列；
+        同步更新 search_vector 和 updated_at。
+        批量失败时逐条回退，避免单条错误拖垮整个批次。
+        """
+        if not docs:
+            return (0, 0)
+        try:
+            embeddings = new_embedding_model.embed_documents([doc["content"] for doc in docs])
+        except Exception:
+            logger.error("嵌入失败: {}", [doc.get("id", "unknown") for doc in docs])
+            return (0, len(docs))
+
+        # 维度变化时写入临时列 embedding_new，否则直接覆盖原列
+        embed_col = "embedding_new" if self._needs_reindex else "embedding"
+        partition_table = self._qualified_partition_name(index_name)
+        values_placeholders = ", ".join(
+            f"(%(id_{i})s, %(embedding_{i})s)" for i in range(len(docs))
+        )
+        params: dict[str, Any] = {}
+        for i, doc in enumerate(docs):
+            params[f"id_{i}"] = doc["id"]
+            params[f"embedding_{i}"] = embeddings[i]
+
+        # UPDATE ... FROM (VALUES) 实现一次 SQL 更新整批文档
+        sql = f"""
+        UPDATE {partition_table} AS p
+        SET {embed_col} = v.embedding,
+            search_vector = to_tsvector('simple', p.content),
+            updated_at = now()
+        FROM (VALUES {values_placeholders}) AS v(id, embedding)
+        WHERE p.id = v.id
+        """
+        try:
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(sql, params)
+            return (len(docs), 0)
+        except Exception as exc:
+            logger.warning("批量嵌入写入失败, 逐条回退: {}", exc)
+            success = 0
+            fail = 0
+            with self._connect() as conn, conn.cursor() as cur:
+                for i, doc in enumerate(docs):
+                    try:
+                        cur.execute(
+                            f"UPDATE {partition_table} "
+                            f"SET {embed_col} = %(embedding)s, "
+                            f"    search_vector = to_tsvector('simple', %(content)s), "
+                            f"    updated_at = now() "
+                            f"WHERE id = %(id)s",
+                            {"id": doc["id"], "embedding": embeddings[i], "content": doc["content"]},
+                        )
+                        success += 1
+                    except Exception:
+                        fail += 1
+            return (success, fail)
+
+    def _finalize_refresh(self) -> None:
+        """PG refresh 收尾：对维度变化的索引做列置换（DROP + RENAME）。"""
+        if not self._needs_reindex:
+            return
+        for index_name in self._needs_reindex:
+            partition_table = self._qualified_partition_name(index_name)
+            # 检查是否确实有 embedding_new 列（幂等）
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_schema = %(schema)s "
+                    "AND table_name = %(table)s "
+                    "AND column_name = 'embedding_new'",
+                    {
+                        "schema": self.schema_name,
+                        "table": self._partition_table_name(index_name),
+                    },
+                )
+                has_new_column = cur.fetchone() is not None
+            if has_new_column:
+                with self._connect() as conn, conn.cursor() as cur:
+                    cur.execute(f"ALTER TABLE {partition_table} DROP COLUMN embedding")
+                    cur.execute(f"ALTER TABLE {partition_table} RENAME COLUMN embedding_new TO embedding")
+            # 重建向量索引以支持新维度
+            self._ensure_partition(index_name)
 
     def _resolve_read_indexes(
         self,
@@ -536,3 +690,69 @@ class PgVectorStore(AbstractVectorStore):
 
         rows = self._fetch_keyword_rows(query=query, index_names=target_indexes, limit=k)
         return [self._row_to_result(row) for row in rows]
+
+    def refresh_embeddings(
+        self,
+        new_embedding_model=None,
+        *,
+        batch_size: int = 50,
+        index_names: list[str] | None = None,
+    ) -> tuple[int, int]:
+        """用新嵌入模型刷新所有已有文档的向量。
+
+        PG 实现：列置换策略，维度变化时使用临时列 embedding_new，
+        最终 _finalize_refresh 做 DROP + RENAME 完成迁移。
+        """
+        if new_embedding_model is not None:
+            old_model = self._embedding_model
+            self._embedding_model = new_embedding_model
+        else:
+            old_model = None
+
+        success_count = 0
+        fail_count = 0
+        fail_records: list[dict[str, Any]] = []
+
+        self._needs_reindex = set()
+
+        try:
+            probe_embedding = self.embedding_model.embed_query("测试")
+            new_dim = len(probe_embedding)
+            target_indexes = self._resolve_refresh_indexes(index_names=index_names)
+            self._ensure_refresh_dimensions(new_dim, target_indexes)
+
+            for index_name in target_indexes:
+                self._init_refresh_batch(index_name, batch_size)
+                while True:
+                    batch = self._fetch_refresh_batch(index_name, batch_size)
+                    if not batch:
+                        break
+                    try:
+                        suc, fail = self._refresh_embeddings_batch(
+                            batch, self.embedding_model, index_name
+                        )
+                        success_count += suc
+                        fail_count += fail
+                    except Exception as exc:
+                        fail_count += len(batch)
+                        for doc in batch:
+                            fail_records.append({
+                                "id": doc.get("id", "unknown"),
+                                "index_name": index_name,
+                                "content_preview": doc.get("content", "")[:100],
+                                "error": str(exc),
+                            })
+        finally:
+            if old_model is not None:
+                self._embedding_model = old_model
+
+        if fail_records:
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            fail_path = home_path / f"refresh_failed_{ts}.jsonl"
+            home_path.mkdir(parents=True, exist_ok=True)
+            with open(fail_path, "w", encoding="utf-8") as f:
+                for rec in fail_records:
+                    f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+        self._finalize_refresh()
+        return success_count, fail_count
