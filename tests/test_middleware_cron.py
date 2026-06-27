@@ -71,36 +71,40 @@ def test_cron_middleware_appends_cron_tool():
     middleware = CronMiddleware()
     request = DummyRequest(tools=[])
 
-    async def handler(updated_request):
+    def handler(updated_request):
         return updated_request
 
-    updated_request = asyncio.run(middleware.awrap_model_call(request, handler))
+    updated_request = middleware.wrap_model_call(request, handler)
 
     assert [tool.name for tool in updated_request.tools] == [cron_tool.name]
 
 
 def test_general_agent_registers_cron_middleware(monkeypatch):
-    import deepclaw.agents.general.agent as agent_module
     from deepclaw.middleware.cron.middleware import CronMiddleware
+
+    captured = {}
+
+    def fake_create_deep_agent(**kwargs):
+        captured["middleware"] = kwargs["middleware"]
+        return object()
+
+    monkeypatch.setattr(
+        "deepagents.create_deep_agent",
+        fake_create_deep_agent,
+    )
+    import deepclaw.agents.general.agent as agent_module
 
     class DummyModel:
         tags = []
 
-    captured = {}
-
-    def fake_create_agent(**kwargs):
-        captured["middleware"] = kwargs["middleware"]
-        return object()
-
-    monkeypatch.setattr(agent_module, "create_agent", fake_create_agent)
     monkeypatch.setattr(agent_module, "get_chat_model", lambda: DummyModel())
     monkeypatch.setattr(agent_module.settings, "USE_COPILOTKIT", False)
     monkeypatch.setattr(agent_module.settings, "USE_TOOL_SEARCH", False)
-    monkeypatch.setattr(agent_module.settings, "BACKEND_TYPE", "")
+    monkeypatch.setattr(agent_module.settings, "BACKEND_TYPE", "local_shell")
 
-    agent_module.Agent(deep_agent=False)
+    agent_module.Agent(deep_agent=True)
 
     assert any(
-        isinstance(middleware, CronMiddleware)
-        for middleware in captured["middleware"]
+        isinstance(m, CronMiddleware)
+        for m in captured["middleware"]
     )

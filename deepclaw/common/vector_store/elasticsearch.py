@@ -65,6 +65,7 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         index_name: Optional[str] = None,
         index_names: Optional[List[str]] = None,
         min_similarity: Optional[float] = None,
+        filter_conditions: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         target_indexes = self._resolve_required_indexes(
             index_name=index_name,
@@ -72,17 +73,23 @@ class ElasticsearchVectorStore(AbstractVectorStore):
             operation="search",
         )
         query_vector = self.embedding_model.embed_query(query)
+        knn_query: Dict[str, Any] = {
+            "field": "embedding",
+            "query_vector": query_vector,
+            "num_candidates": max(k * 2, 10),
+        }
+        if filter_conditions:
+            es_filter: List[Dict[str, Any]] = []
+            for field, value in filter_conditions.items():
+                if isinstance(value, list):
+                    es_filter.append({"terms": {field: value}})
+                else:
+                    es_filter.append({"term": {field: value}})
+            knn_query["filter"] = {"bool": {"filter": es_filter}}
+
         results = self.es_client.search(
             index=target_indexes,
-            body={
-                "query": {
-                    "knn": {
-                        "field": "embedding",
-                        "query_vector": query_vector,
-                        "num_candidates": max(k * 2, 10),
-                    }
-                }
-            },
+            body={"query": {"knn": knn_query}},
             size=k,
         )
         processed_results = []

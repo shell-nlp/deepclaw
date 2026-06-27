@@ -6,6 +6,7 @@ import psycopg
 from pgvector.psycopg import register_vector
 from psycopg.rows import dict_row
 from psycopg.types.json import Json
+from loguru import logger
 
 from deepclaw.common.vector_store.base import AbstractVectorStore
 
@@ -27,6 +28,7 @@ class PgVectorStore(AbstractVectorStore):
         self.embedding_dimensions = embedding_dimensions
         self.table_name = table_name
         self.schema_name = schema_name
+        self._dimension_verified: bool = False
 
     @property
     def embedding_model(self):
@@ -66,6 +68,29 @@ class PgVectorStore(AbstractVectorStore):
             self.embedding_dimensions = len(embedding)
         return self.embedding_dimensions
 
+    def _ensure_column_dimension(self, target_dim: int) -> None:
+        with self._connect() as conn, conn.cursor() as cur:
+            # pgvector 的 vector(N) 类型，维度存储在 pg_attribute.atttypmod 中
+            # atttypmod = 维度 + 4 (VARHDRSZ)
+            cur.execute(
+                f"SELECT atttypmod FROM pg_catalog.pg_attribute "
+                f"WHERE attrelid = '{self._qualified_table_name()}'::regclass "
+                f"AND attname = 'embedding' "
+                f"AND attnum > 0 AND NOT attisdropped"
+            )
+            row = cur.fetchone()
+            if row is not None:
+                current_dim = row["atttypmod"] - 4
+                if current_dim != target_dim:
+                    logger.info(
+                        "向量维度不匹配: 表中有 {} 维, 目标 {} 维, 执行 ALTER COLUMN", current_dim, target_dim
+                    )
+                    cur.execute(
+                        f"ALTER TABLE {self._qualified_table_name()} "
+                        f"ALTER COLUMN embedding TYPE vector({target_dim}) "
+                        f"USING embedding::vector({target_dim})"
+                    )
+
     def _require_single_index_name(
         self,
         *,
@@ -98,6 +123,9 @@ class PgVectorStore(AbstractVectorStore):
         """
         with self._connect() as conn, conn.cursor() as cur:
             cur.execute(sql)
+        if self.embedding_dimensions is not None and not self._dimension_verified:
+            self._ensure_column_dimension(self.embedding_dimensions)
+            self._dimension_verified = True
 
     def _ensure_partition(self, index_name: str) -> None:
         partition_table = self._qualified_partition_name(index_name)
@@ -106,29 +134,37 @@ class PgVectorStore(AbstractVectorStore):
         vector_index_name = self._vector_index_name(index_name)
         search_vector_index_name = self._search_vector_index_name(index_name)
 
-        sql = f"""
-        CREATE TABLE IF NOT EXISTS {partition_table}
-        PARTITION OF {self._qualified_table_name()}
-        FOR VALUES IN (%(index_name)s);
-
-        CREATE UNIQUE INDEX IF NOT EXISTS {partition_name}_id_uidx
-        ON {partition_table} (id);
-
-        CREATE INDEX IF NOT EXISTS {search_vector_index_name}
-        ON {partition_table}
-        USING GIN (search_vector);
-
-        CREATE INDEX IF NOT EXISTS {vector_index_name}
-        ON {partition_table}
-        USING hnsw (embedding vector_cosine_ops);
-
-        CREATE INDEX IF NOT EXISTS {bm25_index_name}
-        ON {partition_table}
-        USING bm25 (id, content)
-        WITH (key_field='id');
-        """
+        escaped = index_name.replace("'", "''")
+        statements = [
+            f"""
+            CREATE TABLE IF NOT EXISTS {partition_table}
+            PARTITION OF {self._qualified_table_name()}
+            FOR VALUES IN ('{escaped}')
+            """,
+            f"""
+            CREATE UNIQUE INDEX IF NOT EXISTS {partition_name}_id_uidx
+            ON {partition_table} (id)
+            """,
+            f"""
+            CREATE INDEX IF NOT EXISTS {search_vector_index_name}
+            ON {partition_table}
+            USING GIN (search_vector)
+            """,
+            f"""
+            CREATE INDEX IF NOT EXISTS {vector_index_name}
+            ON {partition_table}
+            USING hnsw (embedding vector_cosine_ops)
+            """,
+            f"""
+            CREATE INDEX IF NOT EXISTS {bm25_index_name}
+            ON {partition_table}
+            USING bm25 (id, content)
+            WITH (key_field='id')
+            """,
+        ]
         with self._connect() as conn, conn.cursor() as cur:
-            cur.execute(sql, {"index_name": index_name})
+            for stmt in statements:
+                cur.execute(stmt)
 
     def _list_index_names(self) -> list[str]:
         self._ensure_base_schema()
@@ -203,10 +239,36 @@ class PgVectorStore(AbstractVectorStore):
         index_name: str,
         query_vector: list[float],
         limit: int,
+        filter_conditions: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         self._ensure_base_schema()
         self._ensure_partition(index_name)
         partition_table = self._qualified_partition_name(index_name)
+        where_clauses: list[str] = []
+        params: dict[str, Any] = {
+            "index_name": index_name,
+            "query_vector": query_vector,
+            "limit": limit,
+        }
+        if filter_conditions:
+            for idx, (field, value) in enumerate(filter_conditions.items()):
+                param_name = f"filter_{idx}"
+                if field.startswith("metadata."):
+                    metadata_key = field.split(".", 1)[1]
+                    if isinstance(value, list):
+                        where_clauses.append(
+                            f"(metadata -> '{metadata_key}') @> %({param_name})s::jsonb"
+                        )
+                        params[param_name] = str(value)
+                    else:
+                        where_clauses.append(
+                            f"metadata ->> '{metadata_key}' = %({param_name})s"
+                        )
+                        params[param_name] = str(value)
+                else:
+                    where_clauses.append(f"{field} = %({param_name})s")
+                    params[param_name] = str(value)
+        where_sql = f" AND {' AND '.join(where_clauses)}" if where_clauses else ""
         sql = f"""
         SELECT
             id,
@@ -215,18 +277,12 @@ class PgVectorStore(AbstractVectorStore):
             metadata,
             1 - (embedding <=> %(query_vector)s) AS score
         FROM {partition_table}
+        WHERE 1=1{where_sql}
         ORDER BY embedding <=> %(query_vector)s
         LIMIT %(limit)s
         """
         with self._connect() as conn, conn.cursor() as cur:
-            cur.execute(
-                sql,
-                {
-                    "index_name": index_name,
-                    "query_vector": query_vector,
-                    "limit": limit,
-                },
-            )
+            cur.execute(sql, params)
             return cur.fetchall()
 
     def add(
@@ -446,6 +502,7 @@ class PgVectorStore(AbstractVectorStore):
         index_name: str | None = None,
         index_names: list[str] | None = None,
         min_similarity: float | None = None,
+        filter_conditions: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         target_indexes = self._resolve_read_indexes(index_name=index_name, index_names=index_names)
         if not target_indexes:
@@ -459,6 +516,7 @@ class PgVectorStore(AbstractVectorStore):
                 index_name=target_index,
                 query_vector=query_vector,
                 limit=max(k, 8),
+                filter_conditions=filter_conditions,
             )
             candidates.extend(self._row_to_result(row) for row in rows)
         candidates = self._apply_min_similarity(candidates, min_similarity)

@@ -15,7 +15,6 @@ from deepclaw.constant import (
     workspace_path,
 )
 from deepclaw.middleware.common import BusinessMiddleware
-from deepclaw.middleware.deep_agent_prompt import DeepAgentPromptMiddleware
 from deepclaw.middleware.mcp import MCPMiddleware
 from deepclaw.settings import settings
 from deepclaw.utils import get_chat_model
@@ -57,7 +56,6 @@ class Agent:
         from deepclaw.middleware.nl2sql import NL2SQLMiddleware
 
         middleware.append(NL2SQLMiddleware())
-        middleware.append(DeepAgentPromptMiddleware())
         middleware.append(BusinessMiddleware())
         middleware.append(MCPMiddleware())
 
@@ -127,6 +125,11 @@ class Agent:
         # )
 
         if self.deep_agent:
+            from deepclaw.middleware.deep_agent_prompt import DeepAgentPromptMiddleware
+            from deepclaw.middleware.cron.middleware import CronMiddleware
+
+            middleware.append(DeepAgentPromptMiddleware())
+            middleware.append(CronMiddleware())
             logger.info("使用 DeepAgent")
             from deepagents import FilesystemPermission, create_deep_agent
 

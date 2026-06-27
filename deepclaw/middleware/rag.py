@@ -13,9 +13,8 @@ from langchain_deepseek import ChatDeepSeek
 from langgraph.runtime import Runtime
 from loguru import logger
 
-from deepclaw.common.elastic_graph_rag import ElasticGraphRAG
+from deepclaw.common import create_graph_rag
 from deepclaw.common.vector_store import AbstractVectorStore
-from deepclaw.common.vector_store.elasticsearch import ElasticsearchVectorStore
 
 RAG_SYSTEM_PROMPT = """<角色>您是一个精通文档引用的问答专家，能够精准依据来源内容构建回答。</角色>
 <任务>基于提供的内容和用户的问题,撰写一篇详细完备的最终回答.</任务>
@@ -337,8 +336,12 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
         """
         try:
             if graph_name:
-                if isinstance(self.vector_store, ElasticsearchVectorStore):
-                    rag = ElasticGraphRAG(self.vector_store, graph_name)
+                try:
+                    rag = create_graph_rag(self.vector_store, graph_name)
+                except ValueError:
+                    rag = None
+
+                if rag:
                     raw_result = rag.retrieve(query=query, k=k)
                     hits = (
                         raw_result["passages"]
