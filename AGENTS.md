@@ -79,13 +79,23 @@
   RAG Agent 组装、上下文与状态定义。
 
 - `deepclaw/common/`
-  Elasticsearch、向量数据库抽象、Graph RAG、PDF 切分等通用算法实现。
+  Elasticsearch、向量数据库抽象、Graph RAG（`BaseGraphRAG` + `ElasticGraphRAG` + `PgGraphRAG`）、PDF 切分等通用算法实现。
 
 - `deepclaw/common/vector_store/`
   向量数据库抽象层，包含通用 `AbstractVectorStore`、统一创建入口 `create_vector_store()`、Elasticsearch 实现，以及基于 PostgreSQL + pgvector + pg_search 的实现。
 
-- `deepclaw/common/elastic_graph_rag.py`
-  Elasticsearch 专属的 Graph RAG 实现。普通检索链路优先依赖 `AbstractVectorStore`，只有图检索路径才依赖 `ElasticsearchVectorStore`。
+- `deepclaw/common/graph_rag/`
+  Graph RAG 统一包，包含：
+  - `base.py` — `BaseGraphRAG` 抽象基类，承载图构建、三元组抽取与 CRUD 编排的共享逻辑
+  - `elastic.py` — `ElasticGraphRAG(BaseGraphRAG)`，Elasticsearch 专属的检索与写入
+  - `pg.py` — `PgGraphRAG(BaseGraphRAG)`，PostgreSQL pgvector 版本，基于 `AbstractVectorStore` 接口实现应用层图遍历
+  - `__init__.py` — 统一导出入口
+
+- `deepclaw/common/elastic_graph_rag.py` / `deepclaw/common/pg_graph_rag.py`
+  向后兼容的 re-export 存根，新代码请从 `deepclaw/common/graph_rag` 导入。
+
+- `deepclaw/common/__init__.py`
+  导出所有公共类型，并提供 `create_graph_rag()` 工厂函数，根据 `vector_store` 类型自动创建对应的 `ElasticGraphRAG` 或 `PgGraphRAG` 实例。
 
 - `deepclaw/middleware/`
   业务开关、RAG 注入、MCP、工具搜索、计划，以及 `cron` 工具实现等中间件与运行时扩展。

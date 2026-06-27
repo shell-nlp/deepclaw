@@ -13,11 +13,11 @@ class FakeAuthService:
         self.issued_for: list[str] = []
         self.revoked: list[str] = []
 
-    def issue_user_access_token(self, *, user_id: str):
+    async def issue_user_access_token(self, *, user_id: str):
         self.issued_for.append(user_id)
         return FakeIssuedToken(token=f"token-for-{user_id}")
 
-    def revoke_token(self, token: str) -> bool:
+    async def revoke_token(self, token: str) -> bool:
         self.revoked.append(token)
         return True
 

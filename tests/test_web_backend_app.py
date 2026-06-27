@@ -140,7 +140,7 @@ def test_init_agent_env_keeps_postgres_checkpointer_context_alive(monkeypatch):
         def __init__(self):
             self.setup_calls = 0
 
-        def setup(self):
+        async def setup(self):
             self.setup_calls += 1
 
     class FakeStoreCtx:
@@ -153,6 +153,12 @@ def test_init_agent_env_keeps_postgres_checkpointer_context_alive(monkeypatch):
         def __exit__(self, exc_type, exc, tb):
             return None
 
+        async def __aenter__(self):
+            return self.store
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
     checkpointer = FakeCheckpointer()
     checkpointer_ctx = FakeAsyncCheckpointerCtx(checkpointer)
     store = FakeStore()
@@ -162,13 +168,13 @@ def test_init_agent_env_keeps_postgres_checkpointer_context_alive(monkeypatch):
     checkpoint_module.AsyncPostgresSaver = types.SimpleNamespace(
         from_conn_string=lambda *args, **kwargs: checkpointer_ctx
     )
-    store_module = types.ModuleType("langgraph.store.postgres")
-    store_module.PostgresStore = types.SimpleNamespace(
+    store_module = types.ModuleType("langgraph.store.postgres.aio")
+    store_module.AsyncPostgresStore = types.SimpleNamespace(
         from_conn_string=lambda *args, **kwargs: store_ctx
     )
 
     monkeypatch.setitem(sys.modules, "langgraph.checkpoint.postgres.aio", checkpoint_module)
-    monkeypatch.setitem(sys.modules, "langgraph.store.postgres", store_module)
+    monkeypatch.setitem(sys.modules, "langgraph.store.postgres.aio", store_module)
     monkeypatch.setattr(app_module.settings, "PG_DATABASE_URL", "postgresql://example")
 
     app = app_module.FastAPI()
@@ -176,9 +182,9 @@ def test_init_agent_env_keeps_postgres_checkpointer_context_alive(monkeypatch):
     asyncio.run(app_module.init_agent_env(app))
 
     assert app.state.checkpointer is checkpointer
-    assert app.state.agent_checkpointer_ctx is checkpointer_ctx
+    assert app.state.checkpointer._checkpointer_cm is checkpointer_ctx
     assert app.state.store is store
-    assert app.state.agent_store_ctx is store_ctx
+    assert app.state.store._store_cm is store_ctx
     assert checkpointer.setup_calls == 1
     assert store.setup_calls == 1
 

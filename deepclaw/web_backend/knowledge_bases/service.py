@@ -11,11 +11,12 @@ from langchain_core.documents import Document
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from deepclaw.common.elastic_graph_rag import ElasticGraphRAG
+from deepclaw.common import create_default_vector_store, create_graph_rag
+from deepclaw.common.graph_rag import BaseGraphRAG
+from deepclaw.common.vector_store.base import AbstractVectorStore
 from deepclaw.common.vector_store.elasticsearch import ElasticsearchVectorStore
 from deepclaw.common.text_splitter import PDFParser
 from deepclaw.constant import workspace_path
-from deepclaw.settings import settings
 from deepclaw.web_backend.knowledge_bases.store import (
     KnowledgeBaseMetadataStore,
     SQLModelKnowledgeBaseMetadataStore,
@@ -125,10 +126,10 @@ class KnowledgeBaseManager:
 
     def __init__(
         self,
-        es: ElasticsearchVectorStore,
+        vector_store: AbstractVectorStore,
         metadata_store: KnowledgeBaseMetadataStore | None = None,
     ):
-        self.es = es
+        self._vector_store = vector_store
         self.metadata_store = metadata_store or SQLModelKnowledgeBaseMetadataStore()
 
     async def list_knowledge_bases(self, user_id: str) -> list[KnowledgeBaseRecord]:
@@ -168,7 +169,7 @@ class KnowledgeBaseManager:
 
         knowledge_base_id = uuid.uuid4().hex
         index_prefix = f"kb_{knowledge_base_id}"
-        indexes = ElasticGraphRAG.index_names(index_prefix)
+        indexes = BaseGraphRAG.index_names(index_prefix)
         now = self._now()
         source = {
             "knowledge_base_id": knowledge_base_id,
@@ -230,7 +231,7 @@ class KnowledgeBaseManager:
         self, user_id: str, knowledge_base_id: str
     ) -> KnowledgeBaseDeleteResult:
         knowledge_base = await self.get_knowledge_base(user_id, knowledge_base_id)
-        rag = ElasticGraphRAG(self.es, knowledge_base.index_prefix)
+        rag = create_graph_rag(self._vector_store, knowledge_base.index_prefix)
         graph_result = rag.delete_graph(ignore_missing=True)
 
         document_ids = [
@@ -393,7 +394,7 @@ class KnowledgeBaseManager:
             value=document_id,
             size=10000,
         )
-        rag = ElasticGraphRAG(self.es, knowledge_base.index_prefix)
+        rag = create_graph_rag(self._vector_store, knowledge_base.index_prefix)
         delete_result = rag.delete_documents(passage_ids)
 
         await self.metadata_store.delete_document(document_id=document_id)
@@ -457,7 +458,7 @@ class KnowledgeBaseManager:
         files: Iterable[UploadedKnowledgeFile],
     ) -> KnowledgeBaseUploadResponse:
         knowledge_base = await self.get_knowledge_base(user_id, knowledge_base_id)
-        rag = ElasticGraphRAG(self.es, knowledge_base.index_prefix)
+        rag = create_graph_rag(self._vector_store, knowledge_base.index_prefix)
         storage_dir = self._storage_dir(user_id, knowledge_base_id)
         storage_dir.mkdir(parents=True, exist_ok=True)
 
@@ -495,7 +496,7 @@ class KnowledgeBaseManager:
         *,
         user_id: str,
         knowledge_base: KnowledgeBaseRecord,
-        rag: ElasticGraphRAG,
+        rag: BaseGraphRAG,
         storage_dir: Path,
         uploaded_file: UploadedKnowledgeFile,
     ) -> KnowledgeBaseDocumentRecord:
@@ -618,18 +619,47 @@ class KnowledgeBaseManager:
         from_: int = 0,
         sort: list[dict[str, Any]] | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
-        if not self.es.es_client.indices.exists(index=index_name):
-            return [], 0
-        body: dict[str, Any] = {
-            "query": query,
-            "from": from_,
-            "track_total_hits": True,
-        }
+        if isinstance(self._vector_store, ElasticsearchVectorStore):
+            es = self._vector_store
+            if not es.es_client.indices.exists(index=index_name):
+                return [], 0
+            body: dict[str, Any] = {
+                "query": query,
+                "from": from_,
+                "track_total_hits": True,
+            }
+            if sort:
+                body["sort"] = sort
+            results = es.es_client.search(index=index_name, body=body, size=size)
+            total = int(results["hits"]["total"]["value"])
+            return results["hits"]["hits"], total
+
+        # PG 分支：将 ES term 查询转为 filter_conditions，手动处理排序和分页
+        filter_conditions = self._es_term_query_to_filter(query)
+        pg = self._vector_store
+        total = pg.count(index_name=index_name, filter_conditions=filter_conditions)
+        results = pg.search(
+            index_name=index_name,
+            filter_conditions=filter_conditions,
+            k=from_ + size,
+        )
         if sort:
-            body["sort"] = sort
-        results = self.es.es_client.search(index=index_name, body=body, size=size)
-        total = int(results["hits"]["total"]["value"])
-        return results["hits"]["hits"], total
+            sort_field = list(sort[0].keys())[0] if sort else ""
+            sort_order = sort[0][sort_field]["order"] if sort and sort_field else "asc"
+            reverse = sort_order == "desc"
+            results.sort(key=lambda r: _safe_sort_key(r, sort_field), reverse=reverse)
+        page = results[from_:from_ + size]
+        # 归一化为 ES 风格 _id / _source 格式，保持 caller 兼容
+        normalized: list[dict[str, Any]] = []
+        for r in page:
+            normalized.append({
+                "_id": r["id"],
+                "_source": {
+                    "content": r.get("content", ""),
+                    "metadata": r.get("metadata", {}),
+                },
+            })
+        return normalized, total
 
     def _normalize_page(self, page: int, page_size: int) -> tuple[int, int]:
         normalized_page = max(1, int(page))
@@ -639,23 +669,37 @@ class KnowledgeBaseManager:
     def _search_ids_by_term(
         self, *, index_name: str, field: str, value: str, size: int
     ) -> list[str]:
-        if not self.es.es_client.indices.exists(index=index_name):
-            return []
-        results = self.es.es_client.search(
-            index=index_name,
-            body={"query": {"term": {field: value}}, "_source": False},
-            size=size,
+        if isinstance(self._vector_store, ElasticsearchVectorStore):
+            es = self._vector_store
+            if not es.es_client.indices.exists(index=index_name):
+                return []
+            results = es.es_client.search(
+                index=index_name,
+                body={"query": {"term": {field: value}}, "_source": False},
+                size=size,
+            )
+            return [hit["_id"] for hit in results["hits"]["hits"]]
+
+        pg = self._vector_store
+        results = pg.search(
+            index_name=index_name,
+            filter_conditions={field: value},
+            k=size,
         )
-        return [hit["_id"] for hit in results["hits"]["hits"]]
+        return [r["id"] for r in results]
 
     def _count_index(self, index_name: str) -> int:
-        if not self.es.es_client.indices.exists(index=index_name):
-            return 0
-        result = self.es.es_client.count(
-            index=index_name,
-            body={"query": {"match_all": {}}},
-        )
-        return int(result["count"])
+        if isinstance(self._vector_store, ElasticsearchVectorStore):
+            es = self._vector_store
+            if not es.es_client.indices.exists(index=index_name):
+                return 0
+            result = es.es_client.count(
+                index=index_name,
+                body={"query": {"match_all": {}}},
+            )
+            return int(result["count"])
+
+        return self._vector_store.count(index_name=index_name)
 
     def _storage_dir(self, user_id: str, knowledge_base_id: str) -> Path:
         return self.STORAGE_ROOT / self._safe_path_part(user_id) / knowledge_base_id
@@ -680,14 +724,35 @@ class KnowledgeBaseManager:
     def _now() -> str:
         return datetime.now().astimezone().isoformat(timespec="seconds")
 
+    @staticmethod
+    def _es_term_query_to_filter(query: dict[str, Any]) -> dict[str, Any]:
+        """将 ES bool/term 查询结构转为扁平 filter_conditions 字典。"""
+        filters: dict[str, Any] = {}
+        bool_block = query.get("bool", {})
+        for clause in bool_block.get("filter", []):
+            if "term" in clause:
+                for field, value in clause["term"].items():
+                    filters[field] = value
+        return filters
+
+
+def _safe_sort_key(result: dict[str, Any], sort_field: str) -> Any:
+    """从点分隔的字段路径中提取排序值，兼容 metadata.segment_id 等嵌套路径。"""
+    parts = sort_field.split(".")
+    value: Any = result
+    for part in parts:
+        if isinstance(value, dict):
+            value = value.get(part, 0)
+        else:
+            return 0
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return str(value or 0)
+
 
 embeddings = get_embedding_model()
 knowledge_base_manager = KnowledgeBaseManager(
-    ElasticsearchVectorStore(
-        url=settings.ES_URL,
-        username=settings.ES_URSR,
-        password=settings.ES_PWD,
-        embedding_model=embeddings,
-    )
+    create_default_vector_store(embedding_model=embeddings)
 )
 

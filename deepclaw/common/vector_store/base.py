@@ -108,6 +108,7 @@ class AbstractVectorStore(ABC):
         index_name: str | None = None,
         index_names: list[str] | None = None,
         min_similarity: float | None = None,
+        filter_conditions: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]: ...
 
     @abstractmethod

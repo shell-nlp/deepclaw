@@ -1,6 +1,6 @@
 ﻿from langchain.tools import tool
 
-from deepclaw.common.elastic_graph_rag import ElasticGraphRAG
+from deepclaw.common import create_graph_rag
 from deepclaw.common.vector_store import (
     AbstractVectorStore,
     create_default_vector_store,
@@ -41,7 +41,7 @@ def retrieve_graph_context(query: str, graph_name: str = DEFAULT_INDEX_NAME):
         password=settings.ES_PWD,
         embedding_model=embeddings,
     )
-    rag = ElasticGraphRAG(es=es, graph_name=graph_name)
+    rag = create_graph_rag(es, graph_name)
     result = rag.retrieve(query=query, k=5)
     passages = result["passages"] if isinstance(result, dict) else result
 

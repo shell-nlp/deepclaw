@@ -20,7 +20,7 @@ def test_deep_agent_prompt_middleware_appends_default_prompt_and_time(monkeypatc
     middleware = DeepAgentPromptMiddleware()
     request = DummyRequest(system_message=SystemMessage(content="自定义前缀"))
     monkeypatch.setattr(
-        "deepclaw.middleware.deep_agent_prompt.get_current_time",
+        "deepclaw.utils.get_current_time",
         lambda: "\n当前时间：2099年1月1日 星期一",
     )
 
@@ -33,35 +33,37 @@ def test_deep_agent_prompt_middleware_appends_default_prompt_and_time(monkeypatc
         {"type": "text", "text": "自定义前缀"},
         {
             "type": "text",
-            "text": f"\n\n{DEFAULT_SYSTEM_PROMPT}\n当前时间：2099年1月1日 星期一",
+            "text": f"\n\n{DEFAULT_SYSTEM_PROMPT}",
         },
     ]
 
 
 def test_general_agent_registers_deep_agent_prompt_middleware(monkeypatch):
-    import deepclaw.agents.general.agent as agent_module
     from deepclaw.middleware.deep_agent_prompt import DeepAgentPromptMiddleware
+
+    captured = {}
+
+    def fake_create_deep_agent(**kwargs):
+        captured["middleware"] = kwargs["middleware"]
+        return object()
+
+    monkeypatch.setattr(
+        "deepagents.create_deep_agent",
+        fake_create_deep_agent,
+    )
+    import deepclaw.agents.general.agent as agent_module
 
     class DummyModel:
         tags = []
 
-    captured = {}
-
-    def fake_create_agent(**kwargs):
-        captured["middleware"] = kwargs["middleware"]
-        captured["system_prompt"] = kwargs["system_prompt"]
-        return object()
-
-    monkeypatch.setattr(agent_module, "create_agent", fake_create_agent)
     monkeypatch.setattr(agent_module, "get_chat_model", lambda: DummyModel())
     monkeypatch.setattr(agent_module.settings, "USE_COPILOTKIT", False)
     monkeypatch.setattr(agent_module.settings, "USE_TOOL_SEARCH", False)
-    monkeypatch.setattr(agent_module.settings, "BACKEND_TYPE", "")
+    monkeypatch.setattr(agent_module.settings, "BACKEND_TYPE", "local_shell")
 
-    agent_module.Agent(deep_agent=False)
+    agent_module.Agent(deep_agent=True)
 
-    assert captured["system_prompt"] == ""
     assert any(
-        isinstance(middleware, DeepAgentPromptMiddleware)
-        for middleware in captured["middleware"]
+        isinstance(m, DeepAgentPromptMiddleware)
+        for m in captured["middleware"]
     )

@@ -57,7 +57,7 @@ class FakeMetadataStore:
 def test_create_knowledge_base_delegates_metadata_creation():
     async def _run():
         metadata_store = FakeMetadataStore()
-        manager = KnowledgeBaseManager(es=object(), metadata_store=metadata_store)
+        manager = KnowledgeBaseManager(vector_store=object(), metadata_store=metadata_store)
 
         record = await manager.create_knowledge_base(
             user_id="user-1", name="  测试库  ", description=" desc "
@@ -81,7 +81,7 @@ def test_create_knowledge_base_delegates_metadata_creation():
 def test_update_document_delegates_document_metadata_save():
     async def _run():
         metadata_store = FakeMetadataStore()
-        manager = KnowledgeBaseManager(es=object(), metadata_store=metadata_store)
+        manager = KnowledgeBaseManager(vector_store=object(), metadata_store=metadata_store)
 
         record = await manager.update_document(
             user_id="user-1",

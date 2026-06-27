@@ -28,7 +28,7 @@ def test_channel_lifespan_starts_saved_weixin_user_runtimes_and_cancels_tasks(mo
             self.data = {"bot_token": token, "owner_user_id": state_key.removeprefix("user:")}
 
     class FakeStore:
-        def list_runtime_states(self, *, channel):
+        async def list_runtime_states(self, *, channel):
             captured["channel"] = channel
             return [
                 FakeState("user:user_1", "token_1"),
