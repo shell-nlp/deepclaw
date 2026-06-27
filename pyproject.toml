@@ -42,6 +42,9 @@ dependencies = [
 # uv sync --extra pdf 才会安装
 # uv sync --all-extras 安装所有可选依赖
 [project.optional-dependencies]
+oracle = [
+    "oracledb>=2.0.0",
+]
 opensandbox = [
     "opensandbox-server>=0.1.14",
     "opensandbox-code-interpreter>=0.1.2",
