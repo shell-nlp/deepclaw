@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import psycopg
@@ -11,7 +12,6 @@ from psycopg.types.json import Json
 from loguru import logger
 
 from deepclaw.common.vector_store.base import AbstractVectorStore
-from deepclaw.constant import home_path
 
 
 class PgVectorStore(AbstractVectorStore):
@@ -25,16 +25,29 @@ class PgVectorStore(AbstractVectorStore):
         embedding_dimensions: int | None = None,
         table_name: str = "vector_store_documents",
         schema_name: str = "public",
+        refresh_fail_dir: str | Path = ".",
     ):
+        """初始化 PgVectorStore 实例。
+
+        Args:
+            database_url: PostgreSQL 数据库连接 URL。
+            embedding_model: 嵌入模型实例，为 None 时延迟加载。
+            embedding_dimensions: 向量维度，为 None 时自动从首次嵌入推断。
+            table_name: 基表名称，用于分区表命名。
+            schema_name: 数据库 schema 名称。
+            refresh_fail_dir: refresh 失败记录写出目录。
+        """
         self.database_url = database_url
         self._embedding_model = embedding_model
         self.embedding_dimensions = embedding_dimensions
         self.table_name = table_name
         self.schema_name = schema_name
+        self._refresh_fail_dir = Path(refresh_fail_dir)
         self._dimension_verified: bool = False
 
     @property
     def embedding_model(self):
+        """获取嵌入模型实例，未初始化时延迟创建。"""
         if self._embedding_model is None:
             from deepclaw.utils import get_embedding_model
 
@@ -42,36 +55,76 @@ class PgVectorStore(AbstractVectorStore):
         return self._embedding_model
 
     def _connect(self):
+        """建立并返回与 PostgreSQL 的连接，自动注册 pgvector 类型。"""
         conn = psycopg.connect(self.database_url, autocommit=True, row_factory=dict_row)
         register_vector(conn)
         return conn
 
     def _qualified_table_name(self) -> str:
+        """返回带 schema 的完整基表名称。"""
         return f"{self.schema_name}.{self.table_name}"
 
     def _partition_table_name(self, index_name: str) -> str:
+        """根据 index_name 生成分区表名称，非法字符替换为下划线。
+
+        Args:
+            index_name: 索引名称。
+        """
         normalized = "".join(char if char.isalnum() else "_" for char in index_name.lower())
         normalized = normalized.strip("_") or "default"
         return f"{self.table_name}_{normalized}"
 
     def _qualified_partition_name(self, index_name: str) -> str:
+        """返回带 schema 的完整分区表名称。
+
+        Args:
+            index_name: 索引名称。
+        """
         return f"{self.schema_name}.{self._partition_table_name(index_name)}"
 
     def _bm25_index_name(self, index_name: str) -> str:
+        """返回全文检索 BM25 索引的名称。
+
+        Args:
+            index_name: 索引名称。
+        """
         return f"{self._partition_table_name(index_name)}_bm25_idx"
 
     def _vector_index_name(self, index_name: str) -> str:
+        """返回 HNSW 向量索引的名称。
+
+        Args:
+            index_name: 索引名称。
+        """
         return f"{self._partition_table_name(index_name)}_embedding_idx"
 
     def _search_vector_index_name(self, index_name: str) -> str:
+        """返回 tsvector GIN 索引的名称。
+
+        Args:
+            index_name: 索引名称。
+        """
         return f"{self._partition_table_name(index_name)}_search_vector_idx"
 
     def _ensure_embedding_dimensions(self, embedding: list[float]) -> int:
+        """确保 embedding_dimensions 已设置，未设置时从传入向量推断。
+
+        Args:
+            embedding: 嵌入向量。
+
+        Returns:
+            确定的向量维度。
+        """
         if self.embedding_dimensions is None:
             self.embedding_dimensions = len(embedding)
         return self.embedding_dimensions
 
     def _ensure_column_dimension(self, target_dim: int) -> None:
+        """检查并调整表的 embedding 列维度以匹配目标维度。
+
+        Args:
+            target_dim: 目标向量维度。
+        """
         with self._connect() as conn, conn.cursor() as cur:
             # pgvector 的 vector(N) 类型，维度存储在 pg_attribute.atttypmod 中
             # atttypmod = 维度 + 4 (VARHDRSZ)
@@ -101,6 +154,19 @@ class PgVectorStore(AbstractVectorStore):
         index_names: list[str] | None = None,
         operation: str = "write",
     ) -> str:
+        """强制要求提供一个且仅一个 index_name，不支持多索引操作。
+
+        Args:
+            index_name: 单个索引名称。
+            index_names: 索引名称列表（不允许传入）。
+            operation: 操作名称，用于异常提示。
+
+        Returns:
+            校验后的 index_name。
+
+        Raises:
+            ValueError: 当 index_names 非空或 index_name 为空时抛出。
+        """
         if index_names:
             raise ValueError(f"{operation} operations only support a single index_name")
         if not index_name:
@@ -108,6 +174,7 @@ class PgVectorStore(AbstractVectorStore):
         return index_name
 
     def _ensure_base_schema(self) -> None:
+        """确保基础表结构存在，包括 vector 和 pg_search 扩展及分区基表。"""
         dimensions = self.embedding_dimensions or 1536
         sql = f"""
         CREATE EXTENSION IF NOT EXISTS vector;
@@ -131,6 +198,11 @@ class PgVectorStore(AbstractVectorStore):
             self._dimension_verified = True
 
     def _ensure_partition(self, index_name: str) -> None:
+        """确保指定 index_name 的分区表及各类索引已创建。
+
+        Args:
+            index_name: 索引名称。
+        """
         partition_table = self._qualified_partition_name(index_name)
         partition_name = self._partition_table_name(index_name)
         bm25_index_name = self._bm25_index_name(index_name)
@@ -170,6 +242,7 @@ class PgVectorStore(AbstractVectorStore):
                 cur.execute(stmt)
 
     def _list_index_names(self) -> list[str]:
+        """查询基表中所有不同的 index_name，确保基础表结构存在。"""
         self._ensure_base_schema()
         with self._connect() as conn, conn.cursor() as cur:
             cur.execute(
@@ -335,6 +408,15 @@ class PgVectorStore(AbstractVectorStore):
         index_name: str | None = None,
         index_names: list[str] | None = None,
     ) -> list[str]:
+        """解析查询操作的目标索引列表，优先使用传入参数，否则返回全量索引。
+
+        Args:
+            index_name: 单个索引名称。
+            index_names: 索引名称列表。
+
+        Returns:
+            目标索引名称列表。
+        """
         target_indexes = self.resolve_index_names(index_name=index_name, index_names=index_names)
         if target_indexes is not None:
             return target_indexes
@@ -345,11 +427,28 @@ class PgVectorStore(AbstractVectorStore):
         candidates: list[dict[str, Any]],
         min_similarity: float | None,
     ) -> list[dict[str, Any]]:
+        """过滤候选结果，保留满足最低相似度阈值的结果。
+
+        Args:
+            candidates: 候选结果列表，每项应包含可选的 score 字段。
+            min_similarity: 最低相似度阈值，为 None 时不过滤。
+
+        Returns:
+            过滤后的结果列表。
+        """
         if min_similarity is None:
             return candidates
         return [item for item in candidates if item.get("score") is None or item["score"] >= min_similarity]
 
     def _row_to_result(self, row: dict[str, Any]) -> dict[str, Any]:
+        """将数据库行转换为统一的返回结果字典。
+
+        Args:
+            row: 数据库查询结果行。
+
+        Returns:
+            包含 id、content、metadata 和可选的 score 的字典。
+        """
         metadata = row.get("metadata") or {}
         if isinstance(metadata, str):
             metadata = {"raw": metadata}
@@ -372,6 +471,16 @@ class PgVectorStore(AbstractVectorStore):
         index_names: list[str],
         limit: int,
     ) -> list[dict[str, Any]]:
+        """执行关键词全文检索查询，返回匹配行。
+
+        Args:
+            query: 检索关键词。
+            index_names: 要检索的索引名称列表。
+            limit: 返回结果数量上限。
+
+        Returns:
+            查询结果行列表。
+        """
         self._ensure_base_schema()
         for index_name in index_names:
             self._ensure_partition(index_name)
@@ -395,6 +504,17 @@ class PgVectorStore(AbstractVectorStore):
         limit: int,
         filter_conditions: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
+        """在指定索引分区中执行向量相似度检索，返回候选结果。
+
+        Args:
+            index_name: 目标分区索引名称。
+            query_vector: 查询向量。
+            limit: 返回候选数量上限。
+            filter_conditions: 元数据过滤条件字典。
+
+        Returns:
+            查询结果行列表。
+        """
         self._ensure_base_schema()
         self._ensure_partition(index_name)
         partition_table = self._qualified_partition_name(index_name)
@@ -446,6 +566,17 @@ class PgVectorStore(AbstractVectorStore):
         doc_id: str | None = None,
         index_name: str | None = None,
     ) -> str:
+        """向向量库中添加一条文档记录。
+
+        Args:
+            content: 文档内容。
+            metadata: 文档元数据。
+            doc_id: 文档 ID，为空时从 metadata 中提取。
+            index_name: 目标索引名称。
+
+        Returns:
+            添加的文档 ID。
+        """
         index_name = self._require_single_index_name(index_name=index_name, operation="add")
         embedding = self.embedding_model.embed_query(content)
         self._ensure_embedding_dimensions(embedding)
@@ -490,6 +621,15 @@ class PgVectorStore(AbstractVectorStore):
         documents: list[dict[str, Any]],
         index_name: str | None = None,
     ) -> list[str]:
+        """批量添加文档到向量库。
+
+        Args:
+            documents: 文档字典列表，每项应包含 content、可选的 metadata 和 id。
+            index_name: 目标索引名称。
+
+        Returns:
+            添加成功的文档 ID 列表。
+        """
         index_name = self._require_single_index_name(index_name=index_name, operation="add_batch")
         if not documents:
             return []
@@ -513,6 +653,17 @@ class PgVectorStore(AbstractVectorStore):
         metadata: dict[str, Any] | None = None,
         index_name: str | None = None,
     ) -> bool:
+        """更新向量库中指定文档的内容和/或元数据。
+
+        Args:
+            doc_id: 文档 ID。
+            content: 新的文档内容，为 None 时不更新。
+            metadata: 新的文档元数据，为 None 时不更新。
+            index_name: 索引名称。
+
+        Returns:
+            是否成功更新。
+        """
         index_name = self._require_single_index_name(index_name=index_name, operation="update")
         if content is None and metadata is None:
             return False
@@ -547,6 +698,15 @@ class PgVectorStore(AbstractVectorStore):
             return cur.rowcount > 0
 
     def delete(self, doc_id: str, index_name: str | None = None) -> bool:
+        """从向量库中删除指定文档。
+
+        Args:
+            doc_id: 文档 ID。
+            index_name: 索引名称。
+
+        Returns:
+            是否成功删除。
+        """
         index_name = self._require_single_index_name(index_name=index_name, operation="delete")
         self._ensure_base_schema()
         sql = f"DELETE FROM {self._qualified_table_name()} WHERE index_name = %(index_name)s AND id = %(id)s"
@@ -555,6 +715,15 @@ class PgVectorStore(AbstractVectorStore):
             return cur.rowcount > 0
 
     def delete_batch(self, doc_ids: list[str], index_name: str | None = None) -> list[bool]:
+        """批量从向量库中删除指定文档。
+
+        Args:
+            doc_ids: 文档 ID 列表。
+            index_name: 索引名称。
+
+        Returns:
+            每项表示对应文档是否成功删除。
+        """
         index_name = self._require_single_index_name(index_name=index_name, operation="delete_batch")
         if not doc_ids:
             return []
@@ -564,6 +733,15 @@ class PgVectorStore(AbstractVectorStore):
         return deleted
 
     def get(self, doc_id: str, index_name: str | None = None) -> dict[str, Any] | None:
+        """根据文档 ID 获取指定文档。
+
+        Args:
+            doc_id: 文档 ID。
+            index_name: 索引名称。
+
+        Returns:
+            文档字典，不存在时返回 None。
+        """
         index_name = self._require_single_index_name(index_name=index_name, operation="get")
         self._ensure_base_schema()
         sql = f"""
@@ -577,6 +755,15 @@ class PgVectorStore(AbstractVectorStore):
         return self._row_to_result(row) if row else None
 
     def exists(self, doc_id: str, index_name: str | None = None) -> bool:
+        """检查指定文档是否存在。
+
+        Args:
+            doc_id: 文档 ID。
+            index_name: 索引名称。
+
+        Returns:
+            文档是否存在。
+        """
         index_name = self._require_single_index_name(index_name=index_name, operation="exists")
         self._ensure_base_schema()
         sql = f"SELECT 1 FROM {self._qualified_table_name()} WHERE index_name = %(index_name)s AND id = %(id)s"
@@ -590,6 +777,16 @@ class PgVectorStore(AbstractVectorStore):
         index_name: str | None = None,
         index_names: list[str] | None = None,
     ) -> int:
+        """统计符合条件的文档数量。
+
+        Args:
+            filter_conditions: 过滤条件字典。
+            index_name: 单个索引名称。
+            index_names: 索引名称列表。
+
+        Returns:
+            文档数量。
+        """
         target_indexes = self._resolve_read_indexes(index_name=index_name, index_names=index_names)
         self._ensure_base_schema()
         where_clauses = ["index_name = ANY(%(index_names)s)"]
@@ -621,6 +818,18 @@ class PgVectorStore(AbstractVectorStore):
         index_name: str | None = None,
         index_names: list[str] | None = None,
     ) -> list[dict[str, Any]]:
+        """通用检索入口，有 query 时走关键词检索，否则按更新时间排序返回最新文档。
+
+        Args:
+            query: 检索关键词，为空时返回最新文档。
+            k: 返回结果数量。
+            filter_conditions: 过滤条件字典。
+            index_name: 单个索引名称。
+            index_names: 索引名称列表。
+
+        Returns:
+            检索结果列表。
+        """
         target_indexes = self._resolve_read_indexes(index_name=index_name, index_names=index_names)
         if query:
             return self.keyword_search(query, k=k, index_names=target_indexes)
@@ -658,6 +867,19 @@ class PgVectorStore(AbstractVectorStore):
         min_similarity: float | None = None,
         filter_conditions: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
+        """向量相似度检索，查询文本经嵌入后使用余弦距离检索。
+
+        Args:
+            query: 查询文本。
+            k: 返回结果数量。
+            index_name: 单个索引名称。
+            index_names: 索引名称列表。
+            min_similarity: 最低相似度阈值，低于该值的结果被过滤。
+            filter_conditions: 元数据过滤条件字典。
+
+        Returns:
+            按相似度降序排列的检索结果列表。
+        """
         target_indexes = self._resolve_read_indexes(index_name=index_name, index_names=index_names)
         if not target_indexes:
             return []
@@ -684,6 +906,17 @@ class PgVectorStore(AbstractVectorStore):
         index_name: str | None = None,
         index_names: list[str] | None = None,
     ) -> list[dict[str, Any]]:
+        """全文关键词检索，使用 pg_search 的 BM25 评分。
+
+        Args:
+            query: 检索关键词。
+            k: 返回结果数量。
+            index_name: 单个索引名称。
+            index_names: 索引名称列表。
+
+        Returns:
+            按 BM25 评分降序排列的检索结果列表。
+        """
         target_indexes = self._resolve_read_indexes(index_name=index_name, index_names=index_names)
         if not target_indexes:
             return []
@@ -748,8 +981,8 @@ class PgVectorStore(AbstractVectorStore):
 
         if fail_records:
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            fail_path = home_path / f"refresh_failed_{ts}.jsonl"
-            home_path.mkdir(parents=True, exist_ok=True)
+            fail_path = self._refresh_fail_dir / f"refresh_failed_{ts}.jsonl"
+            self._refresh_fail_dir.mkdir(parents=True, exist_ok=True)
             with open(fail_path, "w", encoding="utf-8") as f:
                 for rec in fail_records:
                     f.write(json.dumps(rec, ensure_ascii=False) + "\n")
