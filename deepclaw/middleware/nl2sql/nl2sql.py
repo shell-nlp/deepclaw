@@ -11,7 +11,7 @@ from deepclaw.agents.general.context import AgentContext
 from deepclaw.middleware.nl2sql.ddl import fetch_schema_ddl
 from deepclaw.settings import settings
 
-DATABASE_URL = "postgresql://admin:admin@localhost:5432/langchain_api"
+DATABASE_URL = "postgresql://admin:admin@localhost:55432/deepclaw"
 
 
 def _resolve_database_url() -> str | None:

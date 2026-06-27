@@ -223,13 +223,7 @@ pnpm build
 
 ## 最小验证
 
-修改 Python 文件后，至少运行：
-
-```bash
-uv run python -m py_compile <changed_file.py>
-```
-
-代码修改后，还必须运行 Ruff：
+修改 Python 文件后，至少运行 Ruff：
 
 ```bash
 uv run ruff check .
