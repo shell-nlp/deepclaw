@@ -7,16 +7,19 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
-from elasticsearch import NotFoundError
 from langchain_core.documents import Document
 from loguru import logger
 from pydantic import BaseModel, Field
 
 from deepclaw.common.elastic_graph_rag import ElasticGraphRAG
-from deepclaw.common.elastic_utils import Elasticsearch
+from deepclaw.common.vector_store.elasticsearch import ElasticsearchVectorStore
 from deepclaw.common.text_splitter import PDFParser
 from deepclaw.constant import workspace_path
 from deepclaw.settings import settings
+from deepclaw.web_backend.knowledge_bases.store import (
+    KnowledgeBaseMetadataStore,
+    SQLModelKnowledgeBaseMetadataStore,
+)
 from deepclaw.utils import get_embedding_model
 
 
@@ -120,20 +123,21 @@ class KnowledgeBaseManager:
     DOCUMENT_INDEX = "rag_knowledge_base_documents"
     STORAGE_ROOT = workspace_path / "pdf_files" / "knowledge_bases"
 
-    def __init__(self, es: Elasticsearch):
+    def __init__(
+        self,
+        es: ElasticsearchVectorStore,
+        metadata_store: KnowledgeBaseMetadataStore | None = None,
+    ):
         self.es = es
-        self._ensure_metadata_indexes()
+        self.metadata_store = metadata_store or SQLModelKnowledgeBaseMetadataStore()
 
-    def list_knowledge_bases(self, user_id: str) -> list[KnowledgeBaseRecord]:
-        hits = self._search(
-            index_name=self.KNOWLEDGE_BASE_INDEX,
-            query={"bool": {"filter": [{"term": {"user_id": user_id}}]}},
-            size=500,
-            sort=[{"updated_at": {"order": "desc"}}],
-        )
-        return [KnowledgeBaseRecord(**hit["_source"]) for hit in hits]
+    async def list_knowledge_bases(self, user_id: str) -> list[KnowledgeBaseRecord]:
+        return [
+            KnowledgeBaseRecord(**item)
+            for item in await self.metadata_store.list_knowledge_bases(user_id=user_id)
+        ]
 
-    def search_knowledge_bases(
+    async def search_knowledge_bases(
         self,
         user_id: str,
         *,
@@ -142,25 +146,20 @@ class KnowledgeBaseManager:
         page_size: int = 10,
     ) -> PaginatedKnowledgeBaseResponse:
         page, page_size = self._normalize_page(page, page_size)
-        hits, total = self._search_with_total(
-            index_name=self.KNOWLEDGE_BASE_INDEX,
-            query=self._build_query(
-                filters=[{"term": {"user_id": user_id}}],
-                search=search,
-                fields=["name^3", "description"],
-            ),
-            size=page_size,
-            from_=(page - 1) * page_size,
-            sort=[{"updated_at": {"order": "desc"}}],
+        items, total = await self.metadata_store.search_knowledge_bases(
+            user_id=user_id,
+            search=search,
+            page=page,
+            page_size=page_size,
         )
         return PaginatedKnowledgeBaseResponse(
-            items=[KnowledgeBaseRecord(**hit["_source"]) for hit in hits],
+            items=[KnowledgeBaseRecord(**item) for item in items],
             total=total,
             page=page,
             page_size=page_size,
         )
 
-    def create_knowledge_base(
+    async def create_knowledge_base(
         self, user_id: str, name: str, description: str = ""
     ) -> KnowledgeBaseRecord:
         normalized_name = name.strip()
@@ -185,24 +184,20 @@ class KnowledgeBaseManager:
             "created_at": now,
             "updated_at": now,
         }
-        self.es.es_client.index(
-            index=self.KNOWLEDGE_BASE_INDEX,
-            id=knowledge_base_id,
-            document=source,
-            refresh=True,
-        )
-        return KnowledgeBaseRecord(**source)
+        created = await self.metadata_store.create_knowledge_base(source)
+        return KnowledgeBaseRecord(**created)
 
-    def get_knowledge_base(self, user_id: str, knowledge_base_id: str) -> KnowledgeBaseRecord:
-        source = self._get_owned_document(
-            index_name=self.KNOWLEDGE_BASE_INDEX,
-            document_id=knowledge_base_id,
+    async def get_knowledge_base(
+        self, user_id: str, knowledge_base_id: str
+    ) -> KnowledgeBaseRecord:
+        source = await self.metadata_store.get_knowledge_base(
             user_id=user_id,
+            knowledge_base_id=knowledge_base_id,
             error_message="Knowledge base not found.",
         )
         return KnowledgeBaseRecord(**source)
 
-    def update_knowledge_base(
+    async def update_knowledge_base(
         self,
         user_id: str,
         knowledge_base_id: str,
@@ -210,10 +205,9 @@ class KnowledgeBaseManager:
         name: str | None = None,
         description: str | None = None,
     ) -> KnowledgeBaseRecord:
-        source = self._get_owned_document(
-            index_name=self.KNOWLEDGE_BASE_INDEX,
-            document_id=knowledge_base_id,
+        source = await self.metadata_store.get_knowledge_base(
             user_id=user_id,
+            knowledge_base_id=knowledge_base_id,
             error_message="Knowledge base not found.",
         )
 
@@ -226,39 +220,27 @@ class KnowledgeBaseManager:
             source["description"] = description.strip()
         source["updated_at"] = self._now()
 
-        self.es.es_client.index(
-            index=self.KNOWLEDGE_BASE_INDEX,
-            id=knowledge_base_id,
-            document=source,
-            refresh=True,
+        saved = await self.metadata_store.save_knowledge_base(
+            knowledge_base_id=knowledge_base_id,
+            source=source,
         )
-        return KnowledgeBaseRecord(**source)
+        return KnowledgeBaseRecord(**saved)
 
-    def delete_knowledge_base(
+    async def delete_knowledge_base(
         self, user_id: str, knowledge_base_id: str
     ) -> KnowledgeBaseDeleteResult:
-        knowledge_base = self.get_knowledge_base(user_id, knowledge_base_id)
+        knowledge_base = await self.get_knowledge_base(user_id, knowledge_base_id)
         rag = ElasticGraphRAG(self.es, knowledge_base.index_prefix)
         graph_result = rag.delete_graph(ignore_missing=True)
 
         document_ids = [
             item.document_id
-            for item in self.list_documents(user_id, knowledge_base_id)
+            for item in await self.list_documents(user_id, knowledge_base_id)
         ]
         if document_ids:
-            self.es.es_client.bulk(
-                operations=[
-                    {"delete": {"_index": self.DOCUMENT_INDEX, "_id": document_id}}
-                    for document_id in document_ids
-                ],
-                refresh=True,
-            )
+            await self.metadata_store.delete_documents(document_ids=document_ids)
 
-        self.es.es_client.delete(
-            index=self.KNOWLEDGE_BASE_INDEX,
-            id=knowledge_base_id,
-            refresh=True,
-        )
+        await self.metadata_store.delete_knowledge_base(knowledge_base_id=knowledge_base_id)
 
         return KnowledgeBaseDeleteResult(
             knowledge_base=knowledge_base,
@@ -266,26 +248,19 @@ class KnowledgeBaseManager:
             deleted_indexes=graph_result["result"],
         )
 
-    def list_documents(
+    async def list_documents(
         self, user_id: str, knowledge_base_id: str
     ) -> list[KnowledgeBaseDocumentRecord]:
-        self.get_knowledge_base(user_id, knowledge_base_id)
-        hits = self._search(
-            index_name=self.DOCUMENT_INDEX,
-            query={
-                "bool": {
-                    "filter": [
-                        {"term": {"user_id": user_id}},
-                        {"term": {"knowledge_base_id": knowledge_base_id}},
-                    ]
-                }
-            },
-            size=1000,
-            sort=[{"created_at": {"order": "desc"}}],
-        )
-        return [KnowledgeBaseDocumentRecord(**hit["_source"]) for hit in hits]
+        await self.get_knowledge_base(user_id, knowledge_base_id)
+        return [
+            KnowledgeBaseDocumentRecord(**item)
+            for item in await self.metadata_store.list_documents(
+                user_id=user_id,
+                knowledge_base_id=knowledge_base_id,
+            )
+        ]
 
-    def search_documents(
+    async def search_documents(
         self,
         user_id: str,
         knowledge_base_id: str,
@@ -294,30 +269,23 @@ class KnowledgeBaseManager:
         page: int = 1,
         page_size: int = 10,
     ) -> PaginatedKnowledgeBaseDocumentResponse:
-        self.get_knowledge_base(user_id, knowledge_base_id)
+        await self.get_knowledge_base(user_id, knowledge_base_id)
         page, page_size = self._normalize_page(page, page_size)
-        hits, total = self._search_with_total(
-            index_name=self.DOCUMENT_INDEX,
-            query=self._build_query(
-                filters=[
-                    {"term": {"user_id": user_id}},
-                    {"term": {"knowledge_base_id": knowledge_base_id}},
-                ],
-                search=search,
-                fields=["display_name^3", "file_name"],
-            ),
-            size=page_size,
-            from_=(page - 1) * page_size,
-            sort=[{"created_at": {"order": "desc"}}],
+        items, total = await self.metadata_store.search_documents(
+            user_id=user_id,
+            knowledge_base_id=knowledge_base_id,
+            search=search,
+            page=page,
+            page_size=page_size,
         )
         return PaginatedKnowledgeBaseDocumentResponse(
-            items=[KnowledgeBaseDocumentRecord(**hit["_source"]) for hit in hits],
+            items=[KnowledgeBaseDocumentRecord(**item) for item in items],
             total=total,
             page=page,
             page_size=page_size,
         )
 
-    def update_document(
+    async def update_document(
         self,
         user_id: str,
         knowledge_base_id: str,
@@ -325,11 +293,10 @@ class KnowledgeBaseManager:
         *,
         display_name: str,
     ) -> KnowledgeBaseDocumentRecord:
-        self.get_knowledge_base(user_id, knowledge_base_id)
-        source = self._get_owned_document(
-            index_name=self.DOCUMENT_INDEX,
-            document_id=document_id,
+        await self.get_knowledge_base(user_id, knowledge_base_id)
+        source = await self.metadata_store.get_document(
             user_id=user_id,
+            document_id=document_id,
             error_message="Document not found.",
         )
         if source["knowledge_base_id"] != knowledge_base_id:
@@ -341,15 +308,13 @@ class KnowledgeBaseManager:
 
         source["display_name"] = normalized_name
         source["updated_at"] = self._now()
-        self.es.es_client.index(
-            index=self.DOCUMENT_INDEX,
-            id=document_id,
-            document=source,
-            refresh=True,
+        saved = await self.metadata_store.save_document(
+            document_id=document_id,
+            source=source,
         )
-        return KnowledgeBaseDocumentRecord(**source)
+        return KnowledgeBaseDocumentRecord(**saved)
 
-    def get_document_detail(
+    async def get_document_detail(
         self,
         user_id: str,
         knowledge_base_id: str,
@@ -358,11 +323,10 @@ class KnowledgeBaseManager:
         page: int = 1,
         page_size: int = 10,
     ) -> KnowledgeBaseDocumentDetailResponse:
-        knowledge_base = self.get_knowledge_base(user_id, knowledge_base_id)
-        document_source = self._get_owned_document(
-            index_name=self.DOCUMENT_INDEX,
-            document_id=document_id,
+        knowledge_base = await self.get_knowledge_base(user_id, knowledge_base_id)
+        document_source = await self.metadata_store.get_document(
             user_id=user_id,
+            document_id=document_id,
             error_message="Document not found.",
         )
         if document_source["knowledge_base_id"] != knowledge_base_id:
@@ -411,14 +375,13 @@ class KnowledgeBaseManager:
             page_size=page_size,
         )
 
-    def delete_document(
+    async def delete_document(
         self, user_id: str, knowledge_base_id: str, document_id: str
     ) -> dict[str, Any]:
-        knowledge_base = self.get_knowledge_base(user_id, knowledge_base_id)
-        source = self._get_owned_document(
-            index_name=self.DOCUMENT_INDEX,
-            document_id=document_id,
+        knowledge_base = await self.get_knowledge_base(user_id, knowledge_base_id)
+        source = await self.metadata_store.get_document(
             user_id=user_id,
+            document_id=document_id,
             error_message="Document not found.",
         )
         if source["knowledge_base_id"] != knowledge_base_id:
@@ -433,12 +396,8 @@ class KnowledgeBaseManager:
         rag = ElasticGraphRAG(self.es, knowledge_base.index_prefix)
         delete_result = rag.delete_documents(passage_ids)
 
-        self.es.es_client.delete(
-            index=self.DOCUMENT_INDEX,
-            id=document_id,
-            refresh=True,
-        )
-        knowledge_base = self._refresh_knowledge_base_stats(knowledge_base)
+        await self.metadata_store.delete_document(document_id=document_id)
+        knowledge_base = await self._refresh_knowledge_base_stats(knowledge_base)
 
         return {
             "knowledge_base": knowledge_base,
@@ -448,14 +407,14 @@ class KnowledgeBaseManager:
             "deleted_entities": delete_result["deleted_entities"],
         }
 
-    def bulk_delete_knowledge_bases(
+    async def bulk_delete_knowledge_bases(
         self, user_id: str, knowledge_base_ids: list[str]
     ) -> BulkDeleteKnowledgeBaseResponse:
         deleted_ids: list[str] = []
         failed: dict[str, str] = {}
         for knowledge_base_id in knowledge_base_ids:
             try:
-                self.delete_knowledge_base(user_id, knowledge_base_id)
+                await self.delete_knowledge_base(user_id, knowledge_base_id)
                 deleted_ids.append(knowledge_base_id)
             except Exception as exc:  # noqa: BLE001
                 failed[knowledge_base_id] = str(exc)
@@ -464,7 +423,7 @@ class KnowledgeBaseManager:
             failed=failed,
         )
 
-    def bulk_delete_documents(
+    async def bulk_delete_documents(
         self,
         user_id: str,
         knowledge_base_id: str,
@@ -474,14 +433,14 @@ class KnowledgeBaseManager:
         failed: dict[str, str] = {}
         for document_id in document_ids:
             try:
-                self.delete_document(user_id, knowledge_base_id, document_id)
+                await self.delete_document(user_id, knowledge_base_id, document_id)
                 deleted_ids.append(document_id)
             except Exception as exc:  # noqa: BLE001
                 failed[document_id] = str(exc)
 
         knowledge_base: KnowledgeBaseRecord | None = None
         try:
-            knowledge_base = self.get_knowledge_base(user_id, knowledge_base_id)
+            knowledge_base = await self.get_knowledge_base(user_id, knowledge_base_id)
         except Exception:  # noqa: BLE001
             knowledge_base = None
 
@@ -491,13 +450,13 @@ class KnowledgeBaseManager:
             knowledge_base=knowledge_base,
         )
 
-    def upload_documents(
+    async def upload_documents(
         self,
         user_id: str,
         knowledge_base_id: str,
         files: Iterable[UploadedKnowledgeFile],
     ) -> KnowledgeBaseUploadResponse:
-        knowledge_base = self.get_knowledge_base(user_id, knowledge_base_id)
+        knowledge_base = await self.get_knowledge_base(user_id, knowledge_base_id)
         rag = ElasticGraphRAG(self.es, knowledge_base.index_prefix)
         storage_dir = self._storage_dir(user_id, knowledge_base_id)
         storage_dir.mkdir(parents=True, exist_ok=True)
@@ -507,7 +466,7 @@ class KnowledgeBaseManager:
 
         for uploaded_file in files:
             try:
-                document_record = self._ingest_file(
+                document_record = await self._ingest_file(
                     user_id=user_id,
                     knowledge_base=knowledge_base,
                     rag=rag,
@@ -524,14 +483,14 @@ class KnowledgeBaseManager:
                     )
                 )
 
-        knowledge_base = self._refresh_knowledge_base_stats(knowledge_base)
+        knowledge_base = await self._refresh_knowledge_base_stats(knowledge_base)
         return KnowledgeBaseUploadResponse(
             knowledge_base=knowledge_base,
             documents=documents,
             errors=errors,
         )
 
-    def _ingest_file(
+    async def _ingest_file(
         self,
         *,
         user_id: str,
@@ -585,13 +544,11 @@ class KnowledgeBaseManager:
             "created_at": now,
             "updated_at": now,
         }
-        self.es.es_client.index(
-            index=self.DOCUMENT_INDEX,
-            id=document_id,
-            document=source,
-            refresh=True,
+        saved = await self.metadata_store.save_document(
+            document_id=document_id,
+            source=source,
         )
-        return KnowledgeBaseDocumentRecord(**source)
+        return KnowledgeBaseDocumentRecord(**saved)
 
     def _prepare_documents(
         self,
@@ -632,120 +589,25 @@ class KnowledgeBaseManager:
             )
         return prepared_documents
 
-    def _refresh_knowledge_base_stats(
+    async def _refresh_knowledge_base_stats(
         self, knowledge_base: KnowledgeBaseRecord
     ) -> KnowledgeBaseRecord:
-        source = self._get_owned_document(
-            index_name=self.KNOWLEDGE_BASE_INDEX,
-            document_id=knowledge_base.knowledge_base_id,
+        source = await self.metadata_store.get_knowledge_base(
             user_id=knowledge_base.user_id,
+            knowledge_base_id=knowledge_base.knowledge_base_id,
             error_message="Knowledge base not found.",
         )
-        source["document_count"] = self._count_documents(
-            index_name=self.DOCUMENT_INDEX,
-            query={
-                "bool": {
-                    "filter": [
-                        {"term": {"user_id": knowledge_base.user_id}},
-                        {"term": {"knowledge_base_id": knowledge_base.knowledge_base_id}},
-                    ]
-                }
-            },
+        source["document_count"] = await self.metadata_store.count_documents(
+            user_id=knowledge_base.user_id,
+            knowledge_base_id=knowledge_base.knowledge_base_id,
         )
         source["chunk_count"] = self._count_index(source["passage_index"])
         source["updated_at"] = self._now()
-        self.es.es_client.index(
-            index=self.KNOWLEDGE_BASE_INDEX,
-            id=knowledge_base.knowledge_base_id,
-            document=source,
-            refresh=True,
+        saved = await self.metadata_store.save_knowledge_base(
+            knowledge_base_id=knowledge_base.knowledge_base_id,
+            source=source,
         )
-        return KnowledgeBaseRecord(**source)
-
-    def _ensure_metadata_indexes(self) -> None:
-        if not self.es.es_client.indices.exists(index=self.KNOWLEDGE_BASE_INDEX):
-            self.es.es_client.indices.create(
-                index=self.KNOWLEDGE_BASE_INDEX,
-                mappings={
-                    "properties": {
-                        "knowledge_base_id": {"type": "keyword"},
-                        "user_id": {"type": "keyword"},
-                        "name": {
-                            "type": "text",
-                            "fields": {"keyword": {"type": "keyword"}},
-                        },
-                        "description": {"type": "text"},
-                        "index_prefix": {"type": "keyword"},
-                        "passage_index": {"type": "keyword"},
-                        "entity_index": {"type": "keyword"},
-                        "relation_index": {"type": "keyword"},
-                        "document_count": {"type": "integer"},
-                        "chunk_count": {"type": "integer"},
-                        "created_at": {"type": "date"},
-                        "updated_at": {"type": "date"},
-                    }
-                },
-            )
-
-        if not self.es.es_client.indices.exists(index=self.DOCUMENT_INDEX):
-            self.es.es_client.indices.create(
-                index=self.DOCUMENT_INDEX,
-                mappings={
-                    "properties": {
-                        "document_id": {"type": "keyword"},
-                        "knowledge_base_id": {"type": "keyword"},
-                        "user_id": {"type": "keyword"},
-                        "file_name": {
-                            "type": "text",
-                            "fields": {"keyword": {"type": "keyword"}},
-                        },
-                        "display_name": {
-                            "type": "text",
-                            "fields": {"keyword": {"type": "keyword"}},
-                        },
-                        "content_type": {"type": "keyword"},
-                        "file_size": {"type": "long"},
-                        "chunk_count": {"type": "integer"},
-                        "storage_path": {"type": "keyword"},
-                        "created_at": {"type": "date"},
-                        "updated_at": {"type": "date"},
-                    }
-                },
-            )
-
-    def _get_owned_document(
-        self,
-        *,
-        index_name: str,
-        document_id: str,
-        user_id: str,
-        error_message: str,
-    ) -> dict[str, Any]:
-        try:
-            result = self.es.es_client.get(index=index_name, id=document_id)
-        except NotFoundError as exc:
-            raise ValueError(error_message) from exc
-
-        source = result["_source"]
-        if source.get("user_id") != user_id:
-            raise ValueError(error_message)
-        return source
-
-    def _search(
-        self,
-        *,
-        index_name: str,
-        query: dict[str, Any],
-        size: int,
-        sort: list[dict[str, Any]] | None = None,
-    ) -> list[dict[str, Any]]:
-        if not self.es.es_client.indices.exists(index=index_name):
-            return []
-        body: dict[str, Any] = {"query": query}
-        if sort:
-            body["sort"] = sort
-        results = self.es.es_client.search(index=index_name, body=body, size=size)
-        return results["hits"]["hits"]
+        return KnowledgeBaseRecord(**saved)
 
     def _search_with_total(
         self,
@@ -769,27 +631,6 @@ class KnowledgeBaseManager:
         total = int(results["hits"]["total"]["value"])
         return results["hits"]["hits"], total
 
-    def _build_query(
-        self,
-        *,
-        filters: list[dict[str, Any]],
-        search: str,
-        fields: list[str],
-    ) -> dict[str, Any]:
-        query: dict[str, Any] = {"bool": {"filter": filters}}
-        normalized_search = search.strip()
-        if normalized_search:
-            query["bool"]["must"] = [
-                {
-                    "multi_match": {
-                        "query": normalized_search,
-                        "fields": fields,
-                        "type": "best_fields",
-                    }
-                }
-            ]
-        return query
-
     def _normalize_page(self, page: int, page_size: int) -> tuple[int, int]:
         normalized_page = max(1, int(page))
         normalized_page_size = max(1, min(100, int(page_size)))
@@ -806,12 +647,6 @@ class KnowledgeBaseManager:
             size=size,
         )
         return [hit["_id"] for hit in results["hits"]["hits"]]
-
-    def _count_documents(self, *, index_name: str, query: dict[str, Any]) -> int:
-        if not self.es.es_client.indices.exists(index=index_name):
-            return 0
-        result = self.es.es_client.count(index=index_name, body={"query": query})
-        return int(result["count"])
 
     def _count_index(self, index_name: str) -> int:
         if not self.es.es_client.indices.exists(index=index_name):
@@ -848,7 +683,7 @@ class KnowledgeBaseManager:
 
 embeddings = get_embedding_model()
 knowledge_base_manager = KnowledgeBaseManager(
-    Elasticsearch(
+    ElasticsearchVectorStore(
         url=settings.ES_URL,
         username=settings.ES_URSR,
         password=settings.ES_PWD,

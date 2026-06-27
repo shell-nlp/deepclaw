@@ -50,11 +50,11 @@ def add_knowledge_base_management_routes(
         response_model=PaginatedKnowledgeBaseResponse,
         tags=tags,
     )
-    def list_knowledge_bases(
+    async def list_knowledge_bases(
         request: KnowledgeBaseListRequest,
         actor=Depends(get_current_actor),
     ):
-        return knowledge_base_manager.search_knowledge_bases(
+        return await knowledge_base_manager.search_knowledge_bases(
             user_id=_resolved_user_id(actor),
             search=request.search,
             page=request.page,
@@ -62,12 +62,12 @@ def add_knowledge_base_management_routes(
         )
 
     @router.post("/knowledge-bases/create", response_model=KnowledgeBaseRecord, tags=tags)
-    def create_knowledge_base(
+    async def create_knowledge_base(
         request: CreateKnowledgeBaseRequest,
         actor=Depends(get_current_actor),
     ):
         try:
-            return knowledge_base_manager.create_knowledge_base(
+            return await knowledge_base_manager.create_knowledge_base(
                 user_id=_owned_user_id(actor, "登录后可创建知识库。"),
                 name=request.name,
                 description=request.description,
@@ -76,12 +76,12 @@ def add_knowledge_base_management_routes(
             raise _handle_value_error(exc) from exc
 
     @router.post("/knowledge-bases/detail", response_model=KnowledgeBaseRecord, tags=tags)
-    def get_knowledge_base(
+    async def get_knowledge_base(
         request: KnowledgeBaseIdentityRequest,
         actor=Depends(get_current_actor),
     ):
         try:
-            return knowledge_base_manager.get_knowledge_base(
+            return await knowledge_base_manager.get_knowledge_base(
                 user_id=_resolved_user_id(actor),
                 knowledge_base_id=request.knowledge_base_id,
             )
@@ -89,12 +89,12 @@ def add_knowledge_base_management_routes(
             raise _handle_value_error(exc) from exc
 
     @router.post("/knowledge-bases/update", response_model=KnowledgeBaseRecord, tags=tags)
-    def update_knowledge_base(
+    async def update_knowledge_base(
         request: UpdateKnowledgeBaseRequest,
         actor=Depends(get_current_actor),
     ):
         try:
-            return knowledge_base_manager.update_knowledge_base(
+            return await knowledge_base_manager.update_knowledge_base(
                 user_id=_owned_user_id(actor, "登录后可修改知识库。"),
                 knowledge_base_id=request.knowledge_base_id,
                 name=request.name,
@@ -104,12 +104,12 @@ def add_knowledge_base_management_routes(
             raise _handle_value_error(exc) from exc
 
     @router.post("/knowledge-bases/delete", response_model=KnowledgeBaseDeleteResult, tags=tags)
-    def delete_knowledge_base(
+    async def delete_knowledge_base(
         request: KnowledgeBaseIdentityRequest,
         actor=Depends(get_current_actor),
     ):
         try:
-            return knowledge_base_manager.delete_knowledge_base(
+            return await knowledge_base_manager.delete_knowledge_base(
                 user_id=_owned_user_id(actor, "登录后可删除知识库。"),
                 knowledge_base_id=request.knowledge_base_id,
             )
@@ -121,12 +121,12 @@ def add_knowledge_base_management_routes(
         response_model=BulkDeleteKnowledgeBaseResponse,
         tags=tags,
     )
-    def bulk_delete_knowledge_bases(
+    async def bulk_delete_knowledge_bases(
         request: BulkDeleteKnowledgeBaseRequest,
         actor=Depends(get_current_actor),
     ):
         try:
-            return knowledge_base_manager.bulk_delete_knowledge_bases(
+            return await knowledge_base_manager.bulk_delete_knowledge_bases(
                 user_id=_owned_user_id(actor, "登录后可批量删除知识库。"),
                 knowledge_base_ids=request.knowledge_base_ids,
             )
@@ -138,12 +138,12 @@ def add_knowledge_base_management_routes(
         response_model=PaginatedKnowledgeBaseDocumentResponse,
         tags=tags,
     )
-    def list_documents(
+    async def list_documents(
         request: DocumentListRequest,
         actor=Depends(get_current_actor),
     ):
         try:
-            return knowledge_base_manager.search_documents(
+            return await knowledge_base_manager.search_documents(
                 user_id=_resolved_user_id(actor),
                 knowledge_base_id=request.knowledge_base_id,
                 search=request.search,
@@ -158,12 +158,12 @@ def add_knowledge_base_management_routes(
         response_model=KnowledgeBaseDocumentDetailResponse,
         tags=tags,
     )
-    def get_document_detail(
+    async def get_document_detail(
         request: DocumentDetailRequest,
         actor=Depends(get_current_actor),
     ):
         try:
-            return knowledge_base_manager.get_document_detail(
+            return await knowledge_base_manager.get_document_detail(
                 user_id=_resolved_user_id(actor),
                 knowledge_base_id=request.knowledge_base_id,
                 document_id=request.document_id,
@@ -196,7 +196,7 @@ def add_knowledge_base_management_routes(
             await file.close()
 
         try:
-            return knowledge_base_manager.upload_documents(
+            return await knowledge_base_manager.upload_documents(
                 user_id=_owned_user_id(actor, "登录后可上传知识文件。"),
                 knowledge_base_id=knowledge_base_id,
                 files=uploaded_files,
@@ -209,12 +209,12 @@ def add_knowledge_base_management_routes(
         response_model=KnowledgeBaseDocumentRecord,
         tags=tags,
     )
-    def update_document(
+    async def update_document(
         request: UpdateKnowledgeBaseDocumentRequest,
         actor=Depends(get_current_actor),
     ):
         try:
-            return knowledge_base_manager.update_document(
+            return await knowledge_base_manager.update_document(
                 user_id=_owned_user_id(actor, "登录后可重命名知识文件。"),
                 knowledge_base_id=request.knowledge_base_id,
                 document_id=request.document_id,
@@ -224,12 +224,12 @@ def add_knowledge_base_management_routes(
             raise _handle_value_error(exc) from exc
 
     @router.post("/knowledge-bases/documents/delete", tags=tags)
-    def delete_document(
+    async def delete_document(
         request: DeleteKnowledgeBaseDocumentRequest,
         actor=Depends(get_current_actor),
     ):
         try:
-            return knowledge_base_manager.delete_document(
+            return await knowledge_base_manager.delete_document(
                 user_id=_owned_user_id(actor, "登录后可删除知识文件。"),
                 knowledge_base_id=request.knowledge_base_id,
                 document_id=request.document_id,
@@ -242,12 +242,12 @@ def add_knowledge_base_management_routes(
         response_model=BulkDeleteDocumentResponse,
         tags=tags,
     )
-    def bulk_delete_documents(
+    async def bulk_delete_documents(
         request: BulkDeleteKnowledgeBaseDocumentRequest,
         actor=Depends(get_current_actor),
     ):
         try:
-            return knowledge_base_manager.bulk_delete_documents(
+            return await knowledge_base_manager.bulk_delete_documents(
                 user_id=_owned_user_id(actor, "登录后可批量删除知识文件。"),
                 knowledge_base_id=request.knowledge_base_id,
                 document_ids=request.document_ids,

@@ -34,6 +34,7 @@ class Settings(BaseSettings):
 
     # postgres数据库配置
     PG_DATABASE_URL: str | None = None
+    VECTOR_STORE_BACKEND: Literal["elasticsearch", "pgsql"] = "elasticsearch"
     LANGSMITH_API_KEY: str | None = None
 
     # 是否使用copilotkit 的ag-ui 组件供前端使用

@@ -30,6 +30,12 @@
   - 管理员账号自举
   - 渠道 runtime 生命周期接入
 
+- `deepclaw/web_backend/db.py`
+  Web 侧统一异步数据库辅助入口。负责：
+  - 同步/异步数据库 URL 转换
+  - `auth` / `channels` / `knowledge_bases` 默认元数据数据库选择
+  - 当配置 `PG_DATABASE_URL` 时，优先落统一 PG；未配置时回退各自 SQLite
+
 - `deepclaw/web_backend/common/endpoints.py`
   通用 SSE 端点封装。当前 `query` 支持：
   - 字符串
@@ -56,7 +62,7 @@
   技能管理路由、请求模型与服务实现。
 
 - `deepclaw/web_backend/knowledge_bases/`
-  知识库管理路由、请求模型与服务实现。
+ 知识库管理路由、请求模型、元数据存储与服务实现。
 
 - `deepclaw/web_backend/agent/router.py`
   Agent 的 AG-UI 与通用 SSE HTTP 入口。
@@ -73,7 +79,13 @@
   RAG Agent 组装、上下文与状态定义。
 
 - `deepclaw/common/`
-  Elasticsearch、Graph RAG、PDF 切分等通用算法实现。
+  Elasticsearch、向量数据库抽象、Graph RAG、PDF 切分等通用算法实现。
+
+- `deepclaw/common/vector_store/`
+  向量数据库抽象层，包含通用 `AbstractVectorStore`、统一创建入口 `create_vector_store()`、Elasticsearch 实现，以及基于 PostgreSQL + pgvector + pg_search 的实现。
+
+- `deepclaw/common/elastic_graph_rag.py`
+  Elasticsearch 专属的 Graph RAG 实现。普通检索链路优先依赖 `AbstractVectorStore`，只有图检索路径才依赖 `ElasticsearchVectorStore`。
 
 - `deepclaw/middleware/`
   业务开关、RAG 注入、MCP、工具搜索、计划，以及 `cron` 工具实现等中间件与运行时扩展。
@@ -152,6 +164,7 @@ pnpm build
 - `TAVILY_API_KEY`
 - `BACKEND_TYPE`
 - `PG_DATABASE_URL`
+- `VECTOR_STORE_BACKEND`
 - `LANGSMITH_API_KEY`
 - `USE_COPILOTKIT`
 - `USE_TOOL_SEARCH`
@@ -241,7 +254,7 @@ pnpm build
 - 知识库管理归属 `/api/rag/knowledge-bases/*`
 - 渠道管理归属 `/api/channels/*`
 - 前端默认以游客模式进入，点击右上角头像会跳转到独立 `/login` 页面进入登录/注册流程
-- 渠道会话默认写本地 SQLite，而不是 Elasticsearch 或 Postgres
+- `auth`、`channels`、`knowledge_bases` 元数据默认优先使用 `PG_DATABASE_URL`；未配置时各自回退到 `.deepclaw` 下的 SQLite，并在默认初始化路径上兼容导入历史 SQLite 数据
 
 ## 文档协作原则
 

@@ -1,0 +1,30 @@
+services:
+  postgresql_pgvector:
+    build:
+      context: .
+      dockerfile: docker/postgresql/Dockerfile
+    image: deepclaw-postgresql-hybrid:pg16
+    container_name: postgresql_pgvector
+    restart: always
+    environment:
+      - POSTGRES_USER=admin  # 数据库用户名
+      - POSTGRES_PASSWORD=admin # 数据库密码（必填）
+      - POSTGRES_DB=deepclaw # 默认数据库名
+    ports:
+      # 独立端口，避免和主 docker-compose 的 5432 冲突
+      - 55432:5432
+    volumes:
+      - postgres_pgvector:/var/lib/postgresql/data
+      # 首次初始化时自动启用 pgvector 和 pg_search（BM25）扩展
+      - ./docker/postgresql/initdb:/docker-entrypoint-initdb.d
+    networks:
+      - deepclaw_pgvector
+
+volumes:
+  postgres_pgvector:
+    driver: local
+
+networks:
+  deepclaw_pgvector:
+    name: deepclaw_pgvector
+    driver: bridge

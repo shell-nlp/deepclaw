@@ -1,10 +1,14 @@
-﻿from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 from elasticsearch import Elasticsearch as ESClient
 from loguru import logger
 
+from deepclaw.common.vector_store.base import AbstractVectorStore
 
-class Elasticsearch:
+
+class ElasticsearchVectorStore(AbstractVectorStore):
+    """基于 Elasticsearch 的向量数据库实现。"""
+
     def __init__(
         self,
         url: str,
@@ -37,24 +41,45 @@ class Elasticsearch:
             )
         return self._es_client
 
+    def _resolve_required_indexes(
+        self,
+        *,
+        index_name: Optional[str] = None,
+        index_names: Optional[List[str]] = None,
+        operation: str = "search",
+    ) -> List[str]:
+        target_indexes = self.resolve_index_names(
+            index_name=index_name,
+            index_names=index_names,
+        )
+        if not target_indexes:
+            raise ValueError(
+                f"index_name or index_names is required for {operation} operations"
+            )
+        return target_indexes
+
     def vector_search(
         self,
         query: str,
         k: int = 3,
         index_name: Optional[str] = None,
+        index_names: Optional[List[str]] = None,
         min_similarity: Optional[float] = None,
     ) -> List[Dict[str, Any]]:
-        if not index_name:
-            raise ValueError("index_name is required for search operations")
+        target_indexes = self._resolve_required_indexes(
+            index_name=index_name,
+            index_names=index_names,
+            operation="search",
+        )
         query_vector = self.embedding_model.embed_query(query)
         results = self.es_client.search(
-            index=index_name,
+            index=target_indexes,
             body={
                 "query": {
                     "knn": {
                         "field": "embedding",
                         "query_vector": query_vector,
-                        "num_candidates": k * 2,
+                        "num_candidates": max(k * 2, 10),
                     }
                 }
             },
@@ -65,22 +90,23 @@ class Elasticsearch:
             score = hit["_score"]
             if min_similarity is not None and score < min_similarity:
                 continue
-            processed_results.append(
-                {
-                    "content": hit["_source"].get("content", ""),
-                    "metadata": hit["_source"].get("metadata", {}),
-                    "score": score,
-                }
-            )
+            processed_results.append(self._hit_to_result(hit))
         return processed_results
 
     def keyword_search(
-        self, query: str, k: int = 3, index_name: Optional[str] = None
+        self,
+        query: str,
+        k: int = 3,
+        index_name: Optional[str] = None,
+        index_names: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
-        if not index_name:
-            raise ValueError("index_name is required for search operations")
+        target_indexes = self._resolve_required_indexes(
+            index_name=index_name,
+            index_names=index_names,
+            operation="search",
+        )
         results = self.es_client.search(
-            index=index_name,
+            index=target_indexes,
             body={
                 "query": {
                     "multi_match": {
@@ -93,40 +119,31 @@ class Elasticsearch:
             },
             size=k,
         )
-        return [
-            {
-                "content": hit["_source"].get("content", ""),
-                "metadata": hit["_source"].get("metadata", {}),
-            }
-            for hit in results["hits"]["hits"]
-        ]
+        return [self._hit_to_result(hit) for hit in results["hits"]["hits"]]
 
     def retrieve(
-        self, query: str, k: int = 3, index_name: Optional[str] = None
+        self,
+        query: str,
+        k: int = 3,
+        index_name: Optional[str] = None,
+        index_names: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
-        if not index_name:
-            raise ValueError("index_name is required for retrieve operations")
-        vector_results = self.vector_search(query, k, index_name)
-        keyword_results = self.keyword_search(query, k, index_name)
-
-        seen_contents = set()
-        merged_results = []
-        for doc in vector_results:
-            content_hash = hash(doc.get("content", ""))
-            if content_hash not in seen_contents:
-                seen_contents.add(content_hash)
-                merged_results.append(doc)
-
-        for doc in keyword_results:
-            content_hash = hash(doc.get("content", ""))
-            if content_hash not in seen_contents:
-                seen_contents.add(content_hash)
-                merged_results.append(doc)
-
+        target_indexes = self._resolve_required_indexes(
+            index_name=index_name,
+            index_names=index_names,
+            operation="retrieve",
+        )
+        vector_results = self.vector_search(query, k, index_names=target_indexes)
+        keyword_results = self.keyword_search(query, k, index_names=target_indexes)
+        merged_results = self.merge_results(
+            vector_results=vector_results,
+            keyword_results=keyword_results,
+            k=k,
+        )
         logger.info(
             f"ES检索结果数量：向量检索{len(vector_results)}，关键字检索{len(keyword_results)}，合并后{len(merged_results)}"
         )
-        return merged_results[:k]
+        return merged_results
 
     def vector_graph_retrieve(
         self,
@@ -679,9 +696,13 @@ class Elasticsearch:
         k: int = 3,
         filter_conditions: Optional[Dict[str, Any]] = None,
         index_name: Optional[str] = None,
+        index_names: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
-        if not index_name:
-            raise ValueError("index_name is required for search operations")
+        target_indexes = self._resolve_required_indexes(
+            index_name=index_name,
+            index_names=index_names,
+            operation="search",
+        )
         must_clauses = []
         if query:
             must_clauses.append(
@@ -703,14 +724,8 @@ class Elasticsearch:
             else {"query": {"match_all": {}}}
         )
 
-        results = self.es_client.search(index=index_name, body=search_body, size=k)
-        return [
-            {
-                "content": hit["_source"].get("content", ""),
-                "metadata": hit["_source"].get("metadata", {}),
-            }
-            for hit in results["hits"]["hits"]
-        ]
+        results = self.es_client.search(index=target_indexes, body=search_body, size=k)
+        return [self._hit_to_result(hit) for hit in results["hits"]["hits"]]
 
     def exists(self, doc_id: str, index_name: Optional[str] = None) -> bool:
         if not index_name:
@@ -721,9 +736,13 @@ class Elasticsearch:
         self,
         filter_conditions: Optional[Dict[str, Any]] = None,
         index_name: Optional[str] = None,
+        index_names: Optional[List[str]] = None,
     ) -> int:
-        if not index_name:
-            raise ValueError("index_name is required for count operations")
+        target_indexes = self._resolve_required_indexes(
+            index_name=index_name,
+            index_names=index_names,
+            operation="count",
+        )
         if filter_conditions:
             must_clauses = [
                 {"term": {field: value}} for field, value in filter_conditions.items()
@@ -731,6 +750,5 @@ class Elasticsearch:
             search_body = {"query": {"bool": {"must": must_clauses}}}
         else:
             search_body = {"query": {"match_all": {}}}
-        result = self.es_client.count(index=index_name, body=search_body)
+        result = self.es_client.count(index=target_indexes, body=search_body)
         return result["count"]
-
