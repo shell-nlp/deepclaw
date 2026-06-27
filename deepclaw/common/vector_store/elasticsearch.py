@@ -1,12 +1,12 @@
 import json
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 from elasticsearch import Elasticsearch as ESClient
 from loguru import logger
 
 from deepclaw.common.vector_store.base import AbstractVectorStore
-from deepclaw.constant import home_path
 
 
 class ElasticsearchVectorStore(AbstractVectorStore):
@@ -18,15 +18,31 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         username: Optional[str] = None,
         password: Optional[str] = None,
         embedding_model=None,
+        refresh_fail_dir: str | Path = ".",
     ):
+        """初始化 ElasticsearchVectorStore 实例。
+
+        Args:
+            url: Elasticsearch 服务地址
+            username: 认证用户名（可选）
+            password: 认证密码（可选）
+            embedding_model: 嵌入模型实例（可选，未提供时自动获取）
+            refresh_fail_dir: 刷新失败记录保存目录，默认为当前目录
+        """
         self._url = url
         self._username = username
         self._password = password
         self._embedding_model = embedding_model
+        self._refresh_fail_dir = Path(refresh_fail_dir)
         self._es_client: Optional[ESClient] = None
 
     @property
     def embedding_model(self):
+        """获取嵌入模型实例，若未初始化则自动创建。
+
+        Returns:
+            嵌入模型实例
+        """
         if self._embedding_model is None:
             from deepclaw.utils import get_embedding_model
 
@@ -35,6 +51,11 @@ class ElasticsearchVectorStore(AbstractVectorStore):
 
     @property
     def es_client(self) -> ESClient:
+        """获取 Elasticsearch 客户端实例，若未初始化则自动连接。
+
+        Returns:
+            Elasticsearch 客户端实例
+        """
         if self._es_client is None:
             self._es_client = ESClient(
                 hosts=[self._url],
@@ -51,6 +72,19 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         index_names: Optional[List[str]] = None,
         operation: str = "search",
     ) -> List[str]:
+        """解析并验证目标索引列表，确保至少有一个索引名称被提供。
+
+        Args:
+            index_name: 单个索引名称（可选）
+            index_names: 多个索引名称列表（可选）
+            operation: 操作类型描述，用于错误提示，默认为 "search"
+
+        Returns:
+            解析后的索引名称列表
+
+        Raises:
+            ValueError: 当 index_name 和 index_names 都未提供时抛出
+        """
         target_indexes = self.resolve_index_names(
             index_name=index_name,
             index_names=index_names,
@@ -70,6 +104,21 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         min_similarity: Optional[float] = None,
         filter_conditions: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
+        """基于向量相似度的语义检索。
+
+        将查询文本转为嵌入向量，在 ES 索引中使用 kNN 搜索相似文档。
+
+        Args:
+            query: 查询文本
+            k: 返回的最相似文档数量，默认为 3
+            index_name: 单个目标索引名称（可选）
+            index_names: 多个目标索引名称列表（可选）
+            min_similarity: 最低相似度阈值，低于此值的文档将被过滤（可选）
+            filter_conditions: 过滤条件字典，支持等值和列表匹配（可选）
+
+        Returns:
+            匹配文档列表，每项包含 id、content、metadata、score 等字段
+        """
         target_indexes = self._resolve_required_indexes(
             index_name=index_name,
             index_names=index_names,
@@ -110,6 +159,19 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         index_name: Optional[str] = None,
         index_names: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
+        """基于关键词匹配的全文检索。
+
+        使用 multi_match 在 content、title、summary 字段上进行关键词匹配。
+
+        Args:
+            query: 查询关键词文本
+            k: 返回的匹配文档数量，默认为 3
+            index_name: 单个目标索引名称（可选）
+            index_names: 多个目标索引名称列表（可选）
+
+        Returns:
+            匹配文档列表，每项包含 id、content、metadata、score 等字段
+        """
         target_indexes = self._resolve_required_indexes(
             index_name=index_name,
             index_names=index_names,
@@ -138,6 +200,20 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         index_name: Optional[str] = None,
         index_names: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
+        """混合检索，融合向量检索与关键词检索结果。
+
+        分别执行向量检索和关键词检索后，使用 merge_results 方法合并去重，
+        得到综合排序的检索结果。
+
+        Args:
+            query: 查询文本
+            k: 返回的文档数量，默认为 3
+            index_name: 单个目标索引名称（可选）
+            index_names: 多个目标索引名称列表（可选）
+
+        Returns:
+            合并后的文档列表，每项包含 id、content、metadata、score 等字段
+        """
         target_indexes = self._resolve_required_indexes(
             index_name=index_name,
             index_names=index_names,
@@ -269,6 +345,17 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         k: int,
         min_similarity: Optional[float] = None,
     ) -> List[Dict[str, Any]]:
+        """对多个文本分别执行向量检索，聚合去重后返回结果。
+
+        Args:
+            texts: 待检索的文本列表
+            index_name: 目标索引名称
+            k: 每个文本返回的最多文档数量
+            min_similarity: 最低相似度阈值（可选）
+
+        Returns:
+            去重后的匹配文档列表
+        """
         hits: List[Dict[str, Any]] = []
         seen_ids: Set[str] = set()
 
@@ -292,6 +379,18 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         min_similarity: Optional[float] = None,
         ids: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
+        """底层向量检索，支持按 ID 列表过滤。
+
+        Args:
+            query: 查询文本
+            k: 返回的最多文档数量
+            index_name: 目标索引名称
+            min_similarity: 最低相似度阈值（可选）
+            ids: 限定检索的文档 ID 列表（可选）
+
+        Returns:
+            匹配文档列表，包含 id、es_id、content、metadata、score 等字段
+        """
         query_vector = self.embedding_model.embed_query(query)
         knn_query: Dict[str, Any] = {
             "field": "embedding",
@@ -341,6 +440,21 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         relation_index_name: str,
         degree: int,
     ) -> Tuple[List[str], List[str], List[Dict[str, Any]]]:
+        """在 ES 上执行实体-关系的图扩展。
+
+        从种子实体和关系的 ID 出发，通过文档中记录的邻接 metadata
+        进行多轮扩展，找到更多相关的实体和关系。
+
+        Args:
+            entity_ids: 种子实体 ID 列表
+            relation_ids: 种子关系 ID 列表
+            entity_index_name: 实体索引名称
+            relation_index_name: 关系索引名称
+            degree: 扩展轮数
+
+        Returns:
+            包含全部实体 ID 列表、全部关系 ID 列表和每步扩展记录的元组
+        """
         all_entity_ids = set(entity_ids)
         all_relation_ids = set(relation_ids)
         steps: List[Dict[str, Any]] = []
@@ -396,6 +510,19 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         entity_index_name: str,
         relation_index_name: str,
     ) -> Set[str]:
+        """根据实体 ID 查找关联的关系 ID。
+
+        优先从实体文档的 metadata.relation_ids 中获取；若未找到，
+        则回退到在关系索引中按 metadata.entity_ids 字段搜索。
+
+        Args:
+            entity_ids: 实体 ID 列表
+            entity_index_name: 实体索引名称
+            relation_index_name: 关系索引名称
+
+        Returns:
+            关联的关系 ID 集合
+        """
         relation_ids: Set[str] = set()
         for entity in self._get_docs_by_ids(entity_index_name, entity_ids):
             relation_ids.update(self._metadata_list(entity, "relation_ids"))
@@ -415,6 +542,17 @@ class ElasticsearchVectorStore(AbstractVectorStore):
     def _entities_by_relations(
         self, relation_ids: List[str], relation_index_name: str
     ) -> Set[str]:
+        """根据关系 ID 查找关联的实体 ID。
+
+        从关系文档的 metadata.entity_ids 中提取所有关联的实体 ID。
+
+        Args:
+            relation_ids: 关系 ID 列表
+            relation_index_name: 关系索引名称
+
+        Returns:
+            关联的实体 ID 集合
+        """
         entity_ids: Set[str] = set()
         for relation in self._get_docs_by_ids(relation_index_name, relation_ids):
             entity_ids.update(self._metadata_list(relation, "entity_ids"))
@@ -427,6 +565,17 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         relation_index_name: str,
         limit: int,
     ) -> Tuple[List[str], Dict[str, Any]]:
+        """当关系数量超过限制时，用向量相似度裁剪到限定的数量。
+
+        Args:
+            query: 查询文本，用于向量排序
+            relation_ids: 待裁剪的关系 ID 列表
+            relation_index_name: 关系索引名称
+            limit: 保留的最大关系数量
+
+        Returns:
+            包含保留的关系 ID 列表和裁剪信息字典的元组
+        """
         before_count = len(relation_ids)
         if before_count <= limit:
             return sorted(relation_ids), {
@@ -458,6 +607,21 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         entity_ids: List[str],
         k: int,
     ) -> List[Dict[str, Any]]:
+        """根据关系 ID、实体 ID 和查询文本从篇章索引中检索相关段落。
+
+        使用 Elasticsearch bool should 查询，将 relation_ids 匹配、
+        entity_ids 匹配和文本匹配作为加权子句组合。
+
+        Args:
+            query: 查询文本（可选，为空时跳过文本匹配）
+            index_name: 篇章索引名称
+            relation_ids: 相关关系 ID 列表
+            entity_ids: 相关实体 ID 列表
+            k: 返回的文档数量
+
+        Returns:
+            匹配的篇章文档列表
+        """
         should_clauses = []
         if relation_ids:
             should_clauses.append({"terms": {"metadata.relation_ids": relation_ids}})
@@ -491,7 +655,19 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         )
         return [self._hit_to_result(hit) for hit in results["hits"]["hits"]]
 
-    def _get_docs_by_ids(self, index_name: str, doc_ids: Iterable[str]) -> List[Dict[str, Any]]:
+    def _get_docs_by_ids(self, index_name: str, doc_ids: Iterable[str]    ) -> List[Dict[str, Any]]:
+        """根据文档 ID 列表批量获取文档。
+
+        优先使用 ES mget API 按 ID 获取，未命中的 ID 再回退到
+        按 metadata.id 字段搜索。
+
+        Args:
+            index_name: 目标索引名称
+            doc_ids: 文档 ID 的可迭代对象
+
+        Returns:
+            文档列表，每项包含 id、content、metadata 等字段
+        """
         ids = [doc_id for doc_id in doc_ids if doc_id]
         if not ids:
             return []
@@ -528,6 +704,17 @@ class ElasticsearchVectorStore(AbstractVectorStore):
     def _search_by_terms(
         self, index_name: str, field: str, values: List[str], size: int
     ) -> List[Dict[str, Any]]:
+        """按 terms 查询在指定字段上搜索匹配的文档。
+
+        Args:
+            index_name: 目标索引名称
+            field: 搜索字段名
+            values: 要匹配的值列表
+            size: 返回的最大文档数量
+
+        Returns:
+            匹配的文档列表
+        """
         if not values:
             return []
         results = self.es_client.search(
@@ -538,6 +725,14 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         return [self._hit_to_result(hit) for hit in results["hits"]["hits"]]
 
     def _hit_to_result(self, hit: Dict[str, Any]) -> Dict[str, Any]:
+        """将 ES 原始命中结果转换为统一格式的字典。
+
+        Args:
+            hit: ES 搜索命中的原始文档
+
+        Returns:
+            统一格式的字典，包含 id、es_id、content、metadata、score 字段
+        """
         source = hit.get("_source", {})
         metadata = source.get("metadata", {})
         return {
@@ -549,12 +744,29 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         }
 
     def _ids_from_hits(self, hits: List[Dict[str, Any]]) -> List[str]:
+        """从命中结果列表中提取去重后的 ID 列表。
+
+        Args:
+            hits: 检索命中文档列表
+
+        Returns:
+            去重后的文档 ID 列表
+        """
         ids = []
         for hit in hits:
             ids.append(str(hit["id"]))
         return list(dict.fromkeys(ids))
 
     def _metadata_list(self, doc: Dict[str, Any], key: str) -> List[str]:
+        """从文档的元数据中提取指定键的字符串列表。
+
+        Args:
+            doc: 文档字典
+            key: 元数据中的键名
+
+        Returns:
+            字符串列表
+        """
         value = doc.get("metadata", {}).get(key, [])
         if value is None:
             return []
@@ -563,6 +775,16 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         return [str(value)]
 
     def _simple_extract_entities(self, query: str) -> List[str]:
+        """从查询字符串中简单提取候选实体词。
+
+        按中文标点分词后过滤掉单字词和符号，返回最多 8 个候选实体。
+
+        Args:
+            query: 查询文本
+
+        Returns:
+            候选实体词列表
+        """
         words = []
         for raw_word in query.replace("，", " ").replace("。", " ").split():
             word = raw_word.strip("'\".,;:!?()[]{}<>《》、")
@@ -577,6 +799,22 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         doc_id: Optional[str] = None,
         index_name: Optional[str] = None,
     ) -> str:
+        """向索引中添加单个文档。
+
+        自动计算文档内容的嵌入向量并写入 ES 索引。
+
+        Args:
+            content: 文档内容
+            metadata: 文档元数据字典（可选）
+            doc_id: 自定义文档 ID（可选，不传则由 ES 自动生成）
+            index_name: 目标索引名称
+
+        Returns:
+            写入的文档 ID
+
+        Raises:
+            ValueError: 当 index_name 未提供时抛出
+        """
         if not index_name:
             raise ValueError("index_name is required for add operations")
         embedding = self.embedding_model.embed_query(content)
@@ -599,6 +837,20 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         documents: List[Dict[str, Any]],
         index_name: Optional[str] = None,
     ) -> List[str]:
+        """批量向索引中添加文档。
+
+        使用 ES bulk API 批量写入，自动为每个文档计算嵌入向量。
+
+        Args:
+            documents: 文档字典列表，每项应包含 content 和可选的 metadata 字段
+            index_name: 目标索引名称
+
+        Returns:
+            写入的文档 ID 列表
+
+        Raises:
+            ValueError: 当 index_name 未提供时抛出
+        """
         if not index_name:
             raise ValueError("index_name is required for add_batch operations")
         if not documents:
@@ -630,6 +882,22 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         metadata: Optional[Dict[str, Any]] = None,
         index_name: Optional[str] = None,
     ) -> bool:
+        """更新索引中的文档。
+
+        当提供新的 content 时自动重新计算嵌入向量。
+
+        Args:
+            doc_id: 要更新的文档 ID
+            content: 新文档内容（可选）
+            metadata: 新文档元数据（可选）
+            index_name: 目标索引名称
+
+        Returns:
+            更新是否成功
+
+        Raises:
+            ValueError: 当 index_name 未提供时抛出
+        """
         if not index_name:
             raise ValueError("index_name is required for update operations")
         update_body: Dict[str, Any] = {}
@@ -653,6 +921,18 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         return result["result"] in ["updated", "noop"]
 
     def delete(self, doc_id: str, index_name: Optional[str] = None) -> bool:
+        """从索引中删除单个文档。
+
+        Args:
+            doc_id: 要删除的文档 ID
+            index_name: 目标索引名称
+
+        Returns:
+            删除是否成功
+
+        Raises:
+            ValueError: 当 index_name 未提供时抛出
+        """
         if not index_name:
             raise ValueError("index_name is required for delete operations")
         result = self.es_client.delete(
@@ -666,6 +946,20 @@ class ElasticsearchVectorStore(AbstractVectorStore):
     def delete_batch(
         self, doc_ids: List[str], index_name: Optional[str] = None
     ) -> List[bool]:
+        """批量从索引中删除文档。
+
+        使用 ES bulk API 批量删除。
+
+        Args:
+            doc_ids: 要删除的文档 ID 列表
+            index_name: 目标索引名称
+
+        Returns:
+            每个文档的删除结果布尔值列表
+
+        Raises:
+            ValueError: 当 index_name 未提供时抛出
+        """
         if not index_name:
             raise ValueError("index_name is required for delete_batch operations")
         if not doc_ids:
@@ -687,6 +981,18 @@ class ElasticsearchVectorStore(AbstractVectorStore):
     def get(
         self, doc_id: str, index_name: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
+        """根据 ID 从索引中获取单个文档。
+
+        Args:
+            doc_id: 要获取的文档 ID
+            index_name: 目标索引名称
+
+        Returns:
+            文档字典，包含 content 和 metadata 字段；不存在时返回 None
+
+        Raises:
+            ValueError: 当 index_name 未提供时抛出
+        """
         if not index_name:
             raise ValueError("index_name is required for get operations")
         try:
@@ -708,6 +1014,20 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         index_name: Optional[str] = None,
         index_names: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
+        """通用全文检索接口，支持关键词查询和过滤条件。
+
+        当未提供 query 时返回索引中的全部文档。
+
+        Args:
+            query: 查询关键词（可选，为空时返回全部文档）
+            k: 返回的文档数量，默认为 3
+            filter_conditions: 过滤条件字典（可选）
+            index_name: 单个目标索引名称（可选）
+            index_names: 多个目标索引名称列表（可选）
+
+        Returns:
+            匹配文档列表
+        """
         target_indexes = self._resolve_required_indexes(
             index_name=index_name,
             index_names=index_names,
@@ -738,6 +1058,18 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         return [self._hit_to_result(hit) for hit in results["hits"]["hits"]]
 
     def exists(self, doc_id: str, index_name: Optional[str] = None) -> bool:
+        """检查指定 ID 的文档是否存在于索引中。
+
+        Args:
+            doc_id: 要检查的文档 ID
+            index_name: 目标索引名称
+
+        Returns:
+            文档是否存在
+
+        Raises:
+            ValueError: 当 index_name 未提供时抛出
+        """
         if not index_name:
             raise ValueError("index_name is required for exists operations")
         return self.es_client.exists(index=index_name, id=doc_id)
@@ -748,6 +1080,19 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         index_name: Optional[str] = None,
         index_names: Optional[List[str]] = None,
     ) -> int:
+        """统计索引中匹配过滤条件的文档数量。
+
+        Args:
+            filter_conditions: 过滤条件字典（可选，不传时统计全部文档）
+            index_name: 单个目标索引名称（可选）
+            index_names: 多个目标索引名称列表（可选）
+
+        Returns:
+            匹配文档的数量
+
+        Raises:
+            ValueError: 当 index_name 和 index_names 都未提供时抛出
+        """
         target_indexes = self._resolve_required_indexes(
             index_name=index_name,
             index_names=index_names,
@@ -1015,8 +1360,8 @@ class ElasticsearchVectorStore(AbstractVectorStore):
 
         if fail_records:
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            fail_path = home_path / f"refresh_failed_{ts}.jsonl"
-            home_path.mkdir(parents=True, exist_ok=True)
+            fail_path = self._refresh_fail_dir / f"refresh_failed_{ts}.jsonl"
+            self._refresh_fail_dir.mkdir(parents=True, exist_ok=True)
             with open(fail_path, "w", encoding="utf-8") as f:
                 for rec in fail_records:
                     f.write(json.dumps(rec, ensure_ascii=False) + "\n")

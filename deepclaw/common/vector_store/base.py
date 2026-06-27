@@ -13,6 +13,13 @@ class AbstractVectorStore(ABC):
         index_name: str | None = None,
         index_names: list[str] | None = None,
     ) -> list[str] | None:
+        """统一解析单/多索引名称参数，返回归一化后的列表或 None。
+
+        Args:
+            index_name: 单个索引名，传入时返回 [name]。
+            index_names: 多个索引名列表，自动去重并忽略空串。
+            同时传入两者会抛异常。两者均为 None 时返回 None（由调用方决定全量语义）。
+        """
         if index_name and index_names:
             raise ValueError("index_name and index_names cannot be provided together")
         if index_name:
@@ -33,6 +40,13 @@ class AbstractVectorStore(ABC):
         keyword_results: list[dict[str, Any]],
         k: int,
     ) -> list[dict[str, Any]]:
+        """合并向量检索和关键词检索结果，按 content 去重，优先保留向量结果在前。
+
+        Args:
+            vector_results: 向量检索的结果列表（靠前，去重时优先保留）。
+            keyword_results: 关键词检索的结果列表。
+            k: 返回的最大条数。
+        """
         seen_contents: set[str] = set()
         merged: list[dict[str, Any]] = []
         for item in vector_results + keyword_results:
@@ -52,14 +66,30 @@ class AbstractVectorStore(ABC):
         metadata: dict[str, Any] | None = None,
         doc_id: str | None = None,
         index_name: str | None = None,
-    ) -> str: ...
+    ) -> str:
+        """添加一篇文档，返回文档 ID。
+
+        Args:
+            content: 文档正文。
+            metadata: 附加元数据（可选）。
+            doc_id: 自定义 ID，不传则由存储层自动生成。
+            index_name: 目标索引名。
+        """
+        ...
 
     @abstractmethod
     def add_batch(
         self,
         documents: list[dict[str, Any]],
         index_name: str | None = None,
-    ) -> list[str]: ...
+    ) -> list[str]:
+        """批量添加文档，返回 ID 列表。
+
+        Args:
+            documents: 每项至少含 content，可选 metadata / id。
+            index_name: 目标索引名。
+        """
+        ...
 
     @abstractmethod
     def update(
@@ -68,19 +98,56 @@ class AbstractVectorStore(ABC):
         content: str | None = None,
         metadata: dict[str, Any] | None = None,
         index_name: str | None = None,
-    ) -> bool: ...
+    ) -> bool:
+        """更新文档内容或元数据。至少提供一个更新字段。
+
+        Args:
+            doc_id: 文档 ID。
+            content: 新正文（可选，传入时会重新生成向量）。
+            metadata: 新元数据（可选）。
+            index_name: 目标索引名。
+        """
+        ...
 
     @abstractmethod
-    def delete(self, doc_id: str, index_name: str | None = None) -> bool: ...
+    def delete(self, doc_id: str, index_name: str | None = None) -> bool:
+        """删除单篇文档。
+
+        Args:
+            doc_id: 文档 ID。
+            index_name: 目标索引名。
+        """
+        ...
 
     @abstractmethod
-    def delete_batch(self, doc_ids: list[str], index_name: str | None = None) -> list[bool]: ...
+    def delete_batch(self, doc_ids: list[str], index_name: str | None = None) -> list[bool]:
+        """批量删除文档，返回每项是否成功。
+
+        Args:
+            doc_ids: 文档 ID 列表。
+            index_name: 目标索引名。
+        """
+        ...
 
     @abstractmethod
-    def get(self, doc_id: str, index_name: str | None = None) -> dict[str, Any] | None: ...
+    def get(self, doc_id: str, index_name: str | None = None) -> dict[str, Any] | None:
+        """按 ID 获取单篇文档。
+
+        Args:
+            doc_id: 文档 ID。
+            index_name: 目标索引名。
+        """
+        ...
 
     @abstractmethod
-    def exists(self, doc_id: str, index_name: str | None = None) -> bool: ...
+    def exists(self, doc_id: str, index_name: str | None = None) -> bool:
+        """检查文档是否存在。
+
+        Args:
+            doc_id: 文档 ID。
+            index_name: 目标索引名。
+        """
+        ...
 
     @abstractmethod
     def count(
@@ -88,7 +155,15 @@ class AbstractVectorStore(ABC):
         filter_conditions: dict[str, Any] | None = None,
         index_name: str | None = None,
         index_names: list[str] | None = None,
-    ) -> int: ...
+    ) -> int:
+        """统计符合条件的文档数量。
+
+        Args:
+            filter_conditions: 过滤条件 {字段: 值}，不同存储层的过滤语法不同。
+            index_name: 单索引名。
+            index_names: 多索引名列表。
+        """
+        ...
 
     @abstractmethod
     def search(
@@ -98,7 +173,17 @@ class AbstractVectorStore(ABC):
         filter_conditions: dict[str, Any] | None = None,
         index_name: str | None = None,
         index_names: list[str] | None = None,
-    ) -> list[dict[str, Any]]: ...
+    ) -> list[dict[str, Any]]:
+        """通用搜索。query 为空时仅按过滤条件返回最新文档。
+
+        Args:
+            query: 搜索关键词（可选）。
+            k: 返回的最大结果数。
+            filter_conditions: 过滤条件 {字段: 值}。
+            index_name: 单索引名。
+            index_names: 多索引名列表。
+        """
+        ...
 
     @abstractmethod
     def vector_search(
@@ -109,7 +194,18 @@ class AbstractVectorStore(ABC):
         index_names: list[str] | None = None,
         min_similarity: float | None = None,
         filter_conditions: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]: ...
+    ) -> list[dict[str, Any]]:
+        """向量语义检索，按余弦相似度排序。
+
+        Args:
+            query: 查询文本，自动嵌入为向量。
+            k: 返回的最大结果数。
+            index_name: 单索引名。
+            index_names: 多索引名列表。
+            min_similarity: 最低相似度阈值（可选）。
+            filter_conditions: 元数据过滤条件。
+        """
+        ...
 
     @abstractmethod
     def keyword_search(
@@ -118,7 +214,16 @@ class AbstractVectorStore(ABC):
         k: int = 3,
         index_name: str | None = None,
         index_names: list[str] | None = None,
-    ) -> list[dict[str, Any]]: ...
+    ) -> list[dict[str, Any]]:
+        """关键词全文检索。
+
+        Args:
+            query: 搜索关键词。
+            k: 返回的最大结果数。
+            index_name: 单索引名。
+            index_names: 多索引名列表。
+        """
+        ...
 
     def retrieve(
         self,
@@ -127,6 +232,14 @@ class AbstractVectorStore(ABC):
         index_name: str | None = None,
         index_names: list[str] | None = None,
     ) -> list[dict[str, Any]]:
+        """混合检索：向量检索 + 关键词检索，合并去重后返回。
+
+        Args:
+            query: 查询文本。
+            k: 返回的最大结果数。
+            index_name: 单索引名。
+            index_names: 多索引名列表。
+        """
         vector_results = self.vector_search(
             query=query,
             k=k,
