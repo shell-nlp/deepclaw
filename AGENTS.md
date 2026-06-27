@@ -219,6 +219,7 @@ pnpm build
 - 输出文档必须是中文。
 - 如果代码结构变化，必须同步更新 `AGENTS.md`。
 - 代码更改后，必须执行 `codegraph index --force` 更新索引。
+- 代码修改完成后，必须运行全部 pytest 测试进行回归验证：`uv run pytest tests -q`
 
 ## 最小验证
 
