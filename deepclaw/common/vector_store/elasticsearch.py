@@ -978,6 +978,44 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         )
         return results
 
+    def delete_by_filter(
+        self,
+        filter_conditions: dict[str, Any],
+        index_name: str | None = None,
+        index_names: list[str] | None = None,
+    ) -> int:
+        """按过滤条件批量删除文档。
+
+        使用 ES delete_by_query API 删除匹配条件的文档。
+
+        Args:
+            filter_conditions: 过滤条件 {字段: 值}，支持等值和列表匹配。
+            index_name: 单索引名。
+            index_names: 多索引名列表。
+
+        Returns:
+            删除的文档数量。
+        """
+        target_indexes = self._resolve_required_indexes(
+            index_name=index_name,
+            index_names=index_names,
+            operation="delete_by_filter",
+        )
+        must_clauses: list[dict[str, Any]] = []
+        for field, value in filter_conditions.items():
+            if isinstance(value, list):
+                must_clauses.append({"terms": {field: value}})
+            else:
+                must_clauses.append({"term": {field: value}})
+        response = self.es_client.delete_by_query(
+            index=target_indexes,
+            body={"query": {"bool": {"must": must_clauses}}},
+            refresh=True,
+        )
+        deleted = response.get("deleted", 0)
+        logger.info(f"按条件删除文档成功: 数量={deleted}, index={target_indexes}")
+        return deleted
+
     def get(
         self, doc_id: str, index_name: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
@@ -1005,6 +1043,52 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         except Exception as e:
             logger.error(f"获取文档失败: id={doc_id}, error={e}")
             return None
+
+    def batch_get(
+        self,
+        doc_ids: list[str],
+        index_name: str | None = None,
+        index_names: list[str] | None = None,
+    ) -> list[dict[str, Any] | None]:
+        """批量获取文档。
+
+        使用 ES mget API 按 ID 列表批量获取，未命中的 ID 对应位置为 None。
+
+        Args:
+            doc_ids: 文档 ID 列表。
+            index_name: 单索引名（mget 要求单索引）。
+            index_names: 多索引名列表（不支持，传了会抛异常）。
+
+        Returns:
+            按传入 ID 顺序排列的文档列表，未找到的项为 None。
+        """
+        if index_names:
+            raise ValueError("batch_get 仅支持单个 index_name")
+        target = self._resolve_required_indexes(
+            index_name=index_name,
+            index_names=None,
+            operation="batch_get",
+        )
+        if not doc_ids:
+            return []
+        target_index = target[0]
+        results = self.es_client.mget(index=target_index, ids=doc_ids)
+        output: list[dict[str, Any] | None] = []
+        for doc in results.get("docs", []):
+            if not doc.get("found"):
+                output.append(None)
+            else:
+                source = doc.get("_source", {})
+                metadata = source.get("metadata", {})
+                output.append({
+                    "id": str(metadata.get("id") or doc["_id"]),
+                    "content": source.get("content", ""),
+                    "metadata": metadata,
+                })
+        logger.info(
+            f"批量获取文档: 请求={len(doc_ids)}, 命中={sum(1 for r in output if r is not None)}, index={target_index}"
+        )
+        return output
 
     def search(
         self,
@@ -1108,10 +1192,125 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         result = self.es_client.count(index=target_indexes, body=search_body)
         return result["count"]
 
+    def raw_search(
+        self,
+        body: dict[str, Any] | None = None,
+        *,
+        index_name: str | None = None,
+        index_names: list[str] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        """透传原生查询到 ES，返回 ES 原始响应。
+
+        支持 ES 8.x 的 knn 参数、query body 等各种原生查询格式。
+        例如：
+
+        .. code-block:: python
+
+            store.raw_search(
+                knn={"field": "embedding", "query_vector": vec, "k": 10},
+                index_name="my_index",
+            )
+
+            store.raw_search(
+                {"query": {"match": {"content": "hello"}}},
+                index_name="my_index",
+            )
+
+        Args:
+            body: ES 查询 body（可选，与 kwargs 中的 knn 等参数二选一）。
+            index_name: 单索引名。
+            index_names: 多索引名列表。
+            **kwargs: 透传给 es_client.search 的额外参数（如 knn、_source、size 等）。
+
+        Returns:
+            ES 原始 search 响应字典。
+        """
+        target_indexes = self._resolve_required_indexes(
+            index_name=index_name,
+            index_names=index_names,
+            operation="raw_search",
+        )
+        params: dict[str, Any] = {"index": target_indexes}
+        if body is not None:
+            params["body"] = body
+        params.update(kwargs)
+        return self.es_client.search(**params)
+
     def _list_index_names(self) -> list[str]:
         """列出 ES 中所有非系统索引（跳过 . 开头索引）。"""
         result = self.es_client.indices.get_alias(index="*")
         return sorted([idx for idx in result if not idx.startswith(".")])
+
+    def create_index(
+        self,
+        index_name: str,
+        *,
+        vector_dim: int | None = None,
+        force: bool = False,
+    ) -> bool:
+        """创建 ES 索引，并预设向量字段 mapping。
+
+        Args:
+            index_name: 索引名称。
+            vector_dim: 向量维度，为 None 时使用 self.embedding_dimensions。
+            force: 为 True 时覆盖已有索引；为 False 时仅当索引不存在时创建。
+
+        Returns:
+            是否创建成功。
+        """
+        if self.es_client.indices.exists(index=index_name):
+            if not force:
+                logger.info(f"索引已存在，跳过创建: {index_name}")
+                return False
+            self.es_client.indices.delete(index=index_name)
+            logger.info(f"已删除旧索引: {index_name}")
+
+        dim = vector_dim or self.embedding_dimensions or 1536
+        mapping = {
+            "mappings": {
+                "properties": {
+                    "content": {"type": "text"},
+                    "embedding": {
+                        "type": "dense_vector",
+                        "dims": dim,
+                        "index": True,
+                        "similarity": "cosine",
+                    },
+                    "metadata": {"type": "object", "dynamic": True},
+                }
+            }
+        }
+        self.es_client.indices.create(index=index_name, body=mapping)
+        logger.info(f"索引创建成功: {index_name}, 向量维度={dim}")
+        return True
+
+    def delete_index(self, index_name: str) -> bool:
+        """删除 ES 索引。
+
+        Args:
+            index_name: 索引名称。
+
+        Returns:
+            是否删除成功。
+        """
+        if not self.es_client.indices.exists(index=index_name):
+            logger.warning(f"索引不存在，跳过删除: {index_name}")
+            return False
+        self.es_client.indices.delete(index=index_name)
+        logger.info(f"索引删除成功: {index_name}")
+        return True
+
+    def index_exists(self, index_name: str) -> bool:
+        """检查 ES 索引是否存在。
+
+        Args:
+            index_name: 索引名称。
+
+        Returns:
+            索引是否存在。
+        """
+        return self.es_client.indices.exists(index=index_name)
 
     def _resolve_refresh_indexes(
         self, *, index_names: list[str] | None = None
