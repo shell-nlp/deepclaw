@@ -1,0 +1,32 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "shell": "C:\\Users\\50661\\.opencode\\shell-utf8.cmd",
+  "plugin": ["superpowers@git+https://github.com/obra/superpowers.git"],
+  "lsp": true,
+  "provider": {
+    "local-vllm": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "local-vllm",
+      "options": {
+        "baseURL": "http://localhost:8082/v1",
+        "apiKey": "EMPTY"
+      },
+      "models": {
+        "qwen3.5": {
+          "name": "Qwen3.5"
+        }
+      }
+    }
+  },
+  "mcp": {
+    "codegraph": {
+      "type": "local",
+      "command": [
+        "codegraph",
+        "serve",
+        "--mcp"
+      ],
+      "enabled": true
+    }
+  }
+}
