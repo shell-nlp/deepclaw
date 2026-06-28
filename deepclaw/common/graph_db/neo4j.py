@@ -31,12 +31,23 @@ class Neo4jGraph(GraphDatabaseBase):
         logger.info("已连接到 Neo4j 数据库: {}", self.uri)
 
     def _verify_connection(self) -> None:
+        """验证数据库连接是否正常。"""
         with self.driver.session(database=self.database) as session:
             session.run("RETURN 1")
 
     def add_node(
         self, label: str, properties: dict[str, Any] | None = None, node_id: str | None = None
     ) -> str:
+        """添加节点，已存在相同 id 的节点时合并属性。
+
+        Args:
+            label: 节点标签（即实体类型）。
+            properties: 节点属性。
+            node_id: 节点唯一标识符（可选，不传时自动生成）。
+
+        Returns:
+            节点 ID。
+        """
         if properties is None:
             properties = {}
         if node_id:
@@ -72,6 +83,17 @@ class Neo4jGraph(GraphDatabaseBase):
         relationship_type: str = "LINK",
         properties: dict[str, Any] | None = None,
     ) -> bool:
+        """添加边（关系），已存在时合并属性。
+
+        Args:
+            from_node_id: 起始节点 ID。
+            to_node_id: 目标节点 ID。
+            relationship_type: 关系类型。
+            properties: 关系属性。
+
+        Returns:
+            是否成功添加。
+        """
         if properties is None:
             properties = {}
 
@@ -103,6 +125,14 @@ class Neo4jGraph(GraphDatabaseBase):
             raise
 
     def get_node(self, node_id: str) -> dict[str, Any] | None:
+        """根据节点 ID 获取节点信息。
+
+        Args:
+            node_id: 节点 ID。
+
+        Returns:
+            节点信息字典（含 id、labels、properties）或 None。
+        """
         query = "MATCH (n {id: $node_id}) RETURN n"
         parameters = {"node_id": node_id}
 
@@ -123,6 +153,14 @@ class Neo4jGraph(GraphDatabaseBase):
             raise
 
     def get_nodes_by_label(self, label: str) -> list[dict[str, Any]]:
+        """根据标签获取所有节点。
+
+        Args:
+            label: 节点标签。
+
+        Returns:
+            节点列表，每项含 id、labels、properties。
+        """
         query = f"MATCH (n:{label}) RETURN n"
 
         try:
@@ -144,6 +182,15 @@ class Neo4jGraph(GraphDatabaseBase):
     def get_neighbors(
         self, node_id: str, relationship_type: str | None = None
     ) -> list[dict[str, Any]]:
+        """获取节点的邻居节点。
+
+        Args:
+            node_id: 节点 ID。
+            relationship_type: 关系类型（可选，不传时返回所有关系类型的邻居）。
+
+        Returns:
+            邻居节点列表，每项含 node（含 id、labels、properties）和 relationship_type。
+        """
         if relationship_type:
             query = (
                 "MATCH (n {id: $node_id})-[r:"
@@ -179,6 +226,14 @@ class Neo4jGraph(GraphDatabaseBase):
             raise
 
     def delete_node(self, node_id: str) -> bool:
+        """删除节点及其所有关系。
+
+        Args:
+            node_id: 节点 ID。
+
+        Returns:
+            是否成功删除。
+        """
         query = (
             "MATCH (n {id: $node_id})\n"
             "DETACH DELETE n\n"
@@ -203,6 +258,16 @@ class Neo4jGraph(GraphDatabaseBase):
     def delete_edge(
         self, from_node_id: str, to_node_id: str, relationship_type: str
     ) -> bool:
+        """删除指定的关系。
+
+        Args:
+            from_node_id: 起始节点 ID。
+            to_node_id: 目标节点 ID。
+            relationship_type: 关系类型。
+
+        Returns:
+            是否成功删除。
+        """
         query = (
             "MATCH (a {id: $from_node_id})-[r:"
             + relationship_type
@@ -228,6 +293,7 @@ class Neo4jGraph(GraphDatabaseBase):
             raise
 
     def close(self) -> None:
+        """关闭数据库连接。"""
         if self.driver:
             self.driver.close()
             logger.info("已关闭 Neo4j 连接")
@@ -267,4 +333,12 @@ class Neo4jGraph(GraphDatabaseBase):
             raise
 
     def _generate_node_id(self, label: str) -> str:
+        """生成新节点 ID。
+
+        Args:
+            label: 节点标签。
+
+        Returns:
+            格式为 {label}_{uuid 前 8 位} 的 ID。
+        """
         return f"{label}_{uuid4().hex[:8]}"

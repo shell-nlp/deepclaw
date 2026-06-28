@@ -2,7 +2,7 @@ version: '3.8'
  
 services:
   neo4j:
-    image: docker.1ms.run/neo4j:5.26.13
+    image: docker.1ms.run/neo4j:5.26.27
     container_name: neo4j
     restart: always 
     ports:
