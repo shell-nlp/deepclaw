@@ -3,7 +3,7 @@ version: '3.8'
 services:
   neo4j:
     image: docker.1ms.run/neo4j:5.26.13
-    container_name: neo4j-hubeirs
+    container_name: neo4j
     restart: always 
     ports:
       - "7474:7474"  # 用于访问 Neo4j Browser（浏览器UI）和 HTTP API 的端口。
