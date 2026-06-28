@@ -40,6 +40,9 @@ class Neo4jGraph(GraphDatabaseBase):
     ) -> str:
         """添加节点，已存在相同 id 的节点时合并属性。
 
+        注意: Neo4j Browser 默认使用节点的 name 或 title 属性作为可视化显示标题，
+              因此建议 properties 中包含 "name" 字段（值为中文名称）。
+
         Args:
             label: 节点标签（即实体类型）。
             properties: 节点属性。
