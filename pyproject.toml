@@ -42,9 +42,7 @@ dependencies = [
 # uv sync --extra pdf 才会安装
 # uv sync --all-extras 安装所有可选依赖
 [project.optional-dependencies]
-oracle = [
-    "oracledb>=2.0.0",
-]
+oracle = ["oracledb>=2.0.0"]
 opensandbox = [
     "opensandbox-server>=0.1.14",
     "opensandbox-code-interpreter>=0.1.2",
@@ -65,10 +63,9 @@ default = true
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",
+    "pytest-xdist>=3.6.1", # 用于并行测试
 ]
-lint = [
-    "ruff>=0.15.16",
-]
+lint = ["ruff>=0.15.16"]
 
 # [tool.uv.sources]
 # ag-ui-langgraph = { git = "https://github.com/ag-ui-protocol/ag-ui.git", subdirectory = "integrations/langgraph/python" }
@@ -86,4 +83,3 @@ known-first-party = ["deepclaw"]
 
 [project.scripts]
 deepclaw = "deepclaw.cli.main:app"
-

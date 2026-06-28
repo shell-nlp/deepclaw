@@ -25,22 +25,28 @@ class DummyStore(AbstractVectorStore):
     def exists(self, doc_id, index_name=None):
         raise NotImplementedError
 
-    def count(self, filter_conditions=None, index_name=None, index_names=None):
+    def count(self, filter_conditions=None, index_names=None):
         raise NotImplementedError
 
-    def search(self, query=None, k=3, filter_conditions=None, index_name=None, index_names=None):
+    def search(self, query=None, k=3, filter_conditions=None, index_names=None):
         raise NotImplementedError
 
-    def vector_search(self, query, k=3, index_name=None, index_names=None, min_similarity=None):
+    def vector_search(self, query, k=3, index_names=None, min_similarity=None, filter_conditions=None):
         raise NotImplementedError
 
-    def keyword_search(self, query, k=3, index_name=None, index_names=None):
+    def keyword_search(self, query, k=3, index_names=None):
+        raise NotImplementedError
+
+    def delete_by_filter(self, filter_conditions, index_names=None):
+        raise NotImplementedError
+
+    def batch_get(self, doc_ids, index_name=None):
         raise NotImplementedError
 
 
 def test_resolve_index_names_accepts_single_name():
     store = DummyStore()
-    assert store.resolve_index_names(index_name="kb_demo") == ["kb_demo"]
+    assert store.resolve_index_names(index_names=["kb_demo"]) == ["kb_demo"]
 
 
 def test_resolve_index_names_accepts_multiple_names_and_deduplicates():
@@ -48,10 +54,15 @@ def test_resolve_index_names_accepts_multiple_names_and_deduplicates():
     assert store.resolve_index_names(index_names=["kb_a", "kb_b", "kb_a"]) == ["kb_a", "kb_b"]
 
 
-def test_resolve_index_names_rejects_conflicting_arguments():
+def test_resolve_index_names_returns_none_when_not_provided():
     store = DummyStore()
-    with pytest.raises(ValueError, match="index_name and index_names"):
-        store.resolve_index_names(index_name="kb_a", index_names=["kb_b"])
+    assert store.resolve_index_names() is None
+
+
+def test_resolve_index_names_rejects_empty_list():
+    store = DummyStore()
+    with pytest.raises(ValueError, match="index_names cannot be empty"):
+        store.resolve_index_names(index_names=[])
 
 
 def test_merge_results_prefers_vector_hits_and_deduplicates_by_content():

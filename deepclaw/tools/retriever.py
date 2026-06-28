@@ -1,4 +1,4 @@
-﻿from langchain.tools import tool
+from langchain.tools import tool
 
 from deepclaw.common import create_graph_rag
 from deepclaw.common.vector_store import (
@@ -21,7 +21,7 @@ default_retriever: AbstractVectorStore = create_default_vector_store(
 @tool
 def retrieve_context(query: str):
     """检索与查询相关的信息。"""
-    docs = default_retriever.retrieve(query=query, k=3, index_name=DEFAULT_INDEX_NAME)
+    docs = default_retriever.retrieve(query=query, k=3, index_names=[DEFAULT_INDEX_NAME])
     context = ""
     for idx, doc in enumerate(docs, start=1):
         context += f"文档 {idx}: \n{doc.get('content', '')}\n\n"

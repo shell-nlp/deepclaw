@@ -204,7 +204,7 @@ pnpm build
 
 注意：`.env.example` 里可能有示例值或历史残留，修改配置逻辑时以实际代码为准。
 
-## 开发约束
+## 必须要遵守的开发约束
 
 - 只改与当前任务直接相关的代码，避免顺手重构。
 - 保持最小改动，优先修根因，不要扩散影响面。
@@ -219,7 +219,7 @@ pnpm build
 - 输出文档必须是中文。
 - 如果代码结构变化，必须同步更新 `AGENTS.md`。
 - 代码更改后，必须执行 `codegraph index --force` 更新索引。
-- 代码修改完成后，必须运行全部 pytest 测试进行回归验证：`uv run pytest tests -q`
+- 代码修改完成后，必须运行全部 pytest 测试进行回归验证：`uv run pytest tests -q -n auto`
 
 ## 最小验证
 
@@ -232,7 +232,7 @@ uv run ruff check .
 如果本次任务涉及测试补充或测试修改，使用 `pytest` 执行相关测试，例如：
 
 ```bash
-uv run pytest tests -q
+uv run pytest tests -q -n auto
 ```
 
 修改前端文件后，至少运行：

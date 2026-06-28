@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import re
 import uuid
@@ -13,15 +13,15 @@ from pydantic import BaseModel, Field
 
 from deepclaw.common import create_default_vector_store, create_graph_rag
 from deepclaw.common.graph_rag import BaseGraphRAG
+from deepclaw.common.text_splitter import PDFParser
 from deepclaw.common.vector_store.base import AbstractVectorStore
 from deepclaw.common.vector_store.elasticsearch import ElasticsearchVectorStore
-from deepclaw.common.text_splitter import PDFParser
 from deepclaw.constant import workspace_path
+from deepclaw.utils import get_embedding_model
 from deepclaw.web_backend.knowledge_bases.store import (
     KnowledgeBaseMetadataStore,
     SQLModelKnowledgeBaseMetadataStore,
 )
-from deepclaw.utils import get_embedding_model
 
 
 class KnowledgeBaseRecord(BaseModel):
@@ -637,9 +637,9 @@ class KnowledgeBaseManager:
         # PG 分支：将 ES term 查询转为 filter_conditions，手动处理排序和分页
         filter_conditions = self._es_term_query_to_filter(query)
         pg = self._vector_store
-        total = pg.count(index_name=index_name, filter_conditions=filter_conditions)
+        total = pg.count(index_names=[index_name], filter_conditions=filter_conditions)
         results = pg.search(
-            index_name=index_name,
+            index_names=[index_name],
             filter_conditions=filter_conditions,
             k=from_ + size,
         )
@@ -699,7 +699,7 @@ class KnowledgeBaseManager:
             )
             return int(result["count"])
 
-        return self._vector_store.count(index_name=index_name)
+        return self._vector_store.count(index_names=[index_name])
 
     def _storage_dir(self, user_id: str, knowledge_base_id: str) -> Path:
         return self.STORAGE_ROOT / self._safe_path_part(user_id) / knowledge_base_id
