@@ -1,5 +1,10 @@
 ﻿from typing import Any
 
+from deepclaw.common.graph_db import (
+    GraphDatabaseBase,
+    Neo4jGraph,
+    NetworkXGraph,
+)
 from deepclaw.common.graph_rag import BaseGraphRAG, ElasticGraphRAG, PgGraphRAG
 from deepclaw.common.vector_store import (
     AbstractVectorStore,
@@ -30,6 +35,9 @@ __all__ = [
     "ElasticGraphRAG",
     "PgGraphRAG",
     "ElasticsearchVectorStore",
+    "GraphDatabaseBase",
+    "Neo4jGraph",
+    "NetworkXGraph",
     "PgVectorStore",
     "VectorStoreBackend",
     "create_default_vector_store",

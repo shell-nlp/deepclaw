@@ -782,6 +782,7 @@ dependencies = [
     { name = "lark-oapi" },
     { name = "loguru" },
     { name = "mem0ai" },
+    { name = "neo4j" },
     { name = "pandas" },
     { name = "pdfplumber" },
     { name = "pgvector" },
@@ -841,6 +842,7 @@ requires-dist = [
     { name = "lark-oapi", specifier = ">=1.5.0,<2.0.0" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "mem0ai", specifier = ">=2.0.4" },
+    { name = "neo4j", specifier = ">=6.2.0" },
     { name = "openinference-instrumentation-langchain", marker = "extra == 'phoenix'", specifier = ">=0.1.66" },
     { name = "opensandbox-code-interpreter", marker = "extra == 'opensandbox'", specifier = ">=0.1.2" },
     { name = "opensandbox-server", marker = "extra == 'opensandbox'", specifier = ">=0.1.14" },
@@ -2207,6 +2209,18 @@ wheels = [
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/0c/f7/addf1087b860ac60e6f382240f64fb99f8bfb532bb06f7c542b83c29ca61/multidict-6.7.1-cp314-cp314t-win_amd64.whl", hash = "sha256:497bde6223c212ba11d462853cfa4f0ae6ef97465033e7dc9940cdb3ab5b48e5", size = 53542 },
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/4c/81/4629d0aa32302ef7b2ec65c75a728cc5ff4fa410c50096174c1632e70b3e/multidict-6.7.1-cp314-cp314t-win_arm64.whl", hash = "sha256:2bbd113e0d4af5db41d5ebfe9ccaff89de2120578164f86a5d17d5a576d1e5b2", size = 44719 },
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/81/08/7036c080d7117f28a4af526d794aab6a84463126db031b007717c1a6676e/multidict-6.7.1-py3-none-any.whl", hash = "sha256:55d97cc6dae627efa6a6e548885712d4864b81110ac76fa4e534c03819fa4a56", size = 12319 },
+]
+
+[[package]]
+name = "neo4j"
+version = "6.2.0"
+source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
+dependencies = [
+    { name = "pytz" },
+]
+sdist = { url = "https://pypi.tuna.tsinghua.edu.cn/packages/ce/f4/aaa4ac19adae4b01bc742b63afd2672a77e7351566f02721e713e4b863ee/neo4j-6.2.0.tar.gz", hash = "sha256:e1e246b65b572bd8ea97f9e0e721b7d40a5ce53e53d0007c29aef63e4f9124d9", size = 241459 }
+wheels = [
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/e6/cf/1c3795866cefaac6e648d4e98c373cafd97810f6e317c307371007ab4abb/neo4j-6.2.0-py3-none-any.whl", hash = "sha256:b87abdd13a5cc2e3bd51026926c2f20ac38fa3febe98c340520dce19e97388d0", size = 327824 },
 ]
 
 [[package]]
