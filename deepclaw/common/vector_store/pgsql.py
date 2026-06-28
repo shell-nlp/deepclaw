@@ -6,10 +6,10 @@ from pathlib import Path
 from typing import Any
 
 import psycopg
+from loguru import logger
 from pgvector.psycopg import register_vector
 from psycopg.rows import dict_row
 from psycopg.types.json import Json
-from loguru import logger
 
 from deepclaw.common.vector_store.base import AbstractVectorStore
 
@@ -136,7 +136,7 @@ class PgVectorStore(AbstractVectorStore):
             )
             row = cur.fetchone()
             if row is not None:
-                current_dim = row["atttypmod"] - 4
+                current_dim = row["atttypmod"]
                 if current_dim != target_dim:
                     logger.info(
                         "向量维度不匹配: 表中有 {} 维, 目标 {} 维, 执行 ALTER COLUMN", current_dim, target_dim
@@ -732,6 +732,44 @@ class PgVectorStore(AbstractVectorStore):
             deleted.append(self.delete(doc_id, index_name=index_name))
         return deleted
 
+    def delete_by_filter(
+        self,
+        filter_conditions: dict[str, Any],
+        index_name: str | None = None,
+        index_names: list[str] | None = None,
+    ) -> int:
+        """按过滤条件批量删除文档。
+
+        Args:
+            filter_conditions: 过滤条件 {字段: 值}，支持 metadata.* 前缀字段。
+            index_name: 单索引名。
+            index_names: 多索引名列表。
+
+        Returns:
+            删除的文档数量。
+        """
+        target_indexes = self._resolve_read_indexes(index_name=index_name, index_names=index_names)
+        self._ensure_base_schema()
+        where_clauses = ["index_name = ANY(%(index_names)s)"]
+        params: dict[str, Any] = {"index_names": target_indexes}
+        for idx, (field, value) in enumerate(filter_conditions.items()):
+            param_name = f"value_{idx}"
+            if field.startswith("metadata."):
+                metadata_key = field.split(".", 1)[1]
+                where_clauses.append(f"metadata ->> '{metadata_key}' = %({param_name})s")
+            else:
+                where_clauses.append(f"{field} = %({param_name})s")
+            params[param_name] = str(value)
+        sql = f"""
+        DELETE FROM {self._qualified_table_name()}
+        WHERE {" AND ".join(where_clauses)}
+        """
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(sql, params)
+            deleted = cur.rowcount
+        logger.info(f"PG 按条件删除文档: 数量={deleted}, index={target_indexes}")
+        return deleted
+
     def get(self, doc_id: str, index_name: str | None = None) -> dict[str, Any] | None:
         """根据文档 ID 获取指定文档。
 
@@ -753,6 +791,39 @@ class PgVectorStore(AbstractVectorStore):
             cur.execute(sql, {"index_name": index_name, "id": doc_id})
             row = cur.fetchone()
         return self._row_to_result(row) if row else None
+
+    def batch_get(
+        self,
+        doc_ids: list[str],
+        index_name: str | None = None,
+        index_names: list[str] | None = None,
+    ) -> list[dict[str, Any] | None]:
+        """批量获取文档，结果顺序与传入 ID 顺序一致。
+
+        使用 PG 的 IN 查询一次获取，然后按传入 ID 顺序重新排列。
+
+        Args:
+            doc_ids: 文档 ID 列表。
+            index_name: 单索引名。
+            index_names: 多索引名列表（不支持，传了会抛异常）。
+
+        Returns:
+            按传入 ID 顺序排列的文档列表，未找到的项为 None。
+        """
+        _ = self._require_single_index_name(index_name=index_name, index_names=index_names, operation="batch_get")
+        if not doc_ids:
+            return []
+        self._ensure_base_schema()
+        sql = f"""
+        SELECT id, index_name, content, metadata
+        FROM {self._qualified_table_name()}
+        WHERE index_name = %(index_name)s AND id = ANY(%(doc_ids)s)
+        """
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(sql, {"index_name": index_name, "doc_ids": doc_ids})
+            rows = cur.fetchall()
+        row_map = {str(row["id"]): self._row_to_result(row) for row in rows}
+        return [row_map.get(doc_id) for doc_id in doc_ids]
 
     def exists(self, doc_id: str, index_name: str | None = None) -> bool:
         """检查指定文档是否存在。
@@ -809,6 +880,58 @@ class PgVectorStore(AbstractVectorStore):
             cur.execute(sql, params)
             row = cur.fetchone()
         return int(row["count"]) if row else 0
+
+    def raw_search(
+        self,
+        body: dict[str, Any] | None = None,
+        *,
+        index_name: str | None = None,
+        index_names: list[str] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        """透传原生 SQL 查询到 PG，返回原始查询结果。
+
+        body 中的键值对会转换为 WHERE 条件拼接在 SQL 中。
+        也可通过 kwargs 传 raw_sql 直接执行原生 SQL。
+
+        Args:
+            body: 过滤条件字典，转为 WHERE key = value。
+            index_name: 单索引名。
+            index_names: 多索引名列表。
+            **kwargs: 支持 raw_sql 直接传入原生 SQL。
+
+        Returns:
+            查询结果行列表。
+        """
+        raw_sql: str | None = kwargs.get("raw_sql")
+        if raw_sql:
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(raw_sql)
+                return cur.fetchall()
+
+        target_indexes = self._resolve_read_indexes(index_name=index_name, index_names=index_names)
+        self._ensure_base_schema()
+        where_clauses = ["index_name = ANY(%(index_names)s)"]
+        params: dict[str, Any] = {"index_names": target_indexes}
+        if body:
+            for idx, (field, value) in enumerate(body.items()):
+                param_name = f"value_{idx}"
+                if field.startswith("metadata."):
+                    metadata_key = field.split(".", 1)[1]
+                    where_clauses.append(f"metadata ->> '{metadata_key}' = %({param_name})s")
+                else:
+                    where_clauses.append(f"{field} = %({param_name})s")
+                params[param_name] = str(value)
+
+        sql = f"""
+        SELECT id, index_name, content, metadata
+        FROM {self._qualified_table_name()}
+        WHERE {" AND ".join(where_clauses)}
+        ORDER BY updated_at DESC
+        """
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(sql, params)
+            return cur.fetchall()
 
     def search(
         self,

@@ -225,6 +225,63 @@ class AbstractVectorStore(ABC):
         """
         ...
 
+    @abstractmethod
+    def delete_by_filter(
+        self,
+        filter_conditions: dict[str, Any],
+        index_name: str | None = None,
+        index_names: list[str] | None = None,
+    ) -> int:
+        """按过滤条件批量删除文档，返回删除数量。
+
+        Args:
+            filter_conditions: 过滤条件 {字段: 值}，不同后端支持语法不同。
+            index_name: 单索引名。
+            index_names: 多索引名列表。
+        """
+        ...
+
+    @abstractmethod
+    def batch_get(
+        self,
+        doc_ids: list[str],
+        index_name: str | None = None,
+        index_names: list[str] | None = None,
+    ) -> list[dict[str, Any] | None]:
+        """批量获取文档，结果顺序与传入 ID 顺序一致。
+
+        Args:
+            doc_ids: 文档 ID 列表。
+            index_name: 单索引名。
+            index_names: 多索引名列表。
+        """
+        ...
+
+    def raw_search(
+        self,
+        body: dict[str, Any] | None = None,
+        *,
+        index_name: str | None = None,
+        index_names: list[str] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        """透传原生查询到后端，返回后端原始响应。
+
+        用于调试、执行后端特有查询等场景。子类按需重写。
+
+        Args:
+            body: 查询请求体（后端原生格式）。
+            index_name: 单索引名。
+            index_names: 多索引名列表。
+            **kwargs: 后端支持的其他参数。
+
+        Returns:
+            后端原始响应，格式取决于具体后端实现。
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support raw_search"
+        )
+
     def retrieve(
         self,
         query: str,
