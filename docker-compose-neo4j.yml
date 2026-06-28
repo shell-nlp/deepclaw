@@ -1,0 +1,25 @@
+version: '3.8'
+ 
+services:
+  neo4j:
+    image: docker.1ms.run/neo4j:5.26.13
+    container_name: neo4j-hubeirs
+    restart: always 
+    ports:
+      - "7474:7474"  # 用于访问 Neo4j Browser（浏览器UI）和 HTTP API 的端口。
+      - "7687:7687"  # Bolt 协议端口，是应用程序驱动（如 Python, Java, Go 的驱动）连接 Neo4j 的主要方式。
+    environment:
+      # NEO4J_AUTH: none # eo4j/your_password  NEO4J_AUTH 直接设置数据库的初始密码或者，您可以通过将 NEO4J_AUTH 指定为 none 来禁用身份验证
+      # 设置Neo4j的初始密码。第一次启动后，你需要使用 neo4j/你的密码 登录。
+      - NEO4J_AUTH=neo4j/neo4j@2025
+      # Neo4j Labs插件，APOC和GDS是非常常用的插件，建议开启,apoc: "Awesome Procedures On Cypher"，一个功能极其丰富的扩展库，几乎是必装的。 "Graph Data Science"，图数据科学库，提供了许多图算法，如 PageRank、社区发现等
+      - NEO4J_PLUGINS=["apoc", "graph-data-science"]
+    volumes:
+      # 将当前目录下的 data 文件夹挂载到容器的 /data 目录。这里存放着数据库的所有图数据。这样做可以确保即使容器被删除，你的数据依然保留在主机上。
+      - ./neo4j_volumes/data:/data
+      # 挂载配置文件。首次运行后，Neo4j 的默认配置文件会出现在主机的 ./conf 目录，你可以直接修改它来自定义配置。
+      - ./neo4j_volumes/conf:/conf
+      # 挂载插件目录。这是安装自定义插件的地方。
+      - ./neo4j_volumes/plugins:/plugins
+      # 挂载日志文件。方便你在主机上直接查看 Neo4j 的运行日志，用于排错。
+      - ./neo4j_volumes/logs:/logs
