@@ -33,7 +33,7 @@ class PgGraphRAG(BaseGraphRAG):
         seed_entities = self.vector_store.vector_search(
             query=query,
             k=entity_top_k,
-            index_name=self.indexes["entity"],
+            index_names=[self.indexes["entity"]],
         )
         entity_ids = [d["id"] for d in seed_entities if d.get("id")]
 
@@ -41,7 +41,7 @@ class PgGraphRAG(BaseGraphRAG):
             extra = self.vector_store.vector_search(
                 query=entity_text,
                 k=entity_top_k,
-                index_name=self.indexes["entity"],
+                index_names=[self.indexes["entity"]],
             )
             for d in extra:
                 if d.get("id") and d["id"] not in entity_ids:
@@ -50,7 +50,7 @@ class PgGraphRAG(BaseGraphRAG):
         seed_relations = self.vector_store.vector_search(
             query=query,
             k=relation_top_k,
-            index_name=self.indexes["relation"],
+            index_names=[self.indexes["relation"]],
         )
         relation_ids = [d["id"] for d in seed_relations if d.get("id")]
 
@@ -64,7 +64,7 @@ class PgGraphRAG(BaseGraphRAG):
                     new_entities = self.vector_store.vector_search(
                         query=query,
                         k=relation_top_k * 2,
-                        index_name=self.indexes["entity"],
+                        index_names=[self.indexes["entity"]],
                         filter_conditions={
                             "metadata.relation_ids": list(expanded_relation_ids),
                         },
@@ -77,7 +77,7 @@ class PgGraphRAG(BaseGraphRAG):
                     new_relations = self.vector_store.vector_search(
                         query=query,
                         k=entity_top_k * 2,
-                        index_name=self.indexes["relation"],
+                        index_names=[self.indexes["relation"]],
                         filter_conditions={
                             "metadata.entity_ids": list(expanded_entity_ids),
                         },
@@ -93,14 +93,14 @@ class PgGraphRAG(BaseGraphRAG):
             reranked = self.vector_store.vector_search(
                 query=query,
                 k=relation_limit,
-                index_name=self.indexes["relation"],
+                index_names=[self.indexes["relation"]],
             )
             kept_relation_ids = [d["id"] for d in reranked if d.get("id")]
 
         passages = self.vector_store.vector_search(
             query=query,
             k=k,
-            index_name=self.indexes["passage"],
+            index_names=[self.indexes["passage"]],
             filter_conditions={
                 "metadata.relation_ids": kept_relation_ids,
             },
@@ -110,7 +110,7 @@ class PgGraphRAG(BaseGraphRAG):
             extra_passages = self.vector_store.vector_search(
                 query=query,
                 k=k - len(passages),
-                index_name=self.indexes["passage"],
+                index_names=[self.indexes["passage"]],
                 filter_conditions={
                     "metadata.entity_ids": list(expanded_entity_ids),
                 },
@@ -122,7 +122,7 @@ class PgGraphRAG(BaseGraphRAG):
 
         if not passages:
             passages = self.vector_store.vector_search(
-                query=query, k=k, index_name=self.indexes["passage"]
+                query=query, k=k, index_names=[self.indexes["passage"]]
             )
 
         logger.info(
@@ -177,7 +177,7 @@ class PgGraphRAG(BaseGraphRAG):
         results: List[Dict[str, Any]] = []
         for value in values:
             batch = self.pg.search(
-                index_name=index_name,
+                index_names=[index_name],
                 filter_conditions={field: value},
             )
             for item in batch:
@@ -238,5 +238,5 @@ class PgGraphRAG(BaseGraphRAG):
             self.pg.update(
                 doc_id=entity["id"],
                 metadata=metadata,
-                index_name=self.indexes["entity"],
+                index_names=[self.indexes["entity"]],
             )

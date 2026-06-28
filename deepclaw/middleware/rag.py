@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 from collections import defaultdict
 from datetime import datetime
 from typing import Dict, List, Literal, NotRequired, TypedDict
@@ -354,11 +354,11 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
                         type(self.vector_store).__name__,
                     )
                     hits = self.vector_store.retrieve(
-                        query=query, k=k, index_name=index_name
+                        query=query, k=k, index_names=[index_name]
                     )
             else:
                 hits = self.vector_store.retrieve(
-                    query=query, k=k, index_name=index_name
+                    query=query, k=k, index_names=[index_name]
                 )
             results = []
             for item in hits:

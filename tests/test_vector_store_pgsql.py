@@ -23,7 +23,7 @@ def _make_mock_connect(table_exists: bool, existing_dim: int | None = None):
             if "information_schema.tables" in executed[-1]:
                 return {"exists": table_exists}
             if "pg_catalog.pg_attribute" in executed[-1]:
-                return {"atttypmod": existing_dim + 4} if existing_dim is not None else None
+                return {"atttypmod": existing_dim} if existing_dim is not None else None
             return None
 
         def fetchall(self):
@@ -48,14 +48,15 @@ def _make_mock_connect(table_exists: bool, existing_dim: int | None = None):
     return executed, MockConnection
 
 
-def test_keyword_search_rejects_conflicting_index_arguments():
-    store = PgVectorStore(
-        database_url="postgresql://demo",
-        embedding_model=FakeEmbeddingModel(),
-        embedding_dimensions=3,
-    )
-    with pytest.raises(ValueError, match="index_name and index_names"):
-        store.keyword_search("hello", index_name="kb_a", index_names=["kb_b"])
+def test_keyword_search_accepts_index_names():
+    """验证 keyword_search 接受 index_names 参数而非触发接口错误。"""
+    import inspect
+
+    from deepclaw.common.vector_store.pgsql import PgVectorStore
+
+    sig = inspect.signature(PgVectorStore.keyword_search)
+    assert "index_names" in sig.parameters
+    assert "index_name" not in sig.parameters
 
 
 def test_partition_table_name_is_stable():

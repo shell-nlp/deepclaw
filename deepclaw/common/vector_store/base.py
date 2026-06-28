@@ -9,24 +9,18 @@ class AbstractVectorStore(ABC):
 
     def resolve_index_names(
         self,
-        *,
-        index_name: str | None = None,
         index_names: list[str] | None = None,
     ) -> list[str] | None:
-        """统一解析单/多索引名称参数，返回归一化后的列表或 None。
+        """归一化索引名称列表：去重、去除空串。
 
         Args:
-            index_name: 单个索引名，传入时返回 [name]。
-            index_names: 多个索引名列表，自动去重并忽略空串。
-            同时传入两者会抛异常。两者均为 None 时返回 None（由调用方决定全量语义）。
+            index_names: 索引名称列表，为 None 时返回 None（由调用方决定全量语义）。
+
+        Returns:
+            去重后的列表，或 None。
         """
-        if index_name and index_names:
-            raise ValueError("index_name and index_names cannot be provided together")
-        if index_name:
-            return [index_name]
         if index_names is None:
             return None
-
         normalized = [name.strip() for name in index_names if name and name.strip()]
         unique_names = list(dict.fromkeys(normalized))
         if not unique_names:
@@ -153,15 +147,13 @@ class AbstractVectorStore(ABC):
     def count(
         self,
         filter_conditions: dict[str, Any] | None = None,
-        index_name: str | None = None,
         index_names: list[str] | None = None,
     ) -> int:
         """统计符合条件的文档数量。
 
         Args:
             filter_conditions: 过滤条件 {字段: 值}，不同存储层的过滤语法不同。
-            index_name: 单索引名。
-            index_names: 多索引名列表。
+            index_names: 目标索引列表，为 None 时表示全量索引。
         """
         ...
 
@@ -171,7 +163,6 @@ class AbstractVectorStore(ABC):
         query: str | None = None,
         k: int = 3,
         filter_conditions: dict[str, Any] | None = None,
-        index_name: str | None = None,
         index_names: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """通用搜索。query 为空时仅按过滤条件返回最新文档。
@@ -180,8 +171,7 @@ class AbstractVectorStore(ABC):
             query: 搜索关键词（可选）。
             k: 返回的最大结果数。
             filter_conditions: 过滤条件 {字段: 值}。
-            index_name: 单索引名。
-            index_names: 多索引名列表。
+            index_names: 目标索引列表，为 None 时表示全量索引。
         """
         ...
 
@@ -190,7 +180,6 @@ class AbstractVectorStore(ABC):
         self,
         query: str,
         k: int = 3,
-        index_name: str | None = None,
         index_names: list[str] | None = None,
         min_similarity: float | None = None,
         filter_conditions: dict[str, Any] | None = None,
@@ -200,8 +189,7 @@ class AbstractVectorStore(ABC):
         Args:
             query: 查询文本，自动嵌入为向量。
             k: 返回的最大结果数。
-            index_name: 单索引名。
-            index_names: 多索引名列表。
+            index_names: 目标索引列表，为 None 时表示全量索引。
             min_similarity: 最低相似度阈值（可选）。
             filter_conditions: 元数据过滤条件。
         """
@@ -212,7 +200,6 @@ class AbstractVectorStore(ABC):
         self,
         query: str,
         k: int = 3,
-        index_name: str | None = None,
         index_names: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """关键词全文检索。
@@ -220,8 +207,7 @@ class AbstractVectorStore(ABC):
         Args:
             query: 搜索关键词。
             k: 返回的最大结果数。
-            index_name: 单索引名。
-            index_names: 多索引名列表。
+            index_names: 目标索引列表，为 None 时表示全量索引。
         """
         ...
 
@@ -229,15 +215,13 @@ class AbstractVectorStore(ABC):
     def delete_by_filter(
         self,
         filter_conditions: dict[str, Any],
-        index_name: str | None = None,
         index_names: list[str] | None = None,
     ) -> int:
         """按过滤条件批量删除文档，返回删除数量。
 
         Args:
             filter_conditions: 过滤条件 {字段: 值}，不同后端支持语法不同。
-            index_name: 单索引名。
-            index_names: 多索引名列表。
+            index_names: 目标索引列表，为 None 时表示全量索引。
         """
         ...
 
@@ -246,14 +230,12 @@ class AbstractVectorStore(ABC):
         self,
         doc_ids: list[str],
         index_name: str | None = None,
-        index_names: list[str] | None = None,
     ) -> list[dict[str, Any] | None]:
         """批量获取文档，结果顺序与传入 ID 顺序一致。
 
         Args:
             doc_ids: 文档 ID 列表。
-            index_name: 单索引名。
-            index_names: 多索引名列表。
+            index_name: 目标索引名。
         """
         ...
 
@@ -261,7 +243,6 @@ class AbstractVectorStore(ABC):
         self,
         body: dict[str, Any] | None = None,
         *,
-        index_name: str | None = None,
         index_names: list[str] | None = None,
         **kwargs: Any,
     ) -> Any:
@@ -271,8 +252,7 @@ class AbstractVectorStore(ABC):
 
         Args:
             body: 查询请求体（后端原生格式）。
-            index_name: 单索引名。
-            index_names: 多索引名列表。
+            index_names: 目标索引列表，为 None 时表示全量索引。
             **kwargs: 后端支持的其他参数。
 
         Returns:
@@ -286,7 +266,6 @@ class AbstractVectorStore(ABC):
         self,
         query: str,
         k: int = 3,
-        index_name: str | None = None,
         index_names: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """混合检索：向量检索 + 关键词检索，合并去重后返回。
@@ -294,19 +273,16 @@ class AbstractVectorStore(ABC):
         Args:
             query: 查询文本。
             k: 返回的最大结果数。
-            index_name: 单索引名。
-            index_names: 多索引名列表。
+            index_names: 目标索引列表，为 None 时表示全量索引。
         """
         vector_results = self.vector_search(
             query=query,
             k=k,
-            index_name=index_name,
             index_names=index_names,
         )
         keyword_results = self.keyword_search(
             query=query,
             k=k,
-            index_name=index_name,
             index_names=index_names,
         )
         return self.merge_results(

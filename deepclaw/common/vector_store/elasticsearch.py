@@ -67,31 +67,26 @@ class ElasticsearchVectorStore(AbstractVectorStore):
 
     def _resolve_required_indexes(
         self,
+        index_names: list[str] | None = None,
         *,
-        index_name: Optional[str] = None,
-        index_names: Optional[List[str]] = None,
         operation: str = "search",
-    ) -> List[str]:
+    ) -> list[str]:
         """解析并验证目标索引列表，确保至少有一个索引名称被提供。
 
         Args:
-            index_name: 单个索引名称（可选）
-            index_names: 多个索引名称列表（可选）
-            operation: 操作类型描述，用于错误提示，默认为 "search"
+            index_names: 目标索引名称列表。
+            operation: 操作类型描述，用于错误提示，默认为 "search"。
 
         Returns:
-            解析后的索引名称列表
+            解析后的索引名称列表。
 
         Raises:
-            ValueError: 当 index_name 和 index_names 都未提供时抛出
+            ValueError: 当 index_names 未提供时抛出。
         """
-        target_indexes = self.resolve_index_names(
-            index_name=index_name,
-            index_names=index_names,
-        )
+        target_indexes = self.resolve_index_names(index_names)
         if not target_indexes:
             raise ValueError(
-                f"index_name or index_names is required for {operation} operations"
+                f"index_names is required for {operation} operations"
             )
         return target_indexes
 
@@ -99,29 +94,26 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         self,
         query: str,
         k: int = 3,
-        index_name: Optional[str] = None,
-        index_names: Optional[List[str]] = None,
-        min_similarity: Optional[float] = None,
-        filter_conditions: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        index_names: list[str] | None = None,
+        min_similarity: float | None = None,
+        filter_conditions: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         """基于向量相似度的语义检索。
 
         将查询文本转为嵌入向量，在 ES 索引中使用 kNN 搜索相似文档。
 
         Args:
-            query: 查询文本
-            k: 返回的最相似文档数量，默认为 3
-            index_name: 单个目标索引名称（可选）
-            index_names: 多个目标索引名称列表（可选）
-            min_similarity: 最低相似度阈值，低于此值的文档将被过滤（可选）
-            filter_conditions: 过滤条件字典，支持等值和列表匹配（可选）
+            query: 查询文本。
+            k: 返回的最相似文档数量，默认为 3。
+            index_names: 目标索引名称列表。
+            min_similarity: 最低相似度阈值，低于此值的文档将被过滤（可选）。
+            filter_conditions: 过滤条件字典，支持等值和列表匹配（可选）。
 
         Returns:
-            匹配文档列表，每项包含 id、content、metadata、score 等字段
+            匹配文档列表，每项包含 id、content、metadata、score 等字段。
         """
         target_indexes = self._resolve_required_indexes(
-            index_name=index_name,
-            index_names=index_names,
+            index_names,
             operation="search",
         )
         query_vector = self.embedding_model.embed_query(query)
@@ -156,25 +148,22 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         self,
         query: str,
         k: int = 3,
-        index_name: Optional[str] = None,
-        index_names: Optional[List[str]] = None,
-    ) -> List[Dict[str, Any]]:
+        index_names: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
         """基于关键词匹配的全文检索。
 
         使用 multi_match 在 content、title、summary 字段上进行关键词匹配。
 
         Args:
-            query: 查询关键词文本
-            k: 返回的匹配文档数量，默认为 3
-            index_name: 单个目标索引名称（可选）
-            index_names: 多个目标索引名称列表（可选）
+            query: 查询关键词文本。
+            k: 返回的匹配文档数量，默认为 3。
+            index_names: 目标索引名称列表。
 
         Returns:
-            匹配文档列表，每项包含 id、content、metadata、score 等字段
+            匹配文档列表，每项包含 id、content、metadata、score 等字段。
         """
         target_indexes = self._resolve_required_indexes(
-            index_name=index_name,
-            index_names=index_names,
+            index_names,
             operation="search",
         )
         results = self.es_client.search(
@@ -197,26 +186,23 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         self,
         query: str,
         k: int = 3,
-        index_name: Optional[str] = None,
-        index_names: Optional[List[str]] = None,
-    ) -> List[Dict[str, Any]]:
+        index_names: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
         """混合检索，融合向量检索与关键词检索结果。
 
         分别执行向量检索和关键词检索后，使用 merge_results 方法合并去重，
         得到综合排序的检索结果。
 
         Args:
-            query: 查询文本
-            k: 返回的文档数量，默认为 3
-            index_name: 单个目标索引名称（可选）
-            index_names: 多个目标索引名称列表（可选）
+            query: 查询文本。
+            k: 返回的文档数量，默认为 3。
+            index_names: 目标索引名称列表。
 
         Returns:
-            合并后的文档列表，每项包含 id、content、metadata、score 等字段
+            合并后的文档列表，每项包含 id、content、metadata、score 等字段。
         """
         target_indexes = self._resolve_required_indexes(
-            index_name=index_name,
-            index_names=index_names,
+            index_names,
             operation="retrieve",
         )
         vector_results = self.vector_search(query, k, index_names=target_indexes)
@@ -310,7 +296,7 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         )
 
         if not passages:
-            passages = self.retrieve(query=query, k=k, index_name=index_name)
+            passages = self.retrieve(query=query, k=k, index_names=[index_name])
 
         logger.info(
             "ES向量图RAG: query_entities={}, seed_entities={}, seed_relations={}, expanded_entities={}, expanded_relations={}, passages={}",
@@ -981,7 +967,6 @@ class ElasticsearchVectorStore(AbstractVectorStore):
     def delete_by_filter(
         self,
         filter_conditions: dict[str, Any],
-        index_name: str | None = None,
         index_names: list[str] | None = None,
     ) -> int:
         """按过滤条件批量删除文档。
@@ -990,15 +975,13 @@ class ElasticsearchVectorStore(AbstractVectorStore):
 
         Args:
             filter_conditions: 过滤条件 {字段: 值}，支持等值和列表匹配。
-            index_name: 单索引名。
-            index_names: 多索引名列表。
+            index_names: 目标索引名称列表。
 
         Returns:
             删除的文档数量。
         """
         target_indexes = self._resolve_required_indexes(
-            index_name=index_name,
-            index_names=index_names,
+            index_names,
             operation="delete_by_filter",
         )
         must_clauses: list[dict[str, Any]] = []
@@ -1048,7 +1031,6 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         self,
         doc_ids: list[str],
         index_name: str | None = None,
-        index_names: list[str] | None = None,
     ) -> list[dict[str, Any] | None]:
         """批量获取文档。
 
@@ -1056,23 +1038,16 @@ class ElasticsearchVectorStore(AbstractVectorStore):
 
         Args:
             doc_ids: 文档 ID 列表。
-            index_name: 单索引名（mget 要求单索引）。
-            index_names: 多索引名列表（不支持，传了会抛异常）。
+            index_name: 目标索引名。
 
         Returns:
             按传入 ID 顺序排列的文档列表，未找到的项为 None。
         """
-        if index_names:
-            raise ValueError("batch_get 仅支持单个 index_name")
-        target = self._resolve_required_indexes(
-            index_name=index_name,
-            index_names=None,
-            operation="batch_get",
-        )
+        if not index_name:
+            raise ValueError("index_name is required for batch_get")
         if not doc_ids:
             return []
-        target_index = target[0]
-        results = self.es_client.mget(index=target_index, ids=doc_ids)
+        results = self.es_client.mget(index=index_name, ids=doc_ids)
         output: list[dict[str, Any] | None] = []
         for doc in results.get("docs", []):
             if not doc.get("found"):
@@ -1086,35 +1061,32 @@ class ElasticsearchVectorStore(AbstractVectorStore):
                     "metadata": metadata,
                 })
         logger.info(
-            f"批量获取文档: 请求={len(doc_ids)}, 命中={sum(1 for r in output if r is not None)}, index={target_index}"
+            f"批量获取文档: 请求={len(doc_ids)}, 命中={sum(1 for r in output if r is not None)}, index={index_name}"
         )
         return output
 
     def search(
         self,
-        query: Optional[str] = None,
+        query: str | None = None,
         k: int = 3,
-        filter_conditions: Optional[Dict[str, Any]] = None,
-        index_name: Optional[str] = None,
-        index_names: Optional[List[str]] = None,
-    ) -> List[Dict[str, Any]]:
+        filter_conditions: dict[str, Any] | None = None,
+        index_names: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
         """通用全文检索接口，支持关键词查询和过滤条件。
 
         当未提供 query 时返回索引中的全部文档。
 
         Args:
-            query: 查询关键词（可选，为空时返回全部文档）
-            k: 返回的文档数量，默认为 3
-            filter_conditions: 过滤条件字典（可选）
-            index_name: 单个目标索引名称（可选）
-            index_names: 多个目标索引名称列表（可选）
+            query: 查询关键词（可选，为空时返回全部文档）。
+            k: 返回的文档数量，默认为 3。
+            filter_conditions: 过滤条件字典（可选）。
+            index_names: 目标索引名称列表。
 
         Returns:
-            匹配文档列表
+            匹配文档列表。
         """
         target_indexes = self._resolve_required_indexes(
-            index_name=index_name,
-            index_names=index_names,
+            index_names,
             operation="search",
         )
         must_clauses = []
@@ -1160,26 +1132,23 @@ class ElasticsearchVectorStore(AbstractVectorStore):
 
     def count(
         self,
-        filter_conditions: Optional[Dict[str, Any]] = None,
-        index_name: Optional[str] = None,
-        index_names: Optional[List[str]] = None,
+        filter_conditions: dict[str, Any] | None = None,
+        index_names: list[str] | None = None,
     ) -> int:
         """统计索引中匹配过滤条件的文档数量。
 
         Args:
-            filter_conditions: 过滤条件字典（可选，不传时统计全部文档）
-            index_name: 单个目标索引名称（可选）
-            index_names: 多个目标索引名称列表（可选）
+            filter_conditions: 过滤条件字典（可选，不传时统计全部文档）。
+            index_names: 目标索引名称列表。
 
         Returns:
-            匹配文档的数量
+            匹配文档的数量。
 
         Raises:
-            ValueError: 当 index_name 和 index_names 都未提供时抛出
+            ValueError: 当 index_names 未提供时抛出。
         """
         target_indexes = self._resolve_required_indexes(
-            index_name=index_name,
-            index_names=index_names,
+            index_names,
             operation="count",
         )
         if filter_conditions:
@@ -1196,39 +1165,34 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         self,
         body: dict[str, Any] | None = None,
         *,
-        index_name: str | None = None,
         index_names: list[str] | None = None,
         **kwargs: Any,
     ) -> Any:
         """透传原生查询到 ES，返回 ES 原始响应。
 
         支持 ES 8.x 的 knn 参数、query body 等各种原生查询格式。
-        例如：
-
-        .. code-block:: python
+        例如：:
 
             store.raw_search(
                 knn={"field": "embedding", "query_vector": vec, "k": 10},
-                index_name="my_index",
+                index_names=["my_index"],
             )
 
             store.raw_search(
                 {"query": {"match": {"content": "hello"}}},
-                index_name="my_index",
+                index_names=["my_index"],
             )
 
         Args:
             body: ES 查询 body（可选，与 kwargs 中的 knn 等参数二选一）。
-            index_name: 单索引名。
-            index_names: 多索引名列表。
+            index_names: 目标索引名称列表。
             **kwargs: 透传给 es_client.search 的额外参数（如 knn、_source、size 等）。
 
         Returns:
             ES 原始 search 响应字典。
         """
         target_indexes = self._resolve_required_indexes(
-            index_name=index_name,
-            index_names=index_names,
+            index_names,
             operation="raw_search",
         )
         params: dict[str, Any] = {"index": target_indexes}

@@ -149,26 +149,22 @@ class PgVectorStore(AbstractVectorStore):
 
     def _require_single_index_name(
         self,
-        *,
         index_name: str | None = None,
-        index_names: list[str] | None = None,
+        *,
         operation: str = "write",
     ) -> str:
-        """强制要求提供一个且仅一个 index_name，不支持多索引操作。
+        """强制要求提供 index_name，不支持多索引操作。
 
         Args:
             index_name: 单个索引名称。
-            index_names: 索引名称列表（不允许传入）。
             operation: 操作名称，用于异常提示。
 
         Returns:
             校验后的 index_name。
 
         Raises:
-            ValueError: 当 index_names 非空或 index_name 为空时抛出。
+            ValueError: 当 index_name 为空时抛出。
         """
-        if index_names:
-            raise ValueError(f"{operation} operations only support a single index_name")
         if not index_name:
             raise ValueError(f"index_name is required for {operation} operations")
         return index_name
@@ -404,20 +400,17 @@ class PgVectorStore(AbstractVectorStore):
 
     def _resolve_read_indexes(
         self,
-        *,
-        index_name: str | None = None,
         index_names: list[str] | None = None,
     ) -> list[str]:
-        """解析查询操作的目标索引列表，优先使用传入参数，否则返回全量索引。
+        """解析查询操作的目标索引列表，为空时返回全量索引。
 
         Args:
-            index_name: 单个索引名称。
-            index_names: 索引名称列表。
+            index_names: 目标索引名称列表。
 
         Returns:
             目标索引名称列表。
         """
-        target_indexes = self.resolve_index_names(index_name=index_name, index_names=index_names)
+        target_indexes = self.resolve_index_names(index_names)
         if target_indexes is not None:
             return target_indexes
         return self._list_index_names()
@@ -735,20 +728,18 @@ class PgVectorStore(AbstractVectorStore):
     def delete_by_filter(
         self,
         filter_conditions: dict[str, Any],
-        index_name: str | None = None,
         index_names: list[str] | None = None,
     ) -> int:
         """按过滤条件批量删除文档。
 
         Args:
             filter_conditions: 过滤条件 {字段: 值}，支持 metadata.* 前缀字段。
-            index_name: 单索引名。
-            index_names: 多索引名列表。
+            index_names: 目标索引名称列表。
 
         Returns:
             删除的文档数量。
         """
-        target_indexes = self._resolve_read_indexes(index_name=index_name, index_names=index_names)
+        target_indexes = self._resolve_read_indexes(index_names)
         self._ensure_base_schema()
         where_clauses = ["index_name = ANY(%(index_names)s)"]
         params: dict[str, Any] = {"index_names": target_indexes}
@@ -796,7 +787,6 @@ class PgVectorStore(AbstractVectorStore):
         self,
         doc_ids: list[str],
         index_name: str | None = None,
-        index_names: list[str] | None = None,
     ) -> list[dict[str, Any] | None]:
         """批量获取文档，结果顺序与传入 ID 顺序一致。
 
@@ -804,13 +794,12 @@ class PgVectorStore(AbstractVectorStore):
 
         Args:
             doc_ids: 文档 ID 列表。
-            index_name: 单索引名。
-            index_names: 多索引名列表（不支持，传了会抛异常）。
+            index_name: 目标索引名。
 
         Returns:
             按传入 ID 顺序排列的文档列表，未找到的项为 None。
         """
-        _ = self._require_single_index_name(index_name=index_name, index_names=index_names, operation="batch_get")
+        index_name = self._require_single_index_name(index_name, operation="batch_get")
         if not doc_ids:
             return []
         self._ensure_base_schema()
@@ -845,20 +834,18 @@ class PgVectorStore(AbstractVectorStore):
     def count(
         self,
         filter_conditions: dict[str, Any] | None = None,
-        index_name: str | None = None,
         index_names: list[str] | None = None,
     ) -> int:
         """统计符合条件的文档数量。
 
         Args:
             filter_conditions: 过滤条件字典。
-            index_name: 单个索引名称。
-            index_names: 索引名称列表。
+            index_names: 目标索引名称列表，为 None 时统计全量。
 
         Returns:
             文档数量。
         """
-        target_indexes = self._resolve_read_indexes(index_name=index_name, index_names=index_names)
+        target_indexes = self._resolve_read_indexes(index_names)
         self._ensure_base_schema()
         where_clauses = ["index_name = ANY(%(index_names)s)"]
         params: dict[str, Any] = {"index_names": target_indexes}
@@ -885,7 +872,6 @@ class PgVectorStore(AbstractVectorStore):
         self,
         body: dict[str, Any] | None = None,
         *,
-        index_name: str | None = None,
         index_names: list[str] | None = None,
         **kwargs: Any,
     ) -> Any:
@@ -896,8 +882,7 @@ class PgVectorStore(AbstractVectorStore):
 
         Args:
             body: 过滤条件字典，转为 WHERE key = value。
-            index_name: 单索引名。
-            index_names: 多索引名列表。
+            index_names: 目标索引名称列表。
             **kwargs: 支持 raw_sql 直接传入原生 SQL。
 
         Returns:
@@ -909,7 +894,7 @@ class PgVectorStore(AbstractVectorStore):
                 cur.execute(raw_sql)
                 return cur.fetchall()
 
-        target_indexes = self._resolve_read_indexes(index_name=index_name, index_names=index_names)
+        target_indexes = self._resolve_read_indexes(index_names)
         self._ensure_base_schema()
         where_clauses = ["index_name = ANY(%(index_names)s)"]
         params: dict[str, Any] = {"index_names": target_indexes}
@@ -938,7 +923,6 @@ class PgVectorStore(AbstractVectorStore):
         query: str | None = None,
         k: int = 3,
         filter_conditions: dict[str, Any] | None = None,
-        index_name: str | None = None,
         index_names: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """通用检索入口，有 query 时走关键词检索，否则按更新时间排序返回最新文档。
@@ -947,13 +931,12 @@ class PgVectorStore(AbstractVectorStore):
             query: 检索关键词，为空时返回最新文档。
             k: 返回结果数量。
             filter_conditions: 过滤条件字典。
-            index_name: 单个索引名称。
-            index_names: 索引名称列表。
+            index_names: 目标索引名称列表。
 
         Returns:
             检索结果列表。
         """
-        target_indexes = self._resolve_read_indexes(index_name=index_name, index_names=index_names)
+        target_indexes = self._resolve_read_indexes(index_names)
         if query:
             return self.keyword_search(query, k=k, index_names=target_indexes)
 
@@ -985,7 +968,6 @@ class PgVectorStore(AbstractVectorStore):
         self,
         query: str,
         k: int = 3,
-        index_name: str | None = None,
         index_names: list[str] | None = None,
         min_similarity: float | None = None,
         filter_conditions: dict[str, Any] | None = None,
@@ -995,15 +977,14 @@ class PgVectorStore(AbstractVectorStore):
         Args:
             query: 查询文本。
             k: 返回结果数量。
-            index_name: 单个索引名称。
-            index_names: 索引名称列表。
+            index_names: 目标索引名称列表。
             min_similarity: 最低相似度阈值，低于该值的结果被过滤。
             filter_conditions: 元数据过滤条件字典。
 
         Returns:
-            按相似度降序排列的检索结果列表。
+            检索结果列表，每项包含 id、content、metadata、score。
         """
-        target_indexes = self._resolve_read_indexes(index_name=index_name, index_names=index_names)
+        target_indexes = self._resolve_read_indexes(index_names)
         if not target_indexes:
             return []
 
@@ -1026,7 +1007,6 @@ class PgVectorStore(AbstractVectorStore):
         self,
         query: str,
         k: int = 3,
-        index_name: str | None = None,
         index_names: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """全文关键词检索，使用 pg_search 的 BM25 评分。
@@ -1034,13 +1014,12 @@ class PgVectorStore(AbstractVectorStore):
         Args:
             query: 检索关键词。
             k: 返回结果数量。
-            index_name: 单个索引名称。
-            index_names: 索引名称列表。
+            index_names: 目标索引名称列表。
 
         Returns:
-            按 BM25 评分降序排列的检索结果列表。
+            检索结果列表。
         """
-        target_indexes = self._resolve_read_indexes(index_name=index_name, index_names=index_names)
+        target_indexes = self._resolve_read_indexes(index_names)
         if not target_indexes:
             return []
 
