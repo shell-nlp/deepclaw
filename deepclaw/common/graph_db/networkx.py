@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -197,6 +198,119 @@ class NetworkXGraph(GraphDatabaseBase):
         """清空所有节点和边。"""
         self._graph.clear()
         self._node_labels.clear()
+
+    def save(self, path: str | Path) -> None:
+        """保存图谱到磁盘。
+
+        Args:
+            path: 保存路径（父目录不存在时会自动创建）。
+        """
+        import pickle
+
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            "graph": self._graph,
+            "node_labels": self._node_labels,
+        }
+        with path.open("wb") as f:
+            pickle.dump(data, f)
+
+    @classmethod
+    def load(cls, path: str | Path) -> NetworkXGraph:
+        """从磁盘加载图谱。
+
+        Args:
+            path: 已保存的图谱文件路径。
+
+        Returns:
+            NetworkXGraph 实例。
+        """
+        import pickle
+
+        path = Path(path)
+        with path.open("rb") as f:
+            data = pickle.load(f)
+        g = cls()
+        g._graph = data["graph"]
+        g._node_labels = data["node_labels"]
+        return g
+
+    def export_html(self, path: str | Path) -> None:
+        """导出图谱为交互式 HTML 可视化文件（基于 vis.js）。
+
+        Args:
+            path: 输出的 HTML 文件路径。
+        """
+        import hashlib
+        import json
+
+        def _color_for_label(label: str) -> str:
+            h = int(hashlib.md5(label.encode()).hexdigest()[:6], 16)
+            hue = h % 360
+            return f"hsl({hue}, 60%, 75%)"
+
+        nodes = []
+        for node_id, attrs in self._graph.nodes(data=True):
+            label = attrs.get("_label", "Node")
+            props = {k: v for k, v in attrs.items() if not k.startswith("_")}
+            prop_lines = "<br>".join(f"{k}: {v}" for k, v in props.items())
+            title = f"<b>{label}</b>" + (f"<br>{prop_lines}" if prop_lines else "")
+            nodes.append({
+                "id": node_id,
+                "label": label.split("_")[0] if "_" in node_id[:20] else label,
+                "title": title,
+                "color": _color_for_label(label),
+                "shape": "box",
+            })
+
+        edges = []
+        for u, v, key, data in self._graph.edges(keys=True, data=True):
+            non_meta = {k: str(v) for k, v in data.items() if not k.startswith("_")}
+            title = f"<b>{key}</b>"
+            if non_meta:
+                title += "<br>" + "<br>".join(f"{k}: {v}" for k, v in non_meta.items())
+            edges.append({
+                "from": u,
+                "to": v,
+                "label": key,
+                "title": title,
+                "arrows": "to",
+            })
+
+        html = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>图谱可视化</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.6/dist/vis-network.min.js"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.6/dist/vis-network.min.css" rel="stylesheet">
+<style>
+  body {{ margin: 0; }}
+  #graph {{ width: 100vw; height: 100vh; }}
+</style>
+</head>
+<body>
+<div id="graph"></div>
+<script>
+var nodes = new vis.DataSet({json.dumps(nodes)});
+var edges = new vis.DataSet({json.dumps(edges)});
+var container = document.getElementById('graph');
+var data = {{nodes: nodes, edges: edges}};
+var options = {{
+  layout: {{ improvedLayout: true }},
+  edges: {{ font: {{ size: 10, align: "middle" }} }},
+  nodes: {{ font: {{ size: 13 }} }},
+  physics: {{ solver: "forceAtlas2Based" }}
+}};
+var network = new vis.Network(container, data, options);
+</script>
+</body>
+</html>"""
+
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(html, encoding="utf-8")
 
     def _generate_node_id(self, label: str) -> str:
         """生成新节点 ID。
