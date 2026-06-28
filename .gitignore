@@ -15,7 +15,6 @@ wheels/
 .deepclaw/workspace/converted_pdf/
 .deepclaw/workspace/pdf_files/knowledge_bases/
 .deepclaw/workspace/skills/
-opencode.json
 .vscode/
 .trae
 conversation_history/
