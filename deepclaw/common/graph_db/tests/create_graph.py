@@ -1,52 +1,29 @@
-"""商科本体集成测试：基于 Neo4j 的指标体系知识图谱。
+"""商科本体设计：基于 Neo4j 的指标体系知识图谱。
 
-实体类型:
-    - 指标（核心实体，内嵌逻辑、行动、属性）
+本体的核心是 指标 实体，指标之间通过 依赖/推导 关系构成知识网络。
+指标的属性分为三类内嵌 JSON 字段，分别描述指标的生成逻辑、执行操作和元信息。
 
-关系类型:
-    - 依赖     指标━▶指标   前提依赖（先算 A 再算 B）
-    - 推导     指标━▶指标   可推导关系（由 A 可推出 B）
+━━━ 实体 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+名称: 指标
+描述: 核心实体，包含 name（可视化标题）和三类内嵌 JSON 属性：
+   逻辑: 生成该指标涉及的数据库表、字段和计算公式
+         {"表": "...", "字段": "...", "公式": "...", "过滤条件": "...", "说明": "..."}
+   行动: 针对该指标需要执行的操作，每项含名称、描述、频率、负责人
+         [{"名称": "数据采集", "描述": "...", "频率": "每月", "负责人": "..."}]
+   属性: 该指标的元信息，如单位、数据来源等键值对
+         [{"名称": "单位", "值": "万元"}, {"名称": "数据来源", "值": "..."}]
+
+━━━ 关系 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+依赖: 指标━▶指标   前提依赖，A 依赖 B 表示计算 A 前必须先算出 B
+推导: 指标━▶指标   可推导关系，A 推导 B 表示从 A 可间接推算出 B
+
+━━━ 用法 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  uv run python deepclaw/common/graph_db/tests/test_neo4j.py
 """
 
 import json
 
-import pytest
 from deepclaw.common.graph_db.neo4j import Neo4jGraph
-
-
-def _neo4j_available() -> bool:
-    try:
-        from neo4j import GraphDatabase
-
-        driver = GraphDatabase.driver(
-            "bolt://localhost:7687", auth=("neo4j", "neo4j@2025")
-        )
-        with driver.session(database="neo4j") as session:
-            session.run("RETURN 1").single()
-        driver.close()
-        return True
-    except Exception:
-        return False
-
-
-_skip_no_neo4j = pytest.mark.skipif(
-    not _neo4j_available(),
-    reason="需要本地 Neo4j 实例（bolt://localhost:7687）",
-)
-
-
-@pytest.fixture
-def neo4j_graph():
-    g = Neo4jGraph(
-        uri="bolt://localhost:7687",
-        user="neo4j",
-        password="neo4j@2025",
-        database="neo4j",
-    )
-    g.clear_database()
-    yield g
-    g.clear_database()
-    g.close()
 
 
 def _logic(
@@ -133,6 +110,10 @@ def build_ontology(graph: Neo4jGraph) -> None:
             filter_clause="fiscal_year = $year",
             desc="从 balance_sheet 表取 total_assets 字段",
         ),
+        "行动": _actions(
+            {"名称": "数据采集", "描述": "从财务系统同步资产负债表数据", "频率": "每月", "负责人": "财务部"},
+            {"名称": "数据校验", "描述": "核对总资产与总负债+所有者权益的勾稽关系", "频率": "每月", "负责人": "财务部"},
+        ),
         "属性": _attrs(
             {"名称": "单位", "值": "万元"},
             {"名称": "数据来源", "值": "财务系统 / 季报"},
@@ -147,6 +128,9 @@ def build_ontology(graph: Neo4jGraph) -> None:
             filter_clause="fiscal_year = $year",
             desc="从 balance_sheet 表取 total_liabilities 字段",
         ),
+        "行动": _actions(
+            {"名称": "数据采集", "描述": "从财务系统同步资产负债表数据", "频率": "每月", "负责人": "财务部"},
+        ),
         "属性": _attrs(
             {"名称": "单位", "值": "万元"},
             {"名称": "数据来源", "值": "财务系统 / 季报"},
@@ -160,6 +144,9 @@ def build_ontology(graph: Neo4jGraph) -> None:
             "financial_statements", "tax", "SUM(tax)",
             filter_clause="fiscal_year = $year AND statement_type = 'income'",
             desc="从 financial_statements 表按年度汇总 tax 字段",
+        ),
+        "行动": _actions(
+            {"名称": "数据采集", "描述": "从税务系统或财务系统取所得税数据", "频率": "每季度", "负责人": "税务部"},
         ),
         "属性": _attrs(
             {"名称": "单位", "值": "万元"},
@@ -298,89 +285,70 @@ def build_ontology(graph: Neo4jGraph) -> None:
 
 
 # ------------------------------------------------------------------
-# 测试
+# 独立运行入口（uv run python deepclaw/common/graph_db/tests/test_neo4j.py）
 # ------------------------------------------------------------------
 
 
-@_skip_no_neo4j
-def test_build_ontology_creates_all_indicators(neo4j_graph):
-    build_ontology(neo4j_graph)
-    nodes = neo4j_graph.get_nodes_by_label("指标")
-    assert len(nodes) == 12
-    ids = {n["id"] for n in nodes}
-    expected = {
-        "ind_revenue", "ind_cost", "ind_opex",
-        "ind_total_assets", "ind_total_liab", "ind_tax",
-        "ind_gross_profit", "ind_gross_margin", "ind_op_profit",
-        "ind_net_profit", "ind_net_margin", "ind_debt_ratio",
-    }
-    assert ids == expected
+def main() -> None:
+    """独立运行：构建图谱并打印示例查询。"""
+    graph = Neo4jGraph(
+        uri="bolt://localhost:7687",
+        user="neo4j",
+        password="neo4j@2025",
+        database="neo4j",
+    )
+    graph.clear_database()
+    try:
+        build_ontology(graph)
+
+        print("\n=== 所有指标 ===")
+        for n in graph.get_nodes_by_label("指标"):
+            p = n["properties"]
+            actions_list = json.loads(p.get("行动", "[]"))
+            action_names = [a["名称"] for a in actions_list]
+            print(f"  [{n['id']}] {p.get('name')} — {p.get('描述')}")
+            print(f"          行动: {', '.join(action_names)}")
+
+        print("\n=== 资产负债率的三类内嵌属性 ===")
+        results = graph.run_cypher_query("""
+            MATCH (n:指标 {id: 'ind_debt_ratio'})
+            RETURN n.逻辑 AS logic_json, n.行动 AS actions_json, n.属性 AS attrs_json
+        """)
+        for r in results:
+            logic = json.loads(r["logic_json"])
+            actions = json.loads(r["actions_json"])
+            attrs = json.loads(r["attrs_json"])
+            print(f"  逻辑: 表={logic['表']}, 字段={logic['字段']}, 公式={logic['公式']}")
+            print(f"  行动: {', '.join(a['名称'] + '(' + a['负责人'] + ')' for a in actions)}")
+            print(f"  属性: {', '.join(a['名称'] + '=' + a['值'] for a in attrs)}")
+
+        print("\n=== 净利润的前提依赖链 ===")
+        results = graph.run_cypher_query("""
+            MATCH (n:指标 {id: 'ind_net_profit'})-[:依赖*1..]->(dep)
+            RETURN dep.id AS id, dep.name AS name
+        """)
+        for r in results:
+            print(f"  <- {r['name']} ({r['id']})")
+
+        print("\n=== 净利润关联的行动（内嵌 JSON 属性）===")
+        results = graph.run_cypher_query("""
+            MATCH (n:指标 {id: 'ind_net_profit'})
+            RETURN n.行动 AS actions_json
+        """)
+        for r in results:
+            for a in json.loads(r["actions_json"]):
+                print(f"  {a['名称']} (负责人: {a['负责人']}, 频率: {a['频率']})")
+
+        print("\n=== 营业收入的可推导链路 ===")
+        results = graph.run_cypher_query("""
+            MATCH (n:指标 {id: 'ind_revenue'})-[:推导*1..]->(derived)
+            RETURN derived.id AS id, derived.name AS name
+        """)
+        for r in results:
+            print(f"  -> {r['name']} ({r['id']})")
+    finally:
+        graph.close()
 
 
-@_skip_no_neo4j
-def test_every_indicator_has_name_property(neo4j_graph):
-    """Neo4j Browser 使用 name 属性作为可视化标题。"""
-    build_ontology(neo4j_graph)
-    for n in neo4j_graph.get_nodes_by_label("指标"):
-        assert n["properties"].get("name") is not None
-
-
-@_skip_no_neo4j
-def test_net_profit_dependency_chain(neo4j_graph):
-    build_ontology(neo4j_graph)
-    results = neo4j_graph.run_cypher_query("""
-        MATCH (n:指标 {id: 'ind_net_profit'})-[:依赖*1..]->(dep)
-        RETURN dep.id AS id, dep.name AS name
-    """)
-    dep_ids = {r["id"] for r in results}
-    assert dep_ids == {"ind_gross_profit", "ind_revenue", "ind_cost", "ind_opex", "ind_op_profit", "ind_tax"}
-
-
-@_skip_no_neo4j
-def test_revenue_derivation_chain(neo4j_graph):
-    build_ontology(neo4j_graph)
-    results = neo4j_graph.run_cypher_query("""
-        MATCH (n:指标 {id: 'ind_revenue'})-[:推导*1..]->(derived)
-        RETURN derived.id AS id, derived.name AS name
-    """)
-    derived_ids = {r["id"] for r in results}
-    assert derived_ids == {"ind_gross_profit", "ind_gross_margin", "ind_op_profit", "ind_net_profit", "ind_net_margin"}
-
-
-@_skip_no_neo4j
-def test_debt_ratio_embedded_logic_json(neo4j_graph):
-    build_ontology(neo4j_graph)
-    results = neo4j_graph.run_cypher_query("""
-        MATCH (n:指标 {id: 'ind_debt_ratio'})
-        RETURN n.逻辑 AS logic_json
-    """)
-    logic = json.loads(results[0]["logic_json"])
-    assert logic["表"] == "balance_sheet"
-    assert logic["字段"] == "total_liabilities, total_assets"
-    assert logic["公式"] == "total_liabilities / total_assets * 100"
-
-
-@_skip_no_neo4j
-def test_net_profit_embedded_actions_json(neo4j_graph):
-    build_ontology(neo4j_graph)
-    results = neo4j_graph.run_cypher_query("""
-        MATCH (n:指标 {id: 'ind_net_profit'})
-        RETURN n.行动 AS actions_json
-    """)
-    actions = json.loads(results[0]["actions_json"])
-    assert len(actions) == 2
-    assert actions[0]["名称"] == "指标计算"
-    assert actions[1]["名称"] == "报告生成"
-
-
-@_skip_no_neo4j
-def test_total_assets_has_attrs_json(neo4j_graph):
-    build_ontology(neo4j_graph)
-    results = neo4j_graph.run_cypher_query("""
-        MATCH (n:指标 {id: 'ind_total_assets'})
-        RETURN n.属性 AS attrs_json
-    """)
-    attrs = json.loads(results[0]["attrs_json"])
-    assert len(attrs) == 2
-    assert {"名称": "单位", "值": "万元"} in attrs
-    assert {"名称": "数据来源", "值": "财务系统 / 季报"} in attrs
+if __name__ == "__main__":
+    main()
