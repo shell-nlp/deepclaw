@@ -1,0 +1,174 @@
+from types import SimpleNamespace
+
+
+def test_resolve_database_url_falls_back_to_settings(monkeypatch):
+    """验证 NL2SQL 连接串会在缺少显式配置时回退到 settings。
+
+    Args:
+        monkeypatch: pytest 提供的环境与属性补丁工具。
+    """
+    import deepclaw.middleware.nl2sql.nl2sql as nl2sql_module
+
+    monkeypatch.delenv("NL2SQL_DATABASE_URL", raising=False)
+    monkeypatch.setattr(
+        nl2sql_module,
+        "settings",
+        SimpleNamespace(PG_DATABASE_URL="postgresql://settings-host:5432/app"),
+        raising=False,
+    )
+    monkeypatch.setattr(nl2sql_module, "DATABASE_URL", None, raising=False)
+
+    assert (
+        nl2sql_module._resolve_database_url()
+        == "postgresql://settings-host:5432/app"
+    )
+
+
+def test_oracle_thick_mode_ignores_lib_dir_on_linux(monkeypatch):
+    """验证 Linux 下启用 thick 模式时不会向驱动传递 lib_dir。
+
+    Args:
+        monkeypatch: pytest 提供的环境与属性补丁工具。
+    """
+    import deepclaw.middleware.nl2sql.ddl.oracle as oracle_module
+
+    init_calls: list[dict] = []
+    connect_calls: list[dict] = []
+
+    def fake_init_oracle_client(**kwargs):
+        """记录 Oracle 客户端初始化参数。
+
+        Args:
+            **kwargs: 传入驱动初始化函数的关键字参数。
+        """
+        init_calls.append(kwargs)
+
+    def fake_connect(**kwargs):
+        """记录 Oracle 连接参数并返回占位连接结果。
+
+        Args:
+            **kwargs: 传入驱动连接函数的关键字参数。
+        """
+        connect_calls.append(kwargs)
+        return "oracle-connection"
+
+    monkeypatch.setenv("ORACLE_CLIENT_LIB_DIR", r"D:\instantclient_23_0")
+    monkeypatch.setattr(
+        oracle_module,
+        "oracledb",
+        SimpleNamespace(
+            init_oracle_client=fake_init_oracle_client,
+            connect=fake_connect,
+        ),
+    )
+    monkeypatch.setattr(
+        oracle_module,
+        "platform",
+        SimpleNamespace(system=lambda: "Linux"),
+        raising=False,
+    )
+
+    result = oracle_module.OracleDdlFetcher._make_connection_thick(user="scott")
+
+    assert result == "oracle-connection"
+    assert init_calls == [{}]
+    assert connect_calls == [{"user": "scott"}]
+
+
+def test_resolve_schema_prefers_argument_then_env(monkeypatch):
+    """验证 schema 解析优先使用显式参数，其次回退到环境变量。
+
+    Args:
+        monkeypatch: pytest 提供的环境与属性补丁工具。
+    """
+    import deepclaw.middleware.nl2sql.nl2sql as nl2sql_module
+
+    monkeypatch.setenv("NL2SQL_SCHEMA", "GISTOOLS")
+
+    assert nl2sql_module._resolve_schema("CUSTOM") == "CUSTOM"
+    assert nl2sql_module._resolve_schema(None) == "GISTOOLS"
+
+
+def test_get_user_ddl_passes_schema_to_fetcher(monkeypatch):
+    """验证 get_user_ddl 会把解析后的 schema 传给 DDL 拉取器。
+
+    Args:
+        monkeypatch: pytest 提供的环境与属性补丁工具。
+    """
+    import deepclaw.middleware.nl2sql.nl2sql as nl2sql_module
+
+    captured: dict[str, str | None] = {}
+
+    def fake_fetch_schema_ddl(database_url: str, *, table_names=None, schema=None):
+        """记录 DDL 拉取入参并返回占位结果。
+
+        Args:
+            database_url: 目标数据库连接串。
+            table_names: 可选的表名列表。
+            schema: 可选的 schema 名称。
+        """
+        captured["database_url"] = database_url
+        captured["schema"] = schema
+        return "-- ddl"
+
+    monkeypatch.setenv("NL2SQL_DATABASE_URL", "oracle+oracledb://user:pwd@host:1521/?service_name=svc")
+    monkeypatch.setenv("NL2SQL_SCHEMA", "GISTOOLS")
+    monkeypatch.setattr(nl2sql_module, "fetch_schema_ddl", fake_fetch_schema_ddl)
+
+    result = nl2sql_module.NL2SQLMiddleware().get_user_ddl()
+
+    assert result == "-- ddl"
+    assert captured == {
+        "database_url": "oracle+oracledb://user:pwd@host:1521/?service_name=svc",
+        "schema": "GISTOOLS",
+    }
+
+
+def test_apply_schema_to_connection_sets_oracle_current_schema():
+    """验证 Oracle 连接会切换到指定 schema。
+
+    Args:
+        无。
+    """
+    import deepclaw.middleware.nl2sql.nl2sql as nl2sql_module
+
+    executed: list[tuple[str, dict]] = []
+
+    class FakeCursor:
+        """用于记录执行语句的游标替身。"""
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, sql: str, **kwargs):
+            """记录执行过的 SQL。
+
+            Args:
+                sql: 执行的 SQL 文本。
+                **kwargs: SQL 绑定参数。
+            """
+            executed.append((sql, kwargs))
+
+    class FakeConnection:
+        """用于提供游标的连接替身。"""
+
+        def cursor(self):
+            """返回一个可记录 SQL 的游标。
+
+            Args:
+                无。
+            """
+            return FakeCursor()
+
+    nl2sql_module._apply_schema_to_connection(
+        FakeConnection(),
+        "oracle+oracledb://user:pwd@host:1521/?service_name=svc",
+        "GISTOOLS",
+    )
+
+    assert executed == [
+        ("ALTER SESSION SET CURRENT_SCHEMA = GISTOOLS", {}),
+    ]

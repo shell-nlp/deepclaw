@@ -1,4 +1,7 @@
 from __future__ import annotations
+import os
+import platform
+from urllib.parse import parse_qs, urlparse
 
 import oracledb
 from loguru import logger
@@ -6,6 +9,42 @@ from loguru import logger
 from deepclaw.middleware.nl2sql.ddl.base import BaseDdlFetcher, register_ddl_fetcher
 
 DEFAULT_SCHEMA = None  # Oracle 默认使用登录用户的 schema
+
+
+def parse_oracle_url(database_url: str) -> dict:
+    """将 Oracle URL 解析为 oracledb.connect 的关键字参数。"""
+    scheme = database_url.split("://", 1)[0]
+    for suffix in ("+oracledb", "+cx_oracle"):
+        if scheme.endswith(suffix):
+            database_url = database_url.replace(f"{scheme}://", f"{scheme[: -len(suffix)]}://", 1)
+            break
+    parsed = urlparse(database_url)
+    params = parse_qs(parsed.query)
+    service_name = params.get("service_name", [None])[0]
+    sid = params.get("sid", [None])[0]
+    host = parsed.hostname or ""
+    port = parsed.port or 1521
+    if service_name:
+        dsn = f"{host}:{port}/{service_name}"
+    elif sid:
+        dsn = f"{host}:{port}/{sid}"
+    else:
+        dsn = f"{host}:{port}"
+    result = {"user": parsed.username, "password": parsed.password, "dsn": dsn}
+    return {k: v for k, v in result.items() if v is not None}
+
+
+def init_oracle_thick_client() -> None:
+    """按平台规则初始化 Oracle thick 模式客户端。
+
+    Args:
+        无。
+    """
+    lib_dir = os.environ.get("ORACLE_CLIENT_LIB_DIR")
+    init_kwargs = {}
+    if platform.system() == "Windows" and lib_dir:
+        init_kwargs["lib_dir"] = lib_dir
+    oracledb.init_oracle_client(**init_kwargs)
 
 
 @register_ddl_fetcher
@@ -24,8 +63,27 @@ class OracleDdlFetcher(BaseDdlFetcher):
         return super().normalize_url(database_url)
 
     def _make_connection(self, database_url: str):
-        """创建 oracledb 连接，自动选择瘦驱动模式。"""
-        return oracledb.connect(dsn=database_url)
+        """创建 oracledb 连接，thin 模式失败时自动尝试 thick 模式。"""
+        kwargs = parse_oracle_url(database_url)
+        try:
+            return oracledb.connect(**kwargs)
+        except oracledb.Error as exc:
+            if "DPY-3010" not in str(exc):
+                raise
+            logger.info("Oracle thin 模式不支持该服务器版本，尝试 thick 模式")
+            return self._make_connection_thick(**kwargs)
+
+    @staticmethod
+    def _make_connection_thick(**kwargs):
+        """使用 thick 模式创建连接。"""
+        try:
+            init_oracle_thick_client()
+        except Exception as init_exc:
+            raise RuntimeError(
+                "Oracle thick 模式初始化失败，请安装 Oracle Instant Client 并设置 ORACLE_CLIENT_LIB_DIR。"
+                f" 参考: https://python-oracledb.readthedocs.io/en/latest/user_guide/initialization.html\n错误: {init_exc}"
+            ) from init_exc
+        return oracledb.connect(**kwargs)
 
     def fetch_ddl(
         self,
