@@ -13,3 +13,6 @@ class CronMiddleware(AgentMiddleware):
         existing_tools = getattr(request, "tools", []) or []
         updated_tools = existing_tools + self.tools
         return handler(request.override(tools=updated_tools))
+
+    async def awrap_model_call(self, request, handler):
+        return await self.wrap_model_call(request, handler)
