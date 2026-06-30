@@ -9,6 +9,7 @@ class BaseDdlFetcher(ABC):
 
     # 该 fetcher 支持的 URL scheme（不含 driver 后缀，如 postgresql+psycopg）
     schemes: tuple[str, ...] = ()
+    TABLE_DDL_SEPARATOR = "\n---\n"
 
     @classmethod
     def matches_scheme(cls, scheme: str) -> bool:
@@ -66,6 +67,15 @@ class BaseDdlFetcher(ABC):
                 f"'{escaped_comment}';"
             )
         return "\n".join(ddl_lines)
+
+    @classmethod
+    def join_table_ddls(cls, parts: list[str]) -> str:
+        """将多张表的 DDL 片段用固定分隔符拼接为完整文本。
+
+        Args:
+            parts: 每张表对应的 DDL 片段列表。
+        """
+        return cls.TABLE_DDL_SEPARATOR.join(parts)
 
 
 _DDL_FETCHER_REGISTRY: dict[str, type[BaseDdlFetcher]] = {}

@@ -270,3 +270,11 @@ def test_pg_ddl_includes_column_comments():
     assert 'COMMENT ON COLUMN "demo_table"."col_a" IS \'字段A说明\';' in ddl
     assert 'COMMENT ON COLUMN "demo_table"."col_b" IS \'字段B说明\';' in ddl
     assert 'COMMENT ON COLUMN "demo_table"."col_c"' not in ddl
+
+
+def test_join_table_ddls_uses_separator():
+    """不同表的 DDL 片段之间应使用 --- 分隔。"""
+    from deepclaw.middleware.nl2sql.ddl.base import BaseDdlFetcher
+
+    result = BaseDdlFetcher.join_table_ddls(["CREATE TABLE a;", "CREATE TABLE b;"])
+    assert result == "CREATE TABLE a;\n---\nCREATE TABLE b;"

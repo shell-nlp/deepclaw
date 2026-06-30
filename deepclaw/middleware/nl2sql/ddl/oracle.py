@@ -103,9 +103,11 @@ class OracleDdlFetcher(BaseDdlFetcher):
                     if not table_names:
                         return f"-- schema `{owner}` 下未找到数据表"
 
-                    return "\n\n".join(
-                        self._build_create_table_ddl(cur, owner, table_name)
-                        for table_name in table_names
+                    return self.join_table_ddls(
+                        [
+                            self._build_create_table_ddl(cur, owner, table_name)
+                            for table_name in table_names
+                        ]
                     )
         except Exception as exc:
             logger.warning(f"获取 Oracle DDL 失败: {exc}")
