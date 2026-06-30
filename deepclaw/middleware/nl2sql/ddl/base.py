@@ -35,6 +35,38 @@ class BaseDdlFetcher(ABC):
     ) -> str:
         """拉取指定表（或全部表）的 DDL 文本。"""
 
+    @staticmethod
+    def _escape_comment_literal(comment: str) -> str:
+        """转义 SQL 注释字面量中的单引号。
+
+        Args:
+            comment: 原始注释文本。
+        """
+        return comment.replace("'", "''")
+
+    @classmethod
+    def build_column_comment_ddls(
+        cls,
+        table_name: str,
+        column_comments: list[tuple[str, str | None]],
+    ) -> str:
+        """构建字段注释 DDL 语句。
+
+        Args:
+            table_name: 表名。
+            column_comments: 字段名与字段注释的映射列表。
+        """
+        ddl_lines: list[str] = []
+        for column_name, comment in column_comments:
+            if not comment:
+                continue
+            escaped_comment = cls._escape_comment_literal(comment)
+            ddl_lines.append(
+                f'COMMENT ON COLUMN "{table_name}"."{column_name}" IS '
+                f"'{escaped_comment}';"
+            )
+        return "\n".join(ddl_lines)
+
 
 _DDL_FETCHER_REGISTRY: dict[str, type[BaseDdlFetcher]] = {}
 

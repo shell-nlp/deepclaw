@@ -172,3 +172,101 @@ def test_apply_schema_to_connection_sets_oracle_current_schema():
     assert executed == [
         ("ALTER SESSION SET CURRENT_SCHEMA = GISTOOLS", {}),
     ]
+
+
+def test_oracle_ddl_includes_column_comments():
+    """验证 Oracle DDL 输出会追加字段注释语句。
+
+    Args:
+        无。
+    """
+    from deepclaw.middleware.nl2sql.ddl.oracle import OracleDdlFetcher
+
+    executed_sql: list[str] = []
+    responses = [
+        [
+            ("COL_A", "VARCHAR2", 32, None, None, "N", None, 32, "字段A说明"),
+            ("COL_B", "NUMBER", None, 10, 2, "Y", None, None, "字段B说明"),
+            ("COL_C", "DATE", None, None, None, "Y", None, None, None),
+        ],
+        [("COL_A",)],
+    ]
+
+    class FakeCursor:
+        """用于模拟 Oracle 游标查询结果。"""
+
+        def execute(self, sql: str, **kwargs):
+            """记录执行语句。
+
+            Args:
+                sql: 当前执行的 SQL。
+                **kwargs: 绑定参数。
+            """
+            executed_sql.append(sql)
+
+        def fetchall(self):
+            """按预设顺序返回查询结果。
+
+            Args:
+                无。
+            """
+            return responses.pop(0)
+
+    ddl = OracleDdlFetcher()._build_create_table_ddl(
+        FakeCursor(),
+        "GISTOOLS",
+        "TB_SAMPLE",
+    )
+
+    assert "COMMENT ON COLUMN \"TB_SAMPLE\".\"COL_A\" IS '字段A说明';" in ddl
+    assert "COMMENT ON COLUMN \"TB_SAMPLE\".\"COL_B\" IS '字段B说明';" in ddl
+    assert "COMMENT ON COLUMN \"TB_SAMPLE\".\"COL_C\"" not in ddl
+    assert any("all_col_comments" in sql for sql in executed_sql)
+
+
+def test_pg_ddl_includes_column_comments():
+    """验证 PostgreSQL DDL 输出会追加字段注释语句。
+
+    Args:
+        无。
+    """
+    from deepclaw.middleware.nl2sql.ddl.pgsql import PgDdlFetcher
+
+    responses = [
+        [
+            ("col_a", "character varying(32)", False, None, "字段A说明"),
+            ("col_b", "integer", True, "0", "字段B说明"),
+            ("col_c", "timestamp without time zone", True, None, None),
+        ],
+        [("col_a",)],
+    ]
+
+    class FakeCursor:
+        """用于模拟 PostgreSQL 游标查询结果。"""
+
+        def execute(self, sql: str, params):
+            """记录执行语句。
+
+            Args:
+                sql: 当前执行的 SQL。
+                params: SQL 参数。
+            """
+            _ = (sql, params)
+
+        def fetchall(self):
+            """按预设顺序返回查询结果。
+
+            Args:
+                无。
+            """
+            return responses.pop(0)
+
+    ddl = PgDdlFetcher()._build_create_table_ddl(
+        FakeCursor(),
+        "public",
+        "demo_table",
+    )
+
+    assert 'COMMENT ON COLUMN "demo_table"."col_a" IS \'字段A说明\';' in ddl
+    assert 'COMMENT ON COLUMN "demo_table"."col_b" IS \'字段B说明\';' in ddl
+    assert 'COMMENT ON COLUMN "demo_table"."col_c"' not in ddl
