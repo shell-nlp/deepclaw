@@ -41,9 +41,11 @@ class PgDdlFetcher(BaseDdlFetcher):
                     if not table_names:
                         return f"-- schema `{schema_name}` 下未找到数据表"
 
-                    return "\n\n".join(
-                        self._build_create_table_ddl(cur, schema_name, table_name)
-                        for table_name in table_names
+                    return self.join_table_ddls(
+                        [
+                            self._build_create_table_ddl(cur, schema_name, table_name)
+                            for table_name in table_names
+                        ]
                     )
         except Exception as exc:
             logger.warning(f"获取 PostgreSQL DDL 失败: {exc}")
