@@ -133,18 +133,23 @@ class OracleDdlFetcher(BaseDdlFetcher):
         cur.execute(
             """
             SELECT
-                column_name,
-                data_type,
-                data_length,
-                data_precision,
-                data_scale,
-                nullable,
-                data_default,
-                char_length
-            FROM all_tab_columns
-            WHERE owner = :owner
-              AND table_name = :table_name
-            ORDER BY column_id
+                col.column_name,
+                col.data_type,
+                col.data_length,
+                col.data_precision,
+                col.data_scale,
+                col.nullable,
+                col.data_default,
+                col.char_length,
+                com.comments
+            FROM all_tab_columns col
+            LEFT JOIN all_col_comments com
+              ON col.owner = com.owner
+             AND col.table_name = com.table_name
+             AND col.column_name = com.column_name
+            WHERE col.owner = :owner
+              AND col.table_name = :table_name
+            ORDER BY col.column_id
             """,
             owner=owner,
             table_name=table_name,
@@ -173,8 +178,19 @@ class OracleDdlFetcher(BaseDdlFetcher):
 
         # 构建列定义
         col_defs: list[str] = []
+        column_comments: list[tuple[str, str | None]] = []
         for row in columns:
-            col_name, data_type, data_length, data_precision, data_scale, nullable, data_default, char_length = row
+            (
+                col_name,
+                data_type,
+                data_length,
+                data_precision,
+                data_scale,
+                nullable,
+                data_default,
+                char_length,
+                column_comment,
+            ) = row
 
             # 将 Oracle 数据类型映射为 DDL 类型字符串
             col_type = self._map_oracle_type(data_type, data_length, data_precision, data_scale, char_length)
@@ -185,12 +201,16 @@ class OracleDdlFetcher(BaseDdlFetcher):
             if nullable == "N":
                 line += " NOT NULL"
             col_defs.append(line)
+            column_comments.append((col_name, column_comment))
 
         ddl = f'CREATE TABLE "{table_name}" (\n' + ",\n".join(col_defs)
         if pk_columns:
             pk_list = ", ".join(f'"{col}"' for col in pk_columns)
             ddl += f",\n    PRIMARY KEY ({pk_list})"
         ddl += "\n);"
+        comment_ddls = self.build_column_comment_ddls(table_name, column_comments)
+        if comment_ddls:
+            ddl += f"\n\n{comment_ddls}"
         return ddl
 
     @staticmethod

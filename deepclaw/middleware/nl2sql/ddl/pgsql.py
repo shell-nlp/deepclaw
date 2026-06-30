@@ -74,7 +74,8 @@ class PgDdlFetcher(BaseDdlFetcher):
                 a.attname,
                 pg_catalog.format_type(a.atttypid, a.atttypmod),
                 NOT a.attnotnull,
-                pg_get_expr(ad.adbin, ad.adrelid)
+                pg_get_expr(ad.adbin, ad.adrelid),
+                pg_catalog.col_description(c.oid, a.attnum)
             FROM pg_catalog.pg_attribute a
             JOIN pg_catalog.pg_class c ON a.attrelid = c.oid
             JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
@@ -109,17 +110,22 @@ class PgDdlFetcher(BaseDdlFetcher):
         pk_columns = [row[0] for row in cur.fetchall()]
 
         col_defs: list[str] = []
-        for col_name, col_type, is_nullable, col_default in columns:
+        column_comments: list[tuple[str, str | None]] = []
+        for col_name, col_type, is_nullable, col_default, column_comment in columns:
             line = f'    "{col_name}" {col_type}'
             if not is_nullable:
                 line += " NOT NULL"
             if col_default is not None:
                 line += f" DEFAULT {col_default}"
             col_defs.append(line)
+            column_comments.append((col_name, column_comment))
 
         ddl = f'CREATE TABLE "{table_name}" (\n' + ",\n".join(col_defs)
         if pk_columns:
             pk_list = ", ".join(f'"{column}"' for column in pk_columns)
             ddl += f",\n    PRIMARY KEY ({pk_list})"
         ddl += "\n);"
+        comment_ddls = self.build_column_comment_ddls(table_name, column_comments)
+        if comment_ddls:
+            ddl += f"\n\n{comment_ddls}"
         return ddl
