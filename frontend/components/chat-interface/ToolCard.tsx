@@ -4,13 +4,14 @@ import { useState } from 'react'
 
 import styles from '../ChatInterface.module.css'
 import type { ToolData } from './types'
-import { getToolIcon } from './utils'
+import { getToolPreview } from './utils'
 
 interface ToolCardProps {
   toolData: ToolData
+  duration?: number
 }
 
-export function ToolCard({ toolData }: ToolCardProps) {
+export function ToolCard({ toolData, duration }: ToolCardProps) {
   const [expanded, setExpanded] = useState(false)
   const toolName = toolData.toolCall?.name || 'tool'
 
@@ -18,43 +19,44 @@ export function ToolCard({ toolData }: ToolCardProps) {
     ? JSON.stringify(toolData.toolCall.args, null, 2)
     : ''
 
-  const firstArgKey = toolData.toolCall?.args
-    ? Object.keys(toolData.toolCall.args)[0]
-    : ''
-  const firstArgValue =
-    toolData.toolCall?.args && firstArgKey
-      ? String(toolData.toolCall.args[firstArgKey]).slice(0, 30)
-      : ''
-  const argsSummary = firstArgKey
-    ? `${firstArgKey}: ${firstArgValue}${firstArgValue.length >= 30 ? '...' : ''}`
-    : ''
+  const preview = getToolPreview(toolData)
 
   return (
-    <div
-      className={`${styles.toolCard} ${expanded ? styles.expanded : ''}`}
-    >
+    <div className={`${styles.toolCard} ${styles.success}`}>
       <button
         type="button"
         className={styles.toolCardHeader}
         aria-expanded={expanded}
         onClick={() => setExpanded((current) => !current)}
       >
-        <div className={styles.toolIcon}>{getToolIcon(toolName)}</div>
-        <div className={styles.toolInfo}>
-          <span className={styles.toolName}>{toolName}</span>
-          <span className={styles.toolArgs}>{argsSummary}</span>
-        </div>
-        <div
-          className={`${styles.toolStatus} ${styles.success}`}
-          aria-label="执行完成"
-        />
-        <div className={styles.toolExpandIcon}>{expanded ? '-' : '+'}</div>
+        <span className={styles.toolName}>{toolName}</span>
+        {preview && <span className={styles.toolPreview}>{preview}</span>}
+        {duration !== undefined && (
+          <span className={styles.toolDuration}>{duration}s</span>
+        )}
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 10 10"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{
+            flexShrink: 0,
+            color: 'var(--text-muted)',
+            transform: expanded ? 'rotate(180deg)' : 'none',
+            transition: 'transform 0.15s',
+          }}
+        >
+          <polyline points="2 3.5 5 6.5 8 3.5" />
+        </svg>
       </button>
       {expanded && (
         <div className={styles.toolCardDetails}>
           {toolData.toolCall && (
             <div className={styles.toolDetailSection}>
-              <span className={styles.toolDetailLabel}>输入参数</span>
               <pre className={`${styles.toolDetailCode} ${styles.inputCode}`}>
                 {argsStr}
               </pre>
@@ -62,7 +64,6 @@ export function ToolCard({ toolData }: ToolCardProps) {
           )}
           {toolData.toolOutput?.map((output, index) => (
             <div key={index} className={styles.toolDetailSection}>
-              <span className={styles.toolDetailLabel}>执行结果</span>
               <pre className={`${styles.toolDetailCode} ${styles.outputCode}`}>
                 {output.content}
               </pre>

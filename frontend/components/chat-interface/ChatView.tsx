@@ -38,6 +38,8 @@ interface ChatViewProps {
   currentAssistantMessageId: string | null
   chatContainerRef: Ref<HTMLDivElement>
   textareaRef: Ref<HTMLTextAreaElement>
+  reasoningDuration?: number
+  toolCallDurations?: Record<string, number>
   onClearChat: () => void
   onInterruptAction: (
     decision: 'approve' | 'reject' | 'edit',
@@ -85,7 +87,15 @@ function getAssistantMessageItems(msg: Message): AssistantMessageItem[] {
   return [...reasoningItems, ...toolItems, ...contentItems]
 }
 
-function AssistantMessageBody({ msg }: { msg: Message }) {
+function AssistantMessageBody({
+  msg,
+  reasoningDuration,
+  toolCallDurations,
+}: {
+  msg: Message
+  reasoningDuration?: number
+  toolCallDurations?: Record<string, number>
+}) {
   const reasoningBlocks =
     msg.reasoningBlocks?.length
       ? msg.reasoningBlocks
@@ -106,14 +116,22 @@ function AssistantMessageBody({ msg }: { msg: Message }) {
           const block = reasoningBlocks.find(
             (reasoningBlock) => reasoningBlock.id === item.reasoningBlockId
           )
-          return block ? <ReasoningCard key={item.id} block={block} /> : null
+          return block ? (
+            <ReasoningCard key={item.id} block={block} duration={reasoningDuration} />
+          ) : null
         }
 
         if (item.type === 'tool') {
           const toolData = msg.toolData?.find(
             (data) => data.toolCall.id === item.toolCallId
           )
-          return toolData ? <ToolCard key={item.id} toolData={toolData} /> : null
+          return toolData ? (
+            <ToolCard
+              key={item.id}
+              toolData={toolData}
+              duration={toolCallDurations?.[item.toolCallId]}
+            />
+          ) : null
         }
 
         const block = contentBlocks.find(
@@ -342,6 +360,8 @@ export function ChatView({
   currentAssistantMessageId,
   chatContainerRef,
   textareaRef,
+  reasoningDuration,
+  toolCallDurations,
   onClearChat,
   onInterruptAction,
   onInputChange,
@@ -557,7 +577,11 @@ export function ChatView({
                       })}
                     </span>
                   </div>
-                  <AssistantMessageBody msg={msg} />
+                  <AssistantMessageBody
+                    msg={msg}
+                    reasoningDuration={reasoningDuration}
+                    toolCallDurations={toolCallDurations}
+                  />
                   {isProcessing &&
                     msg.id === currentAssistantMessageId &&
                     !msg.content &&

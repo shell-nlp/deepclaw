@@ -4,35 +4,33 @@ import { useState } from 'react'
 
 import styles from '../ChatInterface.module.css'
 import type { ReasoningBlock } from './types'
-import { parseMarkdown } from './utils'
 
 interface ReasoningCardProps {
   block: ReasoningBlock
+  duration?: number
 }
 
-export function ReasoningCard({ block }: ReasoningCardProps) {
-  const [expanded, setExpanded] = useState(true)
+export function ReasoningCard({ block, duration }: ReasoningCardProps) {
+  const [expanded, setExpanded] = useState(false)
 
   return (
-    <section
-      className={`${styles.reasoningContainer} ${expanded ? styles.expanded : ''}`}
-    >
+    <section className={styles.reasoningContainer}>
       <button
         type="button"
         className={styles.reasoningHeader}
         aria-expanded={expanded}
         onClick={() => setExpanded((current) => !current)}
       >
-        <span>深度思考</span>
-        <span className={styles.reasoningToggleIcon}>{expanded ? '-' : '+'}</span>
+        <span>思考</span>
+        {duration !== undefined && (
+          <span className={styles.reasoningDuration}>{duration}s</span>
+        )}
+        <span className={styles.reasoningToggleIcon}>
+          {expanded ? '−' : '+'}
+        </span>
       </button>
       {expanded && (
-        <div
-          className={styles.reasoningContent}
-          dangerouslySetInnerHTML={{
-            __html: parseMarkdown(block.content),
-          }}
-        />
+        <div className={styles.reasoningContent}>{block.content}</div>
       )}
     </section>
   )
