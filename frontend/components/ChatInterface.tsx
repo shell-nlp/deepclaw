@@ -237,6 +237,8 @@ export default function ChatInterface() {
   const [useKnowledgeBase, setUseKnowledgeBase] = useState(false)
   const [showInterrupt, setShowInterrupt] = useState(false)
   const [interruptData, setInterruptData] = useState<InterruptData | null>(null)
+  const [reasoningDuration, setReasoningDuration] = useState<number | undefined>()
+  const [toolCallDurations, setToolCallDurations] = useState<Record<string, number>>({})
 
   const [actor, setActor] = useState<ActorState>(() => normalizeActorPayload(null))
   const [authToken, setAuthToken] = useState('')
@@ -308,6 +310,8 @@ export default function ChatInterface() {
   const lastAssistantStreamEventRef = useRef<
     'reasoning' | 'content' | 'tool' | 'interrupt' | null
   >(null)
+  const reasoningStartTimeRef = useRef<number | null>(null)
+  const toolCallStartTimesRef = useRef<Record<string, number>>({})
   const reasoningBlockCounterRef = useRef(0)
   const contentBlockCounterRef = useRef(0)
   const requestModeRef = useRef<RequestMode>('agent')
@@ -335,9 +339,13 @@ export default function ChatInterface() {
     setMessages([])
     setShowInterrupt(clearedState.showInterrupt)
     setInterruptData(clearedState.interruptData)
+    setReasoningDuration(undefined)
+    setToolCallDurations({})
     currentAssistantMessageIdRef.current = null
     processedToolCallIdsRef.current.clear()
     lastAssistantStreamEventRef.current = null
+    reasoningStartTimeRef.current = null
+    toolCallStartTimesRef.current = {}
     reasoningBlockCounterRef.current = 0
     contentBlockCounterRef.current = 0
     requestModeRef.current = 'agent'
@@ -1453,6 +1461,12 @@ export default function ChatInterface() {
           if (data.reasoning_token) {
             const shouldStartNewBlock =
               lastAssistantStreamEventRef.current !== 'reasoning'
+            if (shouldStartNewBlock) {
+              reasoningStartTimeRef.current = Date.now()
+              if (reasoningDuration !== undefined) {
+                setReasoningDuration(undefined)
+              }
+            }
             updateAssistantMessage((message) => {
               const { reasoningBlocks, messageItems } = appendReasoningToken(
                 message.reasoningBlocks,
@@ -1477,6 +1491,18 @@ export default function ChatInterface() {
           }
 
           if (data.token) {
+            if (
+              lastAssistantStreamEventRef.current === 'reasoning' &&
+              reasoningStartTimeRef.current !== null
+            ) {
+              const elapsed = Math.round(
+                (Date.now() - reasoningStartTimeRef.current) / 1000
+              )
+              if (elapsed > 0) {
+                setReasoningDuration(elapsed)
+              }
+              reasoningStartTimeRef.current = null
+            }
             const shouldAppendToLastBlock =
               lastAssistantStreamEventRef.current === 'content'
             updateAssistantMessage((message) => {
@@ -1505,12 +1531,26 @@ export default function ChatInterface() {
 
         case 'tool_calls': {
           if (data.tool_calls?.length) {
+            if (
+              lastAssistantStreamEventRef.current === 'reasoning' &&
+              reasoningStartTimeRef.current !== null
+            ) {
+              const elapsed = Math.round(
+                (Date.now() - reasoningStartTimeRef.current) / 1000
+              )
+              if (elapsed > 0) {
+                setReasoningDuration(elapsed)
+              }
+              reasoningStartTimeRef.current = null
+            }
+            const now = Date.now()
             updateAssistantMessage((message) => {
               const tools = [...(message.toolData || [])]
               let messageItems = message.messageItems || []
               for (const toolCall of data.tool_calls || []) {
                 if (!tools.some((tool) => tool.toolCall.id === toolCall.id)) {
                   tools.push({ toolCall, toolOutput: [] })
+                  toolCallStartTimesRef.current[toolCall.id] = now
                 }
                 messageItems = ensureToolItem(messageItems, toolCall.id)
               }
@@ -1523,6 +1563,22 @@ export default function ChatInterface() {
 
         case 'tool_output': {
           if (data.tool_output?.length) {
+            const now = Date.now()
+            const updatedDurations = { ...toolCallDurations }
+            for (const output of data.tool_output || []) {
+              const startTime = toolCallStartTimesRef.current[output.tool_call_id]
+              if (startTime) {
+                const elapsed = Math.round((now - startTime) / 1000)
+                if (elapsed > 0) {
+                  updatedDurations[output.tool_call_id] = elapsed
+                }
+                delete toolCallStartTimesRef.current[output.tool_call_id]
+              }
+            }
+            if (Object.keys(updatedDurations).length > 0) {
+              setToolCallDurations(updatedDurations)
+            }
+
             updateAssistantMessage((message) => {
               let tools = [...(message.toolData || [])]
               let messageItems = message.messageItems || []
@@ -1675,11 +1731,15 @@ export default function ChatInterface() {
 
     setIsProcessing(true)
     setStatus('connecting')
+    setReasoningDuration(undefined)
+    setToolCallDurations({})
 
     const assistantMessageId = generateMessageId()
     currentAssistantMessageIdRef.current = assistantMessageId
     processedToolCallIdsRef.current.clear()
     lastAssistantStreamEventRef.current = null
+    reasoningStartTimeRef.current = null
+    toolCallStartTimesRef.current = {}
     reasoningBlockCounterRef.current = 0
     contentBlockCounterRef.current = 0
     requestModeRef.current = requestMode
@@ -1727,6 +1787,8 @@ export default function ChatInterface() {
       currentAssistantMessageIdRef.current = null
       processedToolCallIdsRef.current.clear()
       lastAssistantStreamEventRef.current = null
+      reasoningStartTimeRef.current = null
+      toolCallStartTimesRef.current = {}
       reasoningBlockCounterRef.current = 0
       contentBlockCounterRef.current = 0
     }
@@ -2028,6 +2090,8 @@ export default function ChatInterface() {
               currentAssistantMessageId={currentAssistantMessageIdRef.current}
               chatContainerRef={chatContainerRef}
               textareaRef={textareaRef}
+              reasoningDuration={reasoningDuration}
+              toolCallDurations={toolCallDurations}
               onClearChat={clearChat}
               onInterruptAction={handleInterruptAction}
               onInputChange={setInputValue}

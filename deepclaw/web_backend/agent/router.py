@@ -17,7 +17,7 @@ def create_agent_router(checkpointer=None, store=None) -> APIRouter:
     router = APIRouter(prefix="/api/agent")
     ag_ui_router = APIRouter(tags=["agent-ag-ui"])
     general_api_router = APIRouter()
-    agent = Agent(deep_agent=True, checkpointer=checkpointer, store=store).get_agent()
+    agent = Agent(deep_agent=False, checkpointer=checkpointer, store=store).get_agent()
 
     add_langgraph_fastapi_endpoint(
         app=ag_ui_router,

@@ -12,6 +12,7 @@ import type {
   InterruptData,
   KnowledgePage,
   McpServerSummary,
+  ToolData,
   ViewMode,
 } from './types.ts'
 
@@ -199,6 +200,22 @@ export function escapeHtml(text: string): string {
   const div = document.createElement('div')
   div.textContent = text
   return div.innerHTML
+}
+
+export function getToolPreview(toolData: ToolData): string {
+  const args = toolData.toolCall?.args
+  if (!args || typeof args !== 'object') return ''
+  const keys = Object.keys(args)
+  if (keys.length === 0) return ''
+
+  if ('command' in args) return String(args.command).slice(0, 80)
+  if ('path' in args) return String(args.path).slice(0, 80)
+  if ('file_path' in args) return String(args.file_path).slice(0, 80)
+  if ('pattern' in args) return String(args.pattern).slice(0, 80)
+  if ('query' in args) return String(args.query).slice(0, 80)
+
+  const firstKey = keys[0]
+  return String(args[firstKey]).slice(0, 80)
 }
 
 export function parseMarkdown(text: string): string {
