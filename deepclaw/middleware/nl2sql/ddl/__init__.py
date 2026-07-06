@@ -4,6 +4,7 @@ from deepclaw.middleware.nl2sql.ddl.base import (
     register_ddl_fetcher,
     resolve_database_scheme,
 )
+
 try:
     from . import oracle as _oracle  # noqa: F401 — 触发 Oracle 注册
 except ImportError:
@@ -14,9 +15,23 @@ __all__ = [
     "BaseDdlFetcher",
     "fetch_schema_ddl",
     "get_ddl_fetcher",
+    "list_tables",
     "register_ddl_fetcher",
     "resolve_database_scheme",
 ]
+
+
+def list_tables(
+    database_url: str,
+    *,
+    schema: str | None = None,
+) -> list[str]:
+    """按连接串自动选择 fetcher 并返回数据库中所有表名列表。"""
+    try:
+        fetcher = get_ddl_fetcher(database_url)
+    except ValueError as exc:
+        raise ValueError(str(exc)) from exc
+    return fetcher.list_tables(database_url, schema=schema)
 
 
 def fetch_schema_ddl(

@@ -246,7 +246,7 @@ _skip_no_neo4j = pytest.mark.skipif(
 
 @pytest.fixture
 def neo4j_graph():
-    from deepclaw.common.graph_db.neo4j import Neo4jGraph
+    from deepclaw.common.graph_db.neo4j_db import Neo4jGraph
 
     g = Neo4jGraph(
         uri="bolt://localhost:7687",

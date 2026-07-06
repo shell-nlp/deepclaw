@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import os
 import platform
 from urllib.parse import parse_qs, urlparse
@@ -112,6 +113,24 @@ class OracleDdlFetcher(BaseDdlFetcher):
         except Exception as exc:
             logger.warning(f"获取 Oracle DDL 失败: {exc}")
             return f"-- 获取数据库表结构失败: {exc}"
+
+    def list_tables(
+        self,
+        database_url: str,
+        *,
+        schema: str | None = None,
+    ) -> list[str]:
+        """返回 Oracle 数据库中所有表名列表。
+
+        Args:
+            database_url: 数据库连接串。
+            schema: 显式指定的 schema 名称。
+        """
+        database_url = self.normalize_url(database_url)
+        with self._make_connection(database_url) as conn:
+            owner = schema.upper() if schema else conn.username.upper()
+            with conn.cursor() as cur:
+                return self._list_tables(cur, owner)
 
     def _list_tables(self, cur: oracledb.Cursor, owner: str) -> list[str]:
         cur.execute(
