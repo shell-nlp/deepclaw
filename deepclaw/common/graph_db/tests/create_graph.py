@@ -23,7 +23,7 @@
 
 import json
 
-from deepclaw.common.graph_db.neo4j import Neo4jGraph
+from deepclaw.common.graph_db.neo4j_db import Neo4jGraph
 
 
 def _logic(

@@ -51,6 +51,24 @@ class PgDdlFetcher(BaseDdlFetcher):
             logger.warning(f"获取 PostgreSQL DDL 失败: {exc}")
             return f"-- 获取数据库表结构失败: {exc}"
 
+    def list_tables(
+        self,
+        database_url: str,
+        *,
+        schema: str | None = None,
+    ) -> list[str]:
+        """返回 PostgreSQL 数据库中所有表名列表。
+
+        Args:
+            database_url: 数据库连接串。
+            schema: 显式指定的 schema 名称。
+        """
+        schema_name = schema or DEFAULT_SCHEMA
+        database_url = self.normalize_url(database_url)
+        with psycopg.connect(database_url) as conn:
+            with conn.cursor() as cur:
+                return self._list_tables(cur, schema_name)
+
     def _list_tables(self, cur: psycopg.Cursor, schema: str) -> list[str]:
         cur.execute(
             """

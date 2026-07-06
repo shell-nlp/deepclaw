@@ -27,6 +27,15 @@ class BaseDdlFetcher(ABC):
         return database_url
 
     @abstractmethod
+    def list_tables(
+        self,
+        database_url: str,
+        *,
+        schema: str | None = None,
+    ) -> list[str]:
+        """返回数据库中所有表名列表。"""
+
+    @abstractmethod
     def fetch_ddl(
         self,
         database_url: str,
