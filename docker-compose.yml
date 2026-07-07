@@ -1,28 +1,33 @@
 services:
-  deepclaw:
-    image: deepclaw:latest
-    container_name: deepclaw
-    restart: always
-    ports:
-      - 7869:7869
-    command: python deepclaw/main.py
-    networks:
-      - deepclaw
-    depends_on:
-      - postgresql
-      - elasticsearch
-      - phoenix
+  # deepclaw:
+  #   image: deepclaw:latest
+  #   container_name: deepclaw
+  #   restart: always
+  #   ports:
+  #     - 7869:7869
+  #   command: python deepclaw/main.py
+  #   networks:
+  #     - deepclaw
+  #   depends_on:
+  #     - elasticsearch
+  #     - phoenix
   postgresql:
-    image: docker.1ms.run/postgres:16
+    build:
+      context: .
+      dockerfile: docker/postgresql/Dockerfile
+    image: deepclaw-postgresql-hybrid:pg16
+    container_name: postgresql
     restart: always
     environment:
       - POSTGRES_USER=admin  # 数据库用户名
-      - POSTGRES_PASSWORD=admin # 数据库密码（必填）
-      - POSTGRES_DB=deepclaw # 默认数据库名
+      - POSTGRES_PASSWORD=admin  # 数据库密码（必填）
+      - POSTGRES_DB=deepclaw  # 默认数据库名
     ports:
       - 5432:5432
     volumes:
-      - postgres:/var/lib/postgresql/data
+      - postgres_pgvector:/var/lib/postgresql/data
+      # 首次初始化时自动启用 pgvector 和 pg_search（BM25）扩展
+      - ./docker/postgresql/initdb:/docker-entrypoint-initdb.d
     networks:
       - deepclaw
   elasticsearch:
@@ -59,17 +64,19 @@ services:
     ports:
       - 6006:6006
       - 4317:4317
-    depends_on:
-      - postgresql
     networks:
       - deepclaw
+    depends_on:
+      - postgresql
     environment:
       - PHOENIX_SQL_DATABASE_URL=postgresql://admin:admin@postgresql:5432/phoenix
 
 
 volumes:
   postgres:
-    driver: local 
+    driver: local
+  postgres_pgvector:
+    driver: local
   es_data:
     driver: local
     # driver_opts:

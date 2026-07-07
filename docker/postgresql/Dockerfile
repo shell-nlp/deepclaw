@@ -1,4 +1,4 @@
-FROM pgvector/pgvector:pg16-bookworm
+FROM docker.1ms.run/pgvector/pgvector:pg16-bookworm
 
 ARG PG_MAJOR=16
 ARG PG_SEARCH_VERSION=0.24.1
