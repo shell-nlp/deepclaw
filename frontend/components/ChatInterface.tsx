@@ -1564,20 +1564,17 @@ export default function ChatInterface() {
         case 'tool_output': {
           if (data.tool_output?.length) {
             const now = Date.now()
-            const updatedDurations = { ...toolCallDurations }
-            for (const output of data.tool_output || []) {
-              const startTime = toolCallStartTimesRef.current[output.tool_call_id]
-              if (startTime) {
-                const elapsed = Math.round((now - startTime) / 1000)
-                if (elapsed > 0) {
-                  updatedDurations[output.tool_call_id] = elapsed
+            setToolCallDurations((prev) => {
+              const updated = { ...prev }
+              for (const output of data.tool_output || []) {
+                const startTime = toolCallStartTimesRef.current[output.tool_call_id]
+                if (startTime) {
+                  updated[output.tool_call_id] = now - startTime
+                  delete toolCallStartTimesRef.current[output.tool_call_id]
                 }
-                delete toolCallStartTimesRef.current[output.tool_call_id]
               }
-            }
-            if (Object.keys(updatedDurations).length > 0) {
-              setToolCallDurations(updatedDurations)
-            }
+              return Object.keys(updated).length > 0 ? updated : prev
+            })
 
             updateAssistantMessage((message) => {
               let tools = [...(message.toolData || [])]

@@ -218,6 +218,20 @@ export function getToolPreview(toolData: ToolData): string {
   return String(args[firstKey]).slice(0, 80)
 }
 
+export function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`
+  const totalSeconds = Math.floor(ms / 1000)
+  if (totalSeconds < 60) return `${totalSeconds}s`
+  const totalMinutes = Math.floor(totalSeconds / 60)
+  const remainingSeconds = totalSeconds % 60
+  if (totalMinutes < 60) {
+    return remainingSeconds > 0 ? `${totalMinutes}m ${remainingSeconds}s` : `${totalMinutes}m`
+  }
+  const hours = Math.floor(totalMinutes / 60)
+  const remainingMinutes = totalMinutes % 60
+  return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`
+}
+
 export function parseMarkdown(text: string): string {
   try {
     return marked.parse(text, { async: false }) as string
