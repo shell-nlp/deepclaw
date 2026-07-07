@@ -3,11 +3,12 @@ from typing import Literal
 from dotenv import find_dotenv, load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# 获取.env文件路径
-env_path = find_dotenv(filename=".env", raise_error_if_not_found=True)
+# 获取.env文件路径（Docker 下 env 变量由 compose 注入，不需要 .env 文件）
+env_path = find_dotenv(filename=".env", raise_error_if_not_found=False)
 
-# 再将.env文件内容加载到环境变量中
-load_dotenv()
+# 若存在 .env 文件，将其内容加载到环境变量中
+if env_path:
+    load_dotenv(env_path)
 
 
 class Settings(BaseSettings):
@@ -52,7 +53,7 @@ class Settings(BaseSettings):
     AUTH_TOKEN_EXPIRE_DAYS: int = 1
 
     model_config = SettingsConfigDict(
-        env_file=str(env_path),
+        env_file=env_path or None,
         env_file_encoding="utf-8",
         extra="ignore",  # 改为ignore，允许额外环境变量
     )
