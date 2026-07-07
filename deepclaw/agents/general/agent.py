@@ -53,9 +53,7 @@ class Agent:
             from copilotkit import CopilotKitMiddleware
 
             middleware.append(CopilotKitMiddleware())
-        from deepclaw.middleware.nl2sql import NL2SQLMiddleware
 
-        middleware.append(NL2SQLMiddleware())
         middleware.append(BusinessMiddleware())
         middleware.append(MCPMiddleware())
 
@@ -125,8 +123,8 @@ class Agent:
         # )
 
         if self.deep_agent:
-            from deepclaw.middleware.deep_agent_prompt import DeepAgentPromptMiddleware
             from deepclaw.middleware.cron.middleware import CronMiddleware
+            from deepclaw.middleware.deep_agent_prompt import DeepAgentPromptMiddleware
 
             middleware.append(DeepAgentPromptMiddleware())
             middleware.append(CronMiddleware())

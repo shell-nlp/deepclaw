@@ -4,7 +4,7 @@ import { useState } from 'react'
 
 import styles from '../ChatInterface.module.css'
 import type { ToolData } from './types'
-import { getToolPreview } from './utils'
+import { formatDuration, getToolPreview } from './utils'
 
 interface ToolCardProps {
   toolData: ToolData
@@ -32,7 +32,7 @@ export function ToolCard({ toolData, duration }: ToolCardProps) {
         <span className={styles.toolName}>{toolName}</span>
         {preview && <span className={styles.toolPreview}>{preview}</span>}
         {duration !== undefined && (
-          <span className={styles.toolDuration}>{duration}s</span>
+          <span className={styles.toolDuration}>{formatDuration(duration)}</span>
         )}
         <svg
           width="12"
