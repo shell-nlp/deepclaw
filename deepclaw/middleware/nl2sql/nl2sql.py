@@ -76,6 +76,15 @@ _READONLY_PREFIX_RE: re.Pattern[str] = re.compile(
 )
 
 
+def _strip_leading_sql_comments(sql: str) -> str:
+    """移除 SQL 开头连续出现的空白和注释。
+
+    Args:
+        sql: 原始 SQL 文本。
+    """
+    return re.sub(r"^\s*(?:(?:--[^\n]*(?:\n|$))|(?:/\*.*?\*/\s*))*", "", sql, flags=re.DOTALL)
+
+
 def _validate_readonly(sql: str) -> None:
     """校验 SQL 语句是否为只读查询，拒绝写入/修改操作。
 
@@ -85,8 +94,9 @@ def _validate_readonly(sql: str) -> None:
     Raises:
         ValueError: 当 SQL 为非查询语句时抛出。
     """
-    if not _READONLY_PREFIX_RE.match(sql):
-        raise ValueError("仅允许执行查询（SELECT）语句，拒绝写入/修改操作")
+    normalized_sql = _strip_leading_sql_comments(sql)
+    if not _READONLY_PREFIX_RE.match(normalized_sql):
+        raise ValueError(f"仅允许执行查询（SELECT）语句，拒绝写入/修改操作: {sql}")
 
 
 def _make_connection(database_url: str):
@@ -225,6 +235,7 @@ class NL2SQLMiddleware(AgentMiddleware[None, AgentContext, None]):
             """用于运行sql语句，你使用的数据库类型是 Oracle。
             # 必须遵守的要求：
             - 仅允许执行查询（SELECT）语句，拒绝写入/修改操作。
+            - 禁止在 SQL 中添加任何注释（包括 -- 和 /* */ 注释），请直接输出可执行 SQL。
             - 在查询某个数据库表之前，如果不知道该表的 DDL 结构，必须先使用 describe_tables_tool 查看该表的 DDL 结构，禁止直接去查询表进行DDL结构探索。
             - 查询结果最多展示 30 行，超出部分会被截断并提示数据量过大，建议用 SQL运算或 聚合等操作，或者使用Python 代码处理。
             - 尽量使用简单的 SQL 语句 + 多次查询，避免使用复杂的查询逻辑（因为模型能力有限，负责SQL命令容易出错）。
@@ -233,9 +244,8 @@ class NL2SQLMiddleware(AgentMiddleware[None, AgentContext, None]):
             if not database_url:
                 return "错误：未配置数据库连接"
 
-            _validate_readonly(sql)
-
             try:
+                _validate_readonly(sql)
                 with _make_connection(database_url) as conn:
                     _apply_schema_to_connection(conn, database_url, resolved_schema)
                     MAX_DISPLAY_ROWS = 30  # 最多展示 30 行
