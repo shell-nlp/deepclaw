@@ -89,6 +89,40 @@ def test_resolve_schema_prefers_argument_then_env(monkeypatch):
     assert nl2sql_module._resolve_schema(None) == "GISTOOLS"
 
 
+def test_validate_readonly_allows_leading_sql_comment():
+    """验证只读校验允许前导 SQL 注释后再出现 SELECT。
+
+    Args:
+        无。
+    """
+    import deepclaw.middleware.nl2sql.nl2sql as nl2sql_module
+
+    sql = """
+    -- 统计焦作数据
+    SELECT COUNT(*)
+    FROM TB_KR_GRP_SK_GRP_TOL_DAY
+    """
+
+    nl2sql_module._validate_readonly(sql)
+
+
+def test_run_sql_returns_error_message_for_non_readonly_sql(monkeypatch):
+    """验证 run_sql 遇到非只读语句时返回错误文本而不是抛异常。
+
+    Args:
+        monkeypatch: pytest 提供的环境与属性补丁工具。
+    """
+    import deepclaw.middleware.nl2sql.nl2sql as nl2sql_module
+
+    monkeypatch.setenv("NL2SQL_DATABASE_URL", "oracle+oracledb://user:pwd@host:1521/?service_name=svc")
+
+    run_sql_tool = nl2sql_module.NL2SQLMiddleware().get_run_sql_tool()
+
+    result = run_sql_tool.invoke({"sql": "DELETE FROM TB_KR_GRP_SK_GRP_TOL_DAY"})
+
+    assert result.startswith("SQL 执行失败：仅允许执行查询（SELECT）语句")
+
+
 def test_get_user_ddl_passes_schema_to_fetcher(monkeypatch):
     """验证 get_user_ddl 会把解析后的 schema 传给 DDL 拉取器。
 
