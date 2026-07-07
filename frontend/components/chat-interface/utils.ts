@@ -4,7 +4,6 @@ import { marked } from 'marked'
 
 import {
   DEFAULT_CHANNEL_PAGE,
-  DEFAULT_BACKEND_URL,
   DEFAULT_KNOWLEDGE_PAGE,
 } from './constants.ts'
 import type {
@@ -17,17 +16,8 @@ import type {
 } from './types.ts'
 
 export function getApiBaseUrl(): string {
-  const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL
-  if (envUrl) return envUrl.replace(/\/$/, '')
-
   if (typeof window === 'undefined') return ''
-
-  const { hostname, origin } = window.location
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    return DEFAULT_BACKEND_URL
-  }
-
-  return origin
+  return window.location.origin
 }
 
 export function getApiUrl(path: string): string {
