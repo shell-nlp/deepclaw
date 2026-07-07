@@ -13,10 +13,15 @@ ENV UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
 
 WORKDIR /deepclaw
 
+# 先复制依赖锁文件，利用 Docker 分层缓存
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --no-group dev --all-extras -v
+
+# 依赖安装后再复制源码（源码改动不破坏依赖层缓存）
 COPY ./ /deepclaw
-RUN uv sync --no-group dev --all-extras -v && source .venv/bin/activate && \
-    uv cache clean && \
-    echo '[[ -f .venv/bin/activate ]] && source .venv/bin/activate' >> ~/.bashrc
+
+RUN echo '[[ -f .venv/bin/activate ]] && source .venv/bin/activate' >> ~/.bashrc
 
 # 把 venv 的 bin 放进 PATH
 ENV PATH="/deepclaw/.venv/bin:$PATH"
