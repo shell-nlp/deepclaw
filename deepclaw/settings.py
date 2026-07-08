@@ -12,6 +12,10 @@ if env_path:
 
 
 class Settings(BaseSettings):
+    # 服务监听配置
+    HOST: str = "0.0.0.0"
+    PORT: int = 7869
+
     # openAI api_base 和 api_key配置
     OPENAI_API_BASE: str
     CHAT_MODEL_NAME: str
