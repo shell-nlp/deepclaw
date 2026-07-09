@@ -7,10 +7,11 @@ post : http://localhost:7869/api/general_api (SSE 流式响应)
 import asyncio
 import inspect
 import uuid
-from typing import Literal
+from typing import AsyncIterator, Literal
 
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.responses import StreamingResponse
+from langchain_core.runnables.schema import StreamEvent
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 from loguru import logger
@@ -117,6 +118,7 @@ def add_general_api_endpoint(
         return projection
 
     if context is not None:
+
         class Request(GeneralAPIRequest, context):  # type: ignore[misc, valid-type]
             """组合后的请求模型。"""
 
@@ -152,9 +154,7 @@ def add_general_api_endpoint(
         input_payload = None
         if request.query:
             content = (
-                request.query
-                if isinstance(request.query, str)
-                else [block.model_dump() for block in request.query]
+                request.query if isinstance(request.query, str) else [block.model_dump() for block in request.query]
             )
             input_payload = {
                 "messages": [
@@ -171,7 +171,7 @@ def add_general_api_endpoint(
 
         async def stream_token_generator():
             text = ""
-            run = await agent.astream_events(
+            stream: AsyncIterator[StreamEvent] = await agent.astream_events(
                 input_payload,
                 config=config,
                 version="v3",
@@ -182,9 +182,8 @@ def add_general_api_endpoint(
 
             async def consume_messages():
                 nonlocal text
-                async for message in run.messages:
+                async for message in stream.messages:
                     message_id = getattr(message, "message_id", None)
-
                     # v3 将文本和推理拆成独立 projection，这里继续适配成旧 SSE 契约。
                     async def consume_reasoning():
                         nonlocal text
@@ -217,9 +216,9 @@ def add_general_api_endpoint(
                     await asyncio.gather(consume_reasoning(), consume_text_tokens())
 
                     full_message = await maybe_await(message.output)
-                    message_id = getattr(full_message, "id", message_id)
-                    usage_metadata = getattr(full_message, "usage_metadata", None)
-                    tool_calls = getattr(full_message, "tool_calls", None)
+                    message_id = getattr(full_message, "id", message_id) if not isinstance(full_message, str) else message_id
+                    usage_metadata = getattr(full_message, "usage_metadata", None) if not isinstance(full_message, str) else None
+                    tool_calls = getattr(full_message, "tool_calls", None) if not isinstance(full_message, str) else None
 
                     stream_response.event = "token"
                     stream_response.data = {
@@ -242,7 +241,7 @@ def add_general_api_endpoint(
 
             async def consume_tool_calls():
                 nonlocal text
-                async for tool_call in run.tool_calls:
+                async for tool_call in stream.tool_calls:
                     async for output_delta in tool_call.output_deltas:
                         if isinstance(output_delta, str):
                             text += output_delta
@@ -255,7 +254,7 @@ def add_general_api_endpoint(
                     text += f"\n工具响应： \n{tool_call.output if tool_call.error is None else tool_call.error}\n{'-' * 100}\n"
 
             async def consume_values():
-                async for snapshot in run.values:
+                async for snapshot in stream.values:
                     interrupt_payload = extract_interrupt_payload(snapshot)
                     if interrupt_payload is None:
                         continue
@@ -290,36 +289,40 @@ def add_general_api_endpoint(
             logger.info(f"session_id：{request.session_id} \nFinal Response: \n{text}")
 
         async def generator():
-            run = await agent.astream_events(
+            stream = await agent.astream_events(
                 input_payload,
                 config=config,
                 version="v3",
                 context=Context(**request_payload),
             )
 
-            async for message in run.messages:
+            async for message in stream.messages:
                 full_message = await maybe_await(message.output)
                 full_text = await collect_projection_value(message.text)
                 full_reasoning = await collect_projection_value(message.reasoning)
+                is_message_obj = not isinstance(full_message, str)
+                msg_id = getattr(full_message, "id", getattr(message, "message_id", None)) if is_message_obj else getattr(message, "message_id", None)
+                msg_tool_calls = full_message.tool_calls if is_message_obj and full_message.tool_calls else None
+                msg_usage = getattr(full_message, "usage_metadata", None) if is_message_obj else None
                 stream_response.event = "token"
                 stream_response.data = {
                     "token": full_text if full_text else None,
-                    "id": getattr(full_message, "id", getattr(message, "message_id", None)),
+                    "id": msg_id,
                     "reasoning_token": full_reasoning if full_reasoning else None,
-                    "tool_calls": full_message.tool_calls if full_message.tool_calls else None,
-                    "usage_metadata": getattr(full_message, "usage_metadata", None),
+                    "tool_calls": msg_tool_calls,
+                    "usage_metadata": msg_usage,
                 }
                 yield format_sse(stream_response)
 
-                if full_message.tool_calls:
+                if msg_tool_calls:
                     stream_response.event = "tool_calls"
                     stream_response.data = {
-                        "tool_calls": full_message.tool_calls,
-                        "id": full_message.id,
+                        "tool_calls": msg_tool_calls,
+                        "id": msg_id,
                     }
                     yield format_sse(stream_response)
 
-            async for tool_call in run.tool_calls:
+            async for tool_call in stream.tool_calls:
                 stream_response.event = "tool_output"
                 stream_response.data = {
                     "tool_output": tool_call.output if tool_call.error is None else tool_call.error,
@@ -327,7 +330,7 @@ def add_general_api_endpoint(
                 }
                 yield format_sse(stream_response)
 
-            async for snapshot in run.values:
+            async for snapshot in stream.values:
                 interrupt_payload = extract_interrupt_payload(snapshot)
                 if interrupt_payload is None:
                     continue
@@ -341,5 +344,3 @@ def add_general_api_endpoint(
                 media_type="text/event-stream",
             )
         return StreamingResponse(generator(), media_type="text/event-stream")
-
-
