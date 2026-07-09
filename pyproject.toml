@@ -82,5 +82,11 @@ select = ["E4", "E7", "E9", "F"]
 [tool.ruff.lint.isort]
 known-first-party = ["deepclaw"]
 
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "off"
+reportAttributeAccessIssue = false
+
 [project.scripts]
 deepclaw = "deepclaw.cli.main:app"

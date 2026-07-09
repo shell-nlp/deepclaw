@@ -12,12 +12,22 @@ from typing import AsyncIterator, Literal
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.responses import StreamingResponse
 from langchain_core.runnables.schema import StreamEvent
+from langchain_core.utils.json import parse_partial_json
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field
 
 from deepclaw.web_backend.auth.dependencies import CurrentActor, get_current_actor
+
+
+def _safe_parse_args(raw: str | None) -> dict:
+    """将 tool call 的 args 字符串解析为完整 dict，失败时返回 {}。"""
+    try:
+        return parse_partial_json(raw or "{}") or {}
+    except Exception:
+        logger.warning("parse_partial_json failed for args: {!r}", raw)
+        return {}
 
 GUEST_USER_ID = "guest"
 
@@ -212,6 +222,26 @@ def add_general_api_endpoint(
                         }
                         await queue.put(format_sse(stream_response))
 
+                    tool_calls_acc: dict[str, dict] = {}
+                    async for tool_call_chunk in message.tool_calls:
+                        chunk_id = tool_call_chunk["id"]
+                        tool_calls_acc[chunk_id] = dict(tool_call_chunk)
+                        stream_response.event = "token"
+                        stream_response.data = {
+                            "token": None,
+                            "id": message_id,
+                            "reasoning_token": None,
+                            "tool_calls": [
+                                {
+                                    **tc,
+                                    "args": _safe_parse_args(tc.get("args")),
+                                }
+                                for tc in tool_calls_acc.values()
+                            ],
+                            "usage_metadata": None,
+                        }
+                        await queue.put(format_sse(stream_response))
+
                     full_message = await maybe_await(message.output)
                     message_id = getattr(full_message, "id", message_id) if not isinstance(full_message, str) else message_id
                     usage_metadata = getattr(full_message, "usage_metadata", None) if not isinstance(full_message, str) else None
@@ -294,11 +324,33 @@ def add_general_api_endpoint(
             )
 
             async for message in stream.messages:
-                full_message = await maybe_await(message.output)
+                message_id = getattr(message, "message_id", None)
                 full_text = await collect_projection_value(message.text)
                 full_reasoning = await collect_projection_value(message.reasoning)
+
+                tool_calls_acc: dict[str, dict] = {}
+                async for tool_call_chunk in message.tool_calls:
+                    chunk_id = tool_call_chunk["id"]
+                    tool_calls_acc[chunk_id] = dict(tool_call_chunk)
+                    stream_response.event = "token"
+                    stream_response.data = {
+                        "token": None,
+                        "id": message_id,
+                        "reasoning_token": None,
+                        "tool_calls": [
+                            {
+                                **tc,
+                                "args": _safe_parse_args(tc.get("args")),
+                            }
+                            for tc in tool_calls_acc.values()
+                        ],
+                        "usage_metadata": None,
+                    }
+                    yield format_sse(stream_response)
+
+                full_message = await maybe_await(message.output)
                 is_message_obj = not isinstance(full_message, str)
-                msg_id = getattr(full_message, "id", getattr(message, "message_id", None)) if is_message_obj else getattr(message, "message_id", None)
+                msg_id = getattr(full_message, "id", message_id) if is_message_obj else message_id
                 msg_tool_calls = full_message.tool_calls if is_message_obj and full_message.tool_calls else None
                 msg_usage = getattr(full_message, "usage_metadata", None) if is_message_obj else None
                 stream_response.event = "token"
