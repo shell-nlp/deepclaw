@@ -4,6 +4,7 @@ import { useState } from 'react'
 
 import styles from '../ChatInterface.module.css'
 import type { ReasoningBlock } from './types'
+import { formatDuration } from './utils'
 
 interface ReasoningCardProps {
   block: ReasoningBlock
@@ -23,7 +24,7 @@ export function ReasoningCard({ block, duration }: ReasoningCardProps) {
       >
         <span>思考</span>
         {duration !== undefined && (
-          <span className={styles.reasoningDuration}>{duration}s</span>
+          <span className={styles.reasoningDuration}>{formatDuration(duration)}</span>
         )}
         <span className={styles.reasoningToggleIcon}>
           {expanded ? '−' : '+'}
