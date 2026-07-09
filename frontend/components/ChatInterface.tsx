@@ -1495,12 +1495,7 @@ export default function ChatInterface() {
               lastAssistantStreamEventRef.current === 'reasoning' &&
               reasoningStartTimeRef.current !== null
             ) {
-              const elapsed = Math.round(
-                (Date.now() - reasoningStartTimeRef.current) / 1000
-              )
-              if (elapsed > 0) {
-                setReasoningDuration(elapsed)
-              }
+              setReasoningDuration(Date.now() - reasoningStartTimeRef.current)
               reasoningStartTimeRef.current = null
             }
             const shouldAppendToLastBlock =
@@ -1535,12 +1530,7 @@ export default function ChatInterface() {
               lastAssistantStreamEventRef.current === 'reasoning' &&
               reasoningStartTimeRef.current !== null
             ) {
-              const elapsed = Math.round(
-                (Date.now() - reasoningStartTimeRef.current) / 1000
-              )
-              if (elapsed > 0) {
-                setReasoningDuration(elapsed)
-              }
+              setReasoningDuration(Date.now() - reasoningStartTimeRef.current)
               reasoningStartTimeRef.current = null
             }
             const now = Date.now()
