@@ -162,7 +162,7 @@ def test_general_api_v2_adapts_v3_streams_and_keeps_sse_contract():
         {
             "event": "tool_output",
             "data": {
-                "tool_output": "晴天",
+                "tool_output": ["晴天"],
                 "id": "search",
             },
         }
@@ -227,7 +227,7 @@ def test_general_api_v2_non_stream_uses_final_message_projection():
         {
             "event": "tool_output",
             "data": {
-                "tool_output": "晴天",
+                "tool_output": ["晴天"],
                 "id": "search",
             },
         },
