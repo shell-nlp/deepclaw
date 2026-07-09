@@ -185,35 +185,32 @@ def add_general_api_endpoint(
                 async for message in stream.messages:
                     message_id = getattr(message, "message_id", None)
                     # v3 将文本和推理拆成独立 projection，这里继续适配成旧 SSE 契约。
-                    async def consume_reasoning():
-                        nonlocal text
-                        async for reasoning_delta in message.reasoning:
-                            text += reasoning_delta
-                            stream_response.event = "token"
-                            stream_response.data = {
-                                "token": None,
-                                "id": message_id,
-                                "reasoning_token": reasoning_delta,
-                                "tool_calls": None,
-                                "usage_metadata": None,
-                            }
-                            await queue.put(format_sse(stream_response))
+                    # 先顺序消费推理，再消费文本；没有推理内容时将文本做为推理输出。
+                    has_reasoning = False
+                    async for reasoning_delta in message.reasoning:
+                        has_reasoning = True
+                        text += reasoning_delta
+                        stream_response.event = "token"
+                        stream_response.data = {
+                            "token": None,
+                            "id": message_id,
+                            "reasoning_token": reasoning_delta,
+                            "tool_calls": None,
+                            "usage_metadata": None,
+                        }
+                        await queue.put(format_sse(stream_response))
 
-                    async def consume_text_tokens():
-                        nonlocal text
-                        async for token_delta in message.text:
-                            text += token_delta
-                            stream_response.event = "token"
-                            stream_response.data = {
-                                "token": token_delta,
-                                "id": message_id,
-                                "reasoning_token": None,
-                                "tool_calls": None,
-                                "usage_metadata": None,
-                            }
-                            await queue.put(format_sse(stream_response))
-
-                    await asyncio.gather(consume_reasoning(), consume_text_tokens())
+                    async for token_delta in message.text:
+                        text += token_delta
+                        stream_response.event = "token"
+                        stream_response.data = {
+                            "token": None if not has_reasoning else token_delta,
+                            "id": message_id,
+                            "reasoning_token": token_delta if not has_reasoning else None,
+                            "tool_calls": None,
+                            "usage_metadata": None,
+                        }
+                        await queue.put(format_sse(stream_response))
 
                     full_message = await maybe_await(message.output)
                     message_id = getattr(full_message, "id", message_id) if not isinstance(full_message, str) else message_id
@@ -247,7 +244,7 @@ def add_general_api_endpoint(
                             text += output_delta
                     stream_response.event = "tool_output"
                     stream_response.data = {
-                        "tool_output": tool_call.output if tool_call.error is None else tool_call.error,
+                        "tool_output": [tool_call.output] if tool_call.error is None else [tool_call.error],
                         "id": resolve_tool_output_id(tool_call),
                     }
                     await queue.put(format_sse(stream_response))
@@ -306,9 +303,9 @@ def add_general_api_endpoint(
                 msg_usage = getattr(full_message, "usage_metadata", None) if is_message_obj else None
                 stream_response.event = "token"
                 stream_response.data = {
-                    "token": full_text if full_text else None,
+                    "token": full_text if full_reasoning else None,
                     "id": msg_id,
-                    "reasoning_token": full_reasoning if full_reasoning else None,
+                    "reasoning_token": full_reasoning if full_reasoning else full_text,
                     "tool_calls": msg_tool_calls,
                     "usage_metadata": msg_usage,
                 }
@@ -325,7 +322,7 @@ def add_general_api_endpoint(
             async for tool_call in stream.tool_calls:
                 stream_response.event = "tool_output"
                 stream_response.data = {
-                    "tool_output": tool_call.output if tool_call.error is None else tool_call.error,
+                    "tool_output": [tool_call.output] if tool_call.error is None else [tool_call.error],
                     "id": resolve_tool_output_id(tool_call),
                 }
                 yield format_sse(stream_response)
