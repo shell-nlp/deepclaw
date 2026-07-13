@@ -1,11 +1,9 @@
 from deepclaw.middleware.chart import ChartMiddleware
 
 
-def test_middleware_single_tool():
-    mw = ChartMiddleware()
-    tools = mw.get_tools()
-    assert len(tools) == 1
-    assert tools[0].name == "generate_chart"
+def test_middleware_tools_class_var():
+    assert len(ChartMiddleware.tools) == 1
+    assert ChartMiddleware.tools[0].name == "generate_chart"
 
 
 def test_chart_tool_schema():
