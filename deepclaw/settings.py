@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     AUTH_ADMIN_PASSWORD: str | None = None
     AUTH_TOKEN_EXPIRE_DAYS: int = 1
 
+    # 图表公网访问地址前缀，例如 https://example.com；为空时返回相对路径 /charts/xxx.png
+    CHART_PUBLIC_URL: str = ""
+
     model_config = SettingsConfigDict(
         env_file=env_path or None,
         env_file_encoding="utf-8",

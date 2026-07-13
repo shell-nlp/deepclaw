@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
-from deepclaw.constant import root_dir
+from deepclaw.constant import root_dir, workspace_path
 from deepclaw.patch.langchain import patch_langchain
 from deepclaw.settings import settings
 from deepclaw.web_backend.agent.router import create_agent_router
@@ -139,6 +139,20 @@ async def app_lifespan(app: FastAPI):
             store_ctx.__exit__(None, None, None)
 
 
+def register_charts_static(app: FastAPI) -> None:
+    """挂载 /charts 目录，使图表图片可通过 URL 访问。"""
+    charts_dir = workspace_path / "charts"
+    charts_dir.mkdir(parents=True, exist_ok=True)
+    for route in app.routes:
+        if hasattr(route, "path") and route.path == "/charts":
+            return
+    app.mount(
+        "/charts",
+        StaticFiles(directory=str(charts_dir)),
+        name="charts",
+    )
+
+
 def _register_exported_html_routes(app: FastAPI, frontend_dir: Path) -> None:
     for html_file in frontend_dir.glob("*.html"):
         if html_file.name in {"index.html", "404.html"}:
@@ -165,4 +179,5 @@ def create_app() -> FastAPI:
     app.include_router(create_channels_router())
     app.include_router(create_skills_router())
     app.include_router(create_knowledge_bases_router())
+    register_charts_static(app)
     return app

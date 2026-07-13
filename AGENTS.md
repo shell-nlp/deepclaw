@@ -100,6 +100,7 @@
 - `deepclaw/middleware/`
   业务开关、RAG 注入、MCP、工具搜索、计划，以及 `cron` 工具实现等中间件与运行时扩展。
   NL2SQL 相关逻辑在 `deepclaw/middleware/nl2sql/`，DDL 拉取采用可注册 fetcher 架构（`ddl/base.py` + 各数据库实现如 `ddl/pgsql.py`）。
+  图表生成在 `deepclaw/middleware/chart/`，包含基于 matplotlib 的 9 种图表渲染引擎（bar/line/pie/column/scatter/area/histogram/funnel/radar）和 `ChartMiddleware`，核心渲染层无 langchain 依赖，可独立发布为 MCP Server。
 
 - `deepclaw/tools/`
   天气、网页抓取、检索等工具导出；`cron` 相关实现已归档到 `deepclaw/middleware/cron/`。
