@@ -38,6 +38,7 @@ dependencies = [
     "lark-oapi>=1.5.0,<2.0.0",
     "pgvector>=0.4.2",
     "neo4j>=6.2.0",
+    "matplotlib>=3.11.0",
 ]
 # uv add pypdf2 --optional pdf
 # uv sync --extra pdf 才会安装

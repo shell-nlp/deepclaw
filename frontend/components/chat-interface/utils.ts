@@ -205,7 +205,15 @@ export function getToolPreview(toolData: ToolData): string {
   if ('query' in args) return String(args.query).slice(0, 80)
 
   const firstKey = keys[0]
-  return String(args[firstKey]).slice(0, 80)
+  const val = args[firstKey]
+  if (typeof val === 'object' && val !== null) {
+    try {
+      return JSON.stringify(val).slice(0, 80)
+    } catch {
+      return String(val).slice(0, 80)
+    }
+  }
+  return String(val).slice(0, 80)
 }
 
 export function formatDuration(ms: number): string {

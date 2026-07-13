@@ -125,7 +125,8 @@ class Agent:
         if self.deep_agent:
             from deepclaw.middleware.cron.middleware import CronMiddleware
             from deepclaw.middleware.deep_agent_prompt import DeepAgentPromptMiddleware
-
+            from deepclaw.middleware.chart import ChartMiddleware
+            middleware.append(ChartMiddleware())
             middleware.append(DeepAgentPromptMiddleware())
             middleware.append(CronMiddleware())
             logger.info("使用 DeepAgent")

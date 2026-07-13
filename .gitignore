@@ -32,3 +32,4 @@ node_modules/
 *.auth_migrated_from_langchain_api
 .superpowers/
 neo4j_volumes/
+charts/
