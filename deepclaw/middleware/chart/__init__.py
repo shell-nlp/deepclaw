@@ -7,15 +7,14 @@
     middleware = ChartMiddleware()
 """
 
-from deepclaw.middleware.chart.charts import ALL_CHARTS, CHART_MAP, ChartDef, register
+from deepclaw.middleware.chart.charts import CHART_RENDERERS, ChartDef, ChartSchema
 from deepclaw.middleware.chart.engine import render_chart
 from deepclaw.middleware.chart.middleware import ChartMiddleware
 
 __all__ = [
-    "ALL_CHARTS",
-    "CHART_MAP",
+    "CHART_RENDERERS",
     "ChartDef",
     "ChartMiddleware",
-    "register",
+    "ChartSchema",
     "render_chart",
 ]
