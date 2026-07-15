@@ -88,6 +88,3 @@ venvPath = "."
 venv = ".venv"
 typeCheckingMode = "off"
 reportAttributeAccessIssue = false
-
-[project.scripts]
-deepclaw = "deepclaw.cli.main:app"
