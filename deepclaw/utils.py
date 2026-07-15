@@ -33,7 +33,8 @@ def get_chat_model() -> ChatDeepSeek:
         model=settings.CHAT_MODEL_NAME,
         api_base=settings.OPENAI_API_BASE,
         api_key=settings.OPENAI_API_KEY,
-        extra_body={"enable_thinking": False},
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+        # default_headers={"Host": "default-model.ai.api"},
     )
 
 
