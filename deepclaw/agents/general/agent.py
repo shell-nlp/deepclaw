@@ -45,9 +45,8 @@ class Agent:
         self.deep_agent = deep_agent
         self.agent = self.init_agent()
 
-    def init_agent(self) -> CompiledStateGraph:
-        skills = None
-        memory = None
+    def get_common_middleware(self):
+        """获取通用中间件列表"""
         middleware = []
         if settings.USE_COPILOTKIT:
             from copilotkit import CopilotKitMiddleware
@@ -56,13 +55,24 @@ class Agent:
 
         middleware.append(BusinessMiddleware())
         middleware.append(MCPMiddleware())
+        return middleware
+
+    def get_common_tools(self):
+        """获取通用工具列表"""
+        from deepclaw.tools import get_weather, web_fetch
+
+        return [get_weather, web_fetch]
+
+    def init_agent(self) -> CompiledStateGraph:
+        skills = None
+        memory = None
+        middleware = self.get_common_middleware()
 
         model = get_chat_model()
         model.tags = ["agent"]
-        from deepclaw.tools import get_weather, web_fetch
 
         backend = None
-        tools = self.tools + [get_weather, web_fetch]
+        tools = self.tools + self.get_common_tools()
 
         if not workspace_path.exists():
             workspace_path.mkdir(parents=True, exist_ok=True)
