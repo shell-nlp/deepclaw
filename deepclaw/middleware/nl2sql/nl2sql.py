@@ -4,7 +4,7 @@ from urllib.parse import urlparse
 
 import psycopg
 from langchain.agents.middleware import AgentMiddleware
-from langchain.tools import tool
+from langchain.tools import BaseTool, tool
 from langchain_core.messages import ToolMessage
 from loguru import logger
 from pydantic import Field
@@ -24,6 +24,66 @@ except ImportError:
 
 
 ORACLE_IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_$#]*$")
+# True：简版。字段注释内联在字段定义末尾,False：完整版。保留独立注释语句
+DESCRIBE_TABLES_INLINE_COLUMN_COMMENTS = True
+
+_COLUMN_COMMENT_DDL_RE = re.compile(
+    r'COMMENT ON COLUMN "(?P<table>[^"]+)"\."(?P<column>[^"]+)" IS '
+    r"'(?P<comment>(?:''|[^'])*)';"
+)
+
+
+def _inline_column_comments(ddl: str) -> str:
+    """将字段注释内联到 describe_tables_tool 返回的列定义中。
+
+    Args:
+        ddl: 由 DDL 拉取器生成的原始 DDL 文本。
+    """
+    comments_by_table: dict[str, list[tuple[str, str]]] = {}
+    for match in _COLUMN_COMMENT_DDL_RE.finditer(ddl):
+        comments_by_table.setdefault(match["table"], []).append((match["column"], match["comment"].replace("''", "'")))
+
+    inlined_columns: set[tuple[str, str]] = set()
+    result = ddl
+    for table_name, column_comments in comments_by_table.items():
+        table_ddl_re = re.compile(
+            rf'(?P<prefix>CREATE TABLE "{re.escape(table_name)}" \(\n)'
+            r"(?P<columns>.*?)"
+            r"(?P<suffix>\n\);)",
+            re.DOTALL,
+        )
+
+        def append_comments(match: re.Match[str]) -> str:
+            """在当前表的字段定义末尾追加字段注释。
+
+            Args:
+                match: 当前 CREATE TABLE 语句的正则匹配结果。
+            """
+            columns = match["columns"]
+            for column_name, comment in column_comments:
+                column_re = re.compile(
+                    rf'(?m)^(?P<definition>[ \t]*"{re.escape(column_name)}"'
+                    r"[^\n]*?)(?P<separator>,?)$"
+                )
+                safe_comment = comment.replace("*/", "* /")
+                columns, count = column_re.subn(
+                    lambda column_match: (
+                        f"{column_match['definition']} /* {safe_comment} */{column_match['separator']}"
+                    ),
+                    columns,
+                    count=1,
+                )
+                if count:
+                    inlined_columns.add((table_name, column_name))
+            return f"{match['prefix']}{columns}{match['suffix']}"
+
+        result = table_ddl_re.sub(append_comments, result, count=1)
+
+    result = _COLUMN_COMMENT_DDL_RE.sub(
+        lambda match: "" if (match["table"], match["column"]) in inlined_columns else match[0],
+        result,
+    )
+    return re.sub(r"\n{3,}", "\n\n", result)
 
 
 def _resolve_database_url() -> str | None:
@@ -174,7 +234,7 @@ class NL2SQLMiddleware(AgentMiddleware[None, AgentContext, None]):
 
         return list_tables_tool
 
-    def get_describe_tables_tool(self, user_id: str | None = None, schema: str | None = None):
+    def get_describe_tables_tool(self, user_id: str | None = None, schema: str | None = None) -> BaseTool:
         """构建查看指定表 DDL 的工具，复用 fetch_schema_ddl 逻辑。
 
         Args:
@@ -185,7 +245,9 @@ class NL2SQLMiddleware(AgentMiddleware[None, AgentContext, None]):
 
         @tool
         def describe_tables_tool(
-            table_names: str = Field(description="表名，多个表用逗号分隔，支持 schema.table_name 格式指定模式,未指定 schema 时使用默认的schema"),
+            table_names: str = Field(
+                description="表名，多个表用逗号分隔，支持 schema.table_name 格式指定模式,未指定 schema 时使用默认的schema"
+            ),
         ) -> str:
             """查看指定数据库表的详细 DDL 结构（列名、类型、主键、注释等），支持同时查看多张表.
             ## 要求
@@ -215,6 +277,8 @@ class NL2SQLMiddleware(AgentMiddleware[None, AgentContext, None]):
             for schema, names in schema_map.items():
                 part = fetch_schema_ddl(database_url, table_names=names, schema=schema)
                 if part:
+                    if DESCRIBE_TABLES_INLINE_COLUMN_COMMENTS:
+                        part = _inline_column_comments(part)
                     parts.append(part)
             return "\n---\n".join(parts) if parts else ""
 
@@ -314,7 +378,14 @@ class NL2SQLMiddleware(AgentMiddleware[None, AgentContext, None]):
         return await handler(request)
 
 
-if __name__ == "__main__":
+async def main():
     middleware = NL2SQLMiddleware()
-    with open("GISTOOLS_DDL.txt", "w") as f:
-        f.write(middleware.get_user_ddl())
+    describe_tables_tool = middleware.get_describe_tables_tool()
+    result = await describe_tables_tool.ainvoke({"table_names": "TB_DW_GRP_SK_NEXT_BUILD_DAY"})
+    print(result)
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    asyncio.run(main())
