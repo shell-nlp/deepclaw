@@ -136,6 +136,71 @@ _READONLY_PREFIX_RE: re.Pattern[str] = re.compile(
 )
 
 
+def _inject_filters(sql: str, filters: list[str]) -> str:
+    """向 SQL 语句注入额外的 WHERE 过滤条件列表（追加到最外层 WHERE/末尾）。
+
+    每个过滤条件以 AND 连接。自动处理已有 WHERE 和无 WHERE 两种情况，
+    子查询中的关键字不受影响。
+
+    Args:
+        sql: 原始 SQL 语句。
+        filters: 过滤条件表达式列表，每个元素为一个完整的 WHERE 子句条件。
+
+    Returns:
+        注入过滤条件后的 SQL。
+    """
+    if not filters:
+        return sql
+
+    sql = sql.strip().rstrip(";")
+    upper = sql.upper()
+
+    def _find_outer_keyword(keyword: str, start: int = 0) -> int:
+        depth = 0
+        in_single = False
+        in_double = False
+        klen = len(keyword)
+        for i in range(start, len(sql)):
+            ch = sql[i]
+            if ch == "'" and not in_double:
+                in_single = not in_single
+            elif ch == '"' and not in_single:
+                in_double = not in_double
+            elif not in_single and not in_double:
+                if ch == '(':
+                    depth += 1
+                elif ch == ')':
+                    depth -= 1
+                elif depth == 0:
+                    if upper[i:i+klen] == keyword and (i == 0 or not sql[i-1].isalnum()):
+                        return i
+        return -1
+
+    def _block_end_after(pos: int) -> int:
+        end = len(sql)
+        for kw in (" GROUP BY ", " ORDER BY ", " HAVING ", " UNION ", " INTERSECT ", " MINUS "):
+            kw_pos = upper.find(kw, pos)
+            if kw_pos >= 0 and kw_pos < end:
+                end = kw_pos
+        return end
+
+    where_pos = _find_outer_keyword("WHERE ")
+
+    for fc in filters:
+        if where_pos >= 0:
+            block_end = _block_end_after(where_pos + 6)
+            sql = sql[:block_end] + f" AND {fc}" + sql[block_end:]
+            where_pos = 0
+        else:
+            from_pos = _find_outer_keyword("FROM ")
+            if from_pos >= 0:
+                block_end = _block_end_after(from_pos + 5)
+                sql = sql[:block_end] + f" WHERE {fc}" + sql[block_end:]
+                where_pos = 0
+
+    return sql
+
+
 def _strip_leading_sql_comments(sql: str) -> str:
     """移除 SQL 开头连续出现的空白和注释。
 
@@ -293,6 +358,11 @@ class NL2SQLMiddleware(AgentMiddleware[None, AgentContext, None]):
         """
         resolved_schema = _resolve_schema(schema)
         # user_ddl = self.get_user_ddl(user_id, schema=resolved_schema)
+        # TODO: 过滤条件后续通过外部传入，当前先硬编码
+        _sql_filters = []
+        # _sql_filters = [
+        #     "GRID_ID IN (SELECT DEPT_ID FROM TB_SK_SYS_DEPT WHERE DEPT_ID = '用户部门编码' OR ANCESTORS LIKE '%' || '用户部门编码' || '%')",
+        # ]
 
         @tool
         def run_sql(sql: str = Field(description="SQL 语句")) -> str:
@@ -308,8 +378,11 @@ class NL2SQLMiddleware(AgentMiddleware[None, AgentContext, None]):
             if not database_url:
                 return "错误：未配置数据库连接"
 
+            _validate_readonly(sql)
+            if _sql_filters:
+                sql = _inject_filters(sql, _sql_filters)
+
             try:
-                _validate_readonly(sql)
                 with _make_connection(database_url) as conn:
                     _apply_schema_to_connection(conn, database_url, resolved_schema)
                     MAX_DISPLAY_ROWS = 30  # 最多展示 30 行
