@@ -108,3 +108,34 @@ def test_general_agent_registers_cron_middleware(monkeypatch):
         isinstance(m, CronMiddleware)
         for m in captured["middleware"]
     )
+
+
+def test_general_agent_uses_exact_token_counter_for_summarization(monkeypatch):
+    from deepclaw.utils import count_message_tokens
+
+    captured = {}
+
+    class DummySummarizationMiddleware:
+        def __init__(self, **kwargs):
+            captured["kwargs"] = kwargs
+
+    def fake_create_agent(**kwargs):
+        captured["middleware"] = kwargs["middleware"]
+        return object()
+
+    import langchain.agents.middleware as middleware_module
+    import deepclaw.agents.general.agent as agent_module
+
+    class DummyModel:
+        tags = []
+
+    monkeypatch.setattr(middleware_module, "SummarizationMiddleware", DummySummarizationMiddleware)
+    monkeypatch.setattr("langchain.agents.create_agent", fake_create_agent)
+    monkeypatch.setattr(agent_module, "get_chat_model", lambda: DummyModel())
+    monkeypatch.setattr(agent_module.settings, "USE_COPILOTKIT", False)
+    monkeypatch.setattr(agent_module.settings, "USE_TOOL_SEARCH", False)
+    monkeypatch.setattr(agent_module.settings, "BACKEND_TYPE", "local_shell")
+
+    agent_module.Agent(deep_agent=False)
+
+    assert captured["kwargs"]["token_counter"] is count_message_tokens

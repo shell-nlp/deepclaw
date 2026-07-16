@@ -114,6 +114,13 @@
 - `deepclaw/settings.py`
   主服务环境变量入口。
 
+- `deepclaw/utils/`
+  仓库级工具函数包。当前按主题拆分为：
+  - `model_factory.py` — `get_chat_model()` / `get_embedding_model()`
+  - `time_utils.py` — `get_current_time()`
+  - `token_count.py` — 基于 `tiktoken` 与 `huggingface/tokenizers` 的 token 计数
+  - `__init__.py` — 统一兼容导出入口，外部继续使用 `from deepclaw.utils import ...`
+
 - `deepclaw/constant.py`
   定义：
   - `root_dir`
