@@ -277,7 +277,6 @@ def _run_demo() -> None:
         无额外参数。
     """
 
-    sample_text = "你好，请帮我总结这段对话，并提炼关键行动项。"
     sample_tools = [
         {
             "type": "function",
@@ -316,8 +315,6 @@ def _run_demo() -> None:
     ]
 
     print("== Token Count Demo ==")
-    print(f"text: {sample_text}")
-    print(f"text_tokens: {count_text_tokens(sample_text)}")
     print(f"message_count: {len(sample_messages)}")
     print(f"message_tokens_without_tools: {count_message_tokens(sample_messages)}")
     print(f"message_tokens_with_tools: {count_message_tokens(sample_messages, tools=sample_tools)}")
