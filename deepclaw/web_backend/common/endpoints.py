@@ -189,6 +189,7 @@ def add_general_api_endpoint(
                         yield f"data: {stream_response.model_dump_json()}\n\n"
                         text += f"\n工具响应： \n{chunk['tools']['messages']}\n{'-' * 100}\n"
 
+            yield "data: [DONE]\n\n"
             logger.info(f"session_id：{request.session_id} \nFinal Response: \n{text}")
 
         async def generator():
@@ -236,6 +237,8 @@ def add_general_api_endpoint(
                             "id": f"lc_run--{str(uuid.uuid4())}",
                         }
                         yield f"data: {stream_response.model_dump_json()}\n\n"
+
+            yield "data: [DONE]\n\n"
 
         if request.stream:
             return StreamingResponse(

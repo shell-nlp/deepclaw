@@ -53,6 +53,8 @@ class AgentClient:
         raw = stripped.removeprefix("data:").strip()
         if not raw:
             return None
+        if raw == "[DONE]":
+            return None
 
         return AgentEvent.model_validate(json.loads(raw))
 
