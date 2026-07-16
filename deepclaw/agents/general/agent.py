@@ -133,9 +133,10 @@ class Agent:
         # )
 
         if self.deep_agent:
+            from deepclaw.middleware.chart import ChartMiddleware
             from deepclaw.middleware.cron.middleware import CronMiddleware
             from deepclaw.middleware.deep_agent_prompt import DeepAgentPromptMiddleware
-            from deepclaw.middleware.chart import ChartMiddleware
+
             middleware.append(ChartMiddleware())
             middleware.append(DeepAgentPromptMiddleware())
             middleware.append(CronMiddleware())
@@ -159,7 +160,9 @@ class Agent:
         else:
             logger.info("正在使用 ReactAgent")
             from langchain.agents import create_agent
+            from langchain.agents.middleware import SummarizationMiddleware
 
+            middleware.append(SummarizationMiddleware(model=get_chat_model()))
             return create_agent(
                 model=model,
                 tools=tools,

@@ -130,10 +130,8 @@ def test_general_api_v2_adapts_v3_streams_and_keeps_sse_contract():
     assert agent.calls[0]["version"] == "v3"
     assert agent.contexts[0].user_id == "user-1"
 
-    payloads = []
-    for line in response.text.splitlines():
-        if line.startswith("data: "):
-            payloads.append(json.loads(line[6:]))
+    raw_data_lines = [line[6:] for line in response.text.splitlines() if line.startswith("data: ")]
+    payloads = [json.loads(line) for line in raw_data_lines if line != "[DONE]"]
 
     token_payloads = [payload for payload in payloads if payload["event"] == "token"]
     tool_call_payloads = [payload for payload in payloads if payload["event"] == "tool_calls"]
@@ -173,6 +171,7 @@ def test_general_api_v2_adapts_v3_streams_and_keeps_sse_contract():
             "data": {"__interrupt__": {"need": "confirm"}},
         }
     ]
+    assert raw_data_lines[-1] == "[DONE]"
 
 
 def test_general_api_v2_non_stream_uses_final_message_projection():
@@ -201,10 +200,8 @@ def test_general_api_v2_non_stream_uses_final_message_projection():
 
     assert response.status_code == 200
 
-    payloads = []
-    for line in response.text.splitlines():
-        if line.startswith("data: "):
-            payloads.append(json.loads(line[6:]))
+    raw_data_lines = [line[6:] for line in response.text.splitlines() if line.startswith("data: ")]
+    payloads = [json.loads(line) for line in raw_data_lines if line != "[DONE]"]
 
     assert payloads == [
         {
@@ -236,3 +233,4 @@ def test_general_api_v2_non_stream_uses_final_message_projection():
             "data": {"__interrupt__": {"need": "confirm"}},
         },
     ]
+    assert raw_data_lines[-1] == "[DONE]"

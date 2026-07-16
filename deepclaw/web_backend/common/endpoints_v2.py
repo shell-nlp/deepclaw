@@ -313,6 +313,7 @@ def add_general_api_endpoint(
             finally:
                 await asyncio.gather(*waiters)
 
+            yield "data: [DONE]\n\n"
             logger.info(f"session_id：{request.session_id} \nFinal Response: \n{text}")
 
         async def generator():
@@ -386,6 +387,8 @@ def add_general_api_endpoint(
                 stream_response.event = "__interrupt__"
                 stream_response.data = {"__interrupt__": interrupt_payload}
                 yield format_sse(stream_response)
+
+            yield "data: [DONE]\n\n"
 
         if request.stream:
             return StreamingResponse(

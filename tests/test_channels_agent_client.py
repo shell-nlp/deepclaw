@@ -28,6 +28,7 @@ async def fake_sender(payload, headers):
     yield 'data: {"event": "tool_calls", "data": {"tool_calls": []}}\n\n'
     yield "event: ping\n\n"
     yield 'data: {"event": "__interrupt__", "data": {"__interrupt__": {}}}\n\n'
+    yield "data: [DONE]\n\n"
 
 
 def test_stream_parses_sse_data_lines_into_agent_events():

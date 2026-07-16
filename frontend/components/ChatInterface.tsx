@@ -1642,6 +1642,7 @@ export default function ChatInterface() {
       const decoder = new TextDecoder()
       let buffer = ''
       let interrupted = false
+      let completed = false
 
       const processChunk = (chunk: string) => {
         const normalized = chunk.replace(/\r\n/g, '\n')
@@ -1656,6 +1657,12 @@ export default function ChatInterface() {
             .map((line) => line.slice(5).trim())
 
           if (dataLines.length === 0) continue
+          if (dataLines.join('\n') === '[DONE]') {
+            completed = true
+            setIsProcessing(false)
+            setStatus('ready')
+            continue
+          }
 
           try {
             const handledEvent = handleStreamEvent(
@@ -1675,6 +1682,10 @@ export default function ChatInterface() {
         if (done) break
         buffer += decoder.decode(value, { stream: true })
         processChunk(buffer)
+        if (completed) {
+          await reader.cancel()
+          break
+        }
       }
 
       buffer += decoder.decode()
