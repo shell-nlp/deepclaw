@@ -38,7 +38,6 @@ interface ChatViewProps {
   currentAssistantMessageId: string | null
   chatContainerRef: Ref<HTMLDivElement>
   textareaRef: Ref<HTMLTextAreaElement>
-  reasoningDuration?: number
   toolCallDurations?: Record<string, number>
   onClearChat: () => void
   onInterruptAction: (
@@ -89,11 +88,9 @@ function getAssistantMessageItems(msg: Message): AssistantMessageItem[] {
 
 function AssistantMessageBody({
   msg,
-  reasoningDuration,
   toolCallDurations,
 }: {
   msg: Message
-  reasoningDuration?: number
   toolCallDurations?: Record<string, number>
 }) {
   const reasoningBlocks =
@@ -117,7 +114,7 @@ function AssistantMessageBody({
             (reasoningBlock) => reasoningBlock.id === item.reasoningBlockId
           )
           return block ? (
-            <ReasoningCard key={item.id} block={block} duration={reasoningDuration} />
+            <ReasoningCard key={item.id} block={block} />
           ) : null
         }
 
@@ -360,7 +357,6 @@ export function ChatView({
   currentAssistantMessageId,
   chatContainerRef,
   textareaRef,
-  reasoningDuration,
   toolCallDurations,
   onClearChat,
   onInterruptAction,
@@ -579,7 +575,6 @@ export function ChatView({
                   </div>
                   <AssistantMessageBody
                     msg={msg}
-                    reasoningDuration={reasoningDuration}
                     toolCallDurations={toolCallDurations}
                   />
                   {isProcessing &&

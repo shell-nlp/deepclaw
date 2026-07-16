@@ -12,6 +12,7 @@ export interface Message {
 export interface ReasoningBlock {
   id: string
   content: string
+  duration?: number
 }
 
 export type AssistantMessageItem =

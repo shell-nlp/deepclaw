@@ -237,7 +237,6 @@ export default function ChatInterface() {
   const [useKnowledgeBase, setUseKnowledgeBase] = useState(false)
   const [showInterrupt, setShowInterrupt] = useState(false)
   const [interruptData, setInterruptData] = useState<InterruptData | null>(null)
-  const [reasoningDuration, setReasoningDuration] = useState<number | undefined>()
   const [toolCallDurations, setToolCallDurations] = useState<Record<string, number>>({})
 
   const [actor, setActor] = useState<ActorState>(() => normalizeActorPayload(null))
@@ -339,7 +338,6 @@ export default function ChatInterface() {
     setMessages([])
     setShowInterrupt(clearedState.showInterrupt)
     setInterruptData(clearedState.interruptData)
-    setReasoningDuration(undefined)
     setToolCallDurations({})
     currentAssistantMessageIdRef.current = null
     processedToolCallIdsRef.current.clear()
@@ -1451,6 +1449,30 @@ export default function ChatInterface() {
     }
   }
 
+  /**
+   * 将当前思考块的耗时写入对应的消息块。
+   *
+   * Args:
+   * - 无。
+   */
+  const finishReasoningBlock = useCallback(() => {
+    if (reasoningStartTimeRef.current === null) return
+
+    const duration = Date.now() - reasoningStartTimeRef.current
+    updateAssistantMessage((message) => {
+      const reasoningBlocks = message.reasoningBlocks
+      if (!reasoningBlocks?.length) return message
+
+      return {
+        ...message,
+        reasoningBlocks: reasoningBlocks.map((block, index) =>
+          index === reasoningBlocks.length - 1 ? { ...block, duration } : block
+        ),
+      }
+    })
+    reasoningStartTimeRef.current = null
+  }, [updateAssistantMessage])
+
   const handleStreamEvent = useCallback(
     (event: StreamEvent): StreamEvent['event'] | null => {
       const data = event.data
@@ -1463,9 +1485,6 @@ export default function ChatInterface() {
               lastAssistantStreamEventRef.current !== 'reasoning'
             if (shouldStartNewBlock) {
               reasoningStartTimeRef.current = Date.now()
-              if (reasoningDuration !== undefined) {
-                setReasoningDuration(undefined)
-              }
             }
             updateAssistantMessage((message) => {
               const { reasoningBlocks, messageItems } = appendReasoningToken(
@@ -1491,12 +1510,8 @@ export default function ChatInterface() {
           }
 
           if (data.token) {
-            if (
-              lastAssistantStreamEventRef.current === 'reasoning' &&
-              reasoningStartTimeRef.current !== null
-            ) {
-              setReasoningDuration(Date.now() - reasoningStartTimeRef.current)
-              reasoningStartTimeRef.current = null
+            if (lastAssistantStreamEventRef.current === 'reasoning') {
+              finishReasoningBlock()
             }
             const shouldAppendToLastBlock =
               lastAssistantStreamEventRef.current === 'content'
@@ -1526,12 +1541,8 @@ export default function ChatInterface() {
 
         case 'tool_calls': {
           if (data.tool_calls?.length) {
-            if (
-              lastAssistantStreamEventRef.current === 'reasoning' &&
-              reasoningStartTimeRef.current !== null
-            ) {
-              setReasoningDuration(Date.now() - reasoningStartTimeRef.current)
-              reasoningStartTimeRef.current = null
+            if (lastAssistantStreamEventRef.current === 'reasoning') {
+              finishReasoningBlock()
             }
             const now = Date.now()
             updateAssistantMessage((message) => {
@@ -1619,6 +1630,9 @@ export default function ChatInterface() {
 
         case '__interrupt__': {
           if (data.__interrupt__) {
+            if (lastAssistantStreamEventRef.current === 'reasoning') {
+              finishReasoningBlock()
+            }
             setInterruptData(data.__interrupt__)
             setShowInterrupt(true)
             setIsProcessing(false)
@@ -1631,7 +1645,7 @@ export default function ChatInterface() {
 
       return event.event
     },
-    [updateAssistantMessage]
+    [finishReasoningBlock, updateAssistantMessage]
   )
 
   const readEventStream = useCallback(
@@ -1729,7 +1743,6 @@ export default function ChatInterface() {
 
     setIsProcessing(true)
     setStatus('connecting')
-    setReasoningDuration(undefined)
     setToolCallDurations({})
 
     const assistantMessageId = generateMessageId()
@@ -1781,6 +1794,7 @@ export default function ChatInterface() {
         setStatus('ready')
       }
     } finally {
+      finishReasoningBlock()
       setIsProcessing(false)
       currentAssistantMessageIdRef.current = null
       processedToolCallIdsRef.current.clear()
@@ -1888,6 +1902,7 @@ export default function ChatInterface() {
         })
       }
     } finally {
+      finishReasoningBlock()
       setIsProcessing(false)
       if (!receivedInterrupt) {
         setInterruptData(null)
@@ -2088,7 +2103,6 @@ export default function ChatInterface() {
               currentAssistantMessageId={currentAssistantMessageIdRef.current}
               chatContainerRef={chatContainerRef}
               textareaRef={textareaRef}
-              reasoningDuration={reasoningDuration}
               toolCallDurations={toolCallDurations}
               onClearChat={clearChat}
               onInterruptAction={handleInterruptAction}
