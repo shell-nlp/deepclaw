@@ -17,7 +17,7 @@ from deepclaw.constant import (
 from deepclaw.middleware.common import BusinessMiddleware
 from deepclaw.middleware.mcp import MCPMiddleware
 from deepclaw.settings import settings
-from deepclaw.utils import get_chat_model
+from deepclaw.utils import count_message_tokens, get_chat_model
 
 
 def user_namespace_factory(runtime: Runtime[Any]) -> tuple[str, ...]:
@@ -162,7 +162,12 @@ class Agent:
             from langchain.agents import create_agent
             from langchain.agents.middleware import SummarizationMiddleware
 
-            middleware.append(SummarizationMiddleware(model=get_chat_model()))
+            middleware.append(
+                SummarizationMiddleware(
+                    model=get_chat_model(),
+                    # token_counter=count_message_tokens,
+                )
+            )
             return create_agent(
                 model=model,
                 tools=tools,
