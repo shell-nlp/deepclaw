@@ -268,3 +268,60 @@ def count_message_tokens(
             total_tokens += counter(message.tool_call_id)
 
     return total_tokens
+
+
+def _run_demo() -> None:
+    """运行 token 计数示例。
+
+    Args:
+        无额外参数。
+    """
+
+    sample_text = "你好，请帮我总结这段对话，并提炼关键行动项。"
+    sample_tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_weather",
+                "description": "查询指定城市天气",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "city": {"type": "string"},
+                    },
+                    "required": ["city"],
+                },
+            },
+        }
+    ]
+    sample_messages = [
+        SystemMessage(content="你是一个严谨的中文助手。"),
+        HumanMessage(content="请先总结需求，再给出实施步骤。"),
+        AIMessage(
+            content="我先调用天气工具确认外部信息。",
+            tool_calls=[
+                {
+                    "id": "call_demo_weather",
+                    "name": "get_weather",
+                    "args": {"city": "上海"},
+                    "type": "tool_call",
+                }
+            ],
+        ),
+        ToolMessage(
+            content='{"city":"上海","weather":"晴","temperature":30}',
+            tool_call_id="call_demo_weather",
+        ),
+        AIMessage(content="工具结果已收到，接下来我会结合天气信息继续回答。"),
+    ]
+
+    print("== Token Count Demo ==")
+    print(f"text: {sample_text}")
+    print(f"text_tokens: {count_text_tokens(sample_text)}")
+    print(f"message_count: {len(sample_messages)}")
+    print(f"message_tokens_without_tools: {count_message_tokens(sample_messages)}")
+    print(f"message_tokens_with_tools: {count_message_tokens(sample_messages, tools=sample_tools)}")
+
+
+if __name__ == "__main__":
+    _run_demo()
