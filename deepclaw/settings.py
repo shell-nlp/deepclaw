@@ -1,6 +1,7 @@
 from typing import Literal
 
 from dotenv import find_dotenv, load_dotenv
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # 获取.env文件路径（Docker 下 env 变量由 compose 注入，不需要 .env 文件）
@@ -58,6 +59,9 @@ class Settings(BaseSettings):
 
     # 图表公网访问地址前缀，例如 https://example.com；为空时返回相对路径 /charts/xxx.png
     CHART_PUBLIC_URL: str = ""
+    # 图表文件保留时长和数量上限，避免共享工作区无限增长
+    CHART_RETENTION_HOURS: int = Field(default=24, ge=1, le=720)
+    CHART_MAX_FILES: int = Field(default=1_000, ge=1, le=10_000)
 
     model_config = SettingsConfigDict(
         env_file=env_path or None,

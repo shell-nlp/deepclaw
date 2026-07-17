@@ -1,17 +1,32 @@
+from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
+
 from deepclaw.middleware.chart.engine import render_chart
+from deepclaw.settings import settings
 
 
 class TestChartBasic:
     """基础图表渲染测试"""
 
-    def test_bar_chart(self):
+    def test_bar_chart(self, tmp_path, monkeypatch):
+        """验证默认使用相对地址并实际写出 PNG 文件。
+
+        Args:
+            tmp_path: pytest 提供的临时目录。
+            monkeypatch: pytest 提供的属性替换工具。
+        """
+        monkeypatch.setattr(settings, "CHART_PUBLIC_URL", "")
         url = render_chart({
             "chart_type": "bar",
             "data": [{"category": "A", "value": 10}, {"category": "B", "value": 20}],
             "title": "Test Bar",
         })
-        assert url.startswith("http://") or url.startswith("/charts/")
+        assert url.startswith("/charts/")
         assert url.endswith(".png")
+        chart_file = tmp_path / "charts" / Path(url).name
+        assert chart_file.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
 
     def test_line_chart(self):
         url = render_chart({
@@ -131,3 +146,41 @@ class TestChartBasic:
             "bar", "line", "pie", "column", "scatter",
             "area", "histogram", "funnel", "radar",
         }
+
+
+class TestChartValidation:
+    """图表输入校验测试。"""
+
+    @pytest.mark.parametrize("params", [
+        {"chart_type": "radar", "data": []},
+        {"chart_type": "bar", "data": [{"value": 1}]},
+        {"chart_type": "histogram", "data": [1, 2], "bins": 0},
+        {"chart_type": "pie", "data": [{"category": "A", "value": 0}]},
+        {
+            "chart_type": "bar",
+            "data": [
+                {"category": "A", "group": "G", "value": 1},
+                {"category": "A", "group": "G", "value": 2},
+            ],
+        },
+    ])
+    def test_invalid_chart_data_returns_validation_error(self, params):
+        """验证无效数据在渲染前被拦截。
+
+        Args:
+            params: 参数化传入的非法图表参数。
+        """
+        with pytest.raises(ValidationError):
+            render_chart(params)
+
+    def test_funnel_uses_largest_value_as_normalization_reference(self):
+        """验证漏斗首项不是最大值时仍可生成图表。
+
+        Args:
+            无。
+        """
+        url = render_chart({
+            "chart_type": "funnel",
+            "data": [{"stage": "访问", "value": 10}, {"stage": "转化", "value": 20}],
+        })
+        assert url.endswith(".png")

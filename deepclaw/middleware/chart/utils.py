@@ -1,4 +1,4 @@
-import socket
+import time
 import uuid
 from pathlib import Path
 
@@ -13,7 +13,11 @@ _CHARTS_DIR: Path | None = None
 
 
 def _get_charts_dir() -> Path:
-    """获取图表输出目录，延迟初始化。"""
+    """获取图表输出目录，并在首次调用时创建。
+
+    Returns:
+        Path: 图表文件输出目录。
+    """
     global _CHARTS_DIR
     if _CHARTS_DIR is None:
         _CHARTS_DIR = workspace_path / "charts"
@@ -24,10 +28,8 @@ def _get_charts_dir() -> Path:
 def setup_chinese_font() -> str:
     """自动探测可用的中文字体名称，找不到时回退到 DejaVu Sans。
 
-    Returns
-    -------
-    str
-        可用字体名称
+    Returns:
+        str: 可用字体名称。
     """
     font_candidates = [
         "SimHei",
@@ -46,46 +48,52 @@ def setup_chinese_font() -> str:
     return "DejaVu Sans"
 
 
-def _get_default_public_url() -> str:
-    """获取本机局域网 IP 作为默认公网地址。
+def cleanup_chart_files(charts_dir: Path | None = None) -> None:
+    """清理过期图表，并限制保留文件数量。
 
-    Returns
-    -------
-    str
-        格式为 http://<ip>:<port>
+    Args:
+        charts_dir: 待清理的图表目录，默认使用工作区图表目录。
     """
-    try:
-        host_ip = "127.0.0.1"
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.settimeout(0.1)
-        s.connect(("10.255.255.255", 1))
-        host_ip = s.getsockname()[0]
-        s.close()
-    except Exception:
-        host_ip = socket.gethostbyname(socket.gethostname())
-    return f"http://{host_ip}:{settings.PORT}"
+    directory = charts_dir or _get_charts_dir()
+    now = time.time()
+    retention_seconds = settings.CHART_RETENTION_HOURS * 3_600
+    retained: list[tuple[float, Path]] = []
+    for file_path in directory.glob("*.png"):
+        try:
+            modified_at = file_path.stat().st_mtime
+            if now - modified_at > retention_seconds:
+                file_path.unlink()
+                continue
+            retained.append((modified_at, file_path))
+        except OSError as error:
+            logger.warning("清理图表文件失败: path={}, error={}", file_path, repr(error))
+
+    retained.sort(key=lambda item: item[0], reverse=True)
+    for _, file_path in retained[settings.CHART_MAX_FILES:]:
+        try:
+            file_path.unlink()
+        except OSError as error:
+            logger.warning("清理超额图表文件失败: path={}, error={}", file_path, repr(error))
 
 
 def save_chart_to_workspace(fig: plt.Figure) -> str:
-    """将 matplotlib 图表保存到工作区并返回 URL。
+    """将 matplotlib 图表保存到工作区，并返回可访问地址。
 
-    Parameters
-    ----------
-    fig : plt.Figure
-        matplotlib 图形对象
+    Args:
+        fig: 待保存的 matplotlib 图形对象。
 
-    Returns
-    -------
-    str
-        图表的可访问 URL 路径
+    Returns:
+        str: 图表的可访问 URL 路径。
     """
+    charts_dir = _get_charts_dir()
     file_name = f"{uuid.uuid4().hex}.png"
-    file_path = _get_charts_dir() / file_name
-    fig.savefig(file_path, dpi=150, bbox_inches="tight", facecolor="white")
-    plt.close(fig)
+    file_path = charts_dir / file_name
+    try:
+        fig.savefig(file_path, dpi=150, bbox_inches="tight", facecolor="white")
+    finally:
+        plt.close(fig)
+    cleanup_chart_files(charts_dir)
     logger.info("图表已保存: {}", file_path)
     base_path = f"/charts/{file_name}"
     public_url = settings.CHART_PUBLIC_URL
-    if not public_url:
-        public_url = _get_default_public_url()
-    return f"{public_url.rstrip('/')}{base_path}"
+    return f"{public_url.rstrip('/')}{base_path}" if public_url else base_path

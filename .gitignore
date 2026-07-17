@@ -32,4 +32,5 @@ node_modules/
 *.auth_migrated_from_langchain_api
 .superpowers/
 neo4j_volumes/
-charts/
+# 图表运行时生成文件；不要忽略 deepclaw/middleware/chart/charts 源码包。
+.deepclaw/workspace/charts/
