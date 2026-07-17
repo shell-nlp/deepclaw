@@ -6,8 +6,8 @@ from langchain_core.tools import tool
 from loguru import logger
 from pydantic import ValidationError
 
-from deepclaw.middleware.chart.charts import CHART_TYPE_DESCRIPTIONS, ChartSchema
 from deepclaw.middleware.chart.engine import render_chart
+from deepclaw.middleware.chart.schemas import CHART_TYPE_DESCRIPTIONS, ChartSchema
 
 CHART_SYSTEM_PROMPT = (
     "\n\n## 图表展示规则\n"
@@ -22,10 +22,11 @@ CHART_TOOL_DESCRIPTION = (
     + "图表类型说明:\n"
     + "\n".join(f"- {k}: {v}" for k, v in CHART_TYPE_DESCRIPTIONS.items())
     + "\n\n数据格式:\n"
-    + "- bar/column/pie/funnel: [{'category': 'A', 'value': 10, 'group': '组别'}, ...]\n"
+    + "- bar/column/pie: [{'category': 'A', 'value': 10, 'group': '组别'}, ...]\n"
     + "- line/area: [{'time': '2020', 'value': 10, 'group': '组别'}, ...]\n"
     + "- scatter: [{'x': 1, 'y': 2, 'group': '组别'}, ...]\n"
     + "- radar: [{'item': '速度', 'score': 80, 'group': '组别'}, ...]\n"
+    + "- funnel: [{'stage': '访问', 'value': 100}, ...]\n"
     + "- histogram: [1, 2, 3] 或 [{'value': 1}, ...]"
 )
 

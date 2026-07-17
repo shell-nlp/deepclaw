@@ -1,12 +1,15 @@
 import matplotlib
 matplotlib.use("Agg")
 
+from threading import RLock
+
 import matplotlib.pyplot as plt
 
 from deepclaw.middleware.chart.charts import CHART_RENDERERS, ChartSchema
 from deepclaw.middleware.chart.utils import setup_chinese_font
 
 _chinese_font: str | None = None
+_render_lock = RLock()
 
 
 def _get_font() -> str:
@@ -18,17 +21,13 @@ def _get_font() -> str:
 
 
 def render_chart(params: dict) -> str:
-    """统一图表渲染入口，通过 ChartSchema 验证后根据 chart_type 派发。
+    """校验参数并在受保护的 Matplotlib 上下文中渲染图表。
 
-    Parameters
-    ----------
-    params : dict
-        原始图表参数字典
+    Args:
+        params: 原始图表参数字典。
 
-    Returns
-    -------
-    str
-        图表的可访问 URL 路径
+    Returns:
+        str: 图表的可访问 URL 路径。
     """
     validated = ChartSchema(**params)
     data = validated.model_dump()
@@ -36,6 +35,8 @@ def render_chart(params: dict) -> str:
     render_fn = CHART_RENDERERS.get(chart_type)
     if not render_fn:
         raise ValueError(f"未知图表类型: {chart_type}")
-    plt.rcParams["font.sans-serif"] = [_get_font()]
-    plt.rcParams["axes.unicode_minus"] = False
-    return render_fn(data)
+    with _render_lock, plt.rc_context({
+        "font.sans-serif": [_get_font()],
+        "axes.unicode_minus": False,
+    }):
+        return render_fn(data)
