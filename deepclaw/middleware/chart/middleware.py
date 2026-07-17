@@ -9,12 +9,22 @@ from pydantic import ValidationError
 from deepclaw.middleware.chart.engine import render_chart
 from deepclaw.middleware.chart.schemas import CHART_TYPE_DESCRIPTIONS, ChartSchema
 
+CHART_PROMPT_MARKER = "## 图表工具使用规范"
+
 CHART_SYSTEM_PROMPT = (
-    "\n\n## 图表展示规则\n"
-    "当你使用 generate_chart 工具生成图表后，工具会返回 Markdown 图片格式的链接。\n"
-    "请在你最终的回答中展示这张图片，让用户看到图表内容。\n"
-    '不要只说"图表已生成完成"或仅输出工具调用结果而不展示图片。\n'
-    "如果有多个图表，请逐一展示。"
+    f"\n\n{CHART_PROMPT_MARKER}\n"
+    "仅在用户已提供数据、或当前上下文中存在可信的结构化数据且可视化能帮助理解时，才调用 generate_chart；"
+    "不得为了生成图表而编造、补全或猜测数据。数据不足时，先向用户索取必要数据。\n"
+    "图表选型：时间趋势用 line/area；类别比较用 bar/column；占比用 pie；数据分布用 histogram；"
+    "转化流程用 funnel；两个数值变量的关系用 scatter；多维指标对比用 radar。\n"
+    "调用前必须核对字段：bar/column/pie 使用 category、value；line/area 使用 time、value；"
+    "scatter 使用 x、y；radar 使用 item、score；funnel 使用 stage、value；histogram 使用纯数值或 value。"
+    "分组时每条数据都必须有 group，且同一维度与 group 的组合不能重复。pie/funnel 的 value 必须非负且至少一个为正数。"
+    "stack 仅可用于 bar/column。图表应包含清晰 title；有坐标轴时应尽量补充 axisXTitle、axisYTitle 和单位。\n"
+    "如果工具返回参数错误，先依据错误信息修正参数并重试一次；仍无法生成时，说明缺少或不合法的数据，不得声称图表已生成。\n"
+    "工具成功时会返回 Markdown 图片。最终回答必须原样保留并展示该 Markdown 图片，使用户在回答中直接看到图表；"
+    '不能只回复“图片已生成”或“图表已完成”。图片后应给出简短的数据解读或关键结论。'
+    "有多个图表时逐一展示，并分别说明结论。"
 )
 
 CHART_TOOL_DESCRIPTION = (
@@ -28,6 +38,11 @@ CHART_TOOL_DESCRIPTION = (
     + "- radar: [{'item': '速度', 'score': 80, 'group': '组别'}, ...]\n"
     + "- funnel: [{'stage': '访问', 'value': 100}, ...]\n"
     + "- histogram: [1, 2, 3] 或 [{'value': 1}, ...]"
+    + "\n\n使用规则:\n"
+    + "- 仅使用用户提供或上下文中可信的数据，不得编造数据。\n"
+    + "- 分组时每条数据都提供 group，且同一维度与 group 的组合不能重复。\n"
+    + "- pie/funnel 的 value 必须非负且至少有一个正数；stack 仅用于 bar/column。\n"
+    + "- 请提供清晰 title；有坐标轴时补充 axisXTitle、axisYTitle 和单位。"
 )
 
 
@@ -51,7 +66,17 @@ class ChartMiddleware(AgentMiddleware):
     tools = [chart_tool]
 
     def _override_system_message(self, request):
+        """向系统消息注入一次图表工具使用规范。
+
+        Args:
+            request: LangChain 当前模型调用请求。
+
+        Returns:
+            SystemMessage: 包含图表工具规范的系统消息。
+        """
         if request.system_message is not None:
+            if any(CHART_PROMPT_MARKER in str(block) for block in request.system_message.content_blocks):
+                return request.system_message
             new_system_content = [
                 *request.system_message.content_blocks,
                 {"type": "text", "text": CHART_SYSTEM_PROMPT},
@@ -63,4 +88,13 @@ class ChartMiddleware(AgentMiddleware):
         return new_system_message
 
     async def awrap_model_call(self, request, handler):
+        """在模型调用前注入图表工具规范。
+
+        Args:
+            request: LangChain 当前模型调用请求。
+            handler: 后续模型调用处理器。
+
+        Returns:
+            Any: 后续处理器返回的模型调用结果。
+        """
         return await handler(request.override(system_message=self._override_system_message(request)))
