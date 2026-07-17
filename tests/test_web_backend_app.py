@@ -114,27 +114,45 @@ def test_create_app_defers_agent_env_init_to_lifespan(monkeypatch):
     assert rag_router_args == [((checkpointer, store), {})]
 
 
-def test_init_agent_env_keeps_postgres_checkpointer_context_alive(monkeypatch):
+def test_init_agent_env_uses_checked_postgres_connection_pools(monkeypatch):
+    """验证代理环境为检查点和长期记忆配置失效连接检查。"""
     app_module = _load_app_module(monkeypatch)
 
     class FakeCheckpointer:
-        def __init__(self):
+        def __init__(self, pool):
+            """记录传入检查点的连接池。
+
+            Args:
+                pool: 模拟的 PostgreSQL 连接池。
+            """
+            self.pool = pool
             self.setup_calls = 0
 
         async def setup(self):
+            """记录检查点初始化调用。"""
             self.setup_calls += 1
 
-    class FakeAsyncCheckpointerCtx:
-        def __init__(self, checkpointer):
-            self.checkpointer = checkpointer
-            self.entered = False
+    class FakeCheckpointerPool:
+        check_connection = object()
 
-        async def __aenter__(self):
-            self.entered = True
-            return self.checkpointer
+        def __init__(self, *args, **kwargs):
+            """记录连接池构造参数。
 
-        async def __aexit__(self, exc_type, exc, tb):
-            return None
+            Args:
+                *args: 位置参数。
+                **kwargs: 关键字参数。
+            """
+            self.args = args
+            self.kwargs = kwargs
+            self.open_calls = []
+
+        async def open(self, *, wait=False):
+            """记录连接池打开调用。
+
+            Args:
+                wait: 是否等待初始连接建立完成。
+            """
+            self.open_calls.append(wait)
 
     class FakeStore:
         def __init__(self):
@@ -159,15 +177,11 @@ def test_init_agent_env_keeps_postgres_checkpointer_context_alive(monkeypatch):
         async def __aexit__(self, exc_type, exc, tb):
             return None
 
-    checkpointer = FakeCheckpointer()
-    checkpointer_ctx = FakeAsyncCheckpointerCtx(checkpointer)
     store = FakeStore()
     store_ctx = FakeStoreCtx(store)
 
     checkpoint_module = types.ModuleType("langgraph.checkpoint.postgres.aio")
-    checkpoint_module.AsyncPostgresSaver = types.SimpleNamespace(
-        from_conn_string=lambda *args, **kwargs: checkpointer_ctx
-    )
+    checkpoint_module.AsyncPostgresSaver = FakeCheckpointer
     store_module = types.ModuleType("langgraph.store.postgres.aio")
     store_module.AsyncPostgresStore = types.SimpleNamespace(
         from_conn_string=lambda *args, **kwargs: store_ctx
@@ -175,17 +189,22 @@ def test_init_agent_env_keeps_postgres_checkpointer_context_alive(monkeypatch):
 
     monkeypatch.setitem(sys.modules, "langgraph.checkpoint.postgres.aio", checkpoint_module)
     monkeypatch.setitem(sys.modules, "langgraph.store.postgres.aio", store_module)
+    monkeypatch.setattr(app_module, "AsyncConnectionPool", FakeCheckpointerPool)
     monkeypatch.setattr(app_module.settings, "PG_DATABASE_URL", "postgresql://example")
 
     app = app_module.FastAPI()
 
     asyncio.run(app_module.init_agent_env(app))
 
-    assert app.state.checkpointer is checkpointer
-    assert app.state.checkpointer._checkpointer_cm is checkpointer_ctx
+    checkpointer_pool = app.state.agent_checkpointer_pool
+    assert isinstance(checkpointer_pool, FakeCheckpointerPool)
+    assert checkpointer_pool.args == ("postgresql://example",)
+    assert checkpointer_pool.kwargs["check"] is FakeCheckpointerPool.check_connection
+    assert checkpointer_pool.open_calls == [True]
+    assert app.state.checkpointer.pool is checkpointer_pool
     assert app.state.store is store
-    assert app.state.store._store_cm is store_ctx
-    assert checkpointer.setup_calls == 1
+    assert app.state.agent_store_ctx is store_ctx
+    assert app.state.checkpointer.setup_calls == 1
     assert store.setup_calls == 1
 
 

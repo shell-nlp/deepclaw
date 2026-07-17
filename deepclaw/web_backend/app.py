@@ -7,6 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
+from psycopg.rows import dict_row
+from psycopg_pool import AsyncConnectionPool
 
 from deepclaw.constant import root_dir, workspace_path
 from deepclaw.patch.langchain import patch_langchain
@@ -42,32 +44,38 @@ async def init_agent_env(app: FastAPI) -> None:
     if settings.PG_DATABASE_URL:
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
-        _ctx = AsyncPostgresSaver.from_conn_string(
+        checkpointer_pool = AsyncConnectionPool(
             settings.PG_DATABASE_URL,
+            min_size=1,
+            max_size=10,
+            kwargs={
+                "autocommit": True,
+                "prepare_threshold": 0,
+                "row_factory": dict_row,
+            },
+            check=AsyncConnectionPool.check_connection,
         )
-        checkpointer = await _ctx.__aenter__()
+        await checkpointer_pool.open(wait=True)
+        checkpointer = AsyncPostgresSaver(checkpointer_pool)
         await checkpointer.setup()
 
-        checkpointer._checkpointer_cm = _ctx  # 如果不把 _ctx 挂到 checkpointer._checkpointer_cm 上保活，函数返回后它可能被回收并触发 __aexit__，后续请求读 checkpoint 时就会报 "the connection is closed"。
+        app.state.agent_checkpointer_pool = checkpointer_pool
         app.state.checkpointer = checkpointer
-        logger.info("使用 AsyncPostgresSaver 作为检查点")
+        logger.info("使用带连接池的 AsyncPostgresSaver 作为检查点")
         # ------------------------------------------------------
         from langgraph.store.postgres.aio import AsyncPostgresStore
 
-        # 使用连接池而不是单连接：
-        # 池子默认按 max_lifetime=3600s / max_idle=600s 自动回收连接，
-        # 避免 server 端因空闲超时或重启杀掉长连接后所有请求都失败
         store_ctx = AsyncPostgresStore.from_conn_string(
             settings.PG_DATABASE_URL,
-            pool_config={"min_size": 1, "max_size": 10},
+            pool_config={
+                "min_size": 1,
+                "max_size": 10,
+                "check": AsyncConnectionPool.check_connection,
+            },
         )
         store = await store_ctx.__aenter__()
         await store.setup()
-        # 关键：from_conn_string 是 @contextmanager，连接 / 连接池资源都握在
-        # generator frame 里。如果不把 store_ctx 挂在 store 上，
-        # init_agent_env() 返回后 store_ctx 会被立即 GC，触发 __exit__ 把连接关掉，
-        # 后续 store.put / store.batch 会报 "the connection is closed"。
-        store._store_cm = store_ctx
+        app.state.agent_store_ctx = store_ctx
         app.state.store = store
         logger.info("使用 AsyncPostgresStore 作为长期记忆")
     else:
@@ -75,7 +83,7 @@ async def init_agent_env(app: FastAPI) -> None:
         from langgraph.store.memory import InMemoryStore
 
         checkpointer = InMemorySaver()
-        app.state.agent_checkpointer_ctx = None
+        app.state.agent_checkpointer_pool = None
         logger.info("使用 InMemorySaver 作为检查点")
 
         store = InMemoryStore()
@@ -131,12 +139,12 @@ async def app_lifespan(app: FastAPI):
         async with channel_lifespan():
             yield
     finally:
-        checkpointer_ctx = getattr(app.state, "agent_checkpointer_ctx", None)
-        if checkpointer_ctx is not None:
-            await checkpointer_ctx.__aexit__(None, None, None)
+        checkpointer_pool = getattr(app.state, "agent_checkpointer_pool", None)
+        if checkpointer_pool is not None:
+            await checkpointer_pool.close()
         store_ctx = getattr(app.state, "agent_store_ctx", None)
         if store_ctx is not None:
-            store_ctx.__exit__(None, None, None)
+            await store_ctx.__aexit__(None, None, None)
 
 
 def register_charts_static(app: FastAPI) -> None:

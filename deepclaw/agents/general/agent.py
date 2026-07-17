@@ -17,7 +17,7 @@ from deepclaw.constant import (
 from deepclaw.middleware.common import BusinessMiddleware
 from deepclaw.middleware.mcp import MCPMiddleware
 from deepclaw.settings import settings
-from deepclaw.utils import count_message_tokens, get_chat_model
+from deepclaw.utils import get_chat_model
 
 
 def user_namespace_factory(runtime: Runtime[Any]) -> tuple[str, ...]:
