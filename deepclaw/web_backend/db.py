@@ -46,7 +46,10 @@ def should_import_home_sqlite(*, filename: str, target_db_url: str) -> Path | No
 def create_async_engine_from_url(db_url: str, echo: bool = False):
     async_db_url = make_async_url(db_url)
     connect_args = {"check_same_thread": False} if db_url.startswith("sqlite") else {}
-    engine = create_async_engine(async_db_url, echo=echo, connect_args=connect_args)
+    engine_kwargs = {"echo": echo, "connect_args": connect_args}
+    if db_url.startswith("postgresql"):
+        engine_kwargs.update(pool_pre_ping=True, pool_recycle=1800)
+    engine = create_async_engine(async_db_url, **engine_kwargs)
     return engine
 
 

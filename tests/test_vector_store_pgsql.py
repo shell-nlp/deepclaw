@@ -1,4 +1,3 @@
-import pytest
 
 from deepclaw.common.vector_store.pgsql import PgVectorStore
 
