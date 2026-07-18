@@ -48,6 +48,11 @@ class Settings(BaseSettings):
 
     # 是否支持工具搜索功能,（与 Claude Code 保持一致）
     USE_TOOL_SEARCH: bool = False
+
+    # 通用 SSE 接口版本：v1=endpoints.py，v2=endpoints_v2.py
+    # 同时控制前端默认路径与渠道默认调用地址（渠道也可被 CHANNEL_AGENT_API_URL 完整覆盖）
+    GENERAL_API_VERSION: Literal["v1", "v2"] = "v1"
+
     # opensandbox 配置
     OPEN_SANDBOX_CODE_INTERPRETER_IMAGE: str = (
         "sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/code-interpreter:v1.0.2"

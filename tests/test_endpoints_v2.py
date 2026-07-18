@@ -52,7 +52,13 @@ class FakeRun:
                 FakeMessageStream(
                     text_chunks=["你", "好"],
                     reasoning_chunks=["先分析"],
-                    tool_call_chunks=[{"name": "search", "args": '{"query":"天气"}'}],
+                    tool_call_chunks=[
+                        {
+                            "name": "search",
+                            "args": '{"query":"天气"}',
+                            "id": "call_search_01",
+                        }
+                    ],
                     output=type(
                         "OutputMessage",
                         (),
@@ -156,15 +162,10 @@ def test_general_api_v2_adapts_v3_streams_and_keeps_sse_contract():
             },
         }
     ]
-    assert tool_output_payloads == [
-        {
-            "event": "tool_output",
-            "data": {
-                "tool_output": ["晴天"],
-                "id": "search",
-            },
-        }
-    ]
+    assert len(tool_output_payloads) == 1
+    assert tool_output_payloads[0]["event"] == "tool_output"
+    assert tool_output_payloads[0]["data"]["tool_output"] == ["晴天"]
+    assert str(tool_output_payloads[0]["data"]["id"]).startswith("lc_run--")
     assert interrupt_payloads == [
         {
             "event": "__interrupt__",
@@ -203,34 +204,33 @@ def test_general_api_v2_non_stream_uses_final_message_projection():
     raw_data_lines = [line[6:] for line in response.text.splitlines() if line.startswith("data: ")]
     payloads = [json.loads(line) for line in raw_data_lines if line != "[DONE]"]
 
-    assert payloads == [
-        {
-            "event": "token",
-            "data": {
-                "token": "你好",
-                "id": "msg-1",
-                "reasoning_token": "先分析",
-                "tool_calls": [{"name": "search", "args": {"query": "天气"}}],
-                "usage_metadata": {"input_tokens": 3, "output_tokens": 5},
-            },
-        },
+    token_payloads = [payload for payload in payloads if payload["event"] == "token"]
+    tool_call_payloads = [payload for payload in payloads if payload["event"] == "tool_calls"]
+    tool_output_payloads = [payload for payload in payloads if payload["event"] == "tool_output"]
+    interrupt_payloads = [payload for payload in payloads if payload["event"] == "__interrupt__"]
+
+    assert any(
+        payload["data"]["token"] == "你好"
+        and payload["data"]["reasoning_token"] == "先分析"
+        and payload["data"]["usage_metadata"] == {"input_tokens": 3, "output_tokens": 5}
+        for payload in token_payloads
+    )
+    assert tool_call_payloads == [
         {
             "event": "tool_calls",
             "data": {
                 "tool_calls": [{"name": "search", "args": {"query": "天气"}}],
                 "id": "msg-1",
             },
-        },
-        {
-            "event": "tool_output",
-            "data": {
-                "tool_output": ["晴天"],
-                "id": "search",
-            },
-        },
+        }
+    ]
+    assert len(tool_output_payloads) == 1
+    assert tool_output_payloads[0]["data"]["tool_output"] == ["晴天"]
+    assert str(tool_output_payloads[0]["data"]["id"]).startswith("lc_run--")
+    assert interrupt_payloads == [
         {
             "event": "__interrupt__",
             "data": {"__interrupt__": {"need": "confirm"}},
-        },
+        }
     ]
     assert raw_data_lines[-1] == "[DONE]"

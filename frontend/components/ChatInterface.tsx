@@ -38,6 +38,7 @@ import {
   DEFAULT_KNOWLEDGE_PAGE,
   DEFAULT_MCP_CONFIG_TEMPLATE,
   DEFAULT_RAG_API_PATH,
+  RUNTIME_CONFIG_API_PATH,
   DOCUMENT_CHUNK_PAGE_SIZE,
   DOCUMENT_PAGE_SIZE,
   KB_BULK_DELETE_API_PATH,
@@ -231,6 +232,8 @@ export default function ChatInterface() {
   const [inputValue, setInputValue] = useState('')
   const [sessionId, setSessionId] = useState('')
   const [status, setStatus] = useState<'ready' | 'connecting' | 'error'>('ready')
+  const [agentApiPath, setAgentApiPath] = useState(DEFAULT_AGENT_API_PATH)
+  const [ragApiPath, setRagApiPath] = useState(DEFAULT_RAG_API_PATH)
   const [isProcessing, setIsProcessing] = useState(false)
   const [internetSearch, setInternetSearch] = useState(false)
   const [deepThinking, setDeepThinking] = useState(false)
@@ -515,6 +518,31 @@ export default function ChatInterface() {
     if (storedMcpConfig && parsedMcpConfig.error) {
       setMcpError(`本地保存的 MCP 配置无效：${parsedMcpConfig.error}`)
     }
+
+    // 按后端 GENERAL_API_VERSION 切换 agent/rag general_api 路径
+    void fetch(getApiUrl(RUNTIME_CONFIG_API_PATH))
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`runtime-config HTTP ${response.status}`)
+        }
+        return (await response.json()) as {
+          agent_general_api_path?: string
+          rag_general_api_path?: string
+        }
+      })
+      .then((config) => {
+        if (config.agent_general_api_path) {
+          setAgentApiPath(config.agent_general_api_path)
+        }
+        if (config.rag_general_api_path) {
+          setRagApiPath(config.rag_general_api_path)
+        }
+      })
+      .catch(() => {
+        // 拉取失败时回退默认 v1 路径，避免阻塞聊天
+        setAgentApiPath(DEFAULT_AGENT_API_PATH)
+        setRagApiPath(DEFAULT_RAG_API_PATH)
+      })
 
     const storedToken = getStoredAuthToken()
     if (!storedToken) return
@@ -1776,7 +1804,7 @@ export default function ChatInterface() {
       }
 
       const response = await requestStreamResponse(
-        requestMode === 'rag' ? DEFAULT_RAG_API_PATH : DEFAULT_AGENT_API_PATH,
+        requestMode === 'rag' ? ragApiPath : agentApiPath,
         payload,
         abortControllerRef.current.signal
       )
@@ -1885,7 +1913,7 @@ export default function ChatInterface() {
       }
 
       const response = await requestStreamResponse(
-        requestMode === 'rag' ? DEFAULT_RAG_API_PATH : DEFAULT_AGENT_API_PATH,
+        requestMode === 'rag' ? ragApiPath : agentApiPath,
         payload,
         abortControllerRef.current.signal
       )

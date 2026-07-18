@@ -1,9 +1,10 @@
-﻿import json
+import json
 from collections.abc import AsyncIterator, Callable
 
 from deepclaw.web_backend.auth.service import AuthService, get_auth_service
 from deepclaw.web_backend.channels.config import channel_gateway_settings
 from deepclaw.web_backend.channels.models import AgentEvent
+from deepclaw.web_backend.common.api_version import get_channel_agent_api_url
 
 
 AgentSender = Callable[[dict, dict[str, str]], AsyncIterator[str]]
@@ -17,7 +18,15 @@ class AgentClient:
         sender: AgentSender | None = None,
         auth_service: AuthService | None = None,
     ):
-        self.agent_api_url = agent_api_url or channel_gateway_settings.CHANNEL_AGENT_API_URL
+        """初始化渠道 Agent 客户端。
+
+        Args:
+            agent_api_url: 可选完整覆盖 URL；为空时按 GENERAL_API_VERSION 解析。
+            sender: 可选自定义 SSE 发送器。
+            auth_service: 可选认证服务。
+        """
+        explicit = agent_api_url or channel_gateway_settings.CHANNEL_AGENT_API_URL or None
+        self.agent_api_url = get_channel_agent_api_url(explicit_url=explicit)
         self.sender = sender or self._http_sender
         self.auth_service = auth_service or get_auth_service()
 

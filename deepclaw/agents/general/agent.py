@@ -48,13 +48,28 @@ class Agent:
     def get_common_middleware(self):
         """获取通用中间件列表"""
         middleware = []
-        if settings.USE_COPILOTKIT:
-            from copilotkit import CopilotKitMiddleware
-
-            middleware.append(CopilotKitMiddleware())
 
         middleware.append(BusinessMiddleware())
         middleware.append(MCPMiddleware())
+        # HumanInTheLoopMiddleware
+        from langchain.agents.middleware.human_in_the_loop import HumanInTheLoopMiddleware
+
+        def when_get_weather(request) -> bool:
+            query = request.tool_call["args"].get("location", "")
+            return query.startswith("南阳")
+
+        middleware.append(
+            HumanInTheLoopMiddleware(
+                interrupt_on={
+                    "get_weather": {
+                        "allowed_decisions": ["approve", "edit", "reject"],
+                        "description": "工具执行等待批准",
+                        "when": when_get_weather,
+                    },
+                },
+                description_prefix="工具执行等待批准",
+            )
+        )
         return middleware
 
     def get_common_tools(self):
@@ -119,18 +134,6 @@ class Agent:
             from deepclaw.middleware.tool_search import DeferredToolMiddleware
 
             middleware.append(DeferredToolMiddleware())
-        # HumanInTheLoopMiddleware
-        # middleware.append(
-        #     HumanInTheLoopMiddleware(
-        #         interrupt_on={
-        #             "execute": {
-        #                 "allowed_decisions": ["approve", "edit", "reject"],
-        #                 "description": "工具执行等待批准",
-        #             },
-        #         },
-        #         description_prefix="工具执行等待批准",
-        #     )
-        # )
 
         if self.deep_agent:
             from deepclaw.middleware.chart import ChartMiddleware
