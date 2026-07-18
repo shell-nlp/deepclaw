@@ -54,6 +54,7 @@ async def init_agent_env(app: FastAPI) -> None:
                 "row_factory": dict_row,
             },
             check=AsyncConnectionPool.check_connection,
+            open=False,
         )
         await checkpointer_pool.open(wait=True)
         checkpointer = AsyncPostgresSaver(checkpointer_pool)

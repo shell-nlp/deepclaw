@@ -1,5 +1,4 @@
-﻿from ag_ui_langgraph import add_langgraph_fastapi_endpoint
-from copilotkit import LangGraphAGUIAgent
+﻿from ag_ui_langgraph import add_langgraph_fastapi_endpoint,LangGraphAgent
 from fastapi import APIRouter
 from loguru import logger
 from pydantic import BaseModel
@@ -21,7 +20,7 @@ def create_agent_router(checkpointer=None, store=None) -> APIRouter:
 
     add_langgraph_fastapi_endpoint(
         app=ag_ui_router,
-        agent=LangGraphAGUIAgent(
+        agent=LangGraphAgent(
             name="agent",
             description="DeepAgent service.",
             graph=agent,
