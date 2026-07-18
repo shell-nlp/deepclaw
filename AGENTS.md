@@ -37,9 +37,20 @@
   - 当配置 `PG_DATABASE_URL` 时，优先落统一 PG；未配置时回退各自 SQLite
 
 - `deepclaw/web_backend/common/endpoints.py`
-  通用 SSE 端点封装。当前 `query` 支持：
+  通用 SSE 端点封装（v1，`agent.astream` + `messages`/`updates`）。当前 `query` 支持：
   - 字符串
   - 结构化多模态数组：`text` / `image`
+  正式路径保持：
+  - Agent：`POST /api/agent/general_api`
+  - RAG：`POST /api/rag/general_api`
+
+- `deepclaw/web_backend/common/endpoints_v2.py`
+  通用 SSE 端点封装（v2，`agent.astream_events` version=`v3`），与 v1 并行挂载，便于对照测试。路径带 `v2` 前缀：
+  - Agent：`POST /api/agent/v2/general_api`
+  - RAG：`POST /api/rag/v2/general_api`
+
+- `deepclaw/web_backend/common/api_version.py`
+  统一解析 `GENERAL_API_VERSION`，供前端 runtime-config 与渠道 AgentClient 选择 v1/v2 路径
 
 ### Web 功能目录
 
@@ -262,6 +273,10 @@ pnpm build
 - 主入口同时挂载 `agent`、`rag`、`channels`
 - 主入口还挂载 `/api/auth/*` 登录鉴权接口
 - 通用 SSE 接口支持多模态 `query`
+- 通用 SSE 双版本并行：
+  - v1（`endpoints.py`）保留原 URL：`/api/agent/general_api`、`/api/rag/general_api`
+  - v2（`endpoints_v2.py`）路径加前缀：`/api/agent/v2/general_api`、`/api/rag/v2/general_api`
+  - 前端与渠道默认仍走 v1；v2 仅用于对照测试
 - 技能管理归属 `/api/agent/skills/*`
 - 知识库管理归属 `/api/rag/knowledge-bases/*`
 - 渠道管理归属 `/api/channels/*`

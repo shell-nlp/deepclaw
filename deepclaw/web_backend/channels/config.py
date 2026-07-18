@@ -7,8 +7,9 @@ load_dotenv()
 
 
 class ChannelGatewaySettings(BaseSettings):
-    # 渠道网关调用智能体通用接口的地址
-    CHANNEL_AGENT_API_URL: str = "http://127.0.0.1:7869/api/agent/general_api"
+    # 可选：完整覆盖渠道调用的 agent general_api URL。
+    # 为空时按 deepclaw.settings.GENERAL_API_VERSION 自动拼接。
+    CHANNEL_AGENT_API_URL: str = ""
 
     model_config = SettingsConfigDict(
         env_file=str(env_path),

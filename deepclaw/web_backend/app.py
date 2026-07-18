@@ -18,6 +18,12 @@ from deepclaw.web_backend.auth.router import create_auth_router
 from deepclaw.web_backend.auth.service import get_auth_service
 from deepclaw.web_backend.channels.router import create_channels_router
 from deepclaw.web_backend.channels.weixin_clawbot.lifespan import channel_lifespan
+from deepclaw.web_backend.common.api_version import (
+    get_agent_general_api_path,
+    get_general_api_version,
+    get_rag_general_api_path,
+    get_runtime_api_config,
+)
 from deepclaw.web_backend.knowledge_bases.router import (
     create_knowledge_bases_router,
 )
@@ -135,6 +141,14 @@ async def app_lifespan(app: FastAPI):
     await init_agent_env(app)
     register_agent_routes(app)
     register_frontend_routes(app)
+    # 启动时打印当前 general_api 版本，便于确认前端/渠道默认路径
+    version = get_general_api_version()
+    logger.info(
+        "GENERAL_API_VERSION={} | agent={} | rag={}",
+        version,
+        get_agent_general_api_path(version),
+        get_rag_general_api_path(version),
+    )
     await get_auth_service().bootstrap_admin_if_needed()
     try:
         async with channel_lifespan():
@@ -188,5 +202,11 @@ def create_app() -> FastAPI:
     app.include_router(create_channels_router())
     app.include_router(create_skills_router())
     app.include_router(create_knowledge_bases_router())
+
+    @app.get("/api/runtime-config", tags=["runtime"])
+    async def runtime_config():
+        """返回前端运行时配置（含 general_api 版本）。"""
+        return get_runtime_api_config()
+
     register_charts_static(app)
     return app

@@ -2,6 +2,7 @@ import type { ChannelManagementPage, KnowledgePage } from './types.ts'
 
 export const DEFAULT_AGENT_API_PATH = '/api/agent/general_api'
 export const DEFAULT_RAG_API_PATH = '/api/rag/general_api'
+export const RUNTIME_CONFIG_API_PATH = '/api/runtime-config'
 export const AUTH_LOGIN_API_PATH = '/api/auth/login'
 export const AUTH_REGISTER_API_PATH = '/api/auth/register'
 export const AUTH_LOGOUT_API_PATH = '/api/auth/logout'
