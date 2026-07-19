@@ -140,9 +140,11 @@ class Agent:
             from deepclaw.middleware.cron.middleware import CronMiddleware
             from deepclaw.middleware.deep_agent_prompt import DeepAgentPromptMiddleware
 
-            middleware.append(ChartMiddleware())
-            middleware.append(DeepAgentPromptMiddleware())
-            middleware.append(CronMiddleware())
+            middleware.extend([
+                ChartMiddleware(),
+                DeepAgentPromptMiddleware(),
+                CronMiddleware(),
+            ])
             logger.info("使用 DeepAgent")
             from deepagents import FilesystemPermission, create_deep_agent
 
@@ -165,11 +167,16 @@ class Agent:
             from langchain.agents import create_agent
             from langchain.agents.middleware import SummarizationMiddleware
 
-            middleware.append(
-                SummarizationMiddleware(
-                    model=get_chat_model(),
-                    # token_counter=count_message_tokens,
-                )
+            from deepclaw.middleware.nl2sql import NL2SQLMiddleware
+
+            middleware.extend(
+                [
+                    SummarizationMiddleware(
+                        model=get_chat_model(),
+                        # token_counter=count_message_tokens,
+                    ),
+                    NL2SQLMiddleware(allowed_tables=None),
+                ]
             )
             return create_agent(
                 model=model,
