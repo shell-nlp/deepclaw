@@ -131,7 +131,7 @@ def test_get_user_ddl_passes_schema_to_fetcher(monkeypatch):
     """
     import deepclaw.middleware.nl2sql.nl2sql as nl2sql_module
 
-    captured: dict[str, str | None] = {}
+    captured: dict[str, object] = {}
 
     def fake_fetch_schema_ddl(database_url: str, *, table_names=None, schema=None):
         """记录 DDL 拉取入参并返回占位结果。
@@ -143,10 +143,12 @@ def test_get_user_ddl_passes_schema_to_fetcher(monkeypatch):
         """
         captured["database_url"] = database_url
         captured["schema"] = schema
+        captured["table_names"] = table_names
         return "-- ddl"
 
     monkeypatch.setenv("NL2SQL_DATABASE_URL", "oracle+oracledb://user:pwd@host:1521/?service_name=svc")
     monkeypatch.setenv("NL2SQL_SCHEMA", "GISTOOLS")
+    monkeypatch.delenv("NL2SQL_ALLOWED_TABLES", raising=False)
     monkeypatch.setattr(nl2sql_module, "fetch_schema_ddl", fake_fetch_schema_ddl)
 
     result = nl2sql_module.NL2SQLMiddleware().get_user_ddl()
@@ -155,6 +157,7 @@ def test_get_user_ddl_passes_schema_to_fetcher(monkeypatch):
     assert captured == {
         "database_url": "oracle+oracledb://user:pwd@host:1521/?service_name=svc",
         "schema": "GISTOOLS",
+        "table_names": None,
     }
 
 
@@ -312,3 +315,166 @@ def test_join_table_ddls_uses_separator():
 
     result = BaseDdlFetcher.join_table_ddls(["CREATE TABLE a;", "CREATE TABLE b;"])
     assert result == "CREATE TABLE a;\n---\nCREATE TABLE b;"
+
+
+def test_run_sql_applies_row_limit_before_execute(monkeypatch):
+    """验证 run_sql 执行前会在 SQL 层注入行数限制。
+
+    Args:
+        monkeypatch: pytest 提供的环境与属性补丁工具。
+    """
+    import deepclaw.middleware.nl2sql.nl2sql as nl2sql_module
+
+    executed_sql: list[str] = []
+
+    class FakeCursor:
+        description = (("ID",), ("NAME",))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, sql: str):
+            executed_sql.append(sql)
+
+        def fetchmany(self, size: int):
+            _ = size
+            return [(1, "a"), (2, "b")]
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def cursor(self):
+            return FakeCursor()
+
+    monkeypatch.setenv(
+        "NL2SQL_DATABASE_URL",
+        "oracle+oracledb://user:pwd@host:1521/?service_name=svc",
+    )
+    monkeypatch.setattr(
+        nl2sql_module,
+        "_make_connection",
+        lambda database_url: FakeConnection(),
+    )
+    monkeypatch.setattr(
+        nl2sql_module,
+        "_apply_schema_to_connection",
+        lambda conn, database_url, schema: None,
+    )
+
+    result = nl2sql_module.NL2SQLMiddleware().get_run_sql_tool().invoke({"sql": "SELECT * FROM TB_SAMPLE"})
+
+    assert executed_sql == ["SELECT * FROM (\nSELECT * FROM TB_SAMPLE\n) nl2sql_row_limit WHERE ROWNUM <= 31"]
+    assert "ID\tNAME" in result
+    assert "1\ta" in result
+
+
+def test_resolve_allowed_tables_prefers_argument_then_env(monkeypatch):
+    """验证表白名单优先使用显式参数，其次环境变量，未配置则为全部表。
+
+    Args:
+        monkeypatch: pytest 提供的环境与属性补丁工具。
+    """
+    import deepclaw.middleware.nl2sql.nl2sql as nl2sql_module
+
+    monkeypatch.setenv("NL2SQL_ALLOWED_TABLES", "TB_A, TB_B")
+
+    assert nl2sql_module._resolve_allowed_tables(["TB_X"]) == ["TB_X"]
+    assert nl2sql_module._resolve_allowed_tables(None) == ["TB_A", "TB_B"]
+
+    monkeypatch.delenv("NL2SQL_ALLOWED_TABLES", raising=False)
+    assert nl2sql_module._resolve_allowed_tables(None) is None
+    assert nl2sql_module._resolve_allowed_tables([]) is None
+
+
+def test_list_tables_tool_filters_by_allowed_tables(monkeypatch):
+    """验证 list_tables_tool 仅返回白名单内的表。
+
+    Args:
+        monkeypatch: pytest 提供的环境与属性补丁工具。
+    """
+    import deepclaw.middleware.nl2sql.nl2sql as nl2sql_module
+
+    monkeypatch.setenv("NL2SQL_DATABASE_URL", "oracle+oracledb://user:pwd@host:1521/?service_name=svc")
+    monkeypatch.setenv("NL2SQL_ALLOWED_TABLES", "TB_A, TB_C")
+    monkeypatch.setattr(
+        nl2sql_module,
+        "list_tables",
+        lambda database_url, *, schema=None: ["TB_A", "TB_B", "TB_C"],
+    )
+
+    result = nl2sql_module.NL2SQLMiddleware().get_list_tables_tool().invoke({})
+
+    assert "TB_A" in result
+    assert "TB_C" in result
+    assert "TB_B" not in result
+
+
+def test_describe_tables_tool_rejects_disallowed_tables(monkeypatch):
+    """验证 describe_tables_tool 拒绝查看白名单外的表。
+
+    Args:
+        monkeypatch: pytest 提供的环境与属性补丁工具。
+    """
+    import deepclaw.middleware.nl2sql.nl2sql as nl2sql_module
+
+    monkeypatch.setenv("NL2SQL_DATABASE_URL", "oracle+oracledb://user:pwd@host:1521/?service_name=svc")
+    monkeypatch.setenv("NL2SQL_ALLOWED_TABLES", "TB_A")
+    monkeypatch.setattr(
+        nl2sql_module,
+        "fetch_schema_ddl",
+        lambda database_url, *, table_names=None, schema=None: "should-not-call",
+    )
+
+    result = nl2sql_module.NL2SQLMiddleware().get_describe_tables_tool().invoke({"table_names": "TB_B"})
+
+    assert result.startswith("无权查看表: TB_B")
+
+
+def test_run_sql_rejects_disallowed_tables(monkeypatch):
+    """验证 run_sql 拒绝查询白名单外的表。
+
+    Args:
+        monkeypatch: pytest 提供的环境与属性补丁工具。
+    """
+    import deepclaw.middleware.nl2sql.nl2sql as nl2sql_module
+
+    monkeypatch.setenv("NL2SQL_DATABASE_URL", "oracle+oracledb://user:pwd@host:1521/?service_name=svc")
+    monkeypatch.setenv("NL2SQL_ALLOWED_TABLES", "TB_A")
+
+    result = nl2sql_module.NL2SQLMiddleware().get_run_sql_tool().invoke({"sql": "SELECT * FROM TB_B"})
+
+    assert "仅允许访问配置的表" in result
+    assert "TB_B" in result
+
+
+def test_get_user_ddl_passes_allowed_tables_to_fetcher(monkeypatch):
+    """验证 get_user_ddl 配置白名单时会把 table_names 传给 DDL 拉取器。
+
+    Args:
+        monkeypatch: pytest 提供的环境与属性补丁工具。
+    """
+    import deepclaw.middleware.nl2sql.nl2sql as nl2sql_module
+
+    captured: dict[str, object] = {}
+
+    def fake_fetch_schema_ddl(database_url: str, *, table_names=None, schema=None):
+        captured["table_names"] = table_names
+        captured["schema"] = schema
+        return "-- ddl"
+
+    monkeypatch.setenv("NL2SQL_DATABASE_URL", "oracle+oracledb://user:pwd@host:1521/?service_name=svc")
+    monkeypatch.setenv("NL2SQL_SCHEMA", "GISTOOLS")
+    monkeypatch.setattr(nl2sql_module, "fetch_schema_ddl", fake_fetch_schema_ddl)
+
+    result = nl2sql_module.NL2SQLMiddleware(allowed_tables=["TB_A", "TB_B"]).get_user_ddl()
+
+    assert result == "-- ddl"
+    assert captured["table_names"] == ["TB_A", "TB_B"]
+    assert captured["schema"] == "GISTOOLS"
