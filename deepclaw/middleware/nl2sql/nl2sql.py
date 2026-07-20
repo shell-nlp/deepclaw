@@ -422,14 +422,20 @@ def _make_oracle_connection_thick(**kwargs):
 
 
 class NL2SQLMiddleware(AgentMiddleware[None, AgentContext, None]):
-    def __init__(self, allowed_tables: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        allowed_tables: list[str] | None = None,
+        table_descriptions: dict[str, str] | None = None,
+    ) -> None:
         """初始化 NL2SQL 中间件。
 
         Args:
             allowed_tables: 可访问表白名单；None 表示使用环境变量或默认全部表。
+            table_descriptions: 表名到表描述的映射，用于列出可用表时展示说明。
         """
         super().__init__()
         self._allowed_tables = allowed_tables
+        self._table_descriptions = table_descriptions or {}
 
     def _get_allowed_tables(self) -> list[str] | None:
         """获取当前中间件生效的可访问表白名单。"""
@@ -474,7 +480,12 @@ class NL2SQLMiddleware(AgentMiddleware[None, AgentContext, None]):
                 tables = _filter_allowed_tables(tables, allowed_tables)
                 if not tables:
                     return "数据库中未找到可访问的数据表"
-                return "数据库中的表:\n" + "\n".join(f"- {t}" for t in tables)
+                return "数据库中的表:\n" + "\n".join(
+                    f"- {table}：{self._table_descriptions[table]}"
+                    if table in self._table_descriptions
+                    else f"- {table}"
+                    for table in tables
+                )
             except Exception as exc:
                 return f"获取表列表失败：{exc}"
 
