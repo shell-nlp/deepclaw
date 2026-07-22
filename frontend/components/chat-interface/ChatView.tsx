@@ -37,6 +37,7 @@ interface ChatViewProps {
   deepThinking: boolean
   currentAssistantMessageId: string | null
   chatContainerRef: Ref<HTMLDivElement>
+  onChatScroll: () => void
   textareaRef: Ref<HTMLTextAreaElement>
   toolCallDurations?: Record<string, number>
   onClearChat: () => void
@@ -356,6 +357,7 @@ export function ChatView({
   deepThinking,
   currentAssistantMessageId,
   chatContainerRef,
+  onChatScroll,
   textareaRef,
   toolCallDurations,
   onClearChat,
@@ -519,7 +521,11 @@ export function ChatView({
         </div>
       </div>
 
-      <div className={styles.chatContainer} ref={chatContainerRef}>
+      <div
+        className={styles.chatContainer}
+        ref={chatContainerRef}
+        onScroll={onChatScroll}
+      >
         {messages.length === 0 ? (
           <div className={styles.welcome}>
             <div className={styles.welcomeIcon}>KB</div>
