@@ -303,6 +303,7 @@ export default function ChatInterface() {
   const [deletingBulk, setDeletingBulk] = useState(false)
 
   const chatContainerRef = useRef<HTMLDivElement>(null)
+  const isChatAtBottomRef = useRef(true)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const uploadInputRef = useRef<HTMLInputElement>(null)
   const skillUploadInputRef = useRef<HTMLInputElement>(null)
@@ -331,9 +332,24 @@ export default function ChatInterface() {
   const mcpConfigDirty = mcpConfigDraft !== savedMcpConfigText
 
   const scrollToBottom = useCallback(() => {
-    if (chatContainerRef.current) {
+    if (chatContainerRef.current && isChatAtBottomRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
     }
+  }, [])
+
+  /**
+   * 记录用户是否仍停留在聊天记录底部附近，以决定是否继续自动滚动。
+   *
+   * Args:
+   * - 无。
+   */
+  const handleChatScroll = useCallback(() => {
+    const container = chatContainerRef.current
+    if (!container) return
+
+    const distanceToBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight
+    isChatAtBottomRef.current = distanceToBottom <= 24
   }, [])
 
   const clearChat = useCallback(() => {
@@ -352,6 +368,7 @@ export default function ChatInterface() {
     requestModeRef.current = 'agent'
     requestKnowledgeBaseRef.current = null
     requestMcpConfigRef.current = null
+    isChatAtBottomRef.current = true
     if (typeof window !== 'undefined') {
       localStorage.setItem('rag_chat_session_id', clearedState.sessionId)
     }
@@ -2130,6 +2147,7 @@ export default function ChatInterface() {
               deepThinking={deepThinking}
               currentAssistantMessageId={currentAssistantMessageIdRef.current}
               chatContainerRef={chatContainerRef}
+              onChatScroll={handleChatScroll}
               textareaRef={textareaRef}
               toolCallDurations={toolCallDurations}
               onClearChat={clearChat}
