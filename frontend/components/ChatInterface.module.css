@@ -41,26 +41,6 @@
   filter: blur(60px);
 }
 
-.header {
-  position: relative;
-  z-index: 60;
-  flex-shrink: 0;
-  background: var(--bg-card);
-  border-bottom: 1px solid var(--border-subtle);
-  padding: 16px 24px;
-  box-shadow: var(--shadow-sm);
-}
-
-.headerContent {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  max-width: 1680px;
-  margin: 0 auto;
-  width: 100%;
-  gap: 16px;
-}
-
 .logoArea {
   display: flex;
   align-items: center;
@@ -101,27 +81,137 @@
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: clamp(120px, 13vw, 200px) minmax(0, 1fr);
-  gap: clamp(8px, 1vw, 12px);
-  padding: clamp(12px, 1.5vw, 16px) clamp(16px, 2vw, 24px) clamp(16px, 2vw, 24px);
-  max-width: 1680px;
+  grid-template-columns: clamp(196px, 16vw, 256px) minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+  max-width: none;
   margin: 0 auto;
   width: 100%;
 }
 
 .sidebarNav {
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+  background: var(--bg-card);
+  border-right: 1px solid var(--border-subtle);
 }
 
 .sidebarPanel {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 12px;
-  background: var(--bg-card);
+  padding: 16px 12px;
+  overflow-y: auto;
+}
+
+.sidebarBrand {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 4px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.sidebarBrandDetails {
+  min-width: 0;
+}
+
+.sidebarBrand .title {
+  font-size: 20px;
+  white-space: nowrap;
+}
+
+.sidebarBrand .subtitle {
+  margin-top: 2px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.workspaceLayoutSidebarCollapsed {
+  grid-template-columns: 84px minmax(0, 1fr);
+}
+
+.sidebarNavCollapsed .sidebarPanel {
+  align-items: center;
+  padding: 12px 8px;
+}
+
+.sidebarNavCollapsed .sidebarButton,
+.sidebarNavCollapsed .channelSubnav,
+.sidebarNavCollapsed .sidebarBrandDetails {
+  display: none;
+}
+
+.sidebarNavCollapsed .sidebarBrand {
+  width: 100%;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 4px 0 12px;
+}
+
+.sidebarNavCollapsed .logoIcon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.sidebarCollapseButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
   border: 1px solid var(--border-subtle);
-  border-radius: 18px;
-  box-shadow: var(--shadow-sm);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  transition: all 0.2s ease;
+}
+
+.sidebarAccount {
+  flex-shrink: 0;
+  padding: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.sidebarAccount .accountPanelShell,
+.sidebarAccount .accountEntry {
+  width: 100%;
+}
+
+.sidebarAccount .accountMenu {
+  top: auto;
+  right: auto;
+  bottom: calc(100% + 12px);
+  left: 0;
+}
+
+.sidebarNavCollapsed .sidebarAccount {
+  padding: 8px;
+}
+
+.sidebarNavCollapsed .sidebarAccount .accountEntry {
+  justify-content: center;
+  padding: 4px;
+}
+
+.sidebarNavCollapsed .sidebarAccount .accountMeta {
+  display: none;
+}
+
+.sidebarCollapseButton:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
 }
 
 .sidebarButton,
@@ -640,7 +730,7 @@ textarea.interruptInput {
   background: rgba(255, 255, 255, 0.58);
   border-left: 1px solid rgba(15, 23, 42, 0.04);
   border-right: 1px solid rgba(15, 23, 42, 0.04);
-  padding: 32px clamp(20px, 5vw, 72px);
+  padding: 32px max(24px, calc((100% - 980px) / 2));
   overflow-y: auto;
   min-height: 0;
   scroll-behavior: smooth;
@@ -1027,7 +1117,7 @@ textarea.interruptInput {
   flex-shrink: 0;
   display: flex;
   gap: 16px;
-  padding: 20px 24px;
+  padding: 20px max(24px, calc((100% - 980px) / 2));
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-top: none;
@@ -2071,7 +2161,6 @@ textarea.interruptInput {
 }
 
 @media (max-width: 1200px) {
-  .workspaceLayout,
   .managementGrid,
   .managementSummaryGrid,
   .managementQuickGrid,
@@ -2082,8 +2171,18 @@ textarea.interruptInput {
     grid-template-columns: 1fr;
   }
 
+}
+
+@media (max-width: 900px) {
+  .workspaceLayout,
+  .workspaceLayoutSidebarCollapsed {
+    grid-template-columns: 1fr;
+  }
+
   .sidebarNav {
     order: 2;
+    border-top: 1px solid var(--border-subtle);
+    border-right: none;
   }
 
   .mainContent {
@@ -2092,19 +2191,6 @@ textarea.interruptInput {
 }
 
 @media (max-width: 768px) {
-  .header {
-    padding: 16px;
-  }
-
-  .headerContent {
-    flex-direction: column;
-    gap: 12px;
-    text-align: center;
-  }
-
-  .title {
-    font-size: 20px;
-  }
 
   .logoIcon {
     width: 36px;
@@ -2223,14 +2309,6 @@ textarea.interruptInput {
 }
 
 @media (max-width: 480px) {
-  .header {
-    padding: 12px 16px;
-  }
-
-  .title {
-    font-size: 18px;
-  }
-
   .workspaceLayout {
     padding: 10px 12px 12px;
   }

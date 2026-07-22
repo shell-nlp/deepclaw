@@ -225,6 +225,7 @@ export default function ChatInterface() {
   const [lastChannelPage, setLastChannelPage] =
     useState<ChannelManagementPage>(DEFAULT_CHANNEL_PAGE)
   const [channelNavExpanded, setChannelNavExpanded] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [knowledgePage, setKnowledgePage] =
     useState<KnowledgePage>(DEFAULT_KNOWLEDGE_PAGE)
 
@@ -665,6 +666,16 @@ export default function ChatInterface() {
 
     setChannelNavExpanded((current) => !current)
   }, [lastChannelPage, navigateTo, viewMode])
+
+  /**
+   * 切换侧边导航的展开状态，为聊天主区域腾出更多空间。
+   *
+   * Args:
+   * - 无。
+   */
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed((collapsed) => !collapsed)
+  }, [])
 
   const navigateToKnowledgeView = useCallback(
     (
@@ -2010,29 +2021,34 @@ export default function ChatInterface() {
       <div className={styles.backgroundGrid} />
       <div className={styles.backgroundGlow} />
 
-      <header className={styles.header}>
-        <div className={styles.headerContent}>
-          <div className={styles.logoArea}>
-            <span className={styles.logoIcon}>AI</span>
-            <div>
-              <h1 className={styles.title}>DeepClaw</h1>
-              <p className={styles.subtitle}>
-                智能问答 · MCP 工具接入 · 知识库管理 · 图检索 RAG
-              </p>
-            </div>
-          </div>
-          <AccountPanel
-            actor={actor}
-            open={accountMenuOpen}
-            onOpenChange={setAccountMenuOpen}
-            onLogout={handleLogout}
-          />
-        </div>
-      </header>
-
-      <div className={styles.workspaceLayout}>
-        <aside className={styles.sidebarNav}>
+      <div
+        className={`${styles.workspaceLayout} ${
+          sidebarCollapsed ? styles.workspaceLayoutSidebarCollapsed : ''
+        }`}
+      >
+        <aside
+          className={`${styles.sidebarNav} ${
+            sidebarCollapsed ? styles.sidebarNavCollapsed : ''
+          }`}
+        >
           <div className={styles.sidebarPanel}>
+            <div className={styles.sidebarBrand}>
+              <div className={styles.logoArea}>
+                <span className={styles.logoIcon}>AI</span>
+                <div className={styles.sidebarBrandDetails}>
+                  <h1 className={styles.title}>DeepClaw</h1>
+                  <p className={styles.subtitle}>智能问答与知识库</p>
+                </div>
+              </div>
+              <button
+                className={styles.sidebarCollapseButton}
+                onClick={toggleSidebar}
+                aria-label={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+                title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+              >
+                {sidebarCollapsed ? '›' : '‹'}
+              </button>
+            </div>
             <button
               className={`${styles.sidebarButton} ${
                 viewMode === 'chat' ? styles.sidebarButtonActive : ''
@@ -2124,6 +2140,14 @@ export default function ChatInterface() {
             >
               用户管理
             </button>
+          </div>
+          <div className={styles.sidebarAccount}>
+            <AccountPanel
+              actor={actor}
+              open={accountMenuOpen}
+              onOpenChange={setAccountMenuOpen}
+              onLogout={handleLogout}
+            />
           </div>
         </aside>
 
