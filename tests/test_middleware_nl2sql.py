@@ -120,7 +120,7 @@ def test_run_sql_returns_error_message_for_non_readonly_sql(monkeypatch):
 
     result = run_sql_tool.invoke({"sql": "DELETE FROM TB_KR_GRP_SK_GRP_TOL_DAY"})
 
-    assert result.startswith("SQL 执行失败：仅允许执行查询（SELECT）语句")
+    assert result["error"].startswith("SQL 执行失败：仅允许执行查询（SELECT）语句")
 
 
 def test_get_user_ddl_passes_schema_to_fetcher(monkeypatch):
@@ -339,6 +339,14 @@ def test_run_sql_applies_row_limit_before_execute(monkeypatch):
         def execute(self, sql: str):
             executed_sql.append(sql)
 
+        def fetchone(self):
+            """返回完整结果数的占位值。
+
+            Args:
+                无。
+            """
+            return (31,)
+
         def fetchmany(self, size: int):
             _ = size
             return [(1, "a"), (2, "b")]
@@ -370,9 +378,16 @@ def test_run_sql_applies_row_limit_before_execute(monkeypatch):
 
     result = nl2sql_module.NL2SQLMiddleware().get_run_sql_tool().invoke({"sql": "SELECT * FROM TB_SAMPLE"})
 
-    assert executed_sql == ["SELECT * FROM (\nSELECT * FROM TB_SAMPLE\n) nl2sql_row_limit WHERE ROWNUM <= 31"]
-    assert "ID\tNAME" in result
-    assert "1\ta" in result
+    assert executed_sql == [
+        "SELECT COUNT(*) FROM (\nSELECT * FROM TB_SAMPLE\n) nl2sql_total_count",
+        "SELECT * FROM (\nSELECT * FROM TB_SAMPLE\n) nl2sql_row_limit WHERE ROWNUM <= 30",
+    ]
+    assert result == {
+        "rows": [{"ID": 1, "NAME": "a"}, {"ID": 2, "NAME": "b"}],
+        "row_count": 2,
+        "total_count": 31,
+        "truncated": True,
+    }
 
 
 def test_resolve_allowed_tables_prefers_argument_then_env(monkeypatch):
@@ -411,9 +426,13 @@ def test_list_tables_tool_filters_by_allowed_tables(monkeypatch):
 
     result = nl2sql_module.NL2SQLMiddleware().get_list_tables_tool().invoke({})
 
-    assert "TB_A" in result
-    assert "TB_C" in result
-    assert "TB_B" not in result
+    assert result == {
+        "tables": [
+            {"name": "TB_A", "description": None},
+            {"name": "TB_C", "description": None},
+        ],
+        "table_count": 2,
+    }
 
 
 def test_describe_tables_tool_rejects_disallowed_tables(monkeypatch):
@@ -434,7 +453,7 @@ def test_describe_tables_tool_rejects_disallowed_tables(monkeypatch):
 
     result = nl2sql_module.NL2SQLMiddleware().get_describe_tables_tool().invoke({"table_names": "TB_B"})
 
-    assert result.startswith("无权查看表: TB_B")
+    assert result["error"].startswith("无权查看表: TB_B")
 
 
 def test_run_sql_rejects_disallowed_tables(monkeypatch):
@@ -450,8 +469,8 @@ def test_run_sql_rejects_disallowed_tables(monkeypatch):
 
     result = nl2sql_module.NL2SQLMiddleware().get_run_sql_tool().invoke({"sql": "SELECT * FROM TB_B"})
 
-    assert "仅允许访问配置的表" in result
-    assert "TB_B" in result
+    assert "仅允许访问配置的表" in result["error"]
+    assert "TB_B" in result["error"]
 
 
 def test_get_user_ddl_passes_allowed_tables_to_fetcher(monkeypatch):

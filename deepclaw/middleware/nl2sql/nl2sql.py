@@ -1,3 +1,4 @@
+import json
 import os
 import re
 from urllib.parse import urlparse
@@ -421,6 +422,27 @@ def _make_oracle_connection_thick(**kwargs):
     return oracledb.connect(**kwargs)
 
 
+def _build_total_count_sql(sql: str) -> str:
+    """构建用于统计原始查询总行数的 SQL。
+
+    Args:
+        sql: 已完成只读校验和过滤条件注入的查询 SQL。
+    """
+    return f"SELECT COUNT(*) FROM (\n{sql.strip().rstrip(';')}\n) nl2sql_total_count"
+
+
+def _build_json_row(columns: list[str], row: tuple[object, ...]) -> dict[str, object]:
+    """将数据库查询行转换为 JSON 可序列化的字典。
+
+    Args:
+        columns: 查询结果的列名列表。
+        row: 查询结果中的单行值。
+    """
+    return json.loads(
+        json.dumps(dict(zip(columns, row, strict=True)), ensure_ascii=False, default=str)
+    )
+
+
 class NL2SQLMiddleware(AgentMiddleware[None, AgentContext, None]):
     def __init__(
         self,
@@ -470,24 +492,26 @@ class NL2SQLMiddleware(AgentMiddleware[None, AgentContext, None]):
         allowed_tables = self._get_allowed_tables()
 
         @tool(description="列出当前数据库中可用的表名（受可访问表白名单限制）")
-        def list_tables_tool() -> str:
+        def list_tables_tool() -> dict[str, object]:
             """列出数据库中可用的表名"""
             database_url = _resolve_database_url()
             if not database_url:
-                return "未配置数据库连接（NL2SQL_DATABASE_URL / PG_DATABASE_URL）"
+                return {"error": "未配置数据库连接（NL2SQL_DATABASE_URL / PG_DATABASE_URL）"}
             try:
                 tables = list_tables(database_url, schema=resolved_schema)
                 tables = _filter_allowed_tables(tables, allowed_tables)
-                if not tables:
-                    return "数据库中未找到可访问的数据表"
-                return "数据库中的表:\n" + "\n".join(
-                    f"- {table}：{self._table_descriptions[table]}"
-                    if table in self._table_descriptions
-                    else f"- {table}"
-                    for table in tables
-                )
+                return {
+                    "tables": [
+                        {
+                            "name": table,
+                            "description": self._table_descriptions.get(table),
+                        }
+                        for table in tables
+                    ],
+                    "table_count": len(tables),
+                }
             except Exception as exc:
-                return f"获取表列表失败：{exc}"
+                return {"error": f"获取表列表失败：{exc}"}
 
         return list_tables_tool
 
@@ -506,7 +530,7 @@ class NL2SQLMiddleware(AgentMiddleware[None, AgentContext, None]):
             table_names: str = Field(
                 description="表名，多个表用逗号分隔，支持 schema.table_name 格式指定模式,未指定 schema 时使用默认的schema"
             ),
-        ) -> str:
+        ) -> dict[str, object]:
             """查看指定数据库表的详细 DDL 结构（列名、类型、主键、注释等），支持同时查看多张表.
             ## 要求
             - 输入参数 table_names 为表名，多个表用逗号分隔。
@@ -514,16 +538,16 @@ class NL2SQLMiddleware(AgentMiddleware[None, AgentContext, None]):
             """
             database_url = _resolve_database_url()
             if not database_url:
-                return "未配置数据库连接（NL2SQL_DATABASE_URL / PG_DATABASE_URL）"
+                return {"error": "未配置数据库连接（NL2SQL_DATABASE_URL / PG_DATABASE_URL）"}
             raw_names = [name.strip() for name in table_names.split(",") if name.strip()]
             if not raw_names:
-                return "请指定要查看的表名"
+                return {"error": "请指定要查看的表名"}
 
             denied = _reject_disallowed_tables(raw_names, allowed_tables)
             if denied:
                 denied_text = ", ".join(denied)
                 allowed_text = ", ".join(allowed_tables or [])
-                return f"无权查看表: {denied_text}；可访问表: {allowed_text}"
+                return {"error": f"无权查看表: {denied_text}；可访问表: {allowed_text}"}
 
             # 按 schema 分组：schema.table_name 格式提取 schema，否则使用默认值
             schema_map: dict[str | None, list[str]] = {}
@@ -537,14 +561,20 @@ class NL2SQLMiddleware(AgentMiddleware[None, AgentContext, None]):
                 else:
                     schema_map.setdefault(resolved_schema, []).append(raw)
 
-            parts: list[str] = []
+            tables: list[dict[str, str]] = []
             for schema, names in schema_map.items():
                 part = fetch_schema_ddl(database_url, table_names=names, schema=schema)
                 if part:
                     if DESCRIBE_TABLES_INLINE_COLUMN_COMMENTS:
                         part = _inline_column_comments(part)
-                    parts.append(part)
-            return "\n---\n".join(parts) if parts else ""
+                    tables.append(
+                        {
+                            "schema": schema or "",
+                            "table_names": ",".join(names),
+                            "ddl": part,
+                        }
+                    )
+            return {"tables": tables}
 
         return describe_tables_tool
 
@@ -565,18 +595,18 @@ class NL2SQLMiddleware(AgentMiddleware[None, AgentContext, None]):
         # ]
 
         @tool
-        def run_sql(sql: str = Field(description="SQL 语句")) -> str:
+        def run_sql(sql: str = Field(description="SQL 语句")) -> dict[str, object]:
             """用于运行sql语句，你使用的数据库类型是 Oracle。
             # 必须遵守的要求：
             - 仅允许执行查询（SELECT）语句，拒绝写入/修改操作。
             - 禁止在 SQL 中添加任何注释（包括 -- 和 /* */ 注释），请直接输出可执行 SQL。
             - 在查询某个数据库表之前，如果不知道该表的 DDL 结构，必须先使用 describe_tables_tool 查看该表的 DDL 结构，禁止直接去查询表进行DDL结构探索。
-            - 查询结果最多展示 30 行；系统会在 SQL 层强制限制返回行数，超出部分会提示数据量过大，建议用 SQL运算或 聚合等操作，或者使用eval工具编写代码来完成任务。
+            - 查询结果最多展示 30 行；返回 JSON 中 rows 为展示行，row_count 为展示行数，total_count 为完整结果数，truncated 表示是否因上限截断。
             - 尽量使用简单的 SQL 语句 + 多次查询，避免使用复杂的查询逻辑（因为模型能力有限，复杂SQL命令容易出错）。
             """
             database_url = _resolve_database_url()
             if not database_url:
-                return "错误：未配置数据库连接"
+                return {"error": "未配置数据库连接"}
 
             try:
                 original_sql = sql
@@ -585,43 +615,34 @@ class NL2SQLMiddleware(AgentMiddleware[None, AgentContext, None]):
                 if _sql_filters:
                     sql = _inject_filters(sql, _sql_filters)
 
-                fetch_limit = MAX_DISPLAY_ROWS + 1
                 scheme = _get_database_scheme(database_url)
-                sql = _apply_row_limit(sql, fetch_limit, scheme)
+                total_count_sql = _build_total_count_sql(sql)
+                limited_sql = _apply_row_limit(sql, MAX_DISPLAY_ROWS, scheme)
                 logger.info(f"run_sql 原始 SQL：{original_sql}")
-                logger.info(f"run_sql 最终 SQL：{sql}")
+                logger.info(f"run_sql 总行数 SQL：{total_count_sql}")
+                logger.info(f"run_sql 最终 SQL：{limited_sql}")
 
                 with _make_connection(database_url) as conn:
                     _apply_schema_to_connection(conn, database_url, resolved_schema)
                     with conn.cursor() as cur:
-                        cur.execute(sql)
+                        cur.execute(total_count_sql)
+                        count_row = cur.fetchone()
+                        total_count = int(count_row[0]) if count_row else 0
 
-                        # 判断是否有返回结果（SELECT 查询）
-                        if cur.description:
-                            columns = [desc[0] for desc in cur.description]
-                            rows = cur.fetchmany(fetch_limit)
-
-                            # 格式化为表格
-                            result_lines = ["\t".join(columns)]
-                            result_lines.append("-" * 80)
-                            for row in rows[:MAX_DISPLAY_ROWS]:
-                                result_lines.append("\t".join(str(v) for v in row))
-
-                            if len(rows) > MAX_DISPLAY_ROWS:
-                                result_lines.append("-" * 80)
-                                result_lines.append(
-                                    f"数据量过大，仅展示前 {MAX_DISPLAY_ROWS} 行（共 >{MAX_DISPLAY_ROWS} 行）。"
-                                )
-                                result_lines.append("建议用 SQL运算或 聚合等操作，或者使用Python代码处理后再返回。")
-
-                            return "\n".join(result_lines)
-                        else:
-                            conn.commit()
-                            return f"SQL 执行成功，影响行数：{cur.rowcount}"
+                        cur.execute(limited_sql)
+                        columns = [desc[0] for desc in cur.description]
+                        rows = cur.fetchmany(MAX_DISPLAY_ROWS)
+                        json_rows = [_build_json_row(columns, row) for row in rows]
+                        return {
+                            "rows": json_rows,
+                            "row_count": len(json_rows),
+                            "total_count": total_count,
+                            "truncated": total_count > len(json_rows),
+                        }
 
             except Exception as exc:
                 logger.error(f"SQL 执行失败：{exc}")
-                return f"SQL 执行失败：{exc}"
+                return {"error": f"SQL 执行失败：{exc}"}
 
         return run_sql
 
@@ -648,15 +669,24 @@ class NL2SQLMiddleware(AgentMiddleware[None, AgentContext, None]):
             if isinstance(args, dict) and "code" in args and "sql" not in args:
                 args["sql"] = args.pop("code")
             result = await run_sql_tool.arun(args)
-            return ToolMessage(content=result, tool_call_id=request.tool_call["id"])
+            return ToolMessage(
+                content=json.dumps(result, ensure_ascii=False, default=str),
+                tool_call_id=request.tool_call["id"],
+            )
         if tool_name == "list_tables_tool":
             list_tables_tool = self.get_list_tables_tool(context.user_id)
             result = await list_tables_tool.arun(request.tool_call["args"])
-            return ToolMessage(content=result, tool_call_id=request.tool_call["id"])
+            return ToolMessage(
+                content=json.dumps(result, ensure_ascii=False, default=str),
+                tool_call_id=request.tool_call["id"],
+            )
         if tool_name == "describe_tables_tool":
             describe_tables_tool = self.get_describe_tables_tool(context.user_id)
             result = await describe_tables_tool.arun(request.tool_call["args"])
-            return ToolMessage(content=result, tool_call_id=request.tool_call["id"])
+            return ToolMessage(
+                content=json.dumps(result, ensure_ascii=False, default=str),
+                tool_call_id=request.tool_call["id"],
+            )
         return await handler(request)
 
 

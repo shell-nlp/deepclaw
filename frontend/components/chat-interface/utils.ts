@@ -239,7 +239,17 @@ export function parseMarkdown(text: string): string {
 }
 
 export function stringifyToolContent(content: unknown): string {
-  if (typeof content === 'string') return content
+  if (typeof content === 'string') {
+    try {
+      const parsed = JSON.parse(content) as unknown
+      if (typeof parsed === 'object' && parsed !== null) {
+        return JSON.stringify(parsed, null, 2)
+      }
+    } catch {
+      return content
+    }
+    return content
+  }
   if (content == null) return ''
   try {
     return JSON.stringify(content, null, 2)
