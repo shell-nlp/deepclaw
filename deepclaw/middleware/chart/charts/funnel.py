@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from deepclaw.middleware.chart.utils import save_chart_to_workspace
+from deepclaw.middleware.chart.utils import format_compact_number, save_chart_to_workspace
 
 
 def render(params: dict) -> str:
@@ -23,7 +23,14 @@ def render(params: dict) -> str:
     for i, (stage, val) in enumerate(zip(stages, values)):
         width = val / max_val
         ax.barh(i, width, height=0.6, color=colors[i])
-        ax.text(width / 2, i, f"{stage}: {val}", ha="center", va="center", fontsize=10)
+        ax.text(
+            width / 2,
+            i,
+            f"{stage}: {format_compact_number(val)}",
+            ha="center",
+            va="center",
+            fontsize=10,
+        )
     ax.set_yticks(range(n))
     ax.set_yticklabels(stages)
     ax.invert_yaxis()
