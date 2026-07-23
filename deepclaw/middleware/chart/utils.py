@@ -1,12 +1,9 @@
 import time
 import uuid
-from collections.abc import Iterable
 from pathlib import Path
 
 import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
-import numpy as np
-from matplotlib.ticker import FuncFormatter
 from loguru import logger
 
 from deepclaw.constant import workspace_path
@@ -15,81 +12,16 @@ from deepclaw.settings import settings
 _CHARTS_DIR: Path | None = None
 
 
-def get_value_scale(values: Iterable[float]) -> tuple[float, str]:
-    """根据数值量级确定展示单位。
-
-    Args:
-        values: 待判断量级的数值序列。
-
-    Returns:
-        tuple[float, str]: 数值换算系数及其中文单位。
-    """
-    max_abs_value = max((abs(float(value)) for value in values), default=0)
-    for threshold, unit in ((100_000_000, "亿"), (1_000_000, "百万"), (10_000, "万")):
-        if max_abs_value >= threshold:
-            return threshold, unit
-    return 1, ""
-
-
 def format_number(value: float) -> str:
-    """将数值格式化为非科学计数法文本。
+    """将数值格式化为标准数值文本。
 
     Args:
         value: 待格式化的数值。
 
     Returns:
-        str: 不含科学计数法的数值文本。
+        str: 普通数值或科学计数法文本。
     """
-    return np.format_float_positional(float(value), trim="-")
-
-
-def format_compact_number(value: float) -> str:
-    """按单个数值的量级格式化可读文本。
-
-    Args:
-        value: 待格式化的原始数值。
-
-    Returns:
-        str: 带有万、百万或亿单位的数值文本。
-    """
-    value_scale, value_unit = get_value_scale((value,))
-    return f"{format_number(value / value_scale)}{value_unit}"
-
-
-def format_axis_tick(value: float, _position: float) -> str:
-    """格式化数值轴刻度。
-
-    Args:
-        value: 数值轴刻度值。
-        _position: 数值轴刻度位置。
-
-    Returns:
-        str: 不含科学计数法的刻度文本。
-    """
-    return format_number(value)
-
-
-def configure_value_axis(axis: object) -> None:
-    """为数值轴配置非科学计数法刻度。
-
-    Args:
-        axis: Matplotlib 的数值轴对象。
-    """
-    axis.set_major_formatter(FuncFormatter(format_axis_tick))
-
-
-def build_axis_title(title: str, unit: str, default_title: str = "数值") -> str:
-    """为轴标题追加自动换算后的单位。
-
-    Args:
-        title: 调用方传入的轴标题。
-        unit: 自动选择的展示单位。
-        default_title: 缺少轴标题时使用的默认名称。
-
-    Returns:
-        str: 含单位的轴标题。
-    """
-    return f"{title or default_title}（{unit}）" if unit else title
+    return f"{float(value):.15g}"
 
 
 def _get_charts_dir() -> Path:

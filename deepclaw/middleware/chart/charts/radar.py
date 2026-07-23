@@ -3,9 +3,6 @@ import numpy as np
 import pandas as pd
 
 from deepclaw.middleware.chart.utils import (
-    build_axis_title,
-    configure_value_axis,
-    get_value_scale,
     save_chart_to_workspace,
 )
 
@@ -20,8 +17,6 @@ def render(params: dict) -> str:
         str: 已保存图表的访问地址。
     """
     df = pd.DataFrame(params["data"])
-    value_scale, value_unit = get_value_scale(df["score"])
-    df["score"] = df["score"] / value_scale
     fig, ax = plt.subplots(
         figsize=(params["width"] / 100, params["height"] / 100),
         subplot_kw=dict(polar=True),
@@ -43,8 +38,6 @@ def render(params: dict) -> str:
         values += values[:1]
         ax.plot(angles, values, marker="o")
         ax.fill(angles, values, alpha=0.1)
-    configure_value_axis(ax.yaxis)
-    ax.set_ylabel(build_axis_title(params.get("axisYTitle", ""), value_unit), labelpad=20)
     ax.set_title(params.get("title", ""), pad=20)
     fig.tight_layout()
     return save_chart_to_workspace(fig)

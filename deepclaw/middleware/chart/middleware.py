@@ -20,10 +20,9 @@ CHART_SYSTEM_PROMPT = (
     "调用前必须核对字段：bar/column/pie 使用 category、value；line/area 使用 time、value；"
     "scatter 使用 x、y；radar 使用 item、score；funnel 使用 stage、value；histogram 使用纯数值或 value。"
     "分组时每条数据都必须有 group，且同一维度与 group 的组合不能重复。pie/funnel 的 value 必须非负且至少一个为正数。"
-    "调用工具时必须传入原始数值，不得预先换算为万、百万或亿，也不得调整数值量级；"
-    "展示缩放、单位和数值格式完全由图表工具代码处理，且不会修改原始数据。"
-    "stack 仅可用于 bar/column。所有图表的数值轴会按当前图表最大量级换算为万、百万或亿；"
-    "数值标签按单项量级显示，避免小值因统一换算而难以阅读。"
+    "调用工具时必须传入原始数值，不得调整数值量级；图表直接使用原始数值绘制，不做万、百万或亿换算。"
+    "数值过长时使用正确的科学计数法表示。"
+    "stack 仅可用于 bar/column。"
     "bar 会按数值降序展示。"
     "图表应包含清晰 title；有坐标轴时应尽量补充 axisXTitle、axisYTitle 和单位。\n"
     "如果工具返回参数错误，先依据错误信息修正参数并重试一次；仍无法生成时，说明缺少或不合法的数据，不得声称图表已生成。\n"
@@ -47,7 +46,7 @@ CHART_TOOL_DESCRIPTION = (
     + "- 仅使用用户提供或上下文中可信的数据，不得编造数据。\n"
     + "- 分组时每条数据都提供 group，且同一维度与 group 的组合不能重复。\n"
     + "- pie/funnel 的 value 必须非负且至少有一个正数；stack 仅用于 bar/column。\n"
-    + "- 必须传入原始数值，不得预先换算万、百万或亿；展示缩放和单位由工具自动处理。\n"
+    + "- 必须传入原始数值，不得调整数值量级；工具不做万、百万或亿换算，过长数值使用科学计数法。\n"
     + "- 请提供清晰 title；有坐标轴时补充 axisXTitle、axisYTitle 和单位。"
 )
 

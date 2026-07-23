@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from deepclaw.middleware.chart.utils import format_compact_number, save_chart_to_workspace
+from deepclaw.middleware.chart.utils import format_number, save_chart_to_workspace
 
 
 def render(params: dict) -> str:
@@ -26,7 +26,7 @@ def render(params: dict) -> str:
         ax.text(
             width / 2,
             i,
-            f"{stage}: {format_compact_number(val)}",
+            f"{stage}: {format_number(val)}",
             ha="center",
             va="center",
             fontsize=10,
