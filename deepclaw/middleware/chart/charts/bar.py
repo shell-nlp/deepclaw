@@ -2,10 +2,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from deepclaw.middleware.chart.utils import (
-    build_axis_title,
-    configure_value_axis,
-    format_compact_number,
-    get_value_scale,
+    format_number,
     save_chart_to_workspace,
 )
 
@@ -20,8 +17,6 @@ def render(params: dict) -> str:
         str: 已保存图表的访问地址。
     """
     df = pd.DataFrame(params["data"])
-    value_scale, value_unit = get_value_scale(df["value"])
-    df["value"] = df["value"] / value_scale
     fig, ax = plt.subplots(figsize=(params["width"] / 100, params["height"] / 100))
     stacked = params["stack"] if params["stack"] is not None else True
     if "group" in df.columns:
@@ -34,13 +29,12 @@ def render(params: dict) -> str:
     for container in ax.containers:
         ax.bar_label(
             container,
-            labels=[format_compact_number(value * value_scale) for value in container.datavalues],
+            labels=[format_number(value) for value in container.datavalues],
             label_type="edge",
             padding=3,
         )
     ax.invert_yaxis()
-    configure_value_axis(ax.xaxis)
-    ax.set_xlabel(build_axis_title(params.get("axisXTitle", ""), value_unit))
+    ax.set_xlabel(params.get("axisXTitle", ""))
     ax.set_ylabel(params.get("axisYTitle", ""))
     ax.set_title(params.get("title", ""))
     fig.tight_layout()
