@@ -29,7 +29,7 @@ class RecommendedQuestionsMiddleware(AgentMiddleware):
                 schema=RecommendQuestions,
                 method="json_mode",
             )
-            .bind(extra_body={"thinking": {"type": "disabled"}})
+            .bind(extra_body={"thinking": {"type": "disabled"}, "response_format": {"type": "json_object"}})
         )
         recommend_result = await recommend_model.ainvoke(
             [
@@ -38,13 +38,13 @@ class RecommendedQuestionsMiddleware(AgentMiddleware):
                     """请根据用户当前问题生成 3 个与当前问题相关的新问题。
 ## 要求
 - 必须输出结构化 JSON，对应字段为 questions,形如：
-{{
+{
   "questions": [
     "问题1",
     "问题2",
     "问题3"
   ]
-}}
+}
 
 - questions 必须恰好包含 5 个问题
 - 每个问题都必须是完整通顺的中文问句，并以中文问号结尾，且要简短。

@@ -53,6 +53,7 @@ interface ChatViewProps {
   onNavigateToKnowledge: () => void
   onAbortRequest: () => void
   onSendMessage: () => void | Promise<void>
+  onRecommendedQuestion: (question: string) => void | Promise<void>
 }
 
 function getAssistantMessageItems(msg: Message): AssistantMessageItem[] {
@@ -90,9 +91,11 @@ function getAssistantMessageItems(msg: Message): AssistantMessageItem[] {
 function AssistantMessageBody({
   msg,
   toolCallDurations,
+  onRecommendedQuestion,
 }: {
   msg: Message
   toolCallDurations?: Record<string, number>
+  onRecommendedQuestion: (question: string) => void | Promise<void>
 }) {
   const reasoningBlocks =
     msg.reasoningBlocks?.length
@@ -143,6 +146,23 @@ function AssistantMessageBody({
           />
         ) : null
       })}
+      {msg.recommendedQuestions?.length ? (
+        <div className={styles.recommendedQuestions}>
+          <span className={styles.recommendedQuestionsTitle}>你可能还想问：</span>
+          <div className={styles.recommendedQuestionsList}>
+            {msg.recommendedQuestions.map((question) => (
+              <button
+                key={question}
+                className={styles.recommendedQuestionButton}
+                onClick={() => void onRecommendedQuestion(question)}
+              >
+                <span>{question}</span>
+                <span aria-hidden="true">→</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </>
   )
 }
@@ -370,6 +390,7 @@ export function ChatView({
   onNavigateToKnowledge,
   onAbortRequest,
   onSendMessage,
+  onRecommendedQuestion,
 }: ChatViewProps) {
   const [isEditingInterruptArgs, setIsEditingInterruptArgs] = useState(false)
   const [interruptArgsDrafts, setInterruptArgsDrafts] = useState<
@@ -582,6 +603,7 @@ export function ChatView({
                   <AssistantMessageBody
                     msg={msg}
                     toolCallDurations={toolCallDurations}
+                    onRecommendedQuestion={onRecommendedQuestion}
                   />
                   {isProcessing &&
                     msg.id === currentAssistantMessageId &&
