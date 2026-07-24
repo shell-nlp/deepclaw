@@ -56,10 +56,12 @@ SSE 响应契约
 
 .. code-block:: json
 
-    {"event": "token|tool_calls|tool_output|__interrupt__", "data": {...}}
+    {"event": "token|tool_calls|tool_output|__interrupt__|custom", "data": {...}}
 
 正常结束时，末尾发送非 JSON 的 ``data: [DONE]\\n\\n``。客户端应以 ``[DONE]``
 而非连接关闭判断正常结束；未捕获异常不会转换为 SSE ``error`` 事件。
+其中 ``custom`` 用于业务自定义事件，其事件中的 ``data`` 支持任意 JSON 值，不限于
+对象。
 
 ``token`` 事件的 ``data`` 始终包含：
 
