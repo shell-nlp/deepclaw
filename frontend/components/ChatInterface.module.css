@@ -891,6 +891,53 @@ textarea.interruptInput {
   max-width: min(100%, 880px);
 }
 
+.recommendedQuestions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  width: min(100%, 880px);
+  max-width: min(100%, 880px);
+  margin-top: 16px;
+}
+
+.recommendedQuestionsTitle {
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.recommendedQuestionsList {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.recommendedQuestionButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: left;
+  transition: all 0.2s ease;
+}
+
+.recommendedQuestionButton:hover {
+  border-color: var(--accent-primary);
+  background: rgba(79, 70, 229, 0.08);
+  color: var(--accent-primary);
+  transform: translateX(2px);
+}
+
 .reasoningContainer {
   width: min(100%, 880px);
   max-width: min(100%, 880px);

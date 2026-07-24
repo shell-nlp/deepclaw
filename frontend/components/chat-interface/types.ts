@@ -7,6 +7,7 @@ export interface Message {
   contentBlocks?: ReasoningBlock[]
   messageItems?: AssistantMessageItem[]
   toolData?: ToolData[]
+  recommendedQuestions?: string[]
 }
 
 export interface ReasoningBlock {
@@ -45,7 +46,7 @@ export interface ToolData {
 }
 
 export interface StreamEvent {
-  event: 'token' | 'tool_calls' | 'tool_output' | '__interrupt__'
+  event: 'token' | 'tool_calls' | 'tool_output' | '__interrupt__' | 'custom'
   data: {
     id?: string
     token?: string
@@ -72,6 +73,7 @@ export interface StreamEvent {
         args_schema?: Record<string, unknown>
       }>
     }
+    recommended_questions?: string[]
   } | null
 }
 

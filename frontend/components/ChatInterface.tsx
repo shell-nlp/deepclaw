@@ -1697,6 +1697,29 @@ export default function ChatInterface() {
           }
           break
         }
+
+        case 'custom': {
+          const recommendedQuestions = (data.recommended_questions || [])
+            .filter((question: string) => typeof question === 'string' && question.trim())
+            .map((question: string) => question.trim())
+          const assistantMessageId = currentAssistantMessageIdRef.current
+          if (recommendedQuestions.length > 0 && assistantMessageId) {
+            setMessages((prev) =>
+              prev.map((message) =>
+                message.role === 'ai'
+                  ? {
+                      ...message,
+                      recommendedQuestions:
+                        message.id === assistantMessageId
+                          ? recommendedQuestions
+                          : undefined,
+                    }
+                  : message
+              )
+            )
+          }
+          break
+        }
       }
 
       return event.event
@@ -1768,8 +1791,8 @@ export default function ChatInterface() {
     [handleStreamEvent]
   )
 
-  const sendMessage = async () => {
-    const query = inputValue.trim()
+  const sendMessage = async (recommendedQuestion?: string) => {
+    const query = (recommendedQuestion ?? inputValue).trim()
     if (!query || isProcessing || !sessionId) return
 
     const requestMode: RequestMode = useKnowledgeBase ? 'rag' : 'agent'
@@ -1786,6 +1809,13 @@ export default function ChatInterface() {
       return
     }
 
+    setMessages((prev) =>
+      prev.map((message) =>
+        message.recommendedQuestions
+          ? { ...message, recommendedQuestions: undefined }
+          : message
+      )
+    )
     addMessage({
       id: generateMessageId(),
       role: 'user',
@@ -1867,6 +1897,19 @@ export default function ChatInterface() {
       event.preventDefault()
       void sendMessage()
     }
+  }
+
+  /**
+   * 发送用户点击的推荐问题。
+   *
+   * Args:
+   * - question: 推荐问题文本。
+   */
+  const askRecommendedQuestion = (question: string) => {
+    if (isProcessing) return
+
+    setInputValue(question)
+    void sendMessage(question)
   }
 
   const abortRequest = () => {
@@ -2184,6 +2227,7 @@ export default function ChatInterface() {
               onNavigateToKnowledge={() => navigateTo('knowledge', 'libraries')}
               onAbortRequest={abortRequest}
               onSendMessage={sendMessage}
+              onRecommendedQuestion={askRecommendedQuestion}
             />
           ) : viewMode === 'skills' ? (
             <div className={styles.managementViewport}>

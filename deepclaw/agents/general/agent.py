@@ -45,13 +45,11 @@ class Agent:
 
     def get_common_middleware(self):
         """获取通用中间件列表"""
-        from deepclaw.middleware import (
-            BusinessMiddleware,
-            MCPMiddleware,
-            RecommendedQuestionsMiddleware,
-        )
+        from deepclaw.middleware import BusinessMiddleware, MCPMiddleware
 
         middleware = []
+        from deepclaw.middleware import RecommendedQuestionsMiddleware
+
         middleware.append(RecommendedQuestionsMiddleware())
         middleware.append(BusinessMiddleware())
         middleware.append(MCPMiddleware())
