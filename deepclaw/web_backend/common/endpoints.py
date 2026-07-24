@@ -239,7 +239,7 @@ class GeneralAPIRequest(BaseModel):
 
 
 class StreamResponse(BaseModel):
-    event: Literal["token", "tool_calls", "tool_output", "__interrupt__"] = "token"
+    event: Literal["token", "tool_calls", "tool_output", "__interrupt__", "custom"] = "token"
     data: dict | None = None
 
 
@@ -319,10 +319,14 @@ def add_general_api_endpoint(
             full_message = None
             async for mode, chunk in agent.astream(
                 input=input_payload,
-                stream_mode=["messages", "updates"],
+                stream_mode=["messages", "updates", "custom"],
                 config=config,
                 context=Context(**request_payload),
             ):
+                if mode == "custom":
+                    stream_response.event = "custom"
+                    stream_response.data = chunk
+                    yield f"data: {stream_response.model_dump_json()}\n\n"
                 if mode == "messages":
                     msg: AIMessageChunk
                     msg, metadata = chunk
