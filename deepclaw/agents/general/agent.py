@@ -14,8 +14,6 @@ from deepclaw.constant import (
     home_path,
     workspace_path,
 )
-from deepclaw.middleware.common import BusinessMiddleware
-from deepclaw.middleware.mcp import MCPMiddleware
 from deepclaw.settings import settings
 from deepclaw.utils import get_chat_model
 
@@ -47,8 +45,14 @@ class Agent:
 
     def get_common_middleware(self):
         """获取通用中间件列表"""
-        middleware = []
+        from deepclaw.middleware import (
+            BusinessMiddleware,
+            MCPMiddleware,
+            RecommendedQuestionsMiddleware,
+        )
 
+        middleware = []
+        middleware.append(RecommendedQuestionsMiddleware())
         middleware.append(BusinessMiddleware())
         middleware.append(MCPMiddleware())
         # HumanInTheLoopMiddleware
