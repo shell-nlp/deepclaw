@@ -211,3 +211,45 @@ def test_format_number_uses_scientific_notation_for_large_values():
     """校验过长数值使用正确的科学计数法。"""
     assert utils.format_number(123_456_789) == "123456789"
     assert utils.format_number(10**20) == "1e+20"
+
+
+def test_grouped_bar_separates_quantity_and_rate_axes(monkeypatch):
+    """校验数量与处理率使用独立横轴绘制。
+
+    Args:
+        monkeypatch: Pytest 的属性替换工具。
+    """
+    captured = {}
+
+    def capture_chart(figure):
+        """保存待断言的图表对象。
+
+        Args:
+            figure: 条形图的 Matplotlib 图形对象。
+        """
+        captured["figure"] = figure
+        return "/charts/bar.png"
+
+    monkeypatch.setattr(bar, "save_chart_to_workspace", capture_chart)
+
+    bar.render({
+        "data": [
+            {"category": "刘阳", "value": 165, "group": "商机数量"},
+            {"category": "张晓博", "value": 214, "group": "商机数量"},
+            {"category": "刘阳", "value": 5.45, "group": "处理率(%)"},
+            {"category": "张晓博", "value": 10.75, "group": "处理率(%)"},
+        ],
+        "width": 800,
+        "height": 600,
+        "axisXTitle": "分包人员",
+        "axisYTitle": "商机数量（个）/ 处理率（%）",
+        "stack": None,
+    })
+
+    figure = captured["figure"]
+    primary_axis, rate_axis = figure.axes
+    assert primary_axis.get_xlabel() == "商机数量"
+    assert primary_axis.get_ylabel() == "分包人员"
+    assert rate_axis.get_xlabel() == "处理率(%)"
+    assert {text.get_text() for text in [*primary_axis.texts, *rate_axis.texts]} == {"165", "214", "5.45", "10.75"}
+    plt.close(figure)
