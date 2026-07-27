@@ -255,7 +255,7 @@ _DATA_QUERY_PREFIX_RE: re.Pattern[str] = re.compile(
     r"^\s*(?:SELECT|WITH)\b",
     re.IGNORECASE,
 )
-MAX_DISPLAY_ROWS = 30
+MAX_DISPLAY_ROWS = 100
 
 
 def _get_database_scheme(database_url: str) -> str:
@@ -601,7 +601,7 @@ class NL2SQLMiddleware(AgentMiddleware[None, AgentContext, None]):
             - 仅允许执行查询（SELECT）语句，拒绝写入/修改操作。
             - 禁止在 SQL 中添加任何注释（包括 -- 和 /* */ 注释），请直接输出可执行 SQL。
             - 在查询某个数据库表之前，如果不知道该表的 DDL 结构，必须先使用 describe_tables_tool 查看该表的 DDL 结构，禁止直接去查询表进行DDL结构探索。
-            - 查询结果最多展示 30 行；返回 JSON 中 rows 为展示行，row_count 为展示行数，total_count 为完整结果数，truncated 表示是否因上限截断。
+            - 查询结果最多展示 100 行；返回 JSON 中 rows 为展示行，row_count 为展示行数，total_count 为完整结果数，truncated 表示是否因上限截断。
             - 尽量使用简单的 SQL 语句 + 多次查询，避免使用复杂的查询逻辑（因为模型能力有限，复杂SQL命令容易出错）。
             """
             database_url = _resolve_database_url()

@@ -21,7 +21,7 @@ def format_number(value: float) -> str:
     Returns:
         str: 普通数值或科学计数法文本。
     """
-    return f"{float(value):.15g}"
+    return f"{float(value):.12g}"
 
 
 def _get_charts_dir() -> Path:
