@@ -1,7 +1,11 @@
+import csv
+from unittest.mock import MagicMock
+
 import pytest
 
 from deepclaw.common.graph_db.base import GraphDatabaseBase
 from deepclaw.common.graph_db.networkx import NetworkXGraph
+from deepclaw.common.graph_db.neo4j_db import Neo4jGraph
 
 
 class DummyGraph(GraphDatabaseBase):
@@ -24,6 +28,12 @@ class DummyGraph(GraphDatabaseBase):
         raise NotImplementedError
 
     def delete_edge(self, from_node_id, to_node_id, relationship_type):
+        raise NotImplementedError
+
+    def export_data(self):
+        raise NotImplementedError
+
+    def import_data(self, data, clear_existing=False):
         raise NotImplementedError
 
     def close(self):
@@ -218,6 +228,144 @@ def test_multiple_edge_types_between_same_nodes():
     assert len(neighbors) == 2
     assert {n["relationship_type"] for n in neighbors} == {"KNOWS", "COLLEAGUE"}
     g.close()
+
+
+def test_export_and_import_graph_data(tmp_path):
+    source = NetworkXGraph()
+    alice = source.add_node("Person", {"name": "Alice"}, node_id="alice")
+    bob = source.add_node("Person", {"name": "Bob"}, node_id="bob")
+    source.add_edge(alice, bob, "KNOWS", {"since": 2020})
+
+    path = tmp_path / "graph.json"
+    source.export_to_file(path)
+
+    target = NetworkXGraph()
+    target.add_node("Person", {"name": "Existing"})
+    target.import_from_file(path, clear_existing=True)
+
+    assert target.get_node("alice")["properties"] == {"name": "Alice"}
+    assert target.get_node("bob")["properties"] == {"name": "Bob"}
+    assert target.get_neighbors("alice") == [{
+        "node": target.get_node("bob"),
+        "relationship_type": "KNOWS",
+    }]
+
+
+def test_import_graph_data_rejects_invalid_data():
+    graph = NetworkXGraph()
+
+    with pytest.raises(ValueError, match="nodes 和 edges"):
+        graph.import_data({"nodes": []})
+
+
+def test_import_graph_data_preserves_multiple_labels():
+    graph = NetworkXGraph()
+    graph.import_data({
+        "nodes": [{
+            "id": "alice",
+            "labels": ["Person", "Employee"],
+            "properties": {"name": "Alice"},
+        }],
+        "edges": [],
+    })
+
+    assert graph.get_node("alice")["labels"] == ["Person", "Employee"]
+    assert graph.get_nodes_by_label("Employee")[0]["id"] == "alice"
+
+
+def test_export_to_neo4j_csv(tmp_path):
+    graph = NetworkXGraph()
+    alice = graph.add_node(
+        "Person", {"name": "Alice", "age": 30, "active": True}, node_id="alice"
+    )
+    bob = graph.add_node("Person", {"name": "Bob"}, node_id="bob")
+    graph.add_edge(alice, bob, "KNOWS", {"weights": [1, 2]})
+
+    node_path, relationship_path = graph.export_to_neo4j_csv(tmp_path)
+
+    with node_path.open(encoding="utf-8", newline="") as file:
+        nodes = list(csv.DictReader(file))
+    with relationship_path.open(encoding="utf-8", newline="") as file:
+        relationships = list(csv.DictReader(file))
+    assert nodes[0] == {
+        "node_id:ID": "alice",
+        ":LABEL": "Person",
+        "active:boolean": "true",
+        "age:long": "30",
+        "name:string": "Alice",
+    }
+    assert relationships == [{
+        ":START_ID": "alice",
+        ":END_ID": "bob",
+        ":TYPE": "KNOWS",
+        "weights:long[]": "1;2",
+    }]
+
+
+def test_import_from_neo4j_csv_round_trip(tmp_path):
+    """验证 Neo4j CSV 导出数据可完整导回内存图。"""
+    source = NetworkXGraph()
+    alice = source.add_node(
+        "Person", {"name": "Alice", "age": 30, "active": True}, node_id="alice"
+    )
+    bob = source.add_node("Person", {"name": "Bob"}, node_id="bob")
+    source.add_edge(alice, bob, "KNOWS", {"weights": [1, 2]})
+    node_path, relationship_path = source.export_to_neo4j_csv(tmp_path)
+
+    target = NetworkXGraph()
+    target.import_from_neo4j_csv(node_path, relationship_path)
+
+    assert target.get_node("alice")["properties"] == {
+        "name": "Alice",
+        "age": 30,
+        "active": True,
+    }
+    assert target.get_neighbors("alice")[0]["relationship_type"] == "KNOWS"
+    assert target.get_neighbors("alice")[0]["node"]["id"] == "bob"
+
+
+def test_neo4j_csv_import_uses_batched_unwind(tmp_path):
+    """验证 Neo4j CSV 导入使用分批 UNWIND 写入。"""
+    source = NetworkXGraph()
+    alice = source.add_node("Person", {"name": "Alice"}, node_id="alice")
+    bob = source.add_node("Person", {"name": "Bob"}, node_id="bob")
+    source.add_edge(alice, bob, "KNOWS")
+    node_path, relationship_path = source.export_to_neo4j_csv(tmp_path)
+    session = MagicMock()
+    session.__enter__.return_value = session
+    session.run.return_value.consume.return_value = None
+    driver = MagicMock()
+    driver.session.return_value = session
+    graph = object.__new__(Neo4jGraph)
+    graph.driver = driver
+    graph.database = "neo4j"
+
+    graph.import_from_neo4j_csv(node_path, relationship_path)
+
+    queries = [call.args[0] for call in session.run.call_args_list]
+    assert any("UNWIND $rows AS row" in query and "MERGE (node:" in query for query in queries)
+    assert any("UNWIND $rows AS row" in query and "MERGE (source)-" in query for query in queries)
+
+
+def test_graph_summary_counts_labels_and_relationship_types():
+    """验证图谱摘要包含节点标签与关系类型统计。"""
+    summary = GraphDatabaseBase._build_graph_summary(
+        [
+            {"id": "alice", "labels": ["Person", "Employee"], "properties": {}},
+            {"id": "bob", "labels": ["Person"], "properties": {}},
+        ],
+        [
+            {"from_node_id": "alice", "to_node_id": "bob", "relationship_type": "KNOWS", "properties": {}},
+            {"from_node_id": "bob", "to_node_id": "alice", "relationship_type": "KNOWS", "properties": {}},
+        ],
+    )
+
+    assert summary == {
+        "node_count": 2,
+        "relationship_count": 2,
+        "node_labels": {"Person": 2, "Employee": 1},
+        "relationship_types": {"KNOWS": 2},
+    }
 
 
 # ---- Neo4j 集成测试 ----

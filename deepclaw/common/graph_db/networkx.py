@@ -40,6 +40,7 @@ class NetworkXGraph(GraphDatabaseBase):
 
         attrs = dict(properties)
         attrs["_label"] = label
+        attrs["_labels"] = [label]
         attrs["_id"] = resolved_id
         self._graph.add_node(resolved_id, **attrs)
         self._node_labels[resolved_id] = label
@@ -86,10 +87,11 @@ class NetworkXGraph(GraphDatabaseBase):
         if node_id not in self._graph:
             return None
         attrs = dict(self._graph.nodes[node_id])
+        labels = attrs.pop("_labels", None)
         label = attrs.pop("_label", None)
         return {
             "id": attrs.pop("_id", node_id),
-            "labels": [label] if label else [],
+            "labels": labels or ([label] if label else []),
             "properties": attrs,
         }
 
@@ -104,11 +106,13 @@ class NetworkXGraph(GraphDatabaseBase):
         """
         results = []
         for node_id, attrs in self._graph.nodes(data=True):
-            if attrs.get("_label") == label:
+            if label in attrs.get("_labels", [attrs.get("_label")]):
                 node_attrs = dict(attrs)
                 results.append({
                     "id": node_attrs.pop("_id", node_id),
-                    "labels": [node_attrs.pop("_label", label)],
+                    "labels": node_attrs.pop(
+                        "_labels", [node_attrs.pop("_label", label)]
+                    ),
                     "properties": node_attrs,
                 })
         return results
@@ -135,7 +139,9 @@ class NetworkXGraph(GraphDatabaseBase):
                 neighbors.append({
                     "node": {
                         "id": nbr_data.pop("_id", target),
-                        "labels": [nbr_data.pop("_label", "")] if "_label" in nbr_data else [],
+                        "labels": nbr_data.pop(
+                            "_labels", [nbr_data.pop("_label", "")]
+                        ),
                         "properties": nbr_data,
                     },
                     "relationship_type": edge_key,
@@ -148,7 +154,9 @@ class NetworkXGraph(GraphDatabaseBase):
                     neighbors.append({
                         "node": {
                             "id": nbr_data.pop("_id", source),
-                            "labels": [nbr_data.pop("_label", "")] if "_label" in nbr_data else [],
+                            "labels": nbr_data.pop(
+                                "_labels", [nbr_data.pop("_label", "")]
+                            ),
                             "properties": nbr_data,
                         },
                         "relationship_type": edge_key,
@@ -189,6 +197,49 @@ class NetworkXGraph(GraphDatabaseBase):
         self._graph.remove_edge(from_node_id, to_node_id, key=relationship_type)
         return True
 
+    def export_data(self) -> dict[str, list[dict[str, Any]]]:
+        """导出内存图谱为可移植数据。
+
+        Returns:
+            包含 nodes 和 edges 的图谱数据。
+        """
+        nodes = [self.get_node(node_id) for node_id in self._graph.nodes]
+        edges = [
+            {
+                "from_node_id": source,
+                "to_node_id": target,
+                "relationship_type": relationship_type,
+                "properties": dict(properties),
+            }
+            for source, target, relationship_type, properties in self._graph.edges(
+                keys=True, data=True
+            )
+        ]
+        return {"nodes": nodes, "edges": edges}
+
+    def import_data(
+        self, data: dict[str, list[dict[str, Any]]], clear_existing: bool = False
+    ) -> None:
+        """导入可移植图谱数据。
+
+        Args:
+            data: 包含 nodes 和 edges 的图谱数据。
+            clear_existing: 是否先清空当前图谱。
+        """
+        nodes, edges = GraphDatabaseBase._validate_graph_data(data)
+        if clear_existing:
+            self.clear_database()
+        for node in nodes:
+            self._add_node_with_labels(node["id"], node["labels"], dict(node["properties"]))
+        for edge in edges:
+            if not self.add_edge(
+                edge["from_node_id"],
+                edge["to_node_id"],
+                edge["relationship_type"],
+                dict(edge["properties"]),
+            ):
+                raise ValueError("关系引用了不存在的节点")
+
     def close(self) -> None:
         """清空内存图，释放资源。"""
         self._graph.clear()
@@ -198,6 +249,23 @@ class NetworkXGraph(GraphDatabaseBase):
         """清空所有节点和边。"""
         self._graph.clear()
         self._node_labels.clear()
+
+    def _add_node_with_labels(
+        self, node_id: str, labels: list[str], properties: dict[str, Any]
+    ) -> None:
+        """创建或更新具有多个标签的内存节点。
+
+        Args:
+            node_id: 节点唯一标识符。
+            labels: 节点标签列表。
+            properties: 节点属性。
+        """
+        attrs = dict(properties)
+        attrs["_id"] = node_id
+        attrs["_label"] = labels[0]
+        attrs["_labels"] = list(labels)
+        self._graph.add_node(node_id, **attrs)
+        self._node_labels[node_id] = labels[0]
 
     def save(self, path: str | Path) -> None:
         """保存图谱到磁盘。
