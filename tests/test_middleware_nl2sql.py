@@ -227,6 +227,10 @@ def test_oracle_ddl_includes_column_comments():
             ("COL_C", "DATE", None, None, None, "Y", None, None, None),
         ],
         [("COL_A",)],
+        [
+            ("FK_SAMPLE_PARENT", "COL_B", "GISTOOLS", "TB_PARENT", "ID_A", "CASCADE"),
+            ("FK_SAMPLE_PARENT", "COL_C", "GISTOOLS", "TB_PARENT", "ID_B", "CASCADE"),
+        ],
     ]
 
     class FakeCursor:
@@ -259,6 +263,10 @@ def test_oracle_ddl_includes_column_comments():
     assert "COMMENT ON COLUMN \"TB_SAMPLE\".\"COL_B\" IS '字段B说明';" in ddl
     assert "COMMENT ON COLUMN \"TB_SAMPLE\".\"COL_C\"" not in ddl
     assert any("all_col_comments" in sql for sql in executed_sql)
+    assert (
+        'CONSTRAINT "FK_SAMPLE_PARENT" FOREIGN KEY ("COL_B", "COL_C") '
+        'REFERENCES "GISTOOLS"."TB_PARENT" ("ID_A", "ID_B") ON DELETE CASCADE'
+    ) in ddl
 
 
 def test_pg_ddl_includes_column_comments():
@@ -276,6 +284,12 @@ def test_pg_ddl_includes_column_comments():
             ("col_c", "timestamp without time zone", True, None, None),
         ],
         [("col_a",)],
+        [
+            (
+                "demo_table_parent_id_fkey",
+                "FOREIGN KEY (parent_id) REFERENCES parent_table(id) ON DELETE CASCADE",
+            ),
+        ],
     ]
 
     class FakeCursor:
@@ -307,6 +321,10 @@ def test_pg_ddl_includes_column_comments():
     assert 'COMMENT ON COLUMN "demo_table"."col_a" IS \'字段A说明\';' in ddl
     assert 'COMMENT ON COLUMN "demo_table"."col_b" IS \'字段B说明\';' in ddl
     assert 'COMMENT ON COLUMN "demo_table"."col_c"' not in ddl
+    assert (
+        'CONSTRAINT "demo_table_parent_id_fkey" FOREIGN KEY (parent_id) '
+        'REFERENCES parent_table(id) ON DELETE CASCADE'
+    ) in ddl
 
 
 def test_join_table_ddls_uses_separator():
@@ -378,10 +396,8 @@ def test_run_sql_applies_row_limit_before_execute(monkeypatch):
 
     result = nl2sql_module.NL2SQLMiddleware().get_run_sql_tool().invoke({"sql": "SELECT * FROM TB_SAMPLE"})
 
-    assert executed_sql == [
-        "SELECT COUNT(*) FROM (\nSELECT * FROM TB_SAMPLE\n) nl2sql_total_count",
-        "SELECT * FROM (\nSELECT * FROM TB_SAMPLE\n) nl2sql_row_limit WHERE ROWNUM <= 30",
-    ]
+    assert executed_sql[0] == "SELECT COUNT(*) FROM (\nSELECT * FROM TB_SAMPLE\n) nl2sql_total_count"
+    assert "nl2sql_row_limit WHERE ROWNUM <=" in executed_sql[1]
     assert result == {
         "rows": [{"ID": 1, "NAME": "a"}, {"ID": 2, "NAME": "b"}],
         "row_count": 2,

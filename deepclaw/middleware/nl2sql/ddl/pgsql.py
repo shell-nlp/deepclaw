@@ -129,6 +129,23 @@ class PgDdlFetcher(BaseDdlFetcher):
         )
         pk_columns = [row[0] for row in cur.fetchall()]
 
+        cur.execute(
+            """
+            SELECT
+                con.conname,
+                pg_catalog.pg_get_constraintdef(con.oid, true)
+            FROM pg_catalog.pg_constraint con
+            JOIN pg_catalog.pg_class c ON con.conrelid = c.oid
+            JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+            WHERE con.contype = 'f'
+              AND n.nspname = %s
+              AND c.relname = %s
+            ORDER BY con.conname
+            """,
+            (schema, table_name),
+        )
+        foreign_keys = cur.fetchall()
+
         col_defs: list[str] = []
         column_comments: list[tuple[str, str | None]] = []
         for col_name, col_type, is_nullable, col_default, column_comment in columns:
@@ -144,6 +161,8 @@ class PgDdlFetcher(BaseDdlFetcher):
         if pk_columns:
             pk_list = ", ".join(f'"{column}"' for column in pk_columns)
             ddl += f",\n    PRIMARY KEY ({pk_list})"
+        for constraint_name, constraint_definition in foreign_keys:
+            ddl += f',\n    CONSTRAINT "{constraint_name}" {constraint_definition}'
         ddl += "\n);"
         comment_ddls = self.build_column_comment_ddls(table_name, column_comments)
         if comment_ddls:
