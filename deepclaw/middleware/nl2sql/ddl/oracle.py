@@ -197,6 +197,37 @@ class OracleDdlFetcher(BaseDdlFetcher):
         )
         pk_columns = [row[0] for row in cur.fetchall()]
 
+        # 获取外键及其引用列，按约束名和字段位置排序以支持复合外键。
+        cur.execute(
+            """
+            SELECT
+                child.constraint_name,
+                child_columns.column_name,
+                parent.owner,
+                parent.table_name,
+                parent_columns.column_name,
+                child.delete_rule
+            FROM all_constraints child
+            JOIN all_cons_columns child_columns
+              ON child.constraint_name = child_columns.constraint_name
+             AND child.owner = child_columns.owner
+            JOIN all_constraints parent
+              ON child.r_constraint_name = parent.constraint_name
+             AND child.r_owner = parent.owner
+            JOIN all_cons_columns parent_columns
+              ON parent.constraint_name = parent_columns.constraint_name
+             AND parent.owner = parent_columns.owner
+             AND parent_columns.position = child_columns.position
+            WHERE child.owner = :owner
+              AND child.table_name = :table_name
+              AND child.constraint_type = 'R'
+            ORDER BY child.constraint_name, child_columns.position
+            """,
+            owner=owner,
+            table_name=table_name,
+        )
+        foreign_key_rows = cur.fetchall()
+
         # 构建列定义
         col_defs: list[str] = []
         column_comments: list[tuple[str, str | None]] = []
@@ -228,6 +259,39 @@ class OracleDdlFetcher(BaseDdlFetcher):
         if pk_columns:
             pk_list = ", ".join(f'"{col}"' for col in pk_columns)
             ddl += f",\n    PRIMARY KEY ({pk_list})"
+        foreign_keys: dict[str, dict[str, object]] = {}
+        for (
+            constraint_name,
+            column_name,
+            referenced_owner,
+            referenced_table,
+            referenced_column,
+            delete_rule,
+        ) in foreign_key_rows:
+            foreign_key = foreign_keys.setdefault(
+                constraint_name,
+                {
+                    "columns": [],
+                    "referenced_owner": referenced_owner,
+                    "referenced_table": referenced_table,
+                    "referenced_columns": [],
+                    "delete_rule": delete_rule,
+                },
+            )
+            foreign_key["columns"].append(column_name)
+            foreign_key["referenced_columns"].append(referenced_column)
+        for constraint_name, foreign_key in foreign_keys.items():
+            column_list = ", ".join(f'"{column}"' for column in foreign_key["columns"])
+            referenced_column_list = ", ".join(
+                f'"{column}"' for column in foreign_key["referenced_columns"]
+            )
+            ddl += (
+                f',\n    CONSTRAINT "{constraint_name}" FOREIGN KEY ({column_list}) '
+                f'REFERENCES "{foreign_key["referenced_owner"]}".'
+                f'"{foreign_key["referenced_table"]}" ({referenced_column_list})'
+            )
+            if foreign_key["delete_rule"] in {"CASCADE", "SET NULL"}:
+                ddl += f' ON DELETE {foreign_key["delete_rule"]}'
         ddl += "\n);"
         comment_ddls = self.build_column_comment_ddls(table_name, column_comments)
         if comment_ddls:
