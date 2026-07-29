@@ -28,6 +28,9 @@ import { resolveChannelEntryPage } from './chat-interface/channelManagement'
 import { ChannelManagementView } from './chat-interface/ChannelManagementView'
 import { ChatView } from './chat-interface/ChatView'
 import {
+  AGENT_SESSION_DELETE_API_PATH,
+  AGENT_SESSION_LIST_API_PATH,
+  AGENT_SESSION_STATE_API_PATH,
   AUTH_USERS_CREATE_API_PATH,
   AUTH_USERS_LIST_API_PATH,
   AUTH_USERS_RESET_PASSWORD_API_PATH,
@@ -62,9 +65,12 @@ import { KnowledgeManagementView } from './chat-interface/KnowledgeManagementVie
 import { McpManagementView } from './chat-interface/McpManagementView'
 import { SkillManagementView } from './chat-interface/SkillManagementView'
 import type {
+  ApiResponse,
   AssistantMessageItem,
   ChannelManagementPage,
   AuthLoginResponse,
+  ChatHistoryListData,
+  ChatHistorySession,
   AuthUserListResponse,
   AuthUserSummary,
   BulkDeleteDocumentResponse,
@@ -84,6 +90,7 @@ import type {
   SkillRecord,
   SkillUploadResponse,
   StreamEvent,
+  ToolData,
   UploadResult,
   ViewMode,
 } from './chat-interface/types'
@@ -91,6 +98,7 @@ import { UserManagementView } from './chat-interface/UserManagementView'
 import {
   createClearedChatState,
   fetchJson,
+  formatDateTime,
   generateMessageId,
   generateSessionId,
   getApiUrl,
@@ -100,6 +108,185 @@ import {
   parseMcpConfig,
   stringifyToolContent,
 } from './chat-interface/utils'
+
+function getHistoryMessageContent(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+
+  return content
+    .map((item) => {
+      if (typeof item === 'string') return item
+      if (
+        item &&
+        typeof item === 'object' &&
+        'text' in item &&
+        typeof item.text === 'string'
+      ) {
+        return item.text
+      }
+      return ''
+    })
+    .join('')
+}
+
+function getHistoryReasoningContent(message: Record<string, unknown>): string {
+  const additionalKwargs = message.additional_kwargs
+  const responseMetadata = message.response_metadata
+  const candidates = [
+    message.reasoning_content,
+    message.reasoning,
+    additionalKwargs && typeof additionalKwargs === 'object'
+      ? (additionalKwargs as Record<string, unknown>).reasoning_content
+      : undefined,
+    responseMetadata && typeof responseMetadata === 'object'
+      ? (responseMetadata as Record<string, unknown>).reasoning_content
+      : undefined,
+  ]
+
+  for (const candidate of candidates) {
+    const content = getHistoryMessageContent(candidate)
+    if (content) return content
+  }
+  return ''
+}
+
+function getHistoryToolData(message: Record<string, unknown>): ToolData[] {
+  if (!Array.isArray(message.tool_calls)) return []
+
+  return message.tool_calls.flatMap((item) => {
+    if (!item || typeof item !== 'object') return []
+    const toolCall = item as Record<string, unknown>
+    if (typeof toolCall.id !== 'string' || typeof toolCall.name !== 'string') {
+      return []
+    }
+    const args: Record<string, unknown> = {}
+    if (toolCall.args && typeof toolCall.args === 'object' && !Array.isArray(toolCall.args)) {
+      Object.assign(args, toolCall.args)
+    } else if (typeof toolCall.args === 'string') {
+      try {
+        const parsedArgs = JSON.parse(toolCall.args) as unknown
+        if (parsedArgs && typeof parsedArgs === 'object' && !Array.isArray(parsedArgs)) {
+          Object.assign(args, parsedArgs)
+        }
+      } catch {
+      }
+    }
+    return [
+      {
+        toolCall: {
+          id: toolCall.id,
+          name: toolCall.name,
+          args,
+        },
+        toolOutput: [],
+      },
+    ]
+  })
+}
+
+function createHistoryAssistantMessage(id: string): Message {
+  return {
+    id,
+    role: 'ai',
+    content: '',
+    messageItems: [],
+    toolData: [],
+  }
+}
+
+function toHistoryMessages(stateMessages: unknown): Message[] {
+  if (!Array.isArray(stateMessages)) return []
+
+  const historyMessages: Message[] = []
+  const toolOwnerMessages = new Map<string, Message>()
+  let activeAssistant: Message | null = null
+
+  stateMessages.forEach((item, index) => {
+    if (!item || typeof item !== 'object') return
+    const message = item as Record<string, unknown>
+    const messageId =
+      typeof message.id === 'string' ? message.id : `history_message_${index}`
+    const content = getHistoryMessageContent(message.content)
+    if (message.type === 'human') {
+      historyMessages.push({ id: messageId, role: 'user', content })
+      activeAssistant = null
+      toolOwnerMessages.clear()
+      return
+    }
+
+    if (message.type === 'ai') {
+      if (!activeAssistant) {
+        activeAssistant = createHistoryAssistantMessage(`${messageId}_assistant`)
+        historyMessages.push(activeAssistant)
+      }
+      const reasoningContent = getHistoryReasoningContent(message)
+      const toolData = getHistoryToolData(message)
+      const assistant = activeAssistant
+
+      if (reasoningContent) {
+        const block = { id: `${messageId}_reasoning`, content: reasoningContent }
+        assistant.reasoningContent = `${assistant.reasoningContent || ''}${reasoningContent}`
+        assistant.reasoningBlocks = [...(assistant.reasoningBlocks || []), block]
+        assistant.messageItems?.push({
+          id: `reasoning_item_${block.id}`,
+          type: 'reasoning',
+          reasoningBlockId: block.id,
+        })
+      }
+      if (content) {
+        const block = { id: `${messageId}_content`, content }
+        assistant.content = `${assistant.content}${content}`
+        assistant.contentBlocks = [...(assistant.contentBlocks || []), block]
+        assistant.messageItems?.push({
+          id: `content_item_${block.id}`,
+          type: 'content',
+          contentBlockId: block.id,
+        })
+      }
+      toolData.forEach((tool) => {
+        assistant.toolData?.push(tool)
+        assistant.messageItems?.push({
+          id: `tool_item_${tool.toolCall.id}`,
+          type: 'tool',
+          toolCallId: tool.toolCall.id,
+        })
+        toolOwnerMessages.set(tool.toolCall.id, assistant)
+      })
+      return
+    }
+
+    if (message.type !== 'tool' || typeof message.tool_call_id !== 'string') return
+
+    const toolCallId = message.tool_call_id
+    const assistant = toolOwnerMessages.get(toolCallId) || activeAssistant
+    if (!assistant) {
+      const newAssistant = createHistoryAssistantMessage(`${messageId}_assistant`)
+      historyMessages.push(newAssistant)
+      toolOwnerMessages.set(toolCallId, newAssistant)
+      activeAssistant = newAssistant
+      return
+    }
+    const toolOutput = { tool_call_id: toolCallId, content: stringifyToolContent(message.content) }
+    const tool = assistant.toolData?.find((item) => item.toolCall.id === toolCallId)
+    if (!tool) {
+      const newTool = {
+        toolCall: { id: toolCallId, name: 'tool', args: {} },
+        toolOutput: [toolOutput],
+      }
+      assistant.toolData?.push(newTool)
+      assistant.messageItems?.push({
+        id: `tool_item_${toolCallId}`,
+        type: 'tool',
+        toolCallId,
+      })
+      toolOwnerMessages.set(toolCallId, assistant)
+      return
+    }
+    tool.toolOutput?.push(toolOutput)
+  })
+
+  return historyMessages
+}
 
 function appendReasoningToken(
   blocks: ReasoningBlock[] | undefined,
@@ -232,6 +419,11 @@ export default function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([])
   const [inputValue, setInputValue] = useState('')
   const [sessionId, setSessionId] = useState('')
+  const [historySessions, setHistorySessions] = useState<ChatHistorySession[]>([])
+  const [historyExpanded, setHistoryExpanded] = useState(true)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyLoadingSessionId, setHistoryLoadingSessionId] = useState<string | null>(null)
+  const [historyError, setHistoryError] = useState('')
   const [status, setStatus] = useState<'ready' | 'connecting' | 'error'>('ready')
   const [agentApiPath, setAgentApiPath] = useState(DEFAULT_AGENT_API_PATH)
   const [ragApiPath, setRagApiPath] = useState(DEFAULT_RAG_API_PATH)
@@ -611,6 +803,99 @@ export default function ChatInterface() {
     },
     [selectedKnowledgeBase]
   )
+
+  const loadHistorySessions = useCallback(async () => {
+    setHistoryLoading(true)
+    setHistoryError('')
+    try {
+      const response = await requestJson<ApiResponse<ChatHistoryListData>>(
+        AGENT_SESSION_LIST_API_PATH
+      )
+      if (response.code !== '200') {
+        throw new Error(response.msg || '获取聊天历史失败。')
+      }
+      setHistorySessions(response.data.sessions)
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : '获取聊天历史失败。')
+    } finally {
+      setHistoryLoading(false)
+    }
+  }, [requestJson])
+
+  const openHistorySession = useCallback(
+    async (targetSessionId: string) => {
+      if (isProcessing || targetSessionId === sessionId) return
+
+      setHistoryLoadingSessionId(targetSessionId)
+      setHistoryError('')
+      try {
+        const response = await requestJson<ApiResponse<{ messages?: unknown }>>(
+          AGENT_SESSION_STATE_API_PATH,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: targetSessionId }),
+          }
+        )
+        if (response.code !== '200') {
+          throw new Error(response.msg || '加载聊天历史失败。')
+        }
+
+        clearChat()
+        setMessages(toHistoryMessages(response.data.messages))
+        setSessionId(targetSessionId)
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('rag_chat_session_id', targetSessionId)
+        }
+        navigateTo('chat')
+        requestAnimationFrame(scrollToBottom)
+      } catch (error) {
+        setHistoryError(error instanceof Error ? error.message : '加载聊天历史失败。')
+      } finally {
+        setHistoryLoadingSessionId(null)
+      }
+    },
+    [clearChat, isProcessing, navigateTo, requestJson, scrollToBottom, sessionId]
+  )
+
+  const deleteHistorySession = useCallback(
+    async (targetSessionId: string, event: MouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation()
+      if (isProcessing) return
+
+      setHistoryLoadingSessionId(targetSessionId)
+      setHistoryError('')
+      try {
+        const response = await requestJson<ApiResponse<{ session_id: string }>>(
+          AGENT_SESSION_DELETE_API_PATH,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: targetSessionId }),
+          }
+        )
+        if (response.code !== '200') {
+          throw new Error(response.msg || '删除聊天历史失败。')
+        }
+
+        setHistorySessions((sessions) =>
+          sessions.filter((session) => session.session_id !== targetSessionId)
+        )
+        if (targetSessionId === sessionId) {
+          clearChat()
+        }
+      } catch (error) {
+        setHistoryError(error instanceof Error ? error.message : '删除聊天历史失败。')
+      } finally {
+        setHistoryLoadingSessionId(null)
+      }
+    },
+    [clearChat, isProcessing, requestJson, sessionId]
+  )
+
+  useEffect(() => {
+    void loadHistorySessions()
+  }, [loadHistorySessions])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -1882,6 +2167,7 @@ export default function ChatInterface() {
     } finally {
       finishReasoningBlock()
       setIsProcessing(false)
+      void loadHistorySessions()
       currentAssistantMessageIdRef.current = null
       processedToolCallIdsRef.current.clear()
       lastAssistantStreamEventRef.current = null
@@ -2100,6 +2386,76 @@ export default function ChatInterface() {
             >
               聊天
             </button>
+            {viewMode === 'chat' ? (
+              <section className={styles.chatHistory} aria-label="聊天历史">
+                <div className={styles.chatHistoryHeader}>
+                  <button
+                    type="button"
+                    className={styles.chatHistoryToggleButton}
+                    onClick={() => setHistoryExpanded((expanded) => !expanded)}
+                    aria-expanded={historyExpanded}
+                  >
+                    <span className={styles.chatHistoryTitle}>聊天历史</span>
+                    <span aria-hidden="true">{historyExpanded ? '⌃' : '⌄'}</span>
+                  </button>
+                </div>
+                {historyExpanded && historyLoading ? (
+                  <div className={styles.chatHistoryStatus}>正在加载…</div>
+                ) : null}
+                {historyExpanded && historyError ? (
+                  <div className={styles.chatHistoryError}>{historyError}</div>
+                ) : null}
+                {historyExpanded && !historyLoading && !historyError && historySessions.length === 0 ? (
+                  <div className={styles.chatHistoryStatus}>暂无历史会话</div>
+                ) : null}
+                {historyExpanded && historySessions.length > 0 ? (
+                  <div className={styles.chatHistoryList}>
+                    {historySessions.map((historySession) => {
+                      const isActive = historySession.session_id === sessionId
+                      const isLoading =
+                        historyLoadingSessionId === historySession.session_id
+                      return (
+                        <div
+                          key={historySession.session_id}
+                          className={`${styles.chatHistoryItem} ${
+                            isActive ? styles.chatHistoryItemActive : ''
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            className={styles.chatHistoryOpenButton}
+                            onClick={() => void openHistorySession(historySession.session_id)}
+                            disabled={isProcessing || isLoading}
+                          >
+                            <span className={styles.chatHistoryItemContent}>
+                              <span className={styles.chatHistorySessionTitle}>
+                                {historySession.title || '未命名对话'}
+                              </span>
+                              <span className={styles.chatHistoryTime}>
+                                {historySession.updated_at
+                                  ? formatDateTime(historySession.updated_at)
+                                  : '时间未知'}
+                              </span>
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.chatHistoryDeleteButton}
+                            onClick={(event) =>
+                              void deleteHistorySession(historySession.session_id, event)
+                            }
+                            disabled={isProcessing || isLoading}
+                            aria-label={`删除会话 ${historySession.session_id}`}
+                          >
+                            删除
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
             <button
               className={`${styles.sidebarButton} ${
                 viewMode === 'knowledge' && knowledgePage !== 'users'

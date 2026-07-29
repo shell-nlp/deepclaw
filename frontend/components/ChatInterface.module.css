@@ -2232,7 +2232,162 @@ textarea.interruptInput {
     border-right: none;
   }
 
-  .mainContent {
+.chatHistory {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  margin: 2px 0 8px;
+  padding: 10px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-secondary) 72%, transparent);
+}
+
+.sidebarNavCollapsed .chatHistory {
+  display: none;
+}
+
+.chatHistoryHeader {
+  display: flex;
+  align-items: center;
+}
+
+.chatHistoryToggleButton {
+  display: inline-flex;
+  min-width: 0;
+  width: 100%;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.chatHistoryTitle {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.chatHistoryDeleteButton {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.chatHistoryList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: min(38vh, 360px);
+  overflow-y: auto;
+}
+
+.chatHistoryItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.chatHistoryItem:hover,
+.chatHistoryItemActive {
+  border-color: color-mix(in srgb, var(--accent-primary) 24%, transparent);
+  background: color-mix(in srgb, var(--accent-primary) 9%, transparent);
+  color: var(--text-primary);
+}
+
+.chatHistoryItemContent {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chatHistoryOpenButton {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chatHistoryOpenButton:disabled,
+.chatHistoryDeleteButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.chatHistorySessionTitle,
+.chatHistoryTime {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chatHistorySessionTitle {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.chatHistoryTime {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.chatHistoryDeleteButton {
+  padding: 4px 6px;
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease, color 0.16s ease, background 0.16s ease;
+}
+
+.chatHistoryItem:hover .chatHistoryDeleteButton,
+.chatHistoryDeleteButton:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.chatHistoryDeleteButton:hover {
+  color: #dc2626;
+}
+
+.chatHistoryStatus,
+.chatHistoryError {
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.chatHistoryStatus {
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+}
+
+.chatHistoryError {
+  background: rgba(239, 68, 68, 0.08);
+  color: #dc2626;
+}
+
+.mainContent {
     order: 1;
   }
 }

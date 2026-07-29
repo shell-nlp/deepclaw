@@ -77,13 +77,26 @@ class FakeCheckpointer:
         """
         assert config is None
         yield SimpleNamespace(
-            config={"configurable": {"thread_id": "session-new"}}
+            config={"configurable": {"thread_id": "session-new"}},
+            checkpoint={
+                "ts": "2026-07-29T12:00:00+00:00",
+                "channel_values": {
+                    "messages": [{"type": "human", "content": "最新会话标题"}]
+                },
+            },
         )
         yield SimpleNamespace(
-            config={"configurable": {"thread_id": "session-old"}}
+            config={"configurable": {"thread_id": "session-old"}},
+            checkpoint={
+                "ts": "2026-07-29T11:00:00+00:00",
+                "channel_values": {
+                    "messages": [{"type": "human", "content": "较早会话标题"}]
+                },
+            },
         )
         yield SimpleNamespace(
-            config={"configurable": {"thread_id": "session-new"}}
+            config={"configurable": {"thread_id": "session-new"}},
+            checkpoint={"ts": "2026-07-29T10:00:00+00:00"},
         )
 
     async def adelete_thread(self, session_id):
@@ -120,8 +133,8 @@ def noop_endpoint(*args, **kwargs):
     """
 
 
-def test_list_sessions_returns_deduplicated_session_ids(monkeypatch):
-    """会话列表接口应按检查点顺序返回去重后的 session_id。"""
+def test_list_sessions_returns_deduplicated_sessions_with_titles(monkeypatch):
+    """会话列表接口应按检查点顺序返回去重后的会话，并包含标题与更新时间。"""
     monkeypatch.setattr(agent_router, "Agent", FakeAgent)
     monkeypatch.setattr(agent_router, "LangGraphAgent", FakeLangGraphAgent)
     monkeypatch.setattr(
@@ -139,22 +152,38 @@ def test_list_sessions_returns_deduplicated_session_ids(monkeypatch):
         response = client.get("/api/agent/get_session_list")
 
     assert response.status_code == 200
-    assert response.json() == {
-        "code": "200",
-        "msg": "查询成功",
-        "data": {
-            "session_ids": ["session-new", "session-old"],
-            "total": 2,
-        },
-    }
+    data = response.json()
+    assert data["code"] == "200"
+    assert data["msg"] == "查询成功"
+    assert data["data"]["total"] == 2
+    sessions = data["data"]["sessions"]
+    assert sessions[0]["session_id"] == "session-new"
+    assert sessions[1]["session_id"] == "session-old"
+    assert sessions[0]["title"] == "最新会话标题"
+    assert sessions[1]["title"] == "较早会话标题"
+    assert isinstance(sessions[0]["updated_at"], str)
+    assert isinstance(sessions[1]["updated_at"], str)
 
 
 def test_list_sessions_queries_postgres_thread_ids_directly(monkeypatch):
-    """PostgreSQL 会话列表接口应直接查询 checkpoints 的 thread_id。"""
+    """PostgreSQL 会话列表接口应通过 DISTINCT ON 查询 checkpoints 并附带标题。"""
     cursor = MagicMock()
     cursor.execute = AsyncMock()
     cursor.fetchall = AsyncMock(
-        return_value=[{"thread_id": "session-new"}, {"thread_id": "session-old"}]
+        return_value=[
+            {
+                "thread_id": "session-new",
+                "updated_at": "2026-07-29T12:00:00+00:00",
+                "messages_type": "json",
+                "messages_blob": ("[{\"type\":\"human\",\"content\":\"标题\"}]").encode(),
+            },
+            {
+                "thread_id": "session-old",
+                "updated_at": "2026-07-29T11:00:00+00:00",
+                "messages_type": None,
+                "messages_blob": None,
+            },
+        ]
     )
     cursor_context = MagicMock()
     cursor_context.__aenter__ = AsyncMock(return_value=cursor)
@@ -164,9 +193,19 @@ def test_list_sessions_queries_postgres_thread_ids_directly(monkeypatch):
     connection_context = MagicMock()
     connection_context.__aenter__ = AsyncMock(return_value=connection)
     connection_context.__aexit__ = AsyncMock(return_value=False)
+
+    serde = MagicMock()
+    serde.loads_typed = MagicMock(
+        return_value=[
+            {"type": "human", "content": "标题"},
+            {"type": "ai", "content": "你好"},
+        ]
+    )
+
     checkpointer = FakeAsyncPostgresSaver()
     checkpointer.conn = MagicMock()
     checkpointer.conn.connection.return_value = connection_context
+    checkpointer.serde = serde
 
     monkeypatch.setattr(agent_router, "Agent", FakeAgent)
     monkeypatch.setattr(agent_router, "LangGraphAgent", FakeLangGraphAgent)
@@ -186,15 +225,15 @@ def test_list_sessions_queries_postgres_thread_ids_directly(monkeypatch):
         response = client.get("/api/agent/get_session_list")
 
     assert response.status_code == 200
-    assert response.json() == {
-        "code": "200",
-        "msg": "查询成功",
-        "data": {
-            "session_ids": ["session-new", "session-old"],
-            "total": 2,
-        },
-    }
-    assert "GROUP BY thread_id" in cursor.execute.await_args.args[0]
+    data = response.json()
+    assert data["code"] == "200"
+    assert data["data"]["total"] == 2
+    assert data["data"]["sessions"][0]["session_id"] == "session-new"
+    assert data["data"]["sessions"][0]["title"] == "标题"
+    assert data["data"]["sessions"][1]["session_id"] == "session-old"
+    assert data["data"]["sessions"][1]["title"] is None
+    assert "DISTINCT ON" in cursor.execute.await_args.args[0]
+    assert "checkpoint_blobs" in cursor.execute.await_args.args[0]
 
 
 def test_delete_session_calls_checkpointer_delete_thread(monkeypatch):

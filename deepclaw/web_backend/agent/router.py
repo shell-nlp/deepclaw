@@ -43,6 +43,64 @@ class ApiResponse(BaseModel):
         return jsonable_encoder(data)
 
 
+def get_session_title(messages: Any) -> str | None:
+    """从消息列表中提取首条用户消息，作为会话标题。
+
+    Args:
+    - messages: LangGraph 保存或反序列化后的消息列表。
+    """
+    if not isinstance(messages, list):
+        return None
+
+    for message in messages:
+        message_type = (
+            message.get("type") if isinstance(message, dict) else getattr(message, "type", None)
+        )
+        if message_type != "human":
+            continue
+        content = (
+            message.get("content")
+            if isinstance(message, dict)
+            else getattr(message, "content", None)
+        )
+        if isinstance(content, str) and content.strip():
+            return content.strip()
+    return None
+
+
+def get_checkpoint_session_title(checkpoint: Any) -> str | None:
+    """从内存检查点中提取会话标题。
+
+    Args:
+    - checkpoint: LangGraph 保存的检查点数据。
+    """
+    if not isinstance(checkpoint, dict):
+        return None
+    channel_values = checkpoint.get("channel_values")
+    if not isinstance(channel_values, dict):
+        return None
+    return get_session_title(channel_values.get("messages"))
+
+
+def get_postgres_session_title(checkpointer: Any, row: dict[str, Any]) -> str | None:
+    """从 PostgreSQL 的 messages blob 中反序列化会话标题。
+
+    Args:
+    - checkpointer: 当前 LangGraph PostgreSQL 检查点存储。
+    - row: 会话列表 SQL 返回的单行数据。
+    """
+    message_type = row.get("messages_type")
+    message_blob = row.get("messages_blob")
+    if not isinstance(message_type, str) or message_blob is None:
+        return None
+    try:
+        messages = checkpointer.serde.loads_typed((message_type, message_blob))
+    except Exception:
+        logger.exception("反序列化会话标题失败: session_id={}", row["thread_id"])
+        return None
+    return get_session_title(messages)
+
+
 def create_agent_router(checkpointer=None, store=None) -> APIRouter:
     router = APIRouter(prefix="/api/agent")
     ag_ui_router = APIRouter(tags=["agent-ag-ui"])
@@ -93,7 +151,7 @@ def create_agent_router(checkpointer=None, store=None) -> APIRouter:
             return ApiResponse(
                 code="200",
                 msg="查询成功",
-                data={"session_ids": [], "total": 0},
+                data={"sessions": [], "total": 0},
             )
 
         if isinstance(checkpointer, AsyncPostgresSaver):
@@ -101,33 +159,75 @@ def create_agent_router(checkpointer=None, store=None) -> APIRouter:
                 async with connection.cursor() as cursor:
                     await cursor.execute(
                         """
-                        SELECT thread_id
-                        FROM checkpoints
-                        GROUP BY thread_id
-                        ORDER BY MAX(checkpoint_id) DESC
+                        SELECT
+                            latest_sessions.thread_id,
+                            latest_sessions.checkpoint ->> 'ts' AS updated_at,
+                            messages.type AS messages_type,
+                            messages.blob AS messages_blob
+                        FROM (
+                            SELECT DISTINCT ON (thread_id)
+                                thread_id,
+                                checkpoint_ns,
+                                checkpoint,
+                                checkpoint_id
+                            FROM checkpoints
+                            ORDER BY
+                                thread_id,
+                                (checkpoint ->> 'ts')::timestamptz DESC NULLS LAST,
+                                checkpoint_id DESC
+                            ) AS latest_sessions
+                        LEFT JOIN checkpoint_blobs AS messages
+                            ON messages.thread_id = latest_sessions.thread_id
+                            AND messages.checkpoint_ns = latest_sessions.checkpoint_ns
+                            AND messages.channel = 'messages'
+                            AND messages.version =
+                                latest_sessions.checkpoint -> 'channel_versions' ->> 'messages'
+                        ORDER BY
+                            (latest_sessions.checkpoint ->> 'ts')::timestamptz DESC NULLS LAST
                         """
                     )
                     rows = await cursor.fetchall()
-            session_ids = [row["thread_id"] for row in rows]
+            sessions = [
+                {
+                    "session_id": row["thread_id"],
+                    "updated_at": row["updated_at"],
+                    "title": get_postgres_session_title(checkpointer, row),
+                }
+                for row in rows
+            ]
             return ApiResponse(
                 code="200",
                 msg="查询成功",
-                data={"session_ids": session_ids, "total": len(session_ids)},
+                data={"sessions": sessions, "total": len(sessions)},
             )
 
-        session_ids: list[str] = []
-        seen_session_ids: set[str] = set()
+        session_checkpoints: dict[str, dict[str, Any]] = {}
         async for checkpoint in checkpointer.alist(None):
             session_id = checkpoint.config["configurable"].get("thread_id")
-            if not isinstance(session_id, str) or session_id in seen_session_ids:
+            if not isinstance(session_id, str) or session_id in session_checkpoints:
                 continue
-            seen_session_ids.add(session_id)
-            session_ids.append(session_id)
+            checkpoint_data = getattr(checkpoint, "checkpoint", {})
+            if isinstance(checkpoint_data, dict):
+                session_checkpoints[session_id] = checkpoint_data
+            else:
+                session_checkpoints[session_id] = {}
+
+        sessions = [
+            {
+                "session_id": session_id,
+                "updated_at": checkpoint_data.get("ts")
+                if isinstance(checkpoint_data.get("ts"), str)
+                else None,
+                "title": get_checkpoint_session_title(checkpoint_data),
+            }
+            for session_id, checkpoint_data in session_checkpoints.items()
+        ]
+        sessions.sort(key=lambda session: session["updated_at"] or "", reverse=True)
 
         return ApiResponse(
             code="200",
             msg="查询成功",
-            data={"session_ids": session_ids, "total": len(session_ids)},
+            data={"sessions": sessions, "total": len(sessions)},
         )
 
     @router.post(
