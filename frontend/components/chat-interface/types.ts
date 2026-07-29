@@ -10,6 +10,23 @@ export interface Message {
   recommendedQuestions?: string[]
 }
 
+export interface ApiResponse<T = unknown> {
+  code: string
+  msg: string
+  data: T
+}
+
+export interface ChatHistorySession {
+  session_id: string
+  updated_at: string | null
+  title: string | null
+}
+
+export interface ChatHistoryListData {
+  sessions: ChatHistorySession[]
+  total: number
+}
+
 export interface ReasoningBlock {
   id: string
   content: string

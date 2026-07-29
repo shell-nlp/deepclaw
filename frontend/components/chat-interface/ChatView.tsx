@@ -537,7 +537,7 @@ export function ChatView({
             {status === 'ready' ? '就绪' : status === 'connecting' ? '处理中' : '错误'}
           </span>
           <button className={styles.clearBtn} onClick={onClearChat}>
-            清空
+            新建/清空会话
           </button>
         </div>
       </div>
