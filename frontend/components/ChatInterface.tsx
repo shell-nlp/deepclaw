@@ -237,7 +237,7 @@ export default function ChatInterface() {
   const [ragApiPath, setRagApiPath] = useState(DEFAULT_RAG_API_PATH)
   const [isProcessing, setIsProcessing] = useState(false)
   const [internetSearch, setInternetSearch] = useState(false)
-  const [deepThinking, setDeepThinking] = useState(false)
+  const [deepThinking, setDeepThinking] = useState(true)
   const [useKnowledgeBase, setUseKnowledgeBase] = useState(false)
   const [showInterrupt, setShowInterrupt] = useState(false)
   const [interruptData, setInterruptData] = useState<InterruptData | null>(null)
