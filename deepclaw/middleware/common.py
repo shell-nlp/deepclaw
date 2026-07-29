@@ -57,11 +57,13 @@ class BusinessMiddleware(AgentMiddleware[None, AgentContext, None]):
             # 为模型调用添加深度思考参数
             model_settings["extra_body"] = model_settings.get("extra_body", {})
             model_settings["extra_body"]["chat_template_kwargs"] = {"enable_thinking": True}
+            model_settings["extra_body"]["thinking"] = {"type": "enabled"}
             request = request.override(model_settings=model_settings)
         else:
             # 移除深度思考参数
             model_settings["extra_body"] = model_settings.get("extra_body", {})
             model_settings["extra_body"]["chat_template_kwargs"] = {"enable_thinking": False}
+            model_settings["extra_body"]["thinking"] = {"type": "disabled"}
             request = request.override(model_settings=model_settings)
         return handler(request.override(system_message=self._override_system_message(request)))
 
