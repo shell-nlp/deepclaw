@@ -4,6 +4,7 @@ from deepclaw.middleware.chart import ChartMiddleware
 from deepclaw.middleware.common import BusinessMiddleware
 from deepclaw.middleware.cron import CronMiddleware
 from deepclaw.middleware.mcp import MCPMiddleware
+from deepclaw.middleware.message_store import MessageStoreMiddleware
 from deepclaw.middleware.plan import PlanningMiddleware
 from deepclaw.middleware.rag import RAGMiddleware
 from deepclaw.middleware.recommended_questions import RecommendedQuestionsMiddleware
@@ -16,6 +17,7 @@ __all__ = [
     "CronMiddleware",
     "DeferredToolMiddleware",
     "MCPMiddleware",
+    "MessageStoreMiddleware",
     "PlanningMiddleware",
     "RAGMiddleware",
     "RecommendedQuestionsMiddleware",
