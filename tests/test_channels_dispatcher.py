@@ -96,6 +96,34 @@ def test_streaming_mode_edits_a_single_channel_message(message):
     assert adapter.edits[-1] == ("reply_1", "hi there")
 
 
+def test_streaming_mode_displays_tool_progress_without_tool_output(message):
+    """流式回复仅显示工具状态，不泄露工具原始输出。"""
+    from deepclaw.web_backend.channels.dispatcher import ResponseDispatcher
+
+    adapter = FakeAdapter()
+    dispatcher = ResponseDispatcher(min_interval_seconds=999, min_chars=999)
+
+    async def run():
+        await dispatcher.dispatch(
+            adapter=adapter,
+            message=message,
+            reply_mode="streaming",
+            events=events(
+                AgentEvent(event="tool_calls", data={"tool_calls": [{"name": "search"}]}),
+                AgentEvent(event="tool_output", data={"tool_output": ["secret result"]}),
+                AgentEvent(event="token", data={"token": "answer"}),
+            ),
+        )
+
+    asyncio.run(run())
+
+    assert adapter.edits == [
+        ("reply_1", "正在调用工具：search"),
+        ("reply_1", "工具已完成，正在整理结果..."),
+        ("reply_1", "answer"),
+    ]
+
+
 def test_interrupt_sends_manual_confirmation_fallback(message):
     from deepclaw.web_backend.channels.dispatcher import ResponseDispatcher
 
