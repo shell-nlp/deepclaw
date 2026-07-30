@@ -39,6 +39,7 @@ class ChannelService:
             channel_user_id=self._routing_channel_user_id(message),
             user_id=message.user_id,
         )
+        default_reply_mode = message.reply_mode or self._default_reply_mode(message)
         channel_session = await self.store.get_or_create_session(
             channel=message.channel,
             channel_conversation_id=self._routing_conversation_id(message),
@@ -46,7 +47,7 @@ class ChannelService:
             user_id=user.user_id,
             manager_user_id=message.manager_user_id or user.user_id,
             binding_id=message.binding_id,
-            reply_mode=self._default_reply_mode(message),
+            reply_mode=default_reply_mode,
         )
 
         async with self._locks[channel_session.session_id]:
@@ -55,7 +56,7 @@ class ChannelService:
                 await self.dispatcher.dispatch(
                     adapter=adapter,
                     message=message,
-                    reply_mode=channel_session.reply_mode,  # type: ignore[arg-type]
+                    reply_mode=message.reply_mode or channel_session.reply_mode,  # type: ignore[arg-type]
                     events=self.agent_client.stream(
                         query=message.text,
                         user_id=channel_session.user_id,

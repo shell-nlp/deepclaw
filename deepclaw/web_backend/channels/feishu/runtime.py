@@ -3,6 +3,8 @@ import threading
 from contextlib import suppress
 from typing import Any
 
+from loguru import logger
+
 from deepclaw.web_backend.channels.feishu.adapter import FeishuAdapter
 from deepclaw.web_backend.channels.feishu.client import FeishuClientGateway
 from deepclaw.web_backend.channels.feishu.settings import feishu_settings
@@ -50,7 +52,7 @@ class FeishuRuntime:
     async def handle_event(self, event: dict[str, Any]) -> None:
         if not self.should_process_event(event):
             return
-        message = await self.adapter.parse_event({"event": event})
+        message = await self.adapter.parse_event(event)
         message.user_id = self.binding.owner_user_id
         message.manager_user_id = self.binding.manager_user_id
         await self.service.process_message(message, self.adapter)
@@ -68,7 +70,7 @@ class FeishuRuntime:
         )
         self._start_ws_thread()
         while self._running:
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.1)
 
     async def stop(self) -> None:
         self._running = False
@@ -88,17 +90,29 @@ class FeishuRuntime:
         self._ws_thread.start()
 
     def _run_ws_loop(self) -> None:
-        while self._running:
-            try:
-                ws_client = self.gateway.build_ws_client(
-                    binding=self.binding,
-                    event_handler=self._build_event_handler(),
-                )
-                ws_client.start()
-            except Exception:
-                if not self._running:
-                    break
-                threading.Event().wait(feishu_settings.FEISHU_RUNTIME_RECONNECT_SECONDS)
+        if not self._running:
+            return
+        try:
+            self._configure_sdk_event_loop()
+            ws_client = self.gateway.build_ws_client(
+                binding=self.binding,
+                event_handler=self._build_event_handler(),
+            )
+            ws_client.start()
+        except Exception as exc:
+            logger.exception("飞书 WebSocket 运行失败: binding_id={}, error={}", self.binding.id, exc)
+
+    def _configure_sdk_event_loop(self) -> None:
+        """为飞书 SDK 的 WebSocket 客户端配置线程专属事件循环。
+
+        Args:
+            无。
+        """
+        import lark_oapi.ws.client as lark_ws_client
+
+        ws_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(ws_loop)
+        lark_ws_client.loop = ws_loop
 
     def _build_event_handler(self):
         lark = self.gateway._import_lark()
@@ -113,10 +127,32 @@ class FeishuRuntime:
             return
         event = self._normalize_message_event(data)
         if event is None:
+            logger.warning("飞书收到无法识别的消息事件: binding_id={}", self.binding.id)
             return
         if self._loop is None:
+            logger.warning("飞书消息未处理，主事件循环不可用: binding_id={}", self.binding.id)
             return
-        asyncio.run_coroutine_threadsafe(self.handle_event(event), self._loop)
+        logger.info(
+            "飞书收到消息: binding_id={}, message_id={}, chat_type={}",
+            self.binding.id,
+            event.get("message_id"),
+            event.get("chat_type"),
+        )
+        future = asyncio.run_coroutine_threadsafe(self.handle_event(event), self._loop)
+        future.add_done_callback(self._log_event_processing_error)
+
+    def _log_event_processing_error(self, future) -> None:
+        """记录飞书入站消息转交后端处理时发生的异常。
+
+        Args:
+            future: 入站消息协程对应的 Future。
+        """
+        if future.cancelled():
+            return
+        try:
+            future.result()
+        except Exception:
+            logger.exception("飞书消息处理失败: binding_id={}", self.binding.id)
 
     def _normalize_message_event(self, data: Any) -> dict[str, Any] | None:
         event = getattr(getattr(data, "event", None), "message", None)

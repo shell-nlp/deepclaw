@@ -180,6 +180,24 @@ def test_weixin_clawbot_default_reply_mode_can_be_configured_to_final(service_co
     assert asyncio.run(store.list_sessions())[0].reply_mode == "final"
 
 
+def test_message_reply_mode_overrides_existing_session_reply_mode(service_context):
+    """渠道绑定指定流式模式时，会覆盖既有会话的最终回复模式。"""
+    from deepclaw.web_backend.channels.service import ChannelService
+
+    store = service_context["store"]
+    agent_client = service_context["agent_client"]
+    dispatcher = service_context["dispatcher"]
+    service = ChannelService(store=store, agent_client=agent_client, dispatcher=dispatcher)
+    initial = service_context["message"]
+    streaming = initial.model_copy(update={"message_id": "msg_2", "reply_mode": "streaming"})
+
+    asyncio.run(service.process_message(initial, FakeAdapter()))
+    asyncio.run(service.process_message(streaming, FakeAdapter()))
+
+    assert dispatcher.calls[0]["reply_mode"] == "final"
+    assert dispatcher.calls[1]["reply_mode"] == "streaming"
+
+
 def test_binding_id_isolated_channel_user_mappings(service_context):
     from deepclaw.web_backend.channels.service import ChannelService
 
