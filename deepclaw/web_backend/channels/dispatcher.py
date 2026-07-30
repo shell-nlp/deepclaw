@@ -12,6 +12,7 @@ from deepclaw.web_backend.channels.models import (
 INTERRUPT_FALLBACK = "该操作需要人工确认，当前渠道暂不支持处理。"
 STREAMING_PLACEHOLDER = "正在处理..."
 EMPTY_REPLY = "没有可发送的回复。"
+TOOL_OUTPUT_STATUS = "工具已完成，正在整理结果..."
 
 
 class ResponseDispatcher:
@@ -74,6 +75,13 @@ class ResponseDispatcher:
             if event.event == "__interrupt__":
                 await adapter.edit_message(reply_message_id, INTERRUPT_FALLBACK)
                 return
+            process_status = self._process_status(event)
+            if process_status is not None:
+                status_text = "".join(parts) + ("\n\n" if parts else "") + process_status
+                await adapter.edit_message(reply_message_id, status_text)
+                last_text = ""
+                last_edit_at = time.monotonic()
+                continue
             if event.event != "token" or not event.data:
                 continue
             token = event.data.get("token")
@@ -127,4 +135,41 @@ class ResponseDispatcher:
         interval_elapsed = time.monotonic() - last_edit_at >= self.min_interval_seconds
         boundary = text.endswith(("\n", "。", "！", "？", ".", "!", "?"))
         return new_chars >= self.min_chars or interval_elapsed or boundary
+
+    def _process_status(self, event: AgentEvent) -> str | None:
+        """将工具调用和工具输出事件转换为用户可见的过程提示。
+
+        Args:
+            event: Agent SSE 输出的渠道事件。
+        """
+        if event.event == "tool_output":
+            return TOOL_OUTPUT_STATUS
+        if event.event != "tool_calls" or not isinstance(event.data, dict):
+            return None
+
+        tool_calls = event.data.get("tool_calls")
+        if not isinstance(tool_calls, list):
+            return "正在调用工具..."
+        names = [self._tool_name(tool_call) for tool_call in tool_calls]
+        visible_names = [name for name in names if name]
+        return f"正在调用工具：{'、'.join(visible_names)}" if visible_names else "正在调用工具..."
+
+    @staticmethod
+    def _tool_name(tool_call: object) -> str | None:
+        """从 SSE 工具调用载荷中提取可展示的工具名称。
+
+        Args:
+            tool_call: 单个工具调用对象。
+        """
+        if not isinstance(tool_call, dict):
+            return None
+        name = tool_call.get("name")
+        if isinstance(name, str) and name:
+            return name
+        function = tool_call.get("function")
+        if isinstance(function, dict):
+            function_name = function.get("name")
+            if isinstance(function_name, str) and function_name:
+                return function_name
+        return None
 
