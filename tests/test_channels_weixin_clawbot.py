@@ -1,5 +1,7 @@
 import asyncio
 
+import pytest
+
 from deepclaw.web_backend.channels.models import ChannelMessage
 
 
@@ -222,6 +224,64 @@ def test_send_message_posts_ilink_payload():
     assert request["json_body"]["msg"]["to_user_id"] == "wx_user_1"
     assert request["json_body"]["msg"]["context_token"] == "ctx_1"
     assert request["json_body"]["msg"]["item_list"][0]["text_item"]["text"] == "回复"
+
+
+def test_send_message_rejects_weixin_business_error():
+    """微信返回业务失败码时抛出请求错误。"""
+    from deepclaw.web_backend.channels.weixin_clawbot.client import (
+        WeixinClawBotClient,
+        WeixinClawBotRequestError,
+    )
+
+    async def request_json(*args, **kwargs):
+        """模拟微信发送接口的业务失败响应。
+
+        Args:
+            args: 请求位置参数。
+            kwargs: 请求关键字参数。
+        """
+        return {"ret": 1001, "errmsg": "send rejected"}
+
+    client = WeixinClawBotClient(request_json=request_json)
+
+    with pytest.raises(WeixinClawBotRequestError, match="ret=1001"):
+        asyncio.run(
+            client.send_message(
+                token="token_1",
+                to_user_id="wx_user_1",
+                context_token="ctx_1",
+                text="回复",
+            )
+        )
+
+
+def test_get_updates_returns_empty_updates_after_long_poll_timeout():
+    """微信长轮询超时时返回空消息而不是抛出异常。"""
+    from deepclaw.web_backend.channels.weixin_clawbot.client import (
+        WeixinClawBotClient,
+        WeixinClawBotRequestTimeoutError,
+    )
+
+    received_timeout_seconds = None
+
+    async def request_json(*args, **kwargs):
+        """模拟微信长轮询超时。
+
+        Args:
+            args: 请求位置参数。
+            kwargs: 请求关键字参数。
+        """
+        nonlocal received_timeout_seconds
+        received_timeout_seconds = kwargs.get("timeout_seconds")
+        raise WeixinClawBotRequestTimeoutError("long poll timed out")
+
+    client = WeixinClawBotClient(request_json=request_json)
+    updates = asyncio.run(
+        client.get_updates(token="token_1", get_updates_buf="cursor_1")
+    )
+
+    assert received_timeout_seconds == 35.0
+    assert updates == {"ret": 0, "msgs": [], "get_updates_buf": "cursor_1"}
 
 
 def test_fetch_login_qrcode_posts_local_tokens():

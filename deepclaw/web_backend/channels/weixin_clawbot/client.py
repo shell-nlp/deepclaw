@@ -11,12 +11,13 @@ from deepclaw.web_backend.channels.weixin_clawbot.settings import (
 )
 
 
-CHANNEL_VERSION = "2.4.3"
+CHANNEL_VERSION = "2.4.6"
 ILINK_APP_ID = "bot"
 ILINK_APP_CLIENT_VERSION = str((2 << 16) | (4 << 8) | 3)
 BOT_AGENT = "weixin-ClawBot-API/1.0.1 (deepclaw)"
 MESSAGE_STATE_GENERATING = 1
 MESSAGE_STATE_FINISH = 2
+LONG_POLL_TIMEOUT_SECONDS = 35.0
 
 
 RequestJson = Callable[..., Awaitable[dict[str, Any]]]
@@ -93,12 +94,16 @@ class WeixinClawBotClient:
         token: str,
         get_updates_buf: str = "",
     ) -> dict[str, Any]:
-        return await self.request_json(
-            "POST",
-            "ilink/bot/getupdates",
-            token=token,
-            json_body={"get_updates_buf": get_updates_buf, "base_info": base_info()},
-        )
+        try:
+            return await self.request_json(
+                "POST",
+                "ilink/bot/getupdates",
+                token=token,
+                json_body={"get_updates_buf": get_updates_buf, "base_info": base_info()},
+                timeout_seconds=LONG_POLL_TIMEOUT_SECONDS,
+            )
+        except WeixinClawBotRequestTimeoutError:
+            return {"ret": 0, "msgs": [], "get_updates_buf": get_updates_buf}
 
     async def get_config(
         self,
@@ -151,7 +156,7 @@ class WeixinClawBotClient:
         message_state: int = MESSAGE_STATE_FINISH,
     ) -> dict[str, Any]:
         client_id = client_id or f"deepclaw-weixin-{uuid.uuid4().hex}"
-        return await self.request_json(
+        result = await self.request_json(
             "POST",
             "ilink/bot/sendmessage",
             token=token,
@@ -168,6 +173,13 @@ class WeixinClawBotClient:
                 "base_info": base_info(),
             },
         )
+        ret = result.get("ret")
+        if ret is not None and ret != 0:
+            raise WeixinClawBotRequestError(
+                "Weixin ClawBot sendmessage failed: "
+                f"ret={ret} errmsg={result.get('errmsg') or '(none)'}"
+            )
+        return result
 
     async def _request_json(
         self,
@@ -177,9 +189,13 @@ class WeixinClawBotClient:
         token: str | None = None,
         json_body: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
+        timeout_seconds: float | None = None,
     ) -> dict[str, Any]:
         url = f"{self.base_url}/{path.lstrip('/')}"
-        timeout = weixin_clawbot_settings.WEIXIN_CLAWBOT_REQUEST_TIMEOUT_SECONDS
+        timeout = (
+            timeout_seconds
+            or weixin_clawbot_settings.WEIXIN_CLAWBOT_REQUEST_TIMEOUT_SECONDS
+        )
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.request(

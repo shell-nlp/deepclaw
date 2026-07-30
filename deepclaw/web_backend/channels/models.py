@@ -7,7 +7,13 @@ from sqlmodel import Field, SQLModel
 
 
 ReplyMode = Literal["final", "streaming"]
-AgentEventType = Literal["token", "tool_calls", "tool_output", "__interrupt__"]
+AgentEventType = Literal[
+    "token",
+    "tool_calls",
+    "tool_output",
+    "__interrupt__",
+    "custom",
+]
 MessageStatus = Literal["received", "processing", "done", "failed"]
 
 
@@ -110,13 +116,14 @@ class ChannelMessage(BaseModel):
     user_id: str | None = None
     manager_user_id: str | None = None
     binding_id: int | None = None
+    reply_mode: ReplyMode | None = None
     message_type: str = "text"
     raw: dict[str, Any] | None = None
 
 
 class AgentEvent(BaseModel):
     event: AgentEventType = "token"
-    data: dict[str, Any] | None = None
+    data: Any | None = None
 
 
 class ChannelSessionUpdate(BaseModel):

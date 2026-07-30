@@ -42,6 +42,7 @@ class AgentClient:
             "user_id": user_id,
             "session_id": session_id,
             "stream": True,
+            "deep_thinking": True,
         }
         issued_token = await self._issue_user_token(user_id)
         headers = self._build_headers(issued_token.token if issued_token else None)
