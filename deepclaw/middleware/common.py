@@ -1,8 +1,8 @@
 ﻿import os
 from typing import cast
 
-from langchain.agents.middleware import AgentMiddleware
-from langchain_core.messages import SystemMessage
+from langchain.agents.middleware import AgentMiddleware, ToolCallRequest
+from langchain_core.messages import SystemMessage, ToolMessage
 from loguru import logger
 
 from deepclaw.agents.general.context import AgentContext
@@ -69,3 +69,25 @@ class BusinessMiddleware(AgentMiddleware[None, AgentContext, None]):
 
     async def awrap_model_call(self, request, handler):
         return await self.wrap_model_call(request, handler)
+
+    async def awrap_tool_call(self, request: ToolCallRequest, handler):
+        """将工具执行异常转换为可供模型修正参数的错误消息。
+
+        Args:
+            request: 当前工具调用请求。
+            handler: 执行实际工具调用的异步处理器。
+
+        Returns:
+            正常工具结果，或携带原工具调用标识的错误 ToolMessage。
+        """
+        try:
+            return await handler(request)
+        except Exception as exc:
+            tool_call = request.tool_call
+            tool_name = tool_call.get("name", "未知工具")
+            logger.warning("工具执行失败，已返回给模型修正: {}: {}", tool_name, exc)
+            return ToolMessage(
+                content=f"工具 {tool_name} 执行失败：{exc}",
+                tool_call_id=tool_call["id"],
+                status="error",
+            )

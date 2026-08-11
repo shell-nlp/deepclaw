@@ -369,7 +369,6 @@ def add_general_api_endpoint(
                             "id": chunk["model"]["messages"][0].id,
                         }
                         yield f"data: {stream_response.model_dump_json()}\n\n"
-                        text += f"\n{'-' * 100}\n"
 
                     if "tools" in chunk:
                         stream_response.event = "tool_output"
@@ -378,7 +377,6 @@ def add_general_api_endpoint(
                             "id": f"lc_run--{str(uuid.uuid4())}",
                         }
                         yield f"data: {stream_response.model_dump_json()}\n\n"
-                        text += f"\n工具响应： \n{chunk['tools']['messages']}\n{'-' * 100}\n"
 
             yield "data: [DONE]\n\n"
             logger.info(f"session_id：{request.session_id} \nFinal Response: \n{text}")
