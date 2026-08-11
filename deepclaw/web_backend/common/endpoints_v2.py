@@ -308,21 +308,17 @@ def add_general_api_endpoint(
                             "id": message_id,
                         }
                         await queue.put(format_sse(stream_response))
-                        text += f"\n{'-' * 100}\n"
 
             async def consume_tool_calls():
-                nonlocal text
                 async for tool_call in stream.tool_calls:
-                    async for output_delta in tool_call.output_deltas:
-                        if isinstance(output_delta, str):
-                            text += output_delta
+                    async for _output_delta in tool_call.output_deltas:
+                        pass
                     stream_response.event = "tool_output"
                     stream_response.data = {
                         "tool_output": [tool_call.output] if tool_call.error is None else [tool_call.error],
                         "id": resolve_tool_output_id(tool_call),
                     }
                     await queue.put(format_sse(stream_response))
-                    text += f"\n工具响应： \n{tool_call.output if tool_call.error is None else tool_call.error}\n{'-' * 100}\n"
 
             async def consume_values():
                 # 兼容测试 fixture：values 快照中直接带 __interrupt__。
