@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import Any, Self
@@ -14,6 +14,7 @@ from mcp import ClientSession
 from mcp.client.sse import sse_client
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.streamable_http import streamable_http_client
+from mcp.shared.session import ProgressFnT
 from mcp.types import (
     AudioContent,
     BlobResourceContents,
@@ -21,12 +22,16 @@ from mcp.types import (
     EmbeddedResource,
     ImageContent,
     ListToolsResult,
+    LoggingMessageNotificationParams,
     PaginatedRequestParams,
     ResourceLink,
     TextContent,
     TextResourceContents,
     Tool as MCPTool,
 )
+
+ProgressCallback = ProgressFnT
+LoggingCallback = Callable[[LoggingMessageNotificationParams], Awaitable[None]]
 
 
 def _ensure_dict(value: Any, *, name: str) -> dict[str, Any]:
@@ -145,12 +150,32 @@ def _extract_call_meta(config: RunnableConfig | None) -> dict[str, Any] | None:
     return call_meta
 
 
+def _extract_progress_callback(
+    config: RunnableConfig | None,
+) -> ProgressCallback | None:
+    """从 RunnableConfig.metadata.mcp_progress_callback 提取进度回调。"""
+    if config is None:
+        return None
+
+    metadata = config.get("metadata")
+    if not isinstance(metadata, dict):
+        return None
+
+    callback = metadata.get("mcp_progress_callback")
+    if callback is None:
+        return None
+    if not callable(callback):
+        raise TypeError("`config.metadata.mcp_progress_callback` must be callable")
+    return callback
+
+
 def convert_mcp_tool_to_langchain_tool(
     session: ClientSession,
     tool: MCPTool,
     *,
     server_name: str | None = None,
     tool_name_prefix: bool = False,
+    progress_callback: ProgressCallback | None = None,
 ) -> BaseTool:
     """Convert one MCP client-side tool description into a LangChain tool."""
 
@@ -161,6 +186,7 @@ def convert_mcp_tool_to_langchain_tool(
         result = await session.call_tool(
             tool.name,
             arguments,
+            progress_callback=_extract_progress_callback(config) or progress_callback,
             meta=_extract_call_meta(config),
         )
         content, artifact = _convert_tool_result(result)
@@ -217,6 +243,8 @@ def convert_mcp_tool_to_langchain_tool_from_config(
     *,
     server_name: str,
     tool_name_prefix: bool = False,
+    progress_callback: ProgressCallback | None = None,
+    logging_callback: LoggingCallback | None = None,
 ) -> BaseTool:
     """Convert an MCP tool into a LangChain tool that reconnects on each call."""
 
@@ -230,10 +258,13 @@ def convert_mcp_tool_to_langchain_tool_from_config(
             config_source,
             server_name,
             tool_name_prefix=tool_name_prefix,
+            logging_callback=logging_callback,
         ) as client:
             result = await client._require_session().call_tool(
                 tool.name,
                 arguments,
+                progress_callback=_extract_progress_callback(runnable_config)
+                or progress_callback,
                 meta=_extract_call_meta(runnable_config),
             )
         content, artifact = _convert_tool_result(result)
@@ -308,6 +339,7 @@ async def convert_client_tools_to_langchain_tools(
     *,
     server_name: str | None = None,
     tool_name_prefix: bool = False,
+    progress_callback: ProgressCallback | None = None,
 ) -> list[BaseTool]:
     """Convert tools fetched by a client session into LangChain tools."""
 
@@ -317,6 +349,7 @@ async def convert_client_tools_to_langchain_tools(
             tool,
             server_name=server_name,
             tool_name_prefix=tool_name_prefix,
+            progress_callback=progress_callback,
         )
         for tool in tools
     ]
@@ -327,6 +360,7 @@ async def load_langchain_tools_from_session(
     *,
     server_name: str | None = None,
     tool_name_prefix: bool = False,
+    progress_callback: ProgressCallback | None = None,
 ) -> list[BaseTool]:
     """Fetch tools from an initialized MCP client session and convert them."""
 
@@ -336,6 +370,7 @@ async def load_langchain_tools_from_session(
         tools,
         server_name=server_name,
         tool_name_prefix=tool_name_prefix,
+        progress_callback=progress_callback,
     )
 
 
@@ -344,6 +379,8 @@ async def load_langchain_tools_from_mcp_config(
     *,
     server_name: str,
     tool_name_prefix: bool = False,
+    progress_callback: ProgressCallback | None = None,
+    logging_callback: LoggingCallback | None = None,
 ) -> list[BaseTool]:
     """Fetch tool schemas once and build LangChain tools that reconnect on invoke."""
 
@@ -351,6 +388,7 @@ async def load_langchain_tools_from_mcp_config(
         config,
         server_name,
         tool_name_prefix=tool_name_prefix,
+        logging_callback=logging_callback,
     ) as client:
         tools = await client.list_tools()
 
@@ -361,6 +399,8 @@ async def load_langchain_tools_from_mcp_config(
             tool,
             server_name=server_name,
             tool_name_prefix=tool_name_prefix,
+            progress_callback=progress_callback,
+            logging_callback=logging_callback,
         )
         for tool in tools
     ]
@@ -377,6 +417,8 @@ class StreamableHttpMCPClient:
         tool_name_prefix: bool = False,
         transport_options: dict[str, Any] | None = None,
         terminate_on_close: bool = True,
+        logging_callback: LoggingCallback | None = None,
+        progress_callback: ProgressCallback | None = None,
     ) -> None:
         known_transports = {"stdio", "sse", "streamable-http"}
         if transport in known_transports:
@@ -390,6 +432,8 @@ class StreamableHttpMCPClient:
             }
         self.server_name = server_name
         self.tool_name_prefix = tool_name_prefix
+        self.logging_callback = logging_callback
+        self.progress_callback = progress_callback
         self.session: ClientSession | None = None
         self._exit_stack: AsyncExitStack | None = None
 
@@ -400,6 +444,8 @@ class StreamableHttpMCPClient:
         server_config: dict[str, Any],
         *,
         tool_name_prefix: bool = False,
+        logging_callback: LoggingCallback | None = None,
+        progress_callback: ProgressCallback | None = None,
     ) -> Self:
         config = _ensure_dict(server_config, name="server_config")
         transport = _infer_transport(config)
@@ -473,6 +519,8 @@ class StreamableHttpMCPClient:
             server_name=server_name,
             tool_name_prefix=tool_name_prefix,
             transport_options=options,
+            logging_callback=logging_callback,
+            progress_callback=progress_callback,
         )
 
     @classmethod
@@ -482,6 +530,8 @@ class StreamableHttpMCPClient:
         server_name: str,
         *,
         tool_name_prefix: bool = False,
+        logging_callback: LoggingCallback | None = None,
+        progress_callback: ProgressCallback | None = None,
     ) -> Self:
         root = _load_json_config(config)
         servers = _ensure_dict(root.get("mcpServers"), name="mcpServers")
@@ -491,6 +541,8 @@ class StreamableHttpMCPClient:
             server_name,
             _ensure_dict(servers[server_name], name=f"mcpServers.{server_name}"),
             tool_name_prefix=tool_name_prefix,
+            logging_callback=logging_callback,
+            progress_callback=progress_callback,
         )
 
     async def __aenter__(self) -> Self:
@@ -535,7 +587,11 @@ class StreamableHttpMCPClient:
                 raise ValueError(f"Unsupported MCP transport: {self.transport!r}")
 
             self.session = await stack.enter_async_context(
-                ClientSession(read_stream, write_stream)
+                ClientSession(
+                    read_stream,
+                    write_stream,
+                    logging_callback=self.logging_callback,
+                )
             )
             await self.session.initialize()
             self._exit_stack = stack
@@ -563,7 +619,24 @@ class StreamableHttpMCPClient:
             self._require_session(),
             server_name=self.server_name,
             tool_name_prefix=self.tool_name_prefix,
+            progress_callback=self.progress_callback,
         )
+
+
+async def _print_progress(
+    progress: float,
+    total: float | None,
+    message: str | None,
+) -> None:
+    """打印 MCP 进度通知。"""
+    total_text = f"/{total}" if total is not None else ""
+    message_text = f" {message}" if message else ""
+    print(f"[progress] {progress}{total_text}{message_text}")
+
+
+async def _print_log(params: LoggingMessageNotificationParams) -> None:
+    """打印 MCP 日志通知。"""
+    print(f"[log:{params.level}] {params.data}")
 
 
 async def main() -> None:
@@ -580,6 +653,8 @@ async def main() -> None:
         config,
         "math",
         tool_name_prefix=False,
+        logging_callback=_print_log,
+        progress_callback=_print_progress,
     ) as client:
         mcp_tools = await client.list_tools()
         print(f"Available MCP tools: {[tool.name for tool in mcp_tools]}")
@@ -588,7 +663,13 @@ async def main() -> None:
         print(f"Converted LangChain tools: {[tool.name for tool in tools]}")
         result = await tools[0].ainvoke(
             {"a": 3, "b": 5},
-            config={"metadata": {"mcp_meta": {"userId": "u123456789"}}},
+            config={
+                "metadata": {
+                    "mcp_meta": {"userId": "u123456789"},
+                    # 也可在单次调用覆盖默认 progress_callback
+                    "mcp_progress_callback": _print_progress,
+                }
+            },
         )
         print(f"Call result: {result}")
 
