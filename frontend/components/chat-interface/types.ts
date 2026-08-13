@@ -86,7 +86,7 @@ export interface StreamEvent {
       }>
       review_configs?: Array<{
         action_name: string
-        allowed_decisions: Array<'approve' | 'edit' | 'reject'>
+        allowed_decisions: Array<'approve' | 'edit' | 'reject' | 'respond'>
         args_schema?: Record<string, unknown>
       }>
     }
@@ -166,9 +166,19 @@ export type KnowledgePage =
   | 'users'
 export type RequestMode = 'agent' | 'rag'
 export type ChatStatus = 'ready' | 'connecting' | 'error'
-export type InterruptData = NonNullable<
-  NonNullable<StreamEvent['data']>['__interrupt__']
->
+export interface InterruptData {
+  action_requests: Array<{
+    name: string
+    description?: string
+    args?: Record<string, unknown>
+    arguments?: Record<string, unknown>
+  }>
+  review_configs?: Array<{
+    action_name: string
+    allowed_decisions: Array<'approve' | 'edit' | 'reject' | 'respond'>
+    args_schema?: Record<string, unknown>
+  }>
+}
 
 export interface KnowledgeChunk {
   chunk_id: string

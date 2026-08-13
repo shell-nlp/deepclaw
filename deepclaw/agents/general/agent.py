@@ -68,6 +68,7 @@ class Agent:
                         "description": "工具执行等待批准",
                         "when": when_get_weather,
                     },
+                    "ask_user": True,
                 },
                 description_prefix="工具执行等待批准",
             )
@@ -76,9 +77,9 @@ class Agent:
 
     def get_common_tools(self):
         """获取通用工具列表"""
-        from deepclaw.tools import get_weather, web_fetch
+        from deepclaw.tools import ask_user, get_weather, web_fetch
 
-        return [get_weather, web_fetch]
+        return [get_weather, web_fetch, ask_user]
 
     def init_agent(self) -> CompiledStateGraph:
         skills = None
