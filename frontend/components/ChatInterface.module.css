@@ -488,6 +488,161 @@
   animation: slideIn 0.3s ease-out;
 }
 
+.askUserPanel {
+  width: 100%;
+  margin-bottom: 28px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  animation: slideIn 0.3s ease-out;
+}
+
+.askUserCard {
+  padding: 18px 20px;
+}
+
+.askUserHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.askUserCount,
+.askUserHint {
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.askUserQuestion {
+  margin: 22px 0 8px;
+  color: var(--text-primary);
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+.askUserHint {
+  display: block;
+  margin-bottom: 18px;
+}
+
+.askUserChoices {
+  display: grid;
+  gap: 8px;
+}
+
+.askUserChoice {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  padding: 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--bg-card) 94%, var(--bg-secondary));
+  cursor: pointer;
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+
+.askUserChoice:hover {
+  border-color: var(--accent-primary);
+}
+
+.askUserChoiceSelected {
+  border-color: color-mix(in srgb, var(--accent-primary) 45%, var(--border-subtle));
+  background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-card));
+}
+
+.askUserChoiceInput {
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  accent-color: var(--accent-primary);
+  flex: 0 0 auto;
+}
+
+.askUserChoice strong,
+.askUserChoice small {
+  display: block;
+}
+
+.askUserChoice strong {
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.askUserChoice small {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.askUserCustomContent {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+
+.askUserCustomInput {
+  width: 100%;
+  padding: 7px 0 2px;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.askUserCustomInput:focus {
+  border-color: var(--accent-primary);
+}
+
+.askUserCustomInput:disabled {
+  cursor: not-allowed;
+}
+
+.askUserButtons {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--bg-secondary) 70%, var(--bg-card));
+}
+
+.askUserIgnoreButton,
+.askUserSubmitButton {
+  min-width: 68px;
+  padding: 9px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.askUserIgnoreButton {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.askUserSubmitButton {
+  border: 1px solid #1c1917;
+  background: #1c1917;
+  color: #fff;
+}
+
+.askUserSubmitButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
 .interruptHeader {
   display: flex;
   align-items: center;

@@ -15,7 +15,7 @@ import type {
 import { getToolIcon, parseMarkdown } from './utils'
 
 type InterruptDecision = 'approve' | 'reject' | 'edit'
-type InterruptActionRequest = NonNullable<InterruptData>['action_requests'][number]
+type InterruptActionRequest = InterruptData['action_requests'][number]
 type InterruptEditedAction = { name: string; args: Record<string, unknown> }
 type InterruptArgPath = Array<string | number>
 
@@ -45,6 +45,7 @@ interface ChatViewProps {
     decision: 'approve' | 'reject' | 'edit',
     editedActions?: InterruptEditedAction[]
   ) => void | Promise<void>
+  onAskUserResponse: (answer: string) => void | Promise<void>
   onInputChange: (value: string) => void
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void
   onKnowledgeBaseToggle: (checked: boolean) => void
@@ -54,6 +55,41 @@ interface ChatViewProps {
   onAbortRequest: () => void
   onSendMessage: () => void | Promise<void>
   onRecommendedQuestion: (question: string) => void | Promise<void>
+}
+
+interface AskUserArgs {
+  question: string
+  header?: string
+  options?: Array<{ label: string; description?: string }>
+  multiple?: boolean
+  custom?: boolean
+}
+
+function getAskUserArgs(interruptData: InterruptData): AskUserArgs | null {
+  if (interruptData.action_requests.length !== 1) return null
+  const action = interruptData.action_requests[0]
+  if (action.name !== 'ask_user') return null
+  const args = getInterruptActionArgs(action)
+  if (typeof args.question !== 'string') return null
+
+  return {
+    question: args.question,
+    header: typeof args.header === 'string' ? args.header : undefined,
+    options: Array.isArray(args.options)
+      ? args.options.flatMap((option) => {
+          if (!isRecord(option) || typeof option.label !== 'string') return []
+          return [
+            {
+              label: option.label,
+              description:
+                typeof option.description === 'string' ? option.description : undefined,
+            },
+          ]
+        })
+      : undefined,
+    multiple: args.multiple === true,
+    custom: args.custom !== false,
+  }
 }
 
 function getAssistantMessageItems(msg: Message): AssistantMessageItem[] {
@@ -382,6 +418,7 @@ export function ChatView({
   toolCallDurations,
   onClearChat,
   onInterruptAction,
+  onAskUserResponse,
   onInputChange,
   onKeyDown,
   onKnowledgeBaseToggle,
@@ -399,6 +436,9 @@ export function ChatView({
   const interruptEditorRefs = useRef<
     Array<HTMLInputElement | HTMLTextAreaElement | null>
   >([])
+  const [askUserSelection, setAskUserSelection] = useState<string[]>([])
+  const [askUserCustomAnswer, setAskUserCustomAnswer] = useState('')
+  const askUserArgs = interruptData ? getAskUserArgs(interruptData) : null
   const canEditInterrupt =
     interruptData && isDecisionAllowedForAllActions(interruptData, 'edit')
 
@@ -410,6 +450,8 @@ export function ChatView({
       ) || []
     )
     interruptEditorRefs.current = []
+    setAskUserSelection([])
+    setAskUserCustomAnswer('')
   }, [interruptData])
 
   const updateInterruptArgDraft = (
@@ -447,13 +489,133 @@ export function ChatView({
   }
 
   const interruptPanel =
-    showInterrupt && interruptData ? (
+    showInterrupt && interruptData && askUserArgs ? (
+      <div className={styles.askUserPanel}>
+        <div className={styles.askUserCard}>
+          <div className={styles.askUserHeader}>
+            <span>{askUserArgs.header || '需要你的回答'}</span>
+            <span className={styles.askUserCount}>1/1 个问题</span>
+          </div>
+          <p className={styles.askUserQuestion}>{askUserArgs.question}</p>
+          {(askUserArgs.options?.length || askUserArgs.custom !== false) && (
+            <span className={styles.askUserHint}>
+              {askUserArgs.multiple ? '可选择一个或多个答案' : '选择一个答案'}
+            </span>
+          )}
+          <div className={styles.askUserChoices}>
+            {askUserArgs.options?.map((option) => {
+              const selected = askUserSelection.includes(option.label)
+              return (
+                <label
+                  className={`${styles.askUserChoice} ${
+                    selected ? styles.askUserChoiceSelected : ''
+                  }`}
+                  key={option.label}
+                >
+                  <input
+                    checked={selected}
+                    className={styles.askUserChoiceInput}
+                    name="ask-user-answer"
+                    onChange={() => {
+                      setAskUserSelection((current) =>
+                        askUserArgs.multiple
+                          ? selected
+                            ? current.filter((item) => item !== option.label)
+                            : [...current, option.label]
+                          : [option.label]
+                      )
+                    }}
+                    type={askUserArgs.multiple ? 'checkbox' : 'radio'}
+                  />
+                  <span>
+                    <strong>{option.label}</strong>
+                    {option.description && <small>{option.description}</small>}
+                  </span>
+                </label>
+              )
+            })}
+            {askUserArgs.custom !== false && (
+              <label
+                className={`${styles.askUserChoice} ${
+                  askUserSelection.includes('__custom__')
+                    ? styles.askUserChoiceSelected
+                    : ''
+                }`}
+              >
+                <input
+                  checked={askUserSelection.includes('__custom__')}
+                  className={styles.askUserChoiceInput}
+                  name="ask-user-answer"
+                  onChange={() =>
+                    setAskUserSelection((current) =>
+                      askUserArgs.multiple
+                        ? current.includes('__custom__')
+                          ? current.filter((item) => item !== '__custom__')
+                          : [...current, '__custom__']
+                        : ['__custom__']
+                    )
+                  }
+                  type={askUserArgs.multiple ? 'checkbox' : 'radio'}
+                />
+                <span className={styles.askUserCustomContent}>
+                  <strong>输入自己的答案</strong>
+                  <input
+                    aria-label="输入自己的答案"
+                    className={styles.askUserCustomInput}
+                    onChange={(event) => setAskUserCustomAnswer(event.currentTarget.value)}
+                    onClick={(event) => event.stopPropagation()}
+                    onFocus={() =>
+                      setAskUserSelection((current) =>
+                        askUserArgs.multiple
+                          ? current.includes('__custom__')
+                            ? current
+                            : [...current, '__custom__']
+                          : ['__custom__']
+                      )
+                    }
+                    placeholder="输入你的答案..."
+                    value={askUserCustomAnswer}
+                  />
+                </span>
+              </label>
+            )}
+          </div>
+        </div>
+        <div className={styles.askUserButtons}>
+          <button
+            className={styles.askUserIgnoreButton}
+            onClick={() => void onAskUserResponse('用户选择忽略此问题。')}
+            type="button"
+          >
+            忽略
+          </button>
+          <button
+            className={styles.askUserSubmitButton}
+            disabled={
+              askUserSelection.length === 0 ||
+              (askUserSelection.includes('__custom__') && !askUserCustomAnswer.trim())
+            }
+            onClick={() => {
+              const answers = askUserSelection.map((item) =>
+                item === '__custom__' ? askUserCustomAnswer.trim() : item
+              )
+              void onAskUserResponse(
+                askUserArgs.multiple ? answers.join('、') : answers[0]
+              )
+            }}
+            type="button"
+          >
+            提交
+          </button>
+        </div>
+      </div>
+    ) : showInterrupt && interruptData ? (
       <div className={styles.interruptPanel}>
         <div className={styles.interruptHeader}>
           <span>需要人工确认</span>
         </div>
         <div className={styles.interruptContent}>
-          {interruptData.action_requests?.map((action, index) => (
+          {interruptData.action_requests.map((action, index) => (
             <div key={index} className={styles.interruptAction}>
               <div className={styles.interruptActionHeader}>
                 <span className={styles.interruptToolIcon}>

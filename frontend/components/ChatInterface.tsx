@@ -2206,7 +2206,7 @@ export default function ChatInterface() {
     decision: 'approve' | 'reject' | 'edit',
     editedActions?: Array<{ name: string; args: Record<string, unknown> }>
   ) => {
-    if (!interruptData) return
+    if (!interruptData || !('action_requests' in interruptData)) return
 
     const requestMode = requestModeRef.current
     const requestKnowledgeBase = requestKnowledgeBaseRef.current
@@ -2289,6 +2289,91 @@ export default function ChatInterface() {
     } finally {
       finishReasoningBlock()
       setIsProcessing(false)
+      if (!receivedInterrupt) {
+        setInterruptData(null)
+      }
+      currentAssistantMessageIdRef.current = null
+      processedToolCallIdsRef.current.clear()
+      lastAssistantStreamEventRef.current = null
+      reasoningBlockCounterRef.current = 0
+      contentBlockCounterRef.current = 0
+    }
+  }
+
+  const handleAskUserResponse = async (answer: string) => {
+    if (
+      !interruptData ||
+      interruptData.action_requests.length !== 1 ||
+      interruptData.action_requests[0].name !== 'ask_user'
+    ) {
+      return
+    }
+
+    const requestMode = requestModeRef.current
+    const requestKnowledgeBase = requestKnowledgeBaseRef.current
+    const requestMcpConfig = requestMcpConfigRef.current
+    if (requestMode === 'rag' && !requestKnowledgeBase) {
+      setManagementError('当前中断来自知识库问答，但未找到对应知识库，请重新发起请求。')
+      setShowInterrupt(false)
+      setInterruptData(null)
+      return
+    }
+
+    setShowInterrupt(false)
+    addMessage({
+      id: generateMessageId(),
+      role: 'user',
+      content: answer,
+    })
+    setIsProcessing(true)
+    setStatus('connecting')
+    lastAssistantStreamEventRef.current = null
+    reasoningBlockCounterRef.current = 0
+    contentBlockCounterRef.current = 0
+    abortControllerRef.current = new AbortController()
+    let receivedInterrupt = false
+
+    try {
+      const payload: Record<string, unknown> = {
+        resume: {
+          decisions: [
+            {
+              type: 'respond',
+              message: answer,
+            },
+          ],
+        },
+        session_id: sessionId,
+        user_id: currentUserId,
+      }
+      if (requestMode === 'rag' && requestKnowledgeBase) {
+        payload.index_name = requestKnowledgeBase.passage_index
+        payload.graph_name = requestKnowledgeBase.index_prefix
+      } else if (requestMode === 'agent' && requestMcpConfig) {
+        payload.mcp_config = requestMcpConfig
+      }
+
+      const response = await requestStreamResponse(
+        requestMode === 'rag' ? ragApiPath : agentApiPath,
+        payload,
+        abortControllerRef.current.signal
+      )
+      const streamResult = await readEventStream(response)
+      receivedInterrupt = streamResult.interrupted
+      setStatus('ready')
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name !== 'AbortError') {
+        setStatus('error')
+        addMessage({
+          id: generateMessageId(),
+          role: 'ai',
+          content: `恢复提问失败：${error.message}`,
+        })
+      }
+    } finally {
+      finishReasoningBlock()
+      setIsProcessing(false)
+      void loadHistorySessions()
       if (!receivedInterrupt) {
         setInterruptData(null)
       }
@@ -2575,6 +2660,7 @@ export default function ChatInterface() {
               toolCallDurations={toolCallDurations}
               onClearChat={clearChat}
               onInterruptAction={handleInterruptAction}
+              onAskUserResponse={handleAskUserResponse}
               onInputChange={setInputValue}
               onKeyDown={handleKeyDown}
               onKnowledgeBaseToggle={handleKnowledgeBaseToggle}
