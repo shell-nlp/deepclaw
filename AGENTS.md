@@ -48,11 +48,8 @@
 - `deepclaw/web_backend/agent/run_manager.py`
   进程内 Run 管理器，负责 Run 快照、事件缓存、`Last-Event-ID` 重放、恢复、取消与订阅者分发。
 
-- `deepclaw/web_backend/common/endpoints.py` / `endpoints_v2.py`
-  历史 SSE 适配实现，仅保留代码与单元测试；Agent/RAG 浏览器路由不再挂载。
-
-- `deepclaw/web_backend/common/api_version.py`
-  统一提供 Agent/RAG Runs 路径；`GENERAL_API_VERSION` 仅作为历史配置兼容字段。
+- `deepclaw/web_backend/common/agui_runs.py`
+  统一提供 AG-UI Run 生命周期路由、Agent/RAG Runs 路径解析、渠道 Agent URL 和前端 runtime-config；不再保留旧 `general_api` SSE 适配实现。
 
 ### Web 功能目录
 
@@ -204,7 +201,6 @@ pnpm build
 - `LANGSMITH_API_KEY`
 - `USE_COPILOTKIT`
 - `USE_TOOL_SEARCH`
-- `GENERAL_API_VERSION`（历史兼容，不再控制浏览器路径）
 - `MCP_CONFIG`
 - `CHART_PUBLIC_URL`
 - `CHART_RETENTION_HOURS`

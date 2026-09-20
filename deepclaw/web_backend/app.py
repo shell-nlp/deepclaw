@@ -18,7 +18,7 @@ from deepclaw.web_backend.auth.router import create_auth_router
 from deepclaw.web_backend.auth.service import get_auth_service
 from deepclaw.web_backend.channels.router import create_channels_router
 from deepclaw.web_backend.channels.weixin_clawbot.lifespan import channel_lifespan
-from deepclaw.web_backend.common.api_version import (
+from deepclaw.web_backend.common.agui_runs import (
     get_agent_runs_path,
     get_rag_runs_path,
     get_runtime_api_config,

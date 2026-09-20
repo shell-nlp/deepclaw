@@ -1,4 +1,4 @@
-from deepclaw.web_backend.common.api_version import (
+from deepclaw.web_backend.common.agui_runs import (
     get_agent_runs_path,
     get_channel_agent_api_url,
     get_rag_runs_path,
@@ -16,7 +16,6 @@ def test_channel_agent_api_url_prefers_explicit_override():
     """验证渠道显式 URL 优先。"""
     url = get_channel_agent_api_url(
         explicit_url="http://example.com/custom",
-        version="v2",
     )
     assert url == "http://example.com/custom"
 
@@ -27,7 +26,6 @@ def test_channel_agent_api_url_uses_runs_path():
         explicit_url=None,
         host="127.0.0.1",
         port=7869,
-        version="v2",
     )
     assert url == "http://127.0.0.1:7869/api/agent/runs"
 

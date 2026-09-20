@@ -7,8 +7,8 @@ load_dotenv()
 
 
 class ChannelGatewaySettings(BaseSettings):
-    # 可选：完整覆盖渠道调用的 agent general_api URL。
-    # 为空时按 deepclaw.settings.GENERAL_API_VERSION 自动拼接。
+    # 可选：完整覆盖渠道调用的 Agent AG-UI Runs URL。
+    # 为空时自动拼接为 http://127.0.0.1:{PORT}/api/agent/runs。
     CHANNEL_AGENT_API_URL: str = ""
 
     model_config = SettingsConfigDict(

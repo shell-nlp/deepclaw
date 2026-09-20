@@ -8,8 +8,61 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from deepclaw.settings import settings
 from deepclaw.web_backend.agent.run_manager import AgentRunManager
 from deepclaw.web_backend.auth.dependencies import CurrentActor, get_current_actor
+
+
+def get_agent_runs_path() -> str:
+    """返回 Agent AG-UI Runs 路径。
+
+    Returns:
+        固定为 ``/api/agent/runs``。
+    """
+    return "/api/agent/runs"
+
+
+def get_rag_runs_path() -> str:
+    """返回 RAG AG-UI Runs 路径。
+
+    Returns:
+        固定为 ``/api/rag/runs``。
+    """
+    return "/api/rag/runs"
+
+
+def get_channel_agent_api_url(
+    *,
+    explicit_url: str | None = None,
+    host: str = "127.0.0.1",
+    port: int | None = None,
+) -> str:
+    """解析渠道调用的 Agent Runs 完整 URL。
+
+    Args:
+        explicit_url: 可选完整覆盖 URL；非空时直接使用。
+        host: 自动拼接时使用的主机名。
+        port: 自动拼接时使用的端口；为空时取 settings.PORT。
+
+    Returns:
+        渠道可调用的 Agent Runs URL。
+    """
+    if explicit_url:
+        return explicit_url
+    resolved_port = settings.PORT if port is None else port
+    return f"http://{host}:{resolved_port}{get_agent_runs_path()}"
+
+
+def get_runtime_api_config() -> dict[str, str]:
+    """构造前端 runtime-config 响应体。
+
+    Returns:
+        包含 Agent/RAG Runs 路径的配置字典。
+    """
+    return {
+        "agent_runs_path": get_agent_runs_path(),
+        "rag_runs_path": get_rag_runs_path(),
+    }
 
 
 class RunActionRequest(BaseModel):

@@ -224,8 +224,8 @@ def test_create_app_agent_route_remains_postable_with_frontend_mount(monkeypatch
     def fake_create_agent_router(*args, **kwargs):
         router = APIRouter()
 
-        @router.post("/api/agent/general_api")
-        async def general_api():
+        @router.post("/api/agent/runs")
+        async def create_run():
             return {"ok": True}
 
         return router
@@ -256,7 +256,7 @@ def test_create_app_agent_route_remains_postable_with_frontend_mount(monkeypatch
     monkeypatch.setattr(app_module, "get_auth_service", lambda: ServiceSpy())
 
     with TestClient(app_module.create_app()) as client:
-        response = client.post("/api/agent/general_api", json={"query": "你好"})
+        response = client.post("/api/agent/runs", json={"query": "你好"})
 
     assert response.status_code == 200
     assert response.json() == {"ok": True}

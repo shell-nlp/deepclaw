@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator, Callable
 from deepclaw.web_backend.auth.service import AuthService, get_auth_service
 from deepclaw.web_backend.channels.config import channel_gateway_settings
 from deepclaw.web_backend.channels.models import AgentEvent
-from deepclaw.web_backend.common.api_version import get_channel_agent_api_url
+from deepclaw.web_backend.common.agui_runs import get_channel_agent_api_url
 
 
 AgentSender = Callable[[dict, dict[str, str]], AsyncIterator[str]]
