@@ -57,7 +57,7 @@ def create_auth_router(service: AuthService | None = None) -> APIRouter:
             raise HTTPException(status_code=403, detail="只有管理员可以执行该操作。")
         return actor
 
-    @router.post("/register")
+    @router.post("/register", summary="注册用户", description="创建普通用户账号并返回访问令牌和用户信息。")
     async def register(request: RegisterRequest):
         try:
             user = await auth_service.register(email=request.email, password=request.password)
@@ -75,7 +75,7 @@ def create_auth_router(service: AuthService | None = None) -> APIRouter:
             },
         }
 
-    @router.post("/login")
+    @router.post("/login", summary="用户登录", description="校验邮箱和密码，成功后返回访问令牌和用户信息。")
     async def login(request: LoginRequest):
         try:
             issued = await auth_service.login(email=request.email, password=request.password)
@@ -92,7 +92,7 @@ def create_auth_router(service: AuthService | None = None) -> APIRouter:
             },
         }
 
-    @router.post("/logout")
+    @router.post("/logout", summary="用户退出", description="撤销当前请求使用的访问令牌。")
     async def logout(
         actor=Depends(authenticated_actor_from_service),
         authorization: str | None = Header(default=None),
@@ -101,11 +101,11 @@ def create_auth_router(service: AuthService | None = None) -> APIRouter:
         await auth_service.revoke_token(token)
         return {"ok": True}
 
-    @router.get("/me")
+    @router.get("/me", summary="获取当前用户", description="返回当前访问令牌对应的用户信息和角色权限。")
     async def me(actor=Depends(current_actor_from_service)):
         return actor.model_dump()
 
-    @router.post("/users/create")
+    @router.post("/users/create", summary="创建用户", description="管理员创建指定角色和初始状态的用户账号。")
     async def create_user(
         request: AdminCreateUserRequest,
         actor=Depends(admin_actor_from_service),
@@ -128,7 +128,7 @@ def create_auth_router(service: AuthService | None = None) -> APIRouter:
             }
         }
 
-    @router.post("/users/list")
+    @router.post("/users/list", summary="查询用户列表", description="管理员分页查询系统用户及其角色、状态信息。")
     async def list_users(
         request: AdminListUsersRequest,
         actor=Depends(admin_actor_from_service),
@@ -147,7 +147,7 @@ def create_auth_router(service: AuthService | None = None) -> APIRouter:
             "total": len(users),
         }
 
-    @router.post("/users/update-role")
+    @router.post("/users/update-role", summary="修改用户角色", description="管理员更新指定用户的角色。")
     async def update_user_role(
         request: AdminUpdateUserRoleRequest,
         actor=Depends(admin_actor_from_service),
@@ -169,7 +169,7 @@ def create_auth_router(service: AuthService | None = None) -> APIRouter:
             }
         }
 
-    @router.post("/users/update-status")
+    @router.post("/users/update-status", summary="修改用户状态", description="管理员启用或禁用指定用户。")
     async def update_user_status(
         request: AdminUpdateUserStatusRequest,
         actor=Depends(admin_actor_from_service),
@@ -191,7 +191,7 @@ def create_auth_router(service: AuthService | None = None) -> APIRouter:
             }
         }
 
-    @router.post("/users/reset-password")
+    @router.post("/users/reset-password", summary="重置用户密码", description="管理员为指定用户设置新的登录密码。")
     async def reset_user_password(
         request: AdminResetUserPasswordRequest,
         actor=Depends(admin_actor_from_service),

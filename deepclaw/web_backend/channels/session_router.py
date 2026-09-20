@@ -19,7 +19,7 @@ def create_channel_sessions_router(*, store: ChannelStore | None = None) -> APIR
     router = APIRouter(tags=["channels"])
     channel_store = store or get_channel_store()
 
-    @router.get("/sessions", response_model=ChannelSessionList)
+    @router.get("/sessions", response_model=ChannelSessionList, summary="查询渠道会话列表", description="返回渠道会话及其绑定、用户和最近消息信息。")
     async def list_sessions(
         actor: CurrentActor = Depends(get_current_actor),
     ):
@@ -32,7 +32,7 @@ def create_channel_sessions_router(*, store: ChannelStore | None = None) -> APIR
         ]
         return ChannelSessionList(items=sessions, total=len(sessions))
 
-    @router.patch("/sessions/{session_id}", response_model=ChannelSessionRead)
+    @router.patch("/sessions/{session_id}", response_model=ChannelSessionRead, summary="更新渠道会话", description="修改指定渠道会话的标题或状态。")
     async def update_session(
         session_id: str,
         update: ChannelSessionUpdate,

@@ -125,7 +125,7 @@ def create_agui_run_router(
     router = APIRouter(tags=tags)
     encoder = EventEncoder()
 
-    @router.post("/runs", status_code=202)
+    @router.post("/runs", status_code=202, summary="创建 AG-UI Run", description="创建一次 Agent 或 RAG 运行并返回 Run Snapshot，后续通过事件接口订阅 AG-UI 事件流。")
     async def create_run(
         payload: RunAgentInput,
         request: Request,
@@ -138,7 +138,7 @@ def create_agui_run_router(
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    @router.get("/runs/{run_id}")
+    @router.get("/runs/{run_id}", summary="获取 AG-UI Run", description="查询指定 Run 的当前状态、事件游标、更新时间和错误信息。")
     async def get_run(run_id: str):
         """读取 AG-UI Run Snapshot。"""
         snapshot = await manager.get_snapshot(run_id)
@@ -146,7 +146,7 @@ def create_agui_run_router(
             raise HTTPException(status_code=404, detail="Run 不存在")
         return snapshot
 
-    @router.get("/runs/{run_id}/events")
+    @router.get("/runs/{run_id}/events", summary="订阅 AG-UI Run 事件", description="以 SSE 流式返回 AG-UI 事件，支持通过 Last-Event-ID 从指定位置重放。")
     async def run_events(run_id: str, request: Request, after: str | None = None):
         """以 AG-UI SSE 事件流重放或续流指定 Run。"""
         snapshot = await manager.get_snapshot(run_id)
@@ -159,7 +159,7 @@ def create_agui_run_router(
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
-    @router.post("/runs/{run_id}/resume", status_code=202)
+    @router.post("/runs/{run_id}/resume", status_code=202, summary="恢复 AG-UI Run", description="提交表单、审批或中断恢复输入，继续执行同一个 Run。")
     async def resume_run(
         run_id: str,
         payload: RunAgentInput,
@@ -173,7 +173,7 @@ def create_agui_run_router(
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    @router.post("/runs/{run_id}/actions", status_code=202)
+    @router.post("/runs/{run_id}/actions", status_code=202, summary="处理 AG-UI Action", description="将前端卡片 Action 转换为 AG-UI resume 命令并继续当前 Run。")
     async def handle_action(
         run_id: str,
         payload: RunActionRequest,
@@ -198,7 +198,7 @@ def create_agui_run_router(
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    @router.post("/runs/{run_id}/cancel")
+    @router.post("/runs/{run_id}/cancel", summary="取消 AG-UI Run", description="请求取消指定 Run，并返回取消后的 Run Snapshot。")
     async def cancel_run(run_id: str):
         """取消 AG-UI Run。"""
         snapshot = await manager.cancel(run_id)

@@ -199,7 +199,7 @@ def create_app() -> FastAPI:
     app.include_router(create_skills_router())
     app.include_router(create_knowledge_bases_router())
 
-    @app.get("/api/runtime-config", tags=["runtime"])
+    @app.get("/api/runtime-config", tags=["runtime"], summary="获取前端运行时配置", description="返回前端需要使用的 Agent 与 RAG AG-UI Runs 路径。")
     async def runtime_config():
         """返回前端运行时 AG-UI 路径配置。"""
         return get_runtime_api_config()

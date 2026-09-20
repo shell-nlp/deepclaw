@@ -137,7 +137,7 @@ def create_weixin_clawbot_router(
     channel_store = store or get_channel_store()
     channel_service = service or ChannelService(store=channel_store)
 
-    @router.post("/weixin-clawbot/qrcode")
+    @router.post("/weixin-clawbot/qrcode", summary="生成微信 ClawBot 二维码", description="发起微信 ClawBot 登录并返回二维码信息。")
     async def weixin_clawbot_qrcode(request: WeixinClawBotQRCodeRequest):
         client = weixin_client or WeixinClawBotClient()
         data = await _call_weixin_clawbot_api(
@@ -149,7 +149,7 @@ def create_weixin_clawbot_router(
             "raw": data,
         }
 
-    @router.get("/weixin-clawbot/qrcode/status")
+    @router.get("/weixin-clawbot/qrcode/status", summary="查询微信 ClawBot 二维码状态", description="查询当前二维码扫码和登录状态。")
     async def weixin_clawbot_qrcode_status(
         qrcode: str,
         verify_code: str | None = None,
@@ -162,7 +162,7 @@ def create_weixin_clawbot_router(
             )
         )
 
-    @router.post("/weixin-clawbot/bindings")
+    @router.post("/weixin-clawbot/bindings", summary="创建微信 ClawBot 绑定", description="为当前用户创建新的微信 ClawBot 渠道绑定。")
     async def create_weixin_binding(
         request: WeixinBindingCreateRequest,
         actor: CurrentActor = Depends(get_current_actor),
@@ -189,7 +189,7 @@ def create_weixin_clawbot_router(
         await start_weixin_binding_runtime(binding_id=binding.id, store=channel_store)
         return response
 
-    @router.post("/weixin-clawbot/bindings/{binding_id}/qrcode")
+    @router.post("/weixin-clawbot/bindings/{binding_id}/qrcode", summary="刷新微信 ClawBot 绑定二维码", description="为指定绑定重新生成登录二维码。")
     async def refresh_weixin_binding_qrcode(
         binding_id: int,
         actor: CurrentActor = Depends(get_current_actor),
@@ -211,7 +211,7 @@ def create_weixin_clawbot_router(
         await start_weixin_binding_runtime(binding_id=binding_id, store=channel_store)
         return response
 
-    @router.get("/weixin-clawbot/bindings/{binding_id}/qrcode/status")
+    @router.get("/weixin-clawbot/bindings/{binding_id}/qrcode/status", summary="查询微信 ClawBot 绑定二维码状态", description="查询指定绑定的二维码扫码和登录状态。")
     async def get_weixin_binding_qrcode_status(
         binding_id: int,
         verify_code: str | None = None,
@@ -292,7 +292,7 @@ def create_weixin_clawbot_router(
             await start_weixin_binding_runtime(binding_id=binding_id, store=channel_store)
         return status
 
-    @router.delete("/weixin-clawbot/bindings/{binding_id}")
+    @router.delete("/weixin-clawbot/bindings/{binding_id}", summary="删除微信 ClawBot 绑定", description="删除指定微信 ClawBot 绑定及其运行态。")
     async def delete_weixin_binding(
         binding_id: int,
         actor: CurrentActor = Depends(get_current_actor),
@@ -311,7 +311,7 @@ def create_weixin_clawbot_router(
         deleted = await channel_store.delete_binding(binding_id)
         return {"binding_id": binding_id, "deleted": deleted}
 
-    @router.post("/weixin-clawbot/users/{user_id}/qrcode")
+    @router.post("/weixin-clawbot/users/{user_id}/qrcode", summary="生成微信 ClawBot 用户二维码", description="为兼容旧调用按用户 ID 生成微信 ClawBot 登录二维码。")
     async def weixin_clawbot_user_qrcode(
         user_id: str,
         actor: CurrentActor = Depends(get_current_actor),
@@ -367,7 +367,7 @@ def create_weixin_clawbot_router(
             "raw": data,
         }
 
-    @router.get("/weixin-clawbot/users/{user_id}/qrcode/status")
+    @router.get("/weixin-clawbot/users/{user_id}/qrcode/status", summary="查询微信 ClawBot 用户二维码状态", description="为兼容旧调用按用户 ID 查询二维码状态。")
     async def weixin_clawbot_user_qrcode_status(
         user_id: str,
         qrcode: str | None = None,
@@ -451,6 +451,9 @@ def create_weixin_clawbot_router(
     @router.get(
         "/weixin-clawbot/users",
         response_model=WeixinClawBotBoundUserList,
+
+        summary="查询微信 ClawBot 用户列表",
+        description="返回已绑定的微信 ClawBot 用户和运行状态。"
     )
     async def list_weixin_clawbot_users(
         actor: CurrentActor = Depends(get_current_actor),
@@ -495,6 +498,9 @@ def create_weixin_clawbot_router(
     @router.delete(
         "/weixin-clawbot/users/{user_id}",
         response_model=WeixinClawBotBoundUserDeleteResponse,
+
+        summary="删除微信 ClawBot 用户",
+        description="为兼容旧调用按用户 ID 删除微信 ClawBot 绑定。"
     )
     async def delete_weixin_clawbot_user(
         user_id: str,
@@ -523,7 +529,7 @@ def create_weixin_clawbot_router(
             deleted=deleted,
         )
 
-    @router.post("/weixin-clawbot/poll")
+    @router.post("/weixin-clawbot/poll", summary="轮询微信 ClawBot 消息", description="主动拉取并处理微信 ClawBot 待处理消息。")
     async def weixin_clawbot_poll(
         request: WeixinClawBotPollRequest,
         background_tasks: BackgroundTasks,
