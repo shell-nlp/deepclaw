@@ -45,7 +45,7 @@ memory = Memory(config)
 @tool
 def memory_search(query: str, runtime: ToolRuntime) -> str:
     """从内存中搜索与查询相关的文档"""
-    user_id = runtime.context.user_id
+    user_id = (getattr(runtime, "state", {}) or {}).get("user_id", "default")
     relevant_memories = memory.search(
         query=query, filters={"user_id": user_id}, top_k=3
     )

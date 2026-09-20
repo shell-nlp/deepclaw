@@ -1,12 +1,11 @@
-﻿import asyncio
+import asyncio
 import json
 from copy import deepcopy
-from typing import Any, NotRequired, cast
+from typing import Any, cast
 from uuid import uuid4
 
 from langchain.agents.middleware import (
     AgentMiddleware,
-    AgentState,
     ExtendedModelResponse,
     ModelRequest,
     ToolCallRequest,
@@ -16,7 +15,7 @@ from langgraph.types import Command
 from loguru import logger
 from mcp.types import LoggingMessageNotificationParams
 
-from deepclaw.agents.general.context import AgentContext
+from deepclaw.agents.general.state import StateSchema
 from deepclaw.middleware.common import get_request_header_info
 from deepclaw.settings import settings
 from mcp2tool.fastmcp_to_langchain import load_langchain_tools_from_mcp_config
@@ -26,11 +25,7 @@ MCP_PROMPT_MARKER = "#以下是 MCP 动态工具"
 MCP_SERVER_LOAD_TIMEOUT_SECONDS = 10
 
 
-class StateSchema(AgentState):
-    mcp_tool_names: NotRequired[list[str]]
-
-
-class MCPMiddleware(AgentMiddleware[None, AgentContext, None]):
+class MCPMiddleware(AgentMiddleware):
     """MCP 中间件，用于处理 MCP 相关相关的逻辑"""
 
     state_schema = StateSchema
@@ -123,7 +118,7 @@ class MCPMiddleware(AgentMiddleware[None, AgentContext, None]):
         融合规则：两份配置都存在时按 server 名称合并 `mcpServers`，
         同名 server 以文件内配置 `self.mcp_config` 为准。
         """
-        context_config = getattr(request.runtime.context, "mcp_config", None)
+        context_config = (request.state or {}).get("mcp_config")
         if not self.mcp_config:
             resolved_config = context_config
         elif not context_config:
@@ -399,7 +394,7 @@ class MCPMiddleware(AgentMiddleware[None, AgentContext, None]):
                         request.tool_call["args"],
                         config={
                             "metadata": {
-                                "mcp_meta": {"userId": request.runtime.context.user_id},
+                                "mcp_meta": {"userId": (getattr(request, "state", {}) or {}).get("user_id", "default")},
                                 "mcp_logging_callback": logging_callback,
                             }
                         },
@@ -426,7 +421,7 @@ class MCPMiddleware(AgentMiddleware[None, AgentContext, None]):
                     request.tool_call["args"],
                     config={
                         "metadata": {
-                            "mcp_meta": {"userId": request.runtime.context.user_id},
+                            "mcp_meta": {"userId": (getattr(request, "state", {}) or {}).get("user_id", "default")},
                             "mcp_logging_callback": logging_callback,
                         }
                     },

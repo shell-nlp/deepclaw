@@ -1,0 +1,156 @@
+from __future__ import annotations
+
+from typing import Any, Iterable
+
+from ag_ui.core import RunAgentInput
+from ag_ui.encoder import EventEncoder
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, ConfigDict, Field
+
+from deepclaw.web_backend.agent.run_manager import AgentRunManager
+from deepclaw.web_backend.auth.dependencies import CurrentActor, get_current_actor
+
+
+class RunActionRequest(BaseModel):
+    """AG-UI Action 恢复请求。"""
+
+    decisions: list[dict[str, Any]] = Field(default_factory=list)
+    model_config = ConfigDict(extra="ignore")
+
+
+def _event_cursor(run_id: str, value: str | None) -> int:
+    """解析 AG-UI Run 的 Last-Event-ID。\n\n    Args:\n        run_id: 当前 Run ID。\n        value: `Last-Event-ID` 或查询参数中的游标。\n\n    Returns:\n        事件序号；格式不合法时返回 0。\n    """
+    if not value:
+        return 0
+    prefix = f"{run_id}:"
+    raw = value[len(prefix) :] if value.startswith(prefix) else value
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 0
+
+
+def _actor_user_id(actor: CurrentActor) -> str:
+    """解析服务端可信用户 ID。\n\n    Args:\n        actor: 当前鉴权主体。\n\n    Returns:\n        登录用户 ID 或固定游客 ID。\n    """
+    if actor.is_guest or not actor.user_id:
+        return "guest"
+    return actor.user_id
+
+
+def _trusted_state(
+    payload: RunAgentInput,
+    request: Request,
+    actor: CurrentActor,
+    allowed_keys: Iterable[str],
+) -> dict[str, Any]:
+    """构造 AG-UI 运行状态，覆盖客户端不可伪造的身份字段。\n\n    Args:\n        payload: 客户端提交的 AG-UI 输入。\n        request: 当前 HTTP 请求，用于提取请求头。\n        actor: 当前鉴权主体。\n        allowed_keys: 允许从客户端 state 传入的运行参数。\n\n    Returns:\n        经过服务端信任边界处理后的 LangGraph state。\n    """
+    source = payload.state if isinstance(payload.state, dict) else {}
+    state = {key: source[key] for key in allowed_keys if key in source}
+    state["user_id"] = _actor_user_id(actor)
+    state["header_info"] = dict(request.headers)
+    return state
+
+
+def _with_trusted_state(
+    payload: RunAgentInput,
+    request: Request,
+    actor: CurrentActor,
+    allowed_keys: Iterable[str],
+) -> RunAgentInput:
+    """返回带有可信服务端 state 的 AG-UI 输入副本。\n\n    Args:\n        payload: 原始 AG-UI 输入。\n        request: 当前 HTTP 请求。\n        actor: 当前鉴权主体。\n        allowed_keys: 允许的客户端运行参数字段。\n\n    Returns:\n        更新后的 AG-UI 输入。\n    """
+    return payload.model_copy(update={"state": _trusted_state(payload, request, actor, allowed_keys)})
+
+
+def create_agui_run_router(
+    manager: AgentRunManager,
+    *,
+    allowed_state_keys: set[str],
+    tags: list[str],
+) -> APIRouter:
+    """创建统一 AG-UI Run 生命周期路由。\n\n    Args:\n        manager: 当前 Agent 图对应的 Run 管理器。\n        allowed_state_keys: 客户端可设置的非身份 state 字段。\n        tags: FastAPI OpenAPI 标签。\n\n    Returns:\n        包含 runs、events、snapshot、resume、actions、cancel 的路由器。\n    """
+    router = APIRouter(tags=tags)
+    encoder = EventEncoder()
+
+    @router.post("/runs", status_code=202)
+    async def create_run(
+        payload: RunAgentInput,
+        request: Request,
+        actor: CurrentActor = Depends(get_current_actor),
+    ):
+        """创建 AG-UI Run 并异步执行。"""
+        try:
+            trusted_payload = _with_trusted_state(payload, request, actor, allowed_state_keys)
+            return await manager.create(trusted_payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @router.get("/runs/{run_id}")
+    async def get_run(run_id: str):
+        """读取 AG-UI Run Snapshot。"""
+        snapshot = await manager.get_snapshot(run_id)
+        if snapshot is None:
+            raise HTTPException(status_code=404, detail="Run 不存在")
+        return snapshot
+
+    @router.get("/runs/{run_id}/events")
+    async def run_events(run_id: str, request: Request, after: str | None = None):
+        """以 AG-UI SSE 事件流重放或续流指定 Run。"""
+        snapshot = await manager.get_snapshot(run_id)
+        if snapshot is None:
+            raise HTTPException(status_code=404, detail="Run 不存在")
+        cursor = _event_cursor(run_id, request.headers.get("last-event-id") or after)
+        return StreamingResponse(
+            manager.events(run_id, after=cursor),
+            media_type=encoder.get_content_type(),
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    @router.post("/runs/{run_id}/resume", status_code=202)
+    async def resume_run(
+        run_id: str,
+        payload: RunAgentInput,
+        request: Request,
+        actor: CurrentActor = Depends(get_current_actor),
+    ):
+        """提交 AG-UI command.resume，恢复同一线程的中断运行。"""
+        try:
+            trusted_payload = _with_trusted_state(payload, request, actor, allowed_state_keys)
+            return await manager.continue_run(run_id, trusted_payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @router.post("/runs/{run_id}/actions", status_code=202)
+    async def handle_action(
+        run_id: str,
+        payload: RunActionRequest,
+        request: Request,
+        actor: CurrentActor = Depends(get_current_actor),
+    ):
+        """将卡片 Action 转换为 AG-UI command.resume。"""
+        previous = await manager.get_input(run_id)
+        if previous is None:
+            raise HTTPException(status_code=404, detail="Run 不存在")
+        forwarded_props = dict(previous.forwarded_props or {})
+        forwarded_props["command"] = {"resume": {"decisions": payload.decisions}}
+        next_payload = previous.model_copy(
+            update={
+                "run_id": run_id,
+                "forwarded_props": forwarded_props,
+            }
+        )
+        next_payload = _with_trusted_state(next_payload, request, actor, allowed_state_keys)
+        try:
+            return await manager.continue_run(run_id, next_payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @router.post("/runs/{run_id}/cancel")
+    async def cancel_run(run_id: str):
+        """取消 AG-UI Run。"""
+        snapshot = await manager.cancel(run_id)
+        if snapshot is None:
+            raise HTTPException(status_code=404, detail="Run 不存在")
+        return snapshot
+
+    return router

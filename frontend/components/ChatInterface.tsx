@@ -24,6 +24,7 @@ import {
   revokeAuthToken,
   type ActorState,
 } from './chat-interface/auth'
+import { createAgUiRunInput, getAgUiInterrupt, getRecommendedQuestions, parseAgUiSseFrame, type AgUiEvent } from './chat-interface/agui'
 import { resolveChannelEntryPage } from './chat-interface/channelManagement'
 import { ChannelManagementView } from './chat-interface/ChannelManagementView'
 import { ChatView } from './chat-interface/ChatView'
@@ -89,7 +90,6 @@ import type {
   SkillListResponse,
   SkillRecord,
   SkillUploadResponse,
-  StreamEvent,
   ToolData,
   UploadResult,
   ViewMode,
@@ -501,6 +501,10 @@ export default function ChatInterface() {
   const uploadInputRef = useRef<HTMLInputElement>(null)
   const skillUploadInputRef = useRef<HTMLInputElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const currentRunIdRef = useRef<string | null>(null)
+  const currentRunInputRef = useRef<Record<string, unknown> | null>(null)
+  const lastEventIdRef = useRef<string | null>(null)
+  const toolCallArgsRef = useRef<Record<string, string>>({})
   const currentAssistantMessageIdRef = useRef<string | null>(null)
   const processedToolCallIdsRef = useRef<Set<string>>(new Set())
   const lastAssistantStreamEventRef = useRef<
@@ -556,6 +560,7 @@ export default function ChatInterface() {
     lastAssistantStreamEventRef.current = null
     reasoningStartTimeRef.current = null
     toolCallStartTimesRef.current = {}
+    toolCallArgsRef.current = {}
     reasoningBlockCounterRef.current = 0
     contentBlockCounterRef.current = 0
     requestModeRef.current = 'agent'
@@ -640,39 +645,6 @@ export default function ChatInterface() {
     [clearAuthState, withAuthHeaders]
   )
 
-  const requestStreamResponse = useCallback(
-    async (path: string, payload: Record<string, unknown>, signal?: AbortSignal) => {
-      const response = await fetch(getApiUrl(path), {
-        method: 'POST',
-        headers: withAuthHeaders({
-          'Content-Type': 'application/json',
-          Accept: 'text/event-stream',
-        }),
-        body: JSON.stringify(payload),
-        signal,
-      })
-
-      if (!response.ok) {
-        let message = `HTTP ${response.status}`
-        try {
-          const errorPayload = await response.json()
-          if (errorPayload?.detail) {
-            message = String(errorPayload.detail)
-          }
-        } catch {
-          // ignore parse error
-        }
-        if (isUnauthorizedErrorMessage(message)) {
-          clearAuthState('登录状态已失效，已切换为游客模式。')
-        }
-        throw new Error(message)
-      }
-
-      return response
-    },
-    [clearAuthState, withAuthHeaders]
-  )
-
   const addMessage = useCallback((message: Message) => {
     setMessages((prev) => {
       const existing = prev.find((item) => item.id === message.id)
@@ -729,23 +701,23 @@ export default function ChatInterface() {
       setMcpError(`本地保存的 MCP 配置无效：${parsedMcpConfig.error}`)
     }
 
-    // 按后端 GENERAL_API_VERSION 切换 agent/rag general_api 路径
+    // 按后端 runtime-config 切换 Agent/RAG AG-UI Runs 路径
     void fetch(getApiUrl(RUNTIME_CONFIG_API_PATH))
       .then(async (response) => {
         if (!response.ok) {
           throw new Error(`runtime-config HTTP ${response.status}`)
         }
         return (await response.json()) as {
-          agent_general_api_path?: string
-          rag_general_api_path?: string
+          agent_runs_path?: string
+          rag_runs_path?: string
         }
       })
       .then((config) => {
-        if (config.agent_general_api_path) {
-          setAgentApiPath(config.agent_general_api_path)
+        if (config.agent_runs_path) {
+          setAgentApiPath(config.agent_runs_path)
         }
-        if (config.rag_general_api_path) {
-          setRagApiPath(config.rag_general_api_path)
+        if (config.rag_runs_path) {
+          setRagApiPath(config.rag_runs_path)
         }
       })
       .catch(() => {
@@ -1814,200 +1786,227 @@ export default function ChatInterface() {
     reasoningStartTimeRef.current = null
   }, [updateAssistantMessage])
 
-  const handleStreamEvent = useCallback(
-    (event: StreamEvent): StreamEvent['event'] | null => {
-      const data = event.data
-      if (!data) return null
+  const handleAgUiEvent = useCallback(
+    (event: AgUiEvent): 'interrupt' | 'finished' | null => {
+      const eventType = event.type
 
-      switch (event.event) {
-        case 'token': {
-          if (data.reasoning_token) {
-            const shouldStartNewBlock =
-              lastAssistantStreamEventRef.current !== 'reasoning'
-            if (shouldStartNewBlock) {
-              reasoningStartTimeRef.current = Date.now()
+      if (eventType === 'TEXT_MESSAGE_CONTENT' || eventType === 'TEXT_MESSAGE_CHUNK') {
+        const delta =
+          typeof event.delta === 'string'
+            ? event.delta
+            : typeof event.content === 'string'
+              ? event.content
+              : ''
+        if (!delta) return null
+        if (lastAssistantStreamEventRef.current === 'reasoning') {
+          finishReasoningBlock()
+        }
+        const shouldAppendToLastBlock =
+          lastAssistantStreamEventRef.current === 'content'
+        updateAssistantMessage((message) => {
+          const { contentBlocks, messageItems } = appendContentToken(
+            message.contentBlocks,
+            message.messageItems,
+            delta,
+            shouldAppendToLastBlock,
+            () => {
+              contentBlockCounterRef.current += 1
+              return `${message.id}_content_${contentBlockCounterRef.current}`
             }
-            updateAssistantMessage((message) => {
-              const { reasoningBlocks, messageItems } = appendReasoningToken(
-                message.reasoningBlocks,
-                message.messageItems,
-                data.reasoning_token || '',
-                shouldStartNewBlock,
-                () => {
-                  reasoningBlockCounterRef.current += 1
-                  return `${message.id}_reasoning_${reasoningBlockCounterRef.current}`
-                },
-                message.reasoningContent
-              )
-
-              return {
-                ...message,
-                reasoningBlocks,
-                messageItems,
-                reasoningContent: `${message.reasoningContent || ''}${data.reasoning_token}`,
-              }
-            })
-            lastAssistantStreamEventRef.current = 'reasoning'
+          )
+          return {
+            ...message,
+            content: `${message.content}${delta}`,
+            contentBlocks,
+            messageItems,
           }
-
-          if (data.token) {
-            if (lastAssistantStreamEventRef.current === 'reasoning') {
-              finishReasoningBlock()
-            }
-            const shouldAppendToLastBlock =
-              lastAssistantStreamEventRef.current === 'content'
-            updateAssistantMessage((message) => {
-              const { contentBlocks, messageItems } = appendContentToken(
-                message.contentBlocks,
-                message.messageItems,
-                data.token || '',
-                shouldAppendToLastBlock,
-                () => {
-                  contentBlockCounterRef.current += 1
-                  return `${message.id}_content_${contentBlockCounterRef.current}`
-                }
-              )
-
-              return {
-                ...message,
-                content: `${message.content}${data.token}`,
-                contentBlocks,
-                messageItems,
-              }
-            })
-            lastAssistantStreamEventRef.current = 'content'
-          }
-          break
-        }
-
-        case 'tool_calls': {
-          if (data.tool_calls?.length) {
-            if (lastAssistantStreamEventRef.current === 'reasoning') {
-              finishReasoningBlock()
-            }
-            const now = Date.now()
-            updateAssistantMessage((message) => {
-              const tools = [...(message.toolData || [])]
-              let messageItems = message.messageItems || []
-              for (const toolCall of data.tool_calls || []) {
-                if (!tools.some((tool) => tool.toolCall.id === toolCall.id)) {
-                  tools.push({ toolCall, toolOutput: [] })
-                  toolCallStartTimesRef.current[toolCall.id] = now
-                }
-                messageItems = ensureToolItem(messageItems, toolCall.id)
-              }
-              return { ...message, toolData: tools, messageItems }
-            })
-            lastAssistantStreamEventRef.current = 'tool'
-          }
-          break
-        }
-
-        case 'tool_output': {
-          if (data.tool_output?.length) {
-            const now = Date.now()
-            setToolCallDurations((prev) => {
-              const updated = { ...prev }
-              for (const output of data.tool_output || []) {
-                const startTime = toolCallStartTimesRef.current[output.tool_call_id]
-                if (startTime) {
-                  updated[output.tool_call_id] = now - startTime
-                  delete toolCallStartTimesRef.current[output.tool_call_id]
-                }
-              }
-              return Object.keys(updated).length > 0 ? updated : prev
-            })
-
-            updateAssistantMessage((message) => {
-              let tools = [...(message.toolData || [])]
-              let messageItems = message.messageItems || []
-
-              for (const output of data.tool_output || []) {
-                if (processedToolCallIdsRef.current.has(output.tool_call_id)) {
-                  continue
-                }
-                processedToolCallIdsRef.current.add(output.tool_call_id)
-
-                const normalizedOutput = {
-                  ...output,
-                  content: stringifyToolContent(output.content),
-                }
-                const existingToolIndex = tools.findIndex(
-                  (tool) => tool.toolCall.id === output.tool_call_id
-                )
-
-                if (existingToolIndex >= 0) {
-                  const existingTool = tools[existingToolIndex]
-                  tools = tools.map((tool, index) =>
-                    index === existingToolIndex
-                      ? {
-                          ...existingTool,
-                          toolOutput: [
-                            ...(existingTool.toolOutput || []),
-                            normalizedOutput,
-                          ],
-                        }
-                      : tool
-                  )
-                } else {
-                  tools.push({
-                    toolCall: {
-                      id: output.tool_call_id,
-                      name: 'tool',
-                      args: {},
-                    },
-                    toolOutput: [normalizedOutput],
-                  })
-                }
-                messageItems = ensureToolItem(messageItems, output.tool_call_id)
-              }
-
-              return { ...message, toolData: tools, messageItems }
-            })
-            lastAssistantStreamEventRef.current = 'tool'
-          }
-          break
-        }
-
-        case '__interrupt__': {
-          if (data.__interrupt__) {
-            if (lastAssistantStreamEventRef.current === 'reasoning') {
-              finishReasoningBlock()
-            }
-            setInterruptData(data.__interrupt__)
-            setShowInterrupt(true)
-            setIsProcessing(false)
-            setStatus('ready')
-            lastAssistantStreamEventRef.current = 'interrupt'
-          }
-          break
-        }
-
-        case 'custom': {
-          const recommendedQuestions = (data.recommended_questions || [])
-            .filter((question: string) => typeof question === 'string' && question.trim())
-            .map((question: string) => question.trim())
-          const assistantMessageId = currentAssistantMessageIdRef.current
-          if (recommendedQuestions.length > 0 && assistantMessageId) {
-            setMessages((prev) =>
-              prev.map((message) =>
-                message.role === 'ai'
-                  ? {
-                      ...message,
-                      recommendedQuestions:
-                        message.id === assistantMessageId
-                          ? recommendedQuestions
-                          : undefined,
-                    }
-                  : message
-              )
-            )
-          }
-          break
-        }
+        })
+        lastAssistantStreamEventRef.current = 'content'
+        return null
       }
 
-      return event.event
+      if (
+        eventType === 'THINKING_TEXT_MESSAGE_CONTENT' ||
+        eventType === 'REASONING_MESSAGE_CONTENT' ||
+        eventType === 'REASONING_MESSAGE_CHUNK'
+      ) {
+        const delta = typeof event.delta === 'string' ? event.delta : ''
+        if (!delta) return null
+        const shouldStartNewBlock =
+          lastAssistantStreamEventRef.current !== 'reasoning'
+        if (shouldStartNewBlock) {
+          reasoningStartTimeRef.current = Date.now()
+        }
+        updateAssistantMessage((message) => {
+          const { reasoningBlocks, messageItems } = appendReasoningToken(
+            message.reasoningBlocks,
+            message.messageItems,
+            delta,
+            shouldStartNewBlock,
+            () => {
+              reasoningBlockCounterRef.current += 1
+              return `${message.id}_reasoning_${reasoningBlockCounterRef.current}`
+            },
+            message.reasoningContent
+          )
+          return {
+            ...message,
+            reasoningBlocks,
+            messageItems,
+            reasoningContent: `${message.reasoningContent || ''}${delta}`,
+          }
+        })
+        lastAssistantStreamEventRef.current = 'reasoning'
+        return null
+      }
+
+      if (eventType === 'TOOL_CALL_START') {
+        const toolCallId = String(event.toolCallId || '')
+        const toolName = String(event.toolCallName || 'tool')
+        if (!toolCallId) return null
+        if (lastAssistantStreamEventRef.current === 'reasoning') {
+          finishReasoningBlock()
+        }
+        toolCallStartTimesRef.current[toolCallId] = Date.now()
+        updateAssistantMessage((message) => {
+          const tools = [...(message.toolData || [])]
+          if (!tools.some((tool) => tool.toolCall.id === toolCallId)) {
+            tools.push({
+              toolCall: { id: toolCallId, name: toolName, args: {} },
+              toolOutput: [],
+            })
+          }
+          return {
+            ...message,
+            toolData: tools,
+            messageItems: ensureToolItem(message.messageItems || [], toolCallId),
+          }
+        })
+        lastAssistantStreamEventRef.current = 'tool'
+        return null
+      }
+
+      if (eventType === 'TOOL_CALL_ARGS') {
+        const toolCallId = String(event.toolCallId || '')
+        const delta = typeof event.delta === 'string' ? event.delta : ''
+        if (!toolCallId || !delta) return null
+        const raw = `${toolCallArgsRef.current[toolCallId] || ''}${delta}`
+        toolCallArgsRef.current[toolCallId] = raw
+        let parsed: Record<string, unknown> = {}
+        try {
+          const value = JSON.parse(raw) as unknown
+          if (value && typeof value === 'object' && !Array.isArray(value)) {
+            parsed = value as Record<string, unknown>
+          }
+        } catch {
+          // 工具参数仍是流式 JSON 片段，等待后续 delta 补齐。
+        }
+        if (Object.keys(parsed).length > 0) {
+          updateAssistantMessage((message) => ({
+            ...message,
+            toolData: (message.toolData || []).map((tool) =>
+              tool.toolCall.id === toolCallId
+                ? { ...tool, toolCall: { ...tool.toolCall, args: parsed } }
+                : tool
+            ),
+          }))
+        }
+        return null
+      }
+
+      if (eventType === 'TOOL_CALL_RESULT') {
+        const toolCallId = String(event.toolCallId || '')
+        if (!toolCallId) return null
+        const now = Date.now()
+        const startTime = toolCallStartTimesRef.current[toolCallId]
+        if (startTime) {
+          setToolCallDurations((prev) => ({
+            ...prev,
+            [toolCallId]: now - startTime,
+          }))
+          delete toolCallStartTimesRef.current[toolCallId]
+        }
+        if (processedToolCallIdsRef.current.has(toolCallId)) return null
+        processedToolCallIdsRef.current.add(toolCallId)
+        const normalizedOutput = {
+          tool_call_id: toolCallId,
+          content: stringifyToolContent(event.content),
+        }
+        updateAssistantMessage((message) => {
+          const tools = [...(message.toolData || [])]
+          const existingToolIndex = tools.findIndex(
+            (tool) => tool.toolCall.id === toolCallId
+          )
+          if (existingToolIndex >= 0) {
+            tools[existingToolIndex] = {
+              ...tools[existingToolIndex],
+              toolOutput: [
+                ...(tools[existingToolIndex].toolOutput || []),
+                normalizedOutput,
+              ],
+            }
+          } else {
+            tools.push({
+              toolCall: { id: toolCallId, name: 'tool', args: {} },
+              toolOutput: [normalizedOutput],
+            })
+          }
+          return {
+            ...message,
+            toolData: tools,
+            messageItems: ensureToolItem(message.messageItems || [], toolCallId),
+          }
+        })
+        lastAssistantStreamEventRef.current = 'tool'
+        return null
+      }
+
+      if (eventType === 'CUSTOM') {
+        const interrupt = getAgUiInterrupt(event)
+        if (interrupt) {
+          if (lastAssistantStreamEventRef.current === 'reasoning') {
+            finishReasoningBlock()
+          }
+          setInterruptData({
+            action_requests: interrupt.action_requests ?? [],
+            review_configs: interrupt.review_configs,
+          })
+          setShowInterrupt(true)
+          setIsProcessing(false)
+          setStatus('ready')
+          lastAssistantStreamEventRef.current = 'interrupt'
+          return 'interrupt'
+        }
+
+        const recommendedQuestions = getRecommendedQuestions(event)
+        const assistantMessageId = currentAssistantMessageIdRef.current
+        if (recommendedQuestions.length > 0 && assistantMessageId) {
+          setMessages((prev) =>
+            prev.map((message) =>
+              message.role === 'ai'
+                ? {
+                    ...message,
+                    recommendedQuestions:
+                      message.id === assistantMessageId
+                        ? recommendedQuestions
+                        : undefined,
+                  }
+                : message
+            )
+          )
+        }
+        return null
+      }
+
+      if (eventType === 'RUN_ERROR') {
+        throw new Error(String(event.message || 'Agent run failed'))
+      }
+
+      if (eventType === 'RUN_FINISHED') {
+        return 'finished'
+      }
+
+      return null
     },
     [finishReasoningBlock, updateAssistantMessage]
   )
@@ -2028,29 +2027,19 @@ export default function ChatInterface() {
         buffer = parts.pop() || ''
 
         for (const part of parts) {
-          const dataLines = part
-            .split('\n')
-            .map((line) => line.trim())
-            .filter((line) => line.startsWith('data:'))
-            .map((line) => line.slice(5).trim())
-
-          if (dataLines.length === 0) continue
-          if (dataLines.join('\n') === '[DONE]') {
+          const frame = parseAgUiSseFrame(part)
+          if (!frame) continue
+          if (frame.id) {
+            lastEventIdRef.current = frame.id
+          }
+          const handledEvent = handleAgUiEvent(frame.event)
+          if (handledEvent === 'interrupt') {
+            interrupted = true
+          }
+          if (handledEvent === 'finished') {
             completed = true
             setIsProcessing(false)
             setStatus('ready')
-            continue
-          }
-
-          try {
-            const handledEvent = handleStreamEvent(
-              JSON.parse(dataLines.join('\n')) as StreamEvent
-            )
-            if (handledEvent === '__interrupt__') {
-              interrupted = true
-            }
-          } catch (error) {
-            console.error('Parse error:', error, dataLines.join('\n'))
           }
         }
       }
@@ -2071,9 +2060,84 @@ export default function ChatInterface() {
         processChunk(`${buffer}\n\n`)
       }
 
-      return { interrupted }
+      return { interrupted, completed }
     },
-    [handleStreamEvent]
+    [handleAgUiEvent]
+  )
+
+  const subscribeAgUiEvents = useCallback(
+    async (basePath: string, signal?: AbortSignal) => {
+      const runId = currentRunIdRef.current
+      if (!runId) throw new Error('Run ID missing')
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const response = await fetch(
+          getApiUrl(`${basePath}/${encodeURIComponent(runId)}/events`),
+          {
+            headers: withAuthHeaders({
+              Accept: 'text/event-stream',
+              ...(lastEventIdRef.current
+                ? { 'Last-Event-ID': lastEventIdRef.current }
+                : {}),
+            }),
+            signal,
+          }
+        )
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const result = await readEventStream(response)
+        if (result.completed || result.interrupted) return result
+        await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)))
+      }
+      throw new Error('AG-UI 事件流中断，重放次数已用尽')
+    },
+    [readEventStream, withAuthHeaders]
+  )
+
+  const startAgUiRun = useCallback(
+    async (basePath: string, runInput: Record<string, unknown>, signal?: AbortSignal) => {
+      const createResponse = await fetch(getApiUrl(basePath), {
+        method: 'POST',
+        headers: withAuthHeaders({
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        }),
+        body: JSON.stringify(runInput),
+        signal,
+      })
+      if (!createResponse.ok) {
+        throw new Error(`HTTP ${createResponse.status}`)
+      }
+      const snapshot = (await createResponse.json()) as { runId?: string }
+      const runId = snapshot.runId
+      if (!runId) throw new Error('Run ID missing')
+      currentRunIdRef.current = runId
+      lastEventIdRef.current = null
+      return subscribeAgUiEvents(basePath, signal)
+    },
+    [subscribeAgUiEvents, withAuthHeaders]
+  )
+
+  const resumeAgUiRun = useCallback(
+    async (basePath: string, runInput: Record<string, unknown>, signal?: AbortSignal) => {
+      const runId = currentRunIdRef.current
+      if (!runId) throw new Error('当前没有可恢复的 Run')
+      const resumeResponse = await fetch(
+        getApiUrl(`${basePath}/${encodeURIComponent(runId)}/resume`),
+        {
+          method: 'POST',
+          headers: withAuthHeaders({
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          }),
+          body: JSON.stringify(runInput),
+          signal,
+        }
+      )
+      if (!resumeResponse.ok) {
+        throw new Error(`HTTP ${resumeResponse.status}`)
+      }
+      return subscribeAgUiEvents(basePath, signal)
+    },
+    [subscribeAgUiEvents, withAuthHeaders]
   )
 
   const sendMessage = async (recommendedQuestion?: string) => {
@@ -2122,6 +2186,7 @@ export default function ChatInterface() {
     lastAssistantStreamEventRef.current = null
     reasoningStartTimeRef.current = null
     toolCallStartTimesRef.current = {}
+    toolCallArgsRef.current = {}
     reasoningBlockCounterRef.current = 0
     contentBlockCounterRef.current = 0
     requestModeRef.current = requestMode
@@ -2132,26 +2197,29 @@ export default function ChatInterface() {
     abortControllerRef.current = new AbortController()
 
     try {
-      const payload: Record<string, unknown> = {
-        query,
-        session_id: sessionId,
-        user_id: currentUserId,
+      const state: Record<string, unknown> = {
         internet_search: internetSearch,
         deep_thinking: deepThinking,
       }
       if (requestMode === 'rag' && selectedKnowledgeBase) {
-        payload.index_name = selectedKnowledgeBase.passage_index
-        payload.graph_name = selectedKnowledgeBase.index_prefix
+        state.index_name = selectedKnowledgeBase.passage_index
+        state.graph_name = selectedKnowledgeBase.index_prefix
       } else if (requestMode === 'agent' && requestMcpConfig) {
-        payload.mcp_config = requestMcpConfig
+        state.mcp_config = requestMcpConfig
       }
-
-      const response = await requestStreamResponse(
+      const runInput = createAgUiRunInput({
+        threadId: sessionId,
+        runId: generateMessageId(),
+        messageId: generateMessageId(),
+        query,
+        state,
+      })
+      currentRunInputRef.current = runInput as unknown as Record<string, unknown>
+      await startAgUiRun(
         requestMode === 'rag' ? ragApiPath : agentApiPath,
-        payload,
+        currentRunInputRef.current,
         abortControllerRef.current.signal
       )
-      await readEventStream(response)
       setStatus('ready')
     } catch (error: unknown) {
       if (error instanceof Error && error.name !== 'AbortError') {
@@ -2173,6 +2241,7 @@ export default function ChatInterface() {
       lastAssistantStreamEventRef.current = null
       reasoningStartTimeRef.current = null
       toolCallStartTimesRef.current = {}
+    toolCallArgsRef.current = {}
       reasoningBlockCounterRef.current = 0
       contentBlockCounterRef.current = 0
     }
@@ -2199,7 +2268,15 @@ export default function ChatInterface() {
   }
 
   const abortRequest = () => {
+    const runId = currentRunIdRef.current
+    const basePath = requestModeRef.current === 'rag' ? ragApiPath : agentApiPath
     abortControllerRef.current?.abort()
+    if (runId) {
+      void fetch(getApiUrl(`${basePath}/${encodeURIComponent(runId)}/cancel`), {
+        method: 'POST',
+        headers: withAuthHeaders(),
+      })
+    }
   }
 
   const handleInterruptAction = async (
@@ -2257,24 +2334,21 @@ export default function ChatInterface() {
         }
       )
 
-      const payload: Record<string, unknown> = {
-        resume: { decisions },
-        session_id: sessionId,
-        user_id: currentUserId,
+      const baseInput = currentRunInputRef.current
+      if (!baseInput) throw new Error('当前没有可恢复的 Run')
+      const runInput = {
+        ...baseInput,
+        forwardedProps: {
+          ...(baseInput.forwardedProps as Record<string, unknown> | undefined),
+          command: { resume: { decisions } },
+        },
       }
-      if (requestMode === 'rag' && requestKnowledgeBase) {
-        payload.index_name = requestKnowledgeBase.passage_index
-        payload.graph_name = requestKnowledgeBase.index_prefix
-      } else if (requestMode === 'agent' && requestMcpConfig) {
-        payload.mcp_config = requestMcpConfig
-      }
-
-      const response = await requestStreamResponse(
+      currentRunInputRef.current = runInput
+      const streamResult = await resumeAgUiRun(
         requestMode === 'rag' ? ragApiPath : agentApiPath,
-        payload,
+        runInput,
         abortControllerRef.current.signal
       )
-      const streamResult = await readEventStream(response)
       receivedInterrupt = streamResult.interrupted
       setStatus('ready')
     } catch (error: unknown) {
@@ -2334,31 +2408,23 @@ export default function ChatInterface() {
     let receivedInterrupt = false
 
     try {
-      const payload: Record<string, unknown> = {
-        resume: {
-          decisions: [
-            {
-              type: 'respond',
-              message: answer,
-            },
-          ],
+      const baseInput = currentRunInputRef.current
+      if (!baseInput) throw new Error('当前没有可恢复的 Run')
+      const runInput = {
+        ...baseInput,
+        forwardedProps: {
+          ...(baseInput.forwardedProps as Record<string, unknown> | undefined),
+          command: {
+            resume: { decisions: [{ type: 'respond', message: answer }] },
+          },
         },
-        session_id: sessionId,
-        user_id: currentUserId,
       }
-      if (requestMode === 'rag' && requestKnowledgeBase) {
-        payload.index_name = requestKnowledgeBase.passage_index
-        payload.graph_name = requestKnowledgeBase.index_prefix
-      } else if (requestMode === 'agent' && requestMcpConfig) {
-        payload.mcp_config = requestMcpConfig
-      }
-
-      const response = await requestStreamResponse(
+      currentRunInputRef.current = runInput
+      const streamResult = await resumeAgUiRun(
         requestMode === 'rag' ? ragApiPath : agentApiPath,
-        payload,
+        runInput,
         abortControllerRef.current.signal
       )
-      const streamResult = await readEventStream(response)
       receivedInterrupt = streamResult.interrupted
       setStatus('ready')
     } catch (error: unknown) {

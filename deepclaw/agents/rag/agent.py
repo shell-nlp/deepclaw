@@ -1,6 +1,7 @@
 ﻿from langchain.agents import create_agent
 from langchain_deepseek import ChatDeepSeek
 
+from deepclaw.agents.rag.state import StateSchema
 from deepclaw.middleware.common import BusinessMiddleware
 from deepclaw.middleware.rag import RAGMiddleware
 from deepclaw.settings import settings
@@ -33,5 +34,6 @@ def create_rag_agent(checkpointer=None, store=None):
         ],
         checkpointer=checkpointer,
         store=store,
+        state_schema=StateSchema,
     )
 

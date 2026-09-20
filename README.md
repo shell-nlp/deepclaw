@@ -141,8 +141,8 @@ deepclaw/
 │                        ▼                                            │
 └──────────────────────────────────────────────────────────────────────┘
               ┌────────────────────────────────────┐
-              │        POST /api/agent/general_api  │
-              │        POST /api/rag/general_api    │
+              │        POST /api/agent/runs  │
+              │        POST /api/rag/runs    │
               │        POST /api/auth/*             │
               │        POST /api/channels/sessions  │
               └────────────────┬───────────────────┘
@@ -227,9 +227,9 @@ uv run python -m deepclaw.main
 服务启动后：
 
 - 前端页面：`http://localhost:7869/`
-- Agent SSE：`POST /api/agent/general_api`
+- Agent SSE：`POST /api/agent/runs`
 - Agent AG-UI：`POST /api/agent/ag_ui`
-- RAG SSE：`POST /api/rag/general_api`
+- RAG SSE：`POST /api/rag/runs`
 - Channels API：`/api/channels/*`
 
 ### 5. 启动依赖服务（可选，但推荐）
@@ -287,8 +287,12 @@ pnpm build
 
 | 方法 | 路径 | 协议 | 用途 |
 |------|------|------|------|
-| `POST` | `/api/agent/ag_ui` | AG-UI | Agent 前端协议接口 |
-| `POST` | `/api/agent/general_api` | SSE | 通用 Agent 流式接口 |
+| `POST` | `/api/agent/runs` | AG-UI | 创建 Agent Run |
+| `GET` | `/api/agent/runs/{run_id}/events` | AG-UI SSE | 续流或重放 Run 事件 |
+| `GET` | `/api/agent/runs/{run_id}` | REST | Run Snapshot |
+| `POST` | `/api/agent/runs/{run_id}/resume` | AG-UI | 恢复中断 Run |
+| `POST` | `/api/agent/runs/{run_id}/actions` | AG-UI | 提交卡片 Action |
+| `POST` | `/api/agent/runs/{run_id}/cancel` | REST | 取消 Run |
 | `POST` | `/api/agent/skills/list` | REST | 技能列表 |
 | `POST` | `/api/agent/skills/upload` | REST | 上传技能 zip |
 | `POST` | `/api/agent/skills/delete` | REST | 删除技能 |
@@ -297,7 +301,12 @@ pnpm build
 
 | 方法 | 路径 | 协议 | 用途 |
 |------|------|------|------|
-| `POST` | `/api/rag/general_api` | SSE | RAG 流式问答 |
+| `POST` | `/api/rag/runs` | AG-UI | 创建 RAG Run |
+| `GET` | `/api/rag/runs/{run_id}/events` | AG-UI SSE | 续流或重放 RAG 事件 |
+| `GET` | `/api/rag/runs/{run_id}` | REST | RAG Run Snapshot |
+| `POST` | `/api/rag/runs/{run_id}/resume` | AG-UI | 恢复 RAG 中断 |
+| `POST` | `/api/rag/runs/{run_id}/actions` | AG-UI | 提交 RAG Action |
+| `POST` | `/api/rag/runs/{run_id}/cancel` | REST | 取消 RAG Run |
 | `POST` | `/api/rag/knowledge-bases/list` | REST | 知识库分页列表 |
 | `POST` | `/api/rag/knowledge-bases/create` | REST | 创建知识库 |
 | `POST` | `/api/rag/knowledge-bases/detail` | REST | 知识库详情 |
@@ -330,21 +339,30 @@ pnpm build
 ### 通用 Agent 问答
 
 ```bash
-curl -N -X POST http://localhost:7869/api/agent/general_api \
+curl -X POST http://localhost:7869/api/agent/runs \
   -H "Content-Type: application/json" \
   -d '{
-    "query": "帮我总结一下今天的工作安排",
-    "session_id": "demo-session",
-    "user_id": "demo-user",
-    "internet_search": false,
-    "deep_thinking": false
+    "threadId": "demo-session",
+    "runId": "run-demo-1",
+    "state": {
+      "internet_search": false,
+      "deep_thinking": false
+    },
+    "messages": [
+      { "id": "msg-1", "role": "user", "content": "帮我总结一下今天的工作安排" }
+    ],
+    "tools": [],
+    "context": [],
+    "forwardedProps": {}
   }'
 ```
+
+创建成功后使用 `GET /api/agent/runs/run-demo-1/events` 订阅 AG-UI SSE。
 
 ### 多模态 Agent 输入
 
 ```bash
-curl -N -X POST http://localhost:7869/api/agent/general_api \
+curl -N -X POST http://localhost:7869/api/agent/runs \
   -H "Content-Type: application/json" \
   -d '{
     "query": [
@@ -386,16 +404,25 @@ curl -X POST http://localhost:7869/api/rag/knowledge-bases/documents/upload \
 `index_name` 和 `graph_name` 可从知识库详情返回值中的 `passage_index`、`index_prefix` 获取。
 
 ```bash
-curl -N -X POST http://localhost:7869/api/rag/general_api \
+curl -X POST http://localhost:7869/api/rag/runs \
   -H "Content-Type: application/json" \
   -d '{
-    "query": "这份文档的核心结论是什么？",
-    "session_id": "rag-session",
-    "user_id": "demo-user",
-    "index_name": "kb_xxx_passages",
-    "graph_name": "kb_xxx"
+    "threadId": "rag-session",
+    "runId": "rag-run-demo-1",
+    "state": {
+      "index_name": "kb_xxx_passages",
+      "graph_name": "kb_xxx"
+    },
+    "messages": [
+      { "id": "msg-1", "role": "user", "content": "这份文档的核心结论是什么？" }
+    ],
+    "tools": [],
+    "context": [],
+    "forwardedProps": {}
   }'
 ```
+
+创建成功后使用 `GET /api/rag/runs/rag-run-demo-1/events` 订阅 AG-UI SSE。
 
 ## 配置说明
 

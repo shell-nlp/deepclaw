@@ -291,8 +291,8 @@ def test_mcp_middleware_uses_cached_tools_for_tool_call():
             "name": "echo",
             "args": {"text": "hello"},
         },
+        state={"user_id": "user-42"},
         runtime=SimpleNamespace(
-            context=SimpleNamespace(user_id="user-42"),
             execution_info=SimpleNamespace(thread_id="thread-1"),
         ),
     )

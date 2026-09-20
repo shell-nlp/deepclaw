@@ -139,7 +139,7 @@ class OpenSandbox(BaseSandbox):
 
     def get_sandbox(self) -> SandboxSync:
         runtime = get_runtime()
-        user_id = runtime.context.user_id
+        user_id = (getattr(runtime, "state", {}) or {}).get("user_id", "default")
         user_store_item = runtime.store.get((f"user_{user_id}",), "sandbox_id")
         if user_store_item:
             logger.debug(f"得到用户:{user_id} 已存在的沙箱ID: {user_store_item.value['sandbox_id']}")
