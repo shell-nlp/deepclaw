@@ -2387,6 +2387,11 @@ textarea.interruptInput {
     border-right: none;
   }
 
+.mainContent {
+    order: 1;
+  }
+}
+
 .chatHistory {
   display: flex;
   flex-direction: column;
@@ -2540,11 +2545,6 @@ textarea.interruptInput {
 .chatHistoryError {
   background: rgba(239, 68, 68, 0.08);
   color: #dc2626;
-}
-
-.mainContent {
-    order: 1;
-  }
 }
 
 @media (max-width: 768px) {

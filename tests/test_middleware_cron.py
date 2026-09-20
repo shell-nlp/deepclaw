@@ -79,7 +79,24 @@ def test_cron_middleware_appends_cron_tool():
     assert [tool.name for tool in updated_request.tools] == [cron_tool.name]
 
 
-def test_general_agent_registers_cron_middleware(monkeypatch):
+def test_cron_middleware_does_not_duplicate_existing_tool():
+    """验证 cron 工具已存在时不会被重复追加。"""
+    from deepclaw.middleware.cron.cron_tool import cron_tool
+    from deepclaw.middleware.cron.middleware import CronMiddleware
+
+    middleware = CronMiddleware()
+    request = DummyRequest(tools=[cron_tool])
+
+    def handler(updated_request):
+        return updated_request
+
+    updated_request = middleware.wrap_model_call(request, handler)
+
+    assert [tool.name for tool in updated_request.tools] == [cron_tool.name]
+
+
+def test_general_agent_does_not_register_cron_middleware(monkeypatch):
+    """验证通用 Agent 当前不注册 CronMiddleware。"""
     from deepclaw.middleware.cron.middleware import CronMiddleware
 
     captured = {}
@@ -104,7 +121,7 @@ def test_general_agent_registers_cron_middleware(monkeypatch):
 
     agent_module.Agent(deep_agent=True)
 
-    assert any(
+    assert not any(
         isinstance(m, CronMiddleware)
         for m in captured["middleware"]
     )

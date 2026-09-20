@@ -9,6 +9,11 @@ wheels/
 # Virtual environments
 .venv
 *.db
+
+# 本地环境变量，禁止提交
+.env
+.env.*
+!.env.example
 .deepclaw/*.db
 .deepclaw/conversation_history/
 .deepclaw/.playwright-cli/

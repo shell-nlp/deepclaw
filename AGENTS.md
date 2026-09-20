@@ -239,6 +239,7 @@ pnpm build
 
 - 所有新写的函数/方法都必须带中文 docstring（功能说明 + Args 每行）。禁止 `"""...""" ...` 同行。
 - 只改任务直接相关的代码，不做顺手重构。
+- Python 导入统一使用 `deepclaw.*` 绝对导入，禁止使用 `from .`、`from ..` 等相对导入。
 - 包结构调整后同步更新本文档的「当前代码结构」。
 - 未经用户明确要求，不要执行 `git add`、`git commit`、`git amend`。
 - 测试统一使用 `pytest`，不要引入 `unittest` 风格测试。
