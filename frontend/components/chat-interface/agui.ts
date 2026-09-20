@@ -88,7 +88,7 @@ export function getRecommendedQuestions(event: AgUiEvent): string[] {
   if (event.type !== 'CUSTOM') return []
   const value = event.value
   const candidate =
-    event.name === 'recommended_questions'
+    Array.isArray(value)
       ? value
       : value && typeof value === 'object' && 'recommended_questions' in value
         ? (value as Record<string, unknown>).recommended_questions
