@@ -1,5 +1,6 @@
 
 from deepclaw.common.vector_store.pgsql import PgVectorStore
+from pgvector import Vector
 
 
 class FakeEmbeddingModel:
@@ -163,8 +164,44 @@ def test_vector_search_merges_partition_candidates(monkeypatch):
 
     results = store.vector_search("hello", k=2, index_names=["kb_a", "kb_b"])
 
-    assert requested_indexes == [
-        ("kb_a", [0.1, 0.2, 0.3], 8),
-        ("kb_b", [0.1, 0.2, 0.3], 8),
+    assert [(index_name, limit) for index_name, _, limit in requested_indexes] == [
+        ("kb_a", 8),
+        ("kb_b", 8),
     ]
+    assert all(isinstance(query_vector, Vector) for _, query_vector, _ in requested_indexes)
     assert [item["content"] for item in results] == ["alpha", "beta"]
+
+def test_vector_search_existing_embeddings_uses_vector_parameter(monkeypatch):
+    """验证已有业务表向量检索使用 pgvector 参数并返回原始字段。
+
+    Args:
+        monkeypatch: pytest 提供的依赖替换工具。
+    """
+    from unittest.mock import MagicMock
+
+    store = PgVectorStore(
+        database_url="postgresql://demo",
+        embedding_model=FakeEmbeddingModel(),
+        embedding_dimensions=3,
+    )
+    cursor = MagicMock()
+    cursor.__enter__.return_value = cursor
+    cursor.fetchall.return_value = [{"id": "metric-1", "metric_name": "处理率", "score": 0.9}]
+    connection = MagicMock()
+    connection.__enter__.return_value = connection
+    connection.cursor.return_value = cursor
+    monkeypatch.setattr(store, "_connect", lambda: connection)
+
+    results = store.vector_search_existing_embeddings(
+        "办结率",
+        schema_name="ai",
+        table_name="metric_config",
+        fields=["id", "metric_name"],
+        k=3,
+    )
+
+    assert results == [{"id": "metric-1", "metric_name": "处理率", "score": 0.9}]
+    params = cursor.execute.call_args.args[1]
+    assert isinstance(params[0], Vector)
+    assert params[0].dimensions() == 3
+    assert params[2] == 3

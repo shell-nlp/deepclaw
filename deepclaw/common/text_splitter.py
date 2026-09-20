@@ -13,18 +13,114 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any, Iterable, List, Optional, Protocol
 
-import fitz
-import pandas as pd
-import pdfplumber
-import PyPDF2
 from langchain_core.documents import Document
 from langchain_text_splitters.character import (
     RecursiveCharacterTextSplitter,
 )
 from loguru import logger
-from PIL import Image, UnidentifiedImageError
-
 from deepclaw.constant import workspace_path
+
+
+def _require_pymupdf():
+    """按需加载 PyMuPDF。
+
+    Args:
+        无。
+
+    Returns:
+        PyMuPDF 的 fitz 模块。
+
+    Raises:
+        RuntimeError: 未安装 PDF 可选依赖时抛出。
+    """
+    try:
+        return import_module("fitz")
+    except ModuleNotFoundError as exc:
+        if exc.name != "fitz":
+            raise
+        raise RuntimeError("PDF 功能需要 PyMuPDF，请执行 uv sync --extra pdf 安装。") from exc
+
+
+def _require_pdfplumber():
+    """按需加载 pdfplumber。
+
+    Args:
+        无。
+
+    Returns:
+        pdfplumber 模块。
+
+    Raises:
+        RuntimeError: 未安装 PDF 可选依赖时抛出。
+    """
+    try:
+        return import_module("pdfplumber")
+    except ModuleNotFoundError as exc:
+        if exc.name != "pdfplumber":
+            raise
+        raise RuntimeError("PDF 功能需要 pdfplumber，请执行 uv sync --extra pdf 安装。") from exc
+
+
+def _require_pypdf2():
+    """按需加载 PyPDF2。
+
+    Args:
+        无。
+
+    Returns:
+        PyPDF2 模块。
+
+    Raises:
+        RuntimeError: 未安装 PDF 可选依赖时抛出。
+    """
+    try:
+        return import_module("PyPDF2")
+    except ModuleNotFoundError as exc:
+        if exc.name != "PyPDF2":
+            raise
+        raise RuntimeError("PDF 功能需要 PyPDF2，请执行 uv sync --extra pdf 安装。") from exc
+
+
+def _require_pillow():
+    """按需加载 Pillow 图像处理模块。
+
+    Args:
+        无。
+
+    Returns:
+        Pillow 的 Image 模块和无法识别图片异常类型。
+
+    Raises:
+        RuntimeError: 未安装 PDF 可选依赖时抛出。
+    """
+    try:
+        image_module = import_module("PIL.Image")
+        image_errors = import_module("PIL")
+        return image_module, image_errors.UnidentifiedImageError
+    except ModuleNotFoundError as exc:
+        if exc.name not in {"PIL", "PIL.Image"}:
+            raise
+        raise RuntimeError("图片处理功能需要 Pillow，请执行 uv sync --extra pdf 安装。") from exc
+
+
+def _require_pandas():
+    """按需加载 pandas。
+
+    Args:
+        无。
+
+    Returns:
+        pandas 模块。
+
+    Raises:
+        RuntimeError: 未安装 pandas 时抛出。
+    """
+    try:
+        return import_module("pandas")
+    except ModuleNotFoundError as exc:
+        if exc.name != "pandas":
+            raise
+        raise RuntimeError("PDF 表格处理功能需要 pandas，请安装项目默认依赖。") from exc
 
 
 def _split_text_with_regex_from_end(
@@ -435,7 +531,7 @@ def detect_pdf_structure(file_bytes):
 
     # TextIO and BinaryIO.
     stream = io.BytesIO(file_bytes)
-    reader = PyPDF2.PdfReader(stream)
+    reader = _require_pypdf2().PdfReader(stream)
     outlines = reader.outline
 
     toc = list(outlines)
@@ -801,9 +897,10 @@ class FileToPDFConverter:
             )
 
     def _convert_image_to_pdf(self, file_bytes: bytes) -> bytes:
-        frames: list[Image.Image] = []
+        image_module, unidentified_image_error = _require_pillow()
+        frames: list[Any] = []
         try:
-            with Image.open(io.BytesIO(file_bytes)) as image:
+            with image_module.open(io.BytesIO(file_bytes)) as image:
                 frame_count = getattr(image, "n_frames", 1)
                 for frame_index in range(frame_count):
                     if frame_count > 1:
@@ -821,16 +918,17 @@ class FileToPDFConverter:
                 append_images=frames[1:],
             )
             return output.getvalue()
-        except UnidentifiedImageError as exc:
+        except unidentified_image_error as exc:
             raise RuntimeError("图片格式不受支持，无法转换为 PDF。") from exc
         finally:
             for frame in frames:
                 frame.close()
 
-    def _normalize_image_for_pdf(self, image: Image.Image) -> Image.Image:
+    def _normalize_image_for_pdf(self, image: Any) -> Any:
+        image_module, _ = _require_pillow()
         if image.mode in {"RGBA", "LA"} or "transparency" in image.info:
             rgba_image = image.convert("RGBA")
-            background = Image.new("RGB", rgba_image.size, (255, 255, 255))
+            background = image_module.new("RGB", rgba_image.size, (255, 255, 255))
             background.paste(rgba_image, mask=rgba_image.getchannel("A"))
             rgba_image.close()
             return background
@@ -838,9 +936,10 @@ class FileToPDFConverter:
 
     def _convert_text_to_pdf(self, text: str) -> bytes:
         lines = self._paginate_text_lines(text)
-        pdf_doc = fitz.open()
+        fitz_module = _require_pymupdf()
+        pdf_doc = fitz_module.open()
         fontfile = self._resolve_text_fontfile()
-        page_rect = fitz.paper_rect("a4")
+        page_rect = fitz_module.paper_rect("a4")
         margin_x = 40
         margin_y = 48
         font_size = 10
@@ -1094,6 +1193,12 @@ class PDFParser:
             )
 
         page_data: list[dict[str, Any]] = []
+        pdfplumber = _require_pdfplumber()
+        image_module = None
+        unidentified_image_error = None
+        if use_image:
+            image_module, unidentified_image_error = _require_pillow()
+        pd = _require_pandas() if use_table else None
 
         with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
             pdf_lens = len(pdf.pages)
@@ -1116,9 +1221,9 @@ class PDFParser:
                             image_data = io.BytesIO(image_data_bin)
                             try:
                                 image_data_ = copy.deepcopy(image_data)
-                                pil_image = Image.open(image_data_)
+                                pil_image = image_module.open(image_data_)
                                 pil_image.verify()
-                            except UnidentifiedImageError:
+                            except unidentified_image_error:
                                 logger.warning("图片校验失败，跳过当前图片。")
                                 continue
 
@@ -1236,7 +1341,7 @@ class PDFParser:
         title_level = structure_info["max_title_level"]
         logger.info(f"标题层级：{title_level}")
 
-        pdf_doc = fitz.Document(stream=file_bytes)
+        pdf_doc = _require_pymupdf().Document(stream=file_bytes)
         try:
             title_info = pdf_doc.get_toc()
         finally:

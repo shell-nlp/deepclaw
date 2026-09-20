@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 from dotenv import find_dotenv, load_dotenv
 from pydantic import Field
@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     # 服务监听配置
     HOST: str = "0.0.0.0"
     PORT: int = 7869
+    LOCAL_HOST: str = "http://localhost:7869"
 
     # openAI api_base 和 api_key配置
     OPENAI_API_BASE: str
@@ -48,6 +49,9 @@ class Settings(BaseSettings):
 
     # 是否支持工具搜索功能,（与 Claude Code 保持一致）
     USE_TOOL_SEARCH: bool = False
+
+    # MCP 服务配置。不同发布版本可通过环境变量 MCP_CONFIG 注入 JSON 配置。
+    MCP_CONFIG: dict[str, Any] = Field(default_factory=dict)
 
     # 通用 SSE 接口版本：v1=endpoints.py，v2=endpoints_v2.py
     # 同时控制前端默认路径与渠道默认调用地址（渠道也可被 CHANNEL_AGENT_API_URL 完整覆盖）

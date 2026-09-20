@@ -1,7 +1,10 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from deepclaw.middleware.chart.utils import save_chart_to_workspace
+from deepclaw.middleware.chart.utils import (
+    finalize_chart_layout,
+    save_chart_to_workspace,
+)
 
 
 def render(params: dict) -> str:
@@ -26,5 +29,5 @@ def render(params: dict) -> str:
     if inner_radius > 0:
         ax.add_artist(plt.Circle((0, 0), inner_radius, color="white"))
     ax.set_title(params.get("title", ""))
-    fig.tight_layout()
+    finalize_chart_layout(fig)
     return save_chart_to_workspace(fig)

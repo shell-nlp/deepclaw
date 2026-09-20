@@ -24,7 +24,7 @@ from deepclaw.web_backend.knowledge_bases.service import (
     PaginatedKnowledgeBaseDocumentResponse,
     PaginatedKnowledgeBaseResponse,
     UploadedKnowledgeFile,
-    knowledge_base_manager,
+    get_knowledge_base_manager,
 )
 
 
@@ -54,7 +54,7 @@ def add_knowledge_base_management_routes(
         request: KnowledgeBaseListRequest,
         actor=Depends(get_current_actor),
     ):
-        return await knowledge_base_manager.search_knowledge_bases(
+        return await get_knowledge_base_manager().search_knowledge_bases(
             user_id=_resolved_user_id(actor),
             search=request.search,
             page=request.page,
@@ -66,9 +66,10 @@ def add_knowledge_base_management_routes(
         request: CreateKnowledgeBaseRequest,
         actor=Depends(get_current_actor),
     ):
+        owner_id = _owned_user_id(actor, "登录后可创建知识库。")
         try:
-            return await knowledge_base_manager.create_knowledge_base(
-                user_id=_owned_user_id(actor, "登录后可创建知识库。"),
+            return await get_knowledge_base_manager().create_knowledge_base(
+                user_id=owner_id,
                 name=request.name,
                 description=request.description,
             )
@@ -81,7 +82,7 @@ def add_knowledge_base_management_routes(
         actor=Depends(get_current_actor),
     ):
         try:
-            return await knowledge_base_manager.get_knowledge_base(
+            return await get_knowledge_base_manager().get_knowledge_base(
                 user_id=_resolved_user_id(actor),
                 knowledge_base_id=request.knowledge_base_id,
             )
@@ -93,9 +94,10 @@ def add_knowledge_base_management_routes(
         request: UpdateKnowledgeBaseRequest,
         actor=Depends(get_current_actor),
     ):
+        owner_id = _owned_user_id(actor, "登录后可修改知识库。")
         try:
-            return await knowledge_base_manager.update_knowledge_base(
-                user_id=_owned_user_id(actor, "登录后可修改知识库。"),
+            return await get_knowledge_base_manager().update_knowledge_base(
+                user_id=owner_id,
                 knowledge_base_id=request.knowledge_base_id,
                 name=request.name,
                 description=request.description,
@@ -108,9 +110,10 @@ def add_knowledge_base_management_routes(
         request: KnowledgeBaseIdentityRequest,
         actor=Depends(get_current_actor),
     ):
+        owner_id = _owned_user_id(actor, "登录后可删除知识库。")
         try:
-            return await knowledge_base_manager.delete_knowledge_base(
-                user_id=_owned_user_id(actor, "登录后可删除知识库。"),
+            return await get_knowledge_base_manager().delete_knowledge_base(
+                user_id=owner_id,
                 knowledge_base_id=request.knowledge_base_id,
             )
         except ValueError as exc:
@@ -125,9 +128,10 @@ def add_knowledge_base_management_routes(
         request: BulkDeleteKnowledgeBaseRequest,
         actor=Depends(get_current_actor),
     ):
+        owner_id = _owned_user_id(actor, "登录后可批量删除知识库。")
         try:
-            return await knowledge_base_manager.bulk_delete_knowledge_bases(
-                user_id=_owned_user_id(actor, "登录后可批量删除知识库。"),
+            return await get_knowledge_base_manager().bulk_delete_knowledge_bases(
+                user_id=owner_id,
                 knowledge_base_ids=request.knowledge_base_ids,
             )
         except ValueError as exc:
@@ -143,7 +147,7 @@ def add_knowledge_base_management_routes(
         actor=Depends(get_current_actor),
     ):
         try:
-            return await knowledge_base_manager.search_documents(
+            return await get_knowledge_base_manager().search_documents(
                 user_id=_resolved_user_id(actor),
                 knowledge_base_id=request.knowledge_base_id,
                 search=request.search,
@@ -163,7 +167,7 @@ def add_knowledge_base_management_routes(
         actor=Depends(get_current_actor),
     ):
         try:
-            return await knowledge_base_manager.get_document_detail(
+            return await get_knowledge_base_manager().get_document_detail(
                 user_id=_resolved_user_id(actor),
                 knowledge_base_id=request.knowledge_base_id,
                 document_id=request.document_id,
@@ -184,6 +188,7 @@ def add_knowledge_base_management_routes(
         files: list[UploadFile] = File(..., description="Uploaded files"),
         actor=Depends(get_current_actor),
     ):
+        owner_id = _owned_user_id(actor, "登录后可上传知识文件。")
         uploaded_files: list[UploadedKnowledgeFile] = []
         for file in files:
             uploaded_files.append(
@@ -196,8 +201,8 @@ def add_knowledge_base_management_routes(
             await file.close()
 
         try:
-            return await knowledge_base_manager.upload_documents(
-                user_id=_owned_user_id(actor, "登录后可上传知识文件。"),
+            return await get_knowledge_base_manager().upload_documents(
+                user_id=owner_id,
                 knowledge_base_id=knowledge_base_id,
                 files=uploaded_files,
             )
@@ -213,9 +218,10 @@ def add_knowledge_base_management_routes(
         request: UpdateKnowledgeBaseDocumentRequest,
         actor=Depends(get_current_actor),
     ):
+        owner_id = _owned_user_id(actor, "登录后可重命名知识文件。")
         try:
-            return await knowledge_base_manager.update_document(
-                user_id=_owned_user_id(actor, "登录后可重命名知识文件。"),
+            return await get_knowledge_base_manager().update_document(
+                user_id=owner_id,
                 knowledge_base_id=request.knowledge_base_id,
                 document_id=request.document_id,
                 display_name=request.display_name,
@@ -228,9 +234,10 @@ def add_knowledge_base_management_routes(
         request: DeleteKnowledgeBaseDocumentRequest,
         actor=Depends(get_current_actor),
     ):
+        owner_id = _owned_user_id(actor, "登录后可删除知识文件。")
         try:
-            return await knowledge_base_manager.delete_document(
-                user_id=_owned_user_id(actor, "登录后可删除知识文件。"),
+            return await get_knowledge_base_manager().delete_document(
+                user_id=owner_id,
                 knowledge_base_id=request.knowledge_base_id,
                 document_id=request.document_id,
             )
@@ -246,9 +253,10 @@ def add_knowledge_base_management_routes(
         request: BulkDeleteKnowledgeBaseDocumentRequest,
         actor=Depends(get_current_actor),
     ):
+        owner_id = _owned_user_id(actor, "登录后可批量删除知识文件。")
         try:
-            return await knowledge_base_manager.bulk_delete_documents(
-                user_id=_owned_user_id(actor, "登录后可批量删除知识文件。"),
+            return await get_knowledge_base_manager().bulk_delete_documents(
+                user_id=owner_id,
                 knowledge_base_id=request.knowledge_base_id,
                 document_ids=request.document_ids,
             )

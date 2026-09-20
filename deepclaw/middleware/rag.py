@@ -1,6 +1,7 @@
 import asyncio
 from collections import defaultdict
 from datetime import datetime
+from collections.abc import Callable
 from typing import Dict, List, Literal, NotRequired, TypedDict
 from zoneinfo import ZoneInfo
 
@@ -207,7 +208,7 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
 
     def __init__(
         self,
-        vector_store: AbstractVectorStore,
+        vector_store: AbstractVectorStore | Callable[[], AbstractVectorStore],
         rewrite_query: bool = False,
         model: BaseChatModel = None,
         retrieve_router: bool = False,
@@ -232,6 +233,19 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
         self.retrieve_router = retrieve_router
         if rewrite_query and not self.model:
             raise AssertionError("当 rewrite_query 为 True 时，model 不能为空")
+
+    def _resolve_vector_store(self) -> AbstractVectorStore:
+        """获取当前 RAG 请求使用的向量库实例。
+
+        Args:
+            无。
+
+        Returns:
+            已初始化的向量库实例。
+        """
+        if callable(self.vector_store):
+            return self.vector_store()
+        return self.vector_store
 
     def _get_index_name(self, runtime: Runtime) -> str:
         context = runtime.context
@@ -335,9 +349,10 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
             检索结果及分数
         """
         try:
+            vector_store = self._resolve_vector_store()
             if graph_name:
                 try:
-                    rag = create_graph_rag(self.vector_store, graph_name)
+                    rag = create_graph_rag(vector_store, graph_name)
                 except ValueError:
                     rag = None
 
@@ -351,13 +366,13 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
                 else:
                     logger.info(
                         "当前向量库不支持图检索，已降级为普通检索：{}",
-                        type(self.vector_store).__name__,
+                        type(vector_store).__name__,
                     )
-                    hits = self.vector_store.retrieve(
+                    hits = vector_store.retrieve(
                         query=query, k=k, index_names=[index_name]
                     )
             else:
-                hits = self.vector_store.retrieve(
+                hits = vector_store.retrieve(
                     query=query, k=k, index_names=[index_name]
                 )
             results = []

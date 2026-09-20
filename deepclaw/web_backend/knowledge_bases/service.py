@@ -751,8 +751,26 @@ def _safe_sort_key(result: dict[str, Any], sort_field: str) -> Any:
         return str(value or 0)
 
 
-embeddings = get_embedding_model()
-knowledge_base_manager = KnowledgeBaseManager(
-    create_default_vector_store(embedding_model=embeddings)
-)
+knowledge_base_manager: KnowledgeBaseManager | None = None
+
+
+def get_knowledge_base_manager() -> KnowledgeBaseManager:
+    """按需创建并返回知识库管理器。
+
+    Args:
+        无。
+
+    Returns:
+        使用当前向量库配置创建的知识库管理器。
+
+    Raises:
+        ValueError: 向量库连接地址未配置时抛出。
+    """
+    global knowledge_base_manager
+    if knowledge_base_manager is None:
+        embeddings = get_embedding_model()
+        knowledge_base_manager = KnowledgeBaseManager(
+            create_default_vector_store(embedding_model=embeddings)
+        )
+    return knowledge_base_manager
 

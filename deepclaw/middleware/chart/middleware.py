@@ -14,7 +14,7 @@ CHART_PROMPT_MARKER = "## 图表工具使用规范"
 CHART_SYSTEM_PROMPT = (
     f"\n\n{CHART_PROMPT_MARKER}\n"
     "仅在用户已提供数据、或当前上下文中存在可信的结构化数据且可视化能帮助理解时，才调用 generate_chart；"
-    "不得为了生成图表而编造、补全或猜测数据。数据不足时，先向用户索取必要数据。\n"
+    "不得为了生成图表而编造、补全或猜测数据；数据不足时先向用户索取必要数据。"
     "图表选型：时间趋势用 line/area；类别比较用 bar/column；占比用 pie；数据分布用 histogram；"
     "转化流程用 funnel；两个数值变量的关系用 scatter；多维指标对比用 radar。\n"
     "调用前必须核对字段：bar/column/pie 使用 category、value；line/area 使用 time、value；"
@@ -43,11 +43,10 @@ CHART_TOOL_DESCRIPTION = (
     + "- funnel: [{'stage': '访问', 'value': 100}, ...]\n"
     + "- histogram: [1, 2, 3] 或 [{'value': 1}, ...]"
     + "\n\n使用规则:\n"
-    + "- 仅使用用户提供或上下文中可信的数据，不得编造数据。\n"
     + "- 分组时每条数据都提供 group，且同一维度与 group 的组合不能重复。\n"
     + "- pie/funnel 的 value 必须非负且至少有一个正数；stack 仅用于 bar/column。\n"
-    + "- bar 分组同时包含数量和比例类指标时，工具会自动使用双横轴展示。\n"
     + "- 必须传入原始数值，不得调整数值量级；工具不做万、百万或亿换算，过长数值使用科学计数法。\n"
+    + "- bar 分组同时包含数量和比例类指标时，工具会自动使用双横轴展示。\n"
     + "- 请提供清晰 title；有坐标轴时补充 axisXTitle、axisYTitle 和单位。"
 )
 

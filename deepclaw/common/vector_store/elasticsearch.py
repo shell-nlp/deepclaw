@@ -1,12 +1,14 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Set, Tuple
 
-from elasticsearch import Elasticsearch as ESClient
 from loguru import logger
 
 from deepclaw.common.vector_store.base import AbstractVectorStore
+
+if TYPE_CHECKING:
+    from elasticsearch import Elasticsearch as ESClient
 
 
 class ElasticsearchVectorStore(AbstractVectorStore):
@@ -34,7 +36,7 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         self._password = password
         self._embedding_model = embedding_model
         self._refresh_fail_dir = Path(refresh_fail_dir)
-        self._es_client: Optional[ESClient] = None
+        self._es_client: Optional["ESClient"] = None
 
     @property
     def embedding_model(self):
@@ -50,13 +52,21 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         return self._embedding_model
 
     @property
-    def es_client(self) -> ESClient:
+    def es_client(self) -> "ESClient":
         """获取 Elasticsearch 客户端实例，若未初始化则自动连接。
 
         Returns:
             Elasticsearch 客户端实例
         """
         if self._es_client is None:
+            try:
+                from elasticsearch import Elasticsearch as ESClient
+            except ModuleNotFoundError as exc:
+                if exc.name != "elasticsearch":
+                    raise
+                raise RuntimeError(
+                    "Elasticsearch 功能需要可选依赖，请执行 uv sync --extra elasticsearch 安装。"
+                ) from exc
             self._es_client = ESClient(
                 hosts=[self._url],
                 basic_auth=(self._username, self._password)

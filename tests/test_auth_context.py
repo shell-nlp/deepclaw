@@ -2,7 +2,7 @@ import asyncio
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from deepclaw.web_backend.auth.dependencies import CurrentActor, get_current_actor
 from deepclaw.web_backend.auth.service import AuthService, get_auth_service
@@ -15,6 +15,9 @@ from deepclaw.web_backend.common.endpoints import (
 
 class DummyContext(BaseModel):
     user_id: str = "default"
+
+class HeaderContext(DummyContext):
+    header_info: dict[str, str] = Field(default_factory=dict)
 
 
 class DummyAgent:
@@ -114,3 +117,34 @@ def test_general_api_accepts_internal_user_token():
     assert response.status_code == 200
     assert len(agent.contexts) == 1
     assert agent.contexts[0].user_id == user.user_id
+
+def test_general_api_passes_request_headers_as_header_info():
+    """验证通用接口将请求头透传到上下文。
+
+    Args:
+        无。
+    """
+    app = FastAPI()
+    agent = DummyAgent()
+    add_general_api_endpoint(
+        app=app,
+        agent=agent,
+        path="/api/test/general_api",
+        context=HeaderContext,
+        name="test_general_api_headers",
+    )
+    app.dependency_overrides[get_current_actor] = lambda: CurrentActor(
+        is_guest=True,
+        user_id=None,
+        email=None,
+        role="guest",
+    )
+
+    response = TestClient(app).post(
+        "/api/test/general_api",
+        json={"query": "hello", "stream": True},
+        headers={"X-Request-Id": "request-123"},
+    )
+
+    assert response.status_code == 200
+    assert agent.contexts[0].header_info["x-request-id"] == "request-123"

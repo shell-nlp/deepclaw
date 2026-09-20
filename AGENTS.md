@@ -185,6 +185,9 @@ pnpm build
 
 `deepclaw/settings.py` 当前识别：
 
+- `HOST`
+- `PORT`
+- `LOCAL_HOST`
 - `OPENAI_API_BASE`
 - `OPENAI_API_KEY`
 - `CHAT_MODEL_NAME`
@@ -199,6 +202,11 @@ pnpm build
 - `LANGSMITH_API_KEY`
 - `USE_COPILOTKIT`
 - `USE_TOOL_SEARCH`
+- `GENERAL_API_VERSION`
+- `MCP_CONFIG`
+- `CHART_PUBLIC_URL`
+- `CHART_RETENTION_HOURS`
+- `CHART_MAX_FILES`
 - `AUTH_ADMIN_EMAIL`
 - `AUTH_ADMIN_PASSWORD`
 - `AUTH_TOKEN_EXPIRE_DAYS`
@@ -239,7 +247,7 @@ pnpm build
 - 所有数据库操作必须使用 SQLModel 的原生异步功能：`async_sessionmaker` 用 `class_=AsyncSession`（`from sqlmodel.ext.asyncio.session import AsyncSession`），查询用 `await session.exec(select(...))`（`select` 从 `sqlmodel` 导入而非 `sqlalchemy`），结果直接用 `.one()/.first()/.all()` 获取模型实例（不使用 `.scalars()`），写入用 `session.add()` + `commit()` + `refresh()`。
 - 输出文档必须是中文。
 - 如果代码结构变化，必须同步更新 `AGENTS.md`。
-- 代码更改后，必须执行 `codegraph index --force` 更新索引。
+- 代码更改后，必须执行 `codegraph sync` 更新索引。
 - 代码修改完成后，必须运行 pytest 测试进行验证：`uv run pytest` 使用 `-q -n auto` 并行执行测试。
 
 ## 最小验证

@@ -1,7 +1,11 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from deepclaw.middleware.chart.utils import format_number, save_chart_to_workspace
+from deepclaw.middleware.chart.utils import (
+    finalize_chart_layout,
+    format_number,
+    save_chart_to_workspace,
+)
 
 
 def render(params: dict) -> str:
@@ -37,5 +41,5 @@ def render(params: dict) -> str:
     ax.set_xlim(0, 1)
     ax.set_title(params.get("title", ""))
     ax.axis("off")
-    fig.tight_layout()
+    finalize_chart_layout(fig)
     return save_chart_to_workspace(fig)

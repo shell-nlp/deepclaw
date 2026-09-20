@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from deepclaw.middleware.chart.utils import (
+    finalize_chart_layout,
     format_number,
     save_chart_to_workspace,
 )
@@ -38,5 +39,5 @@ def render(params: dict) -> str:
     ax.set_xlabel(params.get("axisXTitle", ""))
     ax.set_ylabel(params.get("axisYTitle", ""))
     ax.set_title(params.get("title", ""))
-    fig.tight_layout()
+    finalize_chart_layout(fig, vertical_label_axes=(ax,))
     return save_chart_to_workspace(fig)

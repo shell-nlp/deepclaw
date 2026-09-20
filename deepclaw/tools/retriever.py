@@ -11,17 +11,37 @@ from deepclaw.utils import get_embedding_model
 
 DEFAULT_INDEX_NAME = "236"
 
-embeddings = get_embedding_model()
-# 复用全局检索器，普通检索统一走抽象接口，后续切库只需改后端类型。
-default_retriever: AbstractVectorStore = create_default_vector_store(
-    embedding_model=embeddings,
-)
+embeddings = None
+default_retriever: AbstractVectorStore | None = None
+
+
+def get_default_retriever() -> AbstractVectorStore:
+    """按需创建并返回默认向量检索器。
+
+    Args:
+        无。
+
+    Returns:
+        使用当前向量库配置创建的默认检索器。
+
+    Raises:
+        ValueError: 向量库连接地址未配置时抛出。
+    """
+    global default_retriever, embeddings
+    if default_retriever is None:
+        embeddings = get_embedding_model()
+        default_retriever = create_default_vector_store(
+            embedding_model=embeddings,
+        )
+    return default_retriever
 
 
 @tool
 def retrieve_context(query: str):
     """检索与查询相关的信息。"""
-    docs = default_retriever.retrieve(query=query, k=3, index_names=[DEFAULT_INDEX_NAME])
+    docs = get_default_retriever().retrieve(
+        query=query, k=3, index_names=[DEFAULT_INDEX_NAME]
+    )
     context = ""
     for idx, doc in enumerate(docs, start=1):
         context += f"文档 {idx}: \n{doc.get('content', '')}\n\n"
@@ -39,7 +59,7 @@ def retrieve_graph_context(query: str, graph_name: str = DEFAULT_INDEX_NAME):
         url=settings.ES_URL,
         username=settings.ES_URSR,
         password=settings.ES_PWD,
-        embedding_model=embeddings,
+        embedding_model=get_default_retriever().embedding_model,
     )
     rag = create_graph_rag(es, graph_name)
     result = rag.retrieve(query=query, k=5)
