@@ -2,9 +2,9 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 from psycopg.rows import dict_row
@@ -13,21 +13,22 @@ from psycopg_pool import AsyncConnectionPool
 from deepclaw.constant import root_dir, workspace_path
 from deepclaw.patch.langchain import patch_langchain
 from deepclaw.settings import settings
-from deepclaw.web_backend.agent.router import create_agent_router
-from deepclaw.web_backend.auth.router import create_auth_router
+from deepclaw.web_backend.agent.router import router as agent_router
+from deepclaw.web_backend.auth.router import router as auth_router
 from deepclaw.web_backend.auth.service import get_auth_service
-from deepclaw.web_backend.channels.router import create_channels_router
+from deepclaw.web_backend.channels.router import router as channels_router
 from deepclaw.web_backend.channels.weixin_clawbot.lifespan import channel_lifespan
+from deepclaw.web_backend.common.errors import BusinessRuleError
 from deepclaw.web_backend.common.agui_runs import (
     get_agent_runs_path,
     get_rag_runs_path,
-    get_runtime_api_config,
+    runtime_router,
 )
 from deepclaw.web_backend.knowledge_bases.router import (
-    create_knowledge_bases_router,
+    router as knowledge_bases_router,
 )
-from deepclaw.web_backend.rag.router import create_rag_router
-from deepclaw.web_backend.skills.router import create_skills_router
+from deepclaw.web_backend.rag.router import router as rag_router
+from deepclaw.web_backend.skills.router import router as skills_router
 
 
 def setup_observability() -> None:
@@ -41,6 +42,23 @@ def setup_observability() -> None:
             )
     except ImportError:
         logger.warning("Phoenix 未安装，跳过可观测性初始化。")
+
+
+
+async def handle_business_rule_error(
+    request: Request,
+    exc: BusinessRuleError,
+) -> JSONResponse:
+    """把业务规则异常转换为统一 HTTP 错误响应。
+
+    Args:
+        request: 当前 FastAPI 请求。
+        exc: 业务规则异常。
+
+    Returns:
+        包含 detail 字段的 JSON 响应。
+    """
+    return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)})
 
 
 async def init_agent_env(app: FastAPI) -> None:
@@ -100,17 +118,6 @@ async def init_agent_env(app: FastAPI) -> None:
     app.state.store = store
 
 
-def register_agent_routes(app: FastAPI) -> None:
-    """在生命周期启动阶段注册依赖 agent 运行时的路由。"""
-
-    if getattr(app.state, "agent_routes_registered", False):
-        return
-
-    app.include_router(create_agent_router(app.state.checkpointer, app.state.store))
-    app.include_router(create_rag_router(app.state.checkpointer, app.state.store))
-    app.state.agent_routes_registered = True
-
-
 def register_frontend_routes(app: FastAPI) -> None:
     """在 API 路由之后再挂载前端静态资源，避免吞掉 POST API 请求。"""
 
@@ -138,7 +145,6 @@ async def app_lifespan(app: FastAPI):
     setup_observability()
     patch_langchain()
     await init_agent_env(app)
-    register_agent_routes(app)
     register_frontend_routes(app)
     logger.info(
         "AG-UI runs | agent={} | rag={}",
@@ -187,6 +193,7 @@ def _register_exported_html_routes(app: FastAPI, frontend_dir: Path) -> None:
 
 def create_app() -> FastAPI:
     app = FastAPI(lifespan=app_lifespan)
+    app.add_exception_handler(BusinessRuleError, handle_business_rule_error)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -194,15 +201,13 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.include_router(create_auth_router())
-    app.include_router(create_channels_router())
-    app.include_router(create_skills_router())
-    app.include_router(create_knowledge_bases_router())
-
-    @app.get("/api/runtime-config", tags=["runtime"], summary="获取前端运行时配置", description="返回前端需要使用的 Agent 与 RAG AG-UI Runs 路径。")
-    async def runtime_config():
-        """返回前端运行时 AG-UI 路径配置。"""
-        return get_runtime_api_config()
+    app.include_router(auth_router)
+    app.include_router(agent_router)
+    app.include_router(rag_router)
+    app.include_router(channels_router)
+    app.include_router(skills_router)
+    app.include_router(knowledge_bases_router)
+    app.include_router(runtime_router)
 
     register_charts_static(app)
     return app

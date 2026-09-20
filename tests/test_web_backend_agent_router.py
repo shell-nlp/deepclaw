@@ -138,17 +138,17 @@ def test_list_sessions_returns_deduplicated_sessions_with_titles(monkeypatch):
     monkeypatch.setattr(agent_router, "Agent", FakeAgent)
 
     app = FastAPI()
-    app.include_router(agent_router.create_agent_router(FakeCheckpointer()))
+    app.state.checkpointer = FakeCheckpointer()
+    app.state.store = None
+    app.include_router(agent_router.router)
 
     with TestClient(app) as client:
         response = client.get("/api/agent/get_session_list")
 
     assert response.status_code == 200
     data = response.json()
-    assert data["code"] == "200"
-    assert data["msg"] == "查询成功"
-    assert data["data"]["total"] == 2
-    sessions = data["data"]["sessions"]
+    assert data["total"] == 2
+    sessions = data["sessions"]
     assert sessions[0]["session_id"] == "session-new"
     assert sessions[1]["session_id"] == "session-old"
     assert sessions[0]["title"] == "最新会话标题"
@@ -203,19 +203,20 @@ def test_list_sessions_queries_postgres_thread_ids_directly(monkeypatch):
     monkeypatch.setattr(agent_router, "AsyncPostgresSaver", FakeAsyncPostgresSaver)
 
     app = FastAPI()
-    app.include_router(agent_router.create_agent_router(checkpointer))
+    app.state.checkpointer = checkpointer
+    app.state.store = None
+    app.include_router(agent_router.router)
 
     with TestClient(app) as client:
         response = client.get("/api/agent/get_session_list")
 
     assert response.status_code == 200
     data = response.json()
-    assert data["code"] == "200"
-    assert data["data"]["total"] == 2
-    assert data["data"]["sessions"][0]["session_id"] == "session-new"
-    assert data["data"]["sessions"][0]["title"] == "标题"
-    assert data["data"]["sessions"][1]["session_id"] == "session-old"
-    assert data["data"]["sessions"][1]["title"] is None
+    assert data["total"] == 2
+    assert data["sessions"][0]["session_id"] == "session-new"
+    assert data["sessions"][0]["title"] == "标题"
+    assert data["sessions"][1]["session_id"] == "session-old"
+    assert data["sessions"][1]["title"] is None
     assert "DISTINCT ON" in cursor.execute.await_args.args[0]
     assert "checkpoint_blobs" in cursor.execute.await_args.args[0]
 
@@ -226,7 +227,9 @@ def test_delete_session_calls_checkpointer_delete_thread(monkeypatch):
     monkeypatch.setattr(agent_router, "Agent", FakeAgent)
 
     app = FastAPI()
-    app.include_router(agent_router.create_agent_router(checkpointer))
+    app.state.checkpointer = checkpointer
+    app.state.store = None
+    app.include_router(agent_router.router)
 
     with TestClient(app) as client:
         response = client.post(
@@ -235,11 +238,7 @@ def test_delete_session_calls_checkpointer_delete_thread(monkeypatch):
         )
 
     assert response.status_code == 200
-    assert response.json() == {
-        "code": "200",
-        "msg": "删除成功",
-        "data": {"session_id": "session-to-delete"},
-    }
+    assert response.json() == {"session_id": "session-to-delete"}
     assert checkpointer.deleted_session_id == "session-to-delete"
 
 
@@ -248,7 +247,9 @@ def test_delete_session_returns_error_when_checkpointer_fails(monkeypatch):
     monkeypatch.setattr(agent_router, "Agent", FakeAgent)
 
     app = FastAPI()
-    app.include_router(agent_router.create_agent_router(FailingCheckpointer()))
+    app.state.checkpointer = FailingCheckpointer()
+    app.state.store = None
+    app.include_router(agent_router.router)
 
     with TestClient(app) as client:
         response = client.post(
@@ -257,11 +258,7 @@ def test_delete_session_returns_error_when_checkpointer_fails(monkeypatch):
         )
 
     assert response.status_code == 500
-    assert response.json() == {
-        "code": "500",
-        "msg": "删除会话失败",
-        "data": None,
-    }
+    assert response.json() == {"detail": "删除会话失败"}
 
 
 def test_get_state_returns_standard_response(monkeypatch):
@@ -269,7 +266,9 @@ def test_get_state_returns_standard_response(monkeypatch):
     monkeypatch.setattr(agent_router, "Agent", FakeStateAgent)
 
     app = FastAPI()
-    app.include_router(agent_router.create_agent_router(FakeCheckpointer()))
+    app.state.checkpointer = FakeCheckpointer()
+    app.state.store = None
+    app.include_router(agent_router.router)
 
     with TestClient(app) as client:
         response = client.post(
@@ -279,10 +278,6 @@ def test_get_state_returns_standard_response(monkeypatch):
 
     assert response.status_code == 200
     assert response.json() == {
-        "code": "200",
-        "msg": "查询成功",
-        "data": {
-            "messages": [{"content": "会话标题"}],
-            "title": "会话标题",
-        },
+        "messages": [{"content": "会话标题"}],
+        "title": "会话标题",
     }

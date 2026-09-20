@@ -10,12 +10,6 @@ export interface Message {
   recommendedQuestions?: string[]
 }
 
-export interface ApiResponse<T = unknown> {
-  code: string
-  msg: string
-  data: T
-}
-
 export interface ChatHistorySession {
   session_id: string
   updated_at: string | null

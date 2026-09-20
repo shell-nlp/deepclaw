@@ -21,11 +21,8 @@ def _load_app_module(monkeypatch):
 
     for module_name, factory_name in router_modules.items():
         module = types.ModuleType(module_name)
-
-        def _build_router(*args, **kwargs):
-            return APIRouter()
-
-        setattr(module, factory_name, _build_router)
+        module.router = APIRouter()
+        setattr(module, factory_name, lambda: APIRouter())
         monkeypatch.setitem(sys.modules, module_name, module)
 
     from deepclaw.web_backend import app as app_module
@@ -59,22 +56,13 @@ def test_create_app_defers_agent_env_init_to_lifespan(monkeypatch):
     checkpointer = object()
     store = object()
     init_calls = 0
-    agent_router_args = []
-    rag_router_args = []
 
     async def fake_init_agent_env(app):
         nonlocal init_calls
         init_calls += 1
         app.state.checkpointer = checkpointer
         app.state.store = store
-
-    def fake_create_agent_router(*args, **kwargs):
-        agent_router_args.append((args, kwargs))
-        return APIRouter()
-
-    def fake_create_rag_router(*args, **kwargs):
-        rag_router_args.append((args, kwargs))
-        return APIRouter()
+        app.state.agent_store_ctx = None
 
     class ServiceSpy:
         async def bootstrap_admin_if_needed(self):
@@ -85,16 +73,6 @@ def test_create_app_defers_agent_env_init_to_lifespan(monkeypatch):
         yield
 
     monkeypatch.setattr(app_module, "init_agent_env", fake_init_agent_env)
-    monkeypatch.setattr(app_module, "create_auth_router", lambda: APIRouter())
-    monkeypatch.setattr(app_module, "create_agent_router", fake_create_agent_router)
-    monkeypatch.setattr(app_module, "create_rag_router", fake_create_rag_router)
-    monkeypatch.setattr(app_module, "create_channels_router", lambda: APIRouter())
-    monkeypatch.setattr(app_module, "create_skills_router", lambda: APIRouter())
-    monkeypatch.setattr(
-        app_module,
-        "create_knowledge_bases_router",
-        lambda *args, **kwargs: APIRouter(),
-    )
     monkeypatch.setattr(app_module, "setup_observability", lambda: None)
     monkeypatch.setattr(app_module, "patch_langchain", lambda: None)
     monkeypatch.setattr(app_module, "channel_lifespan", noop_channel_lifespan)
@@ -103,15 +81,13 @@ def test_create_app_defers_agent_env_init_to_lifespan(monkeypatch):
     app = app_module.create_app()
 
     assert init_calls == 0
-    assert agent_router_args == []
-    assert rag_router_args == []
 
     with TestClient(app):
         pass
 
     assert init_calls == 1
-    assert agent_router_args == [((checkpointer, store), {})]
-    assert rag_router_args == [((checkpointer, store), {})]
+    assert app.state.checkpointer is checkpointer
+    assert app.state.store is store
 
 
 def test_init_agent_env_uses_checked_postgres_connection_pools(monkeypatch):
@@ -221,14 +197,11 @@ def test_create_app_agent_route_remains_postable_with_frontend_mount(monkeypatch
         app.state.store = object()
         app.state.agent_store_ctx = None
 
-    def fake_create_agent_router(*args, **kwargs):
-        router = APIRouter()
+    fake_agent_router = APIRouter()
 
-        @router.post("/api/agent/runs")
-        async def create_run():
-            return {"ok": True}
-
-        return router
+    @fake_agent_router.post("/api/agent/runs")
+    async def create_run():
+        return {"ok": True}
 
     class ServiceSpy:
         async def bootstrap_admin_if_needed(self):
@@ -240,16 +213,7 @@ def test_create_app_agent_route_remains_postable_with_frontend_mount(monkeypatch
 
     monkeypatch.setattr(app_module, "root_dir", tmp_path)
     monkeypatch.setattr(app_module, "init_agent_env", fake_init_agent_env)
-    monkeypatch.setattr(app_module, "create_auth_router", lambda: APIRouter())
-    monkeypatch.setattr(app_module, "create_agent_router", fake_create_agent_router)
-    monkeypatch.setattr(app_module, "create_rag_router", lambda *args, **kwargs: APIRouter())
-    monkeypatch.setattr(app_module, "create_channels_router", lambda: APIRouter())
-    monkeypatch.setattr(app_module, "create_skills_router", lambda: APIRouter())
-    monkeypatch.setattr(
-        app_module,
-        "create_knowledge_bases_router",
-        lambda *args, **kwargs: APIRouter(),
-    )
+    monkeypatch.setattr(app_module, "agent_router", fake_agent_router)
     monkeypatch.setattr(app_module, "setup_observability", lambda: None)
     monkeypatch.setattr(app_module, "patch_langchain", lambda: None)
     monkeypatch.setattr(app_module, "channel_lifespan", noop_channel_lifespan)
@@ -287,16 +251,6 @@ def test_create_app_serves_exported_login_html_route(monkeypatch, tmp_path: Path
         yield
 
     monkeypatch.setattr(app_module, "init_agent_env", fake_init_agent_env)
-    monkeypatch.setattr(app_module, "create_auth_router", lambda: APIRouter())
-    monkeypatch.setattr(app_module, "create_agent_router", lambda *args, **kwargs: APIRouter())
-    monkeypatch.setattr(app_module, "create_rag_router", lambda *args, **kwargs: APIRouter())
-    monkeypatch.setattr(app_module, "create_channels_router", lambda *args, **kwargs: APIRouter())
-    monkeypatch.setattr(app_module, "create_skills_router", lambda *args, **kwargs: APIRouter())
-    monkeypatch.setattr(
-        app_module,
-        "create_knowledge_bases_router",
-        lambda *args, **kwargs: APIRouter(),
-    )
     monkeypatch.setattr(app_module, "setup_observability", lambda: None)
     monkeypatch.setattr(app_module, "patch_langchain", lambda: None)
     monkeypatch.setattr(app_module, "channel_lifespan", noop_channel_lifespan)

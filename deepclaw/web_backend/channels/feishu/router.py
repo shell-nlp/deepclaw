@@ -1,162 +1,156 @@
-from typing import Literal
-
 from fastapi import APIRouter, BackgroundTasks, Depends
-from pydantic import BaseModel
 
 from deepclaw.web_backend.auth.dependencies import CurrentActor, get_current_actor
-from deepclaw.web_backend.channels.common import (
-    ensure_binding_access,
-    ensure_binding_owner_or_manager_match,
-    is_admin,
-    manager_user_id_from_actor,
-)
 from deepclaw.web_backend.channels.feishu.adapter import FeishuAdapter
-from deepclaw.web_backend.channels.feishu.runtime import (
-    start_feishu_runtime,
-    stop_feishu_runtime,
+from deepclaw.web_backend.channels.feishu.schemas import FeishuBindingRequest
+from deepclaw.web_backend.channels.feishu.service import FeishuBindingService
+from deepclaw.web_backend.channels.models import (
+    ChannelBindingDeleteResult,
+    ChannelBindingList,
+    ChannelBindingRead,
+    ChannelBindingUserDeleteResult,
+    ChannelEventAccepted,
 )
-from deepclaw.web_backend.channels.feishu.settings import feishu_settings
-from deepclaw.web_backend.channels.service import ChannelService
+from deepclaw.web_backend.channels.service import ChannelService, get_channel_service
 from deepclaw.web_backend.channels.store import ChannelStore, get_channel_store
 
 
-class FeishuBindingRequest(BaseModel):
-    owner_user_id: str | None = None
-    app_id: str
-    app_secret: str
-    domain: Literal["feishu", "lark"] = feishu_settings.FEISHU_DEFAULT_DOMAIN
-    group_policy: Literal["mention", "open"] = feishu_settings.FEISHU_DEFAULT_GROUP_POLICY
-    streaming: bool = feishu_settings.FEISHU_DEFAULT_STREAMING
-    display_name: str | None = None
-    react_emoji: str | None = None
-    done_emoji: str | None = None
+router = APIRouter(tags=["channels"])
 
 
-def create_feishu_router(
-    *,
-    store: ChannelStore | None = None,
-    service: ChannelService | None = None,
-) -> APIRouter:
-    router = APIRouter(tags=["channels"])
-    channel_store = store or get_channel_store()
-    channel_service = service or ChannelService(store=channel_store)
+def get_feishu_binding_service(
+    store: ChannelStore = Depends(get_channel_store),
+) -> FeishuBindingService:
+    """创建飞书绑定服务。
 
-    @router.post("/feishu/events", summary="接收飞书事件", description="接收飞书回调事件并转换为渠道消息。")
-    async def feishu_events(payload: dict, background_tasks: BackgroundTasks):
-        adapter = FeishuAdapter()
-        message = await adapter.parse_event(payload)
-        background_tasks.add_task(channel_service.process_message, message, adapter)
-        return {"status": "accepted"}
+    Args:
+        store: 渠道存储。
 
-    @router.post("/feishu/users/{user_id}/binding", summary="创建或更新飞书绑定", description="按用户 ID 创建或更新飞书渠道绑定。")
-    async def upsert_feishu_binding(
-        user_id: str,
-        request: FeishuBindingRequest,
-        actor: CurrentActor = Depends(get_current_actor),
-    ):
-        ensure_binding_owner_or_manager_match(actor=actor, owner_user_id=user_id)
-        binding = await channel_store.upsert_binding(
-            channel="feishu",
-            owner_user_id=user_id,
-            manager_user_id=manager_user_id_from_actor(actor),
-            display_name=request.display_name or f"Feishu {user_id}",
-            credentials={
-                "app_id": request.app_id,
-                "app_secret": request.app_secret,
-            },
-            config={
-                "domain": request.domain,
-                "group_policy": request.group_policy,
-                "streaming": request.streaming,
-                "react_emoji": request.react_emoji,
-                "done_emoji": request.done_emoji,
-            },
-            runtime_state={"status": "starting"},
-        )
-        await start_feishu_runtime(binding_id=binding.id, store=channel_store)
-        return binding.model_dump()
+    Returns:
+        使用当前存储构造的飞书绑定服务。
+    """
+    return FeishuBindingService(store=store)
 
-    @router.post("/feishu/bindings", summary="创建飞书绑定", description="为当前用户创建新的飞书渠道绑定。")
-    async def create_feishu_binding(
-        request: FeishuBindingRequest,
-        actor: CurrentActor = Depends(get_current_actor),
-    ):
-        owner_user_id = request.owner_user_id or manager_user_id_from_actor(actor)
-        ensure_binding_owner_or_manager_match(
-            actor=actor,
-            owner_user_id=owner_user_id,
-        )
-        binding = await channel_store.create_binding(
-            channel="feishu",
-            owner_user_id=owner_user_id,
-            manager_user_id=manager_user_id_from_actor(actor),
-            display_name=request.display_name or f"Feishu {owner_user_id}",
-            credentials={
-                "app_id": request.app_id,
-                "app_secret": request.app_secret,
-            },
-            config={
-                "domain": request.domain,
-                "group_policy": request.group_policy,
-                "streaming": request.streaming,
-                "react_emoji": request.react_emoji,
-                "done_emoji": request.done_emoji,
-            },
-            runtime_state={"status": "starting"},
-        )
-        await start_feishu_runtime(binding_id=binding.id, store=channel_store)
-        return binding.model_dump()
 
-    @router.get("/feishu/users/{user_id}/binding", summary="获取飞书绑定", description="返回指定用户当前使用的飞书绑定信息。")
-    async def get_feishu_binding(
-        user_id: str,
-        actor: CurrentActor = Depends(get_current_actor),
-    ):
-        bindings = await channel_store.list_bindings(channel="feishu", owner_user_id=user_id)
-        binding = bindings[0] if bindings else None
-        ensure_binding_access(actor=actor, binding=binding, not_found_detail="Feishu binding not found")
-        return binding.model_dump()
+@router.post(
+    "/feishu/events",
+    response_model=ChannelEventAccepted,
+    summary="接收飞书事件",
+    description="接收飞书回调事件并转换为渠道消息。",
+)
+async def feishu_events(
+    payload: dict,
+    background_tasks: BackgroundTasks,
+    service: ChannelService = Depends(get_channel_service),
+):
+    """接收并异步处理飞书事件。"""
+    adapter = FeishuAdapter()
+    message = await adapter.parse_event(payload)
+    background_tasks.add_task(service.process_message, message, adapter)
+    return ChannelEventAccepted()
 
-    @router.get("/feishu/users", summary="查询飞书绑定列表", description="返回当前用户或管理员范围内的飞书绑定。")
-    async def list_feishu_bindings(
-        actor: CurrentActor = Depends(get_current_actor),
-    ):
-        items = [
-            binding.model_dump()
-            for binding in await channel_store.list_bindings(
-                channel="feishu",
-                participant_user_id=(
-                    None if is_admin(actor) else manager_user_id_from_actor(actor)
-                ),
-            )
-        ]
-        return {"items": items, "total": len(items)}
 
-    @router.delete("/feishu/users/{user_id}/binding", summary="删除飞书绑定", description="删除指定用户的飞书绑定及运行态信息。")
-    async def delete_feishu_binding(
-        user_id: str,
-        actor: CurrentActor = Depends(get_current_actor),
-    ):
-        bindings = await channel_store.list_bindings(channel="feishu", owner_user_id=user_id)
-        binding = bindings[0] if bindings else None
-        ensure_binding_access(actor=actor, binding=binding, not_found_detail="Feishu binding not found")
-        await stop_feishu_runtime(binding.id)
-        deleted = await channel_store.delete_binding(binding.id)
-        return {"user_id": user_id, "deleted": deleted}
+@router.post(
+    "/feishu/users/{user_id}/binding",
+    response_model=ChannelBindingRead,
+    summary="创建或更新飞书绑定",
+    description="按用户 ID 创建或更新飞书渠道绑定。",
+)
+async def upsert_feishu_binding(
+    user_id: str,
+    request: FeishuBindingRequest,
+    actor: CurrentActor = Depends(get_current_actor),
+    binding_service: FeishuBindingService = Depends(get_feishu_binding_service),
+):
+    """按用户 ID 创建或更新飞书绑定。"""
+    binding = await binding_service.upsert_binding_for_user(
+        actor=actor,
+        user_id=user_id,
+        request=request,
+    )
+    return ChannelBindingRead.model_validate(binding)
 
-    @router.delete("/feishu/bindings/{binding_id}", summary="按 ID 删除飞书绑定", description="根据绑定 ID 删除飞书渠道绑定。")
-    async def delete_feishu_binding_by_id(
-        binding_id: int,
-        actor: CurrentActor = Depends(get_current_actor),
-    ):
-        binding = await channel_store.get_binding(binding_id)
-        ensure_binding_access(
-            actor=actor,
-            binding=binding,
-            not_found_detail="Feishu binding not found",
-        )
-        await stop_feishu_runtime(binding_id)
-        deleted = await channel_store.delete_binding(binding_id)
-        return {"binding_id": binding_id, "deleted": deleted}
 
+@router.post(
+    "/feishu/bindings",
+    response_model=ChannelBindingRead,
+    summary="创建飞书绑定",
+    description="为当前用户创建新的飞书渠道绑定。",
+)
+async def create_feishu_binding(
+    request: FeishuBindingRequest,
+    actor: CurrentActor = Depends(get_current_actor),
+    binding_service: FeishuBindingService = Depends(get_feishu_binding_service),
+):
+    """为当前用户创建飞书绑定。"""
+    binding = await binding_service.create_binding(actor=actor, request=request)
+    return ChannelBindingRead.model_validate(binding)
+
+
+@router.get(
+    "/feishu/users/{user_id}/binding",
+    response_model=ChannelBindingRead,
+    summary="获取飞书绑定",
+    description="返回指定用户当前使用的飞书绑定信息。",
+)
+async def get_feishu_binding(
+    user_id: str,
+    actor: CurrentActor = Depends(get_current_actor),
+    binding_service: FeishuBindingService = Depends(get_feishu_binding_service),
+):
+    """查询指定用户的飞书绑定。"""
+    binding = await binding_service.get_binding_for_user(actor=actor, user_id=user_id)
+    return ChannelBindingRead.model_validate(binding)
+
+
+@router.get(
+    "/feishu/users",
+    response_model=ChannelBindingList,
+    summary="查询飞书绑定列表",
+    description="返回当前用户或管理员范围内的飞书绑定。",
+)
+async def list_feishu_bindings(
+    actor: CurrentActor = Depends(get_current_actor),
+    binding_service: FeishuBindingService = Depends(get_feishu_binding_service),
+):
+    """查询当前可见的飞书绑定。"""
+    bindings = await binding_service.list_bindings(actor=actor)
+    items = [ChannelBindingRead.model_validate(binding) for binding in bindings]
+    return ChannelBindingList(items=items, total=len(items))
+
+
+@router.delete(
+    "/feishu/users/{user_id}/binding",
+    response_model=ChannelBindingUserDeleteResult,
+    summary="删除飞书绑定",
+    description="删除指定用户的飞书绑定及运行态信息。",
+)
+async def delete_feishu_binding(
+    user_id: str,
+    actor: CurrentActor = Depends(get_current_actor),
+    binding_service: FeishuBindingService = Depends(get_feishu_binding_service),
+):
+    """删除指定用户的飞书绑定。"""
+    deleted = await binding_service.delete_binding_for_user(actor=actor, user_id=user_id)
+    return ChannelBindingUserDeleteResult(user_id=user_id, deleted=deleted)
+
+
+@router.delete(
+    "/feishu/bindings/{binding_id}",
+    response_model=ChannelBindingDeleteResult,
+    summary="按 ID 删除飞书绑定",
+    description="根据绑定 ID 删除飞书渠道绑定。",
+)
+async def delete_feishu_binding_by_id(
+    binding_id: int,
+    actor: CurrentActor = Depends(get_current_actor),
+    binding_service: FeishuBindingService = Depends(get_feishu_binding_service),
+):
+    """按绑定 ID 删除飞书绑定。"""
+    deleted = await binding_service.delete_binding(actor=actor, binding_id=binding_id)
+    return ChannelBindingDeleteResult(binding_id=binding_id, deleted=deleted)
+
+
+def create_feishu_router() -> APIRouter:
+    """返回模块级飞书路由器。"""
     return router

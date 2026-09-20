@@ -6,6 +6,7 @@ from pathlib import Path
 
 from sqlmodel import select
 
+from deepclaw.web_backend.common.errors import BusinessRuleError
 from deepclaw.constant import home_path
 from deepclaw.web_backend.auth.models import (
     AccessTokenRecord,
@@ -306,7 +307,7 @@ class AuthStore:
             )
             user = result.first()
             if user is None:
-                raise ValueError("用户不存在。")
+                raise BusinessRuleError("用户不存在。")
             user.role = role
             user.updated_at = utc_now()
             session.add(user)
@@ -322,7 +323,7 @@ class AuthStore:
             )
             user = result.first()
             if user is None:
-                raise ValueError("用户不存在。")
+                raise BusinessRuleError("用户不存在。")
             user.is_active = is_active
             user.updated_at = utc_now()
             session.add(user)
@@ -338,7 +339,7 @@ class AuthStore:
             )
             user = result.first()
             if user is None:
-                raise ValueError("用户不存在。")
+                raise BusinessRuleError("用户不存在。")
             user.password_hash = password_hash
             user.updated_at = utc_now()
             session.add(user)
@@ -405,18 +406,18 @@ class AuthStore:
             )
             record = result.first()
             if record is None:
-                raise ValueError("登录状态已失效，请重新登录。")
+                raise BusinessRuleError("登录状态已失效，请重新登录。")
             if record.expires_at <= utc_now():
                 await session.delete(record)
                 await session.commit()
-                raise ValueError("登录状态已失效，请重新登录。")
+                raise BusinessRuleError("登录状态已失效，请重新登录。")
 
             result = await session.exec(
                 select(AuthUser).where(AuthUser.user_id == record.user_id)
             )
             user = result.first()
             if user is None:
-                raise ValueError("登录状态已失效，请重新登录。")
+                raise BusinessRuleError("登录状态已失效，请重新登录。")
 
             record.last_used_at = utc_now()
             session.add(record)

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import io
 import re
@@ -10,6 +10,7 @@ from zipfile import ZipFile
 from loguru import logger
 from pydantic import BaseModel, Field
 
+from deepclaw.web_backend.common.errors import BusinessRuleError
 from deepclaw.constant import workspace_path
 from deepclaw.settings import settings
 
@@ -61,15 +62,15 @@ class SkillManager:
 
     def upload_skill_zip(self, *, file_name: str, data: bytes) -> SkillUploadResponse:
         if not data:
-            raise ValueError("Uploaded zip file is empty.")
+            raise BusinessRuleError("Uploaded zip file is empty.")
         if not file_name.lower().endswith(".zip"):
-            raise ValueError("Only .zip skill packages are supported.")
+            raise BusinessRuleError("Only .zip skill packages are supported.")
 
         self.SKILLS_ROOT.mkdir(parents=True, exist_ok=True)
         members, skill_name = self._load_archive_members(file_name=file_name, data=data)
         target_dir = self.SKILLS_ROOT / skill_name
         if target_dir.exists():
-            raise ValueError(
+            raise BusinessRuleError(
                 f"Skill {skill_name!r} already exists. Delete it before uploading again."
             )
 
@@ -95,9 +96,9 @@ class SkillManager:
         normalized_name = self._normalize_skill_name(skill_name)
         target_dir = self.SKILLS_ROOT / normalized_name
         if not target_dir.exists() or not target_dir.is_dir():
-            raise ValueError("Skill not found.")
+            raise BusinessRuleError("Skill not found.")
         if not (target_dir / "SKILL.md").exists():
-            raise ValueError("Target directory is not a valid skill.")
+            raise BusinessRuleError("Target directory is not a valid skill.")
 
         shutil.rmtree(target_dir)
         logger.info("Skill deleted: {}", target_dir)
@@ -149,7 +150,7 @@ class SkillManager:
         try:
             archive = ZipFile(io.BytesIO(data))
         except Exception as exc:
-            raise ValueError("Invalid zip archive.") from exc
+            raise BusinessRuleError("Invalid zip archive.") from exc
 
         with archive:
             file_infos = [
@@ -158,7 +159,7 @@ class SkillManager:
                 if not info.is_dir() and not info.filename.startswith("__MACOSX/")
             ]
             if not file_infos:
-                raise ValueError("Zip archive does not contain any files.")
+                raise BusinessRuleError("Zip archive does not contain any files.")
 
             member_paths = [self._validate_archive_path(info.filename) for info in file_infos]
             top_levels = {path.parts[0] for path in member_paths if path.parts}
@@ -175,7 +176,7 @@ class SkillManager:
                 skill_name = self._normalize_skill_name(Path(file_name).stem)
 
             if not any(path == Path("SKILL.md") for path in relative_paths):
-                raise ValueError("The zip root must contain SKILL.md.")
+                raise BusinessRuleError("The zip root must contain SKILL.md.")
 
             members: list[tuple[Path, bytes]] = []
             for info, relative_path in zip(file_infos, relative_paths, strict=True):
@@ -188,17 +189,17 @@ class SkillManager:
     def _validate_archive_path(self, raw_path: str) -> PurePosixPath:
         path = PurePosixPath(raw_path)
         if path.is_absolute():
-            raise ValueError("Zip archive contains an absolute path, which is not allowed.")
+            raise BusinessRuleError("Zip archive contains an absolute path, which is not allowed.")
         if any(part in {"", ".", ".."} for part in path.parts):
-            raise ValueError("Zip archive contains an invalid path.")
+            raise BusinessRuleError("Zip archive contains an invalid path.")
         return path
 
     def _normalize_skill_name(self, skill_name: str) -> str:
         normalized = skill_name.strip().strip("/\\")
         if not normalized:
-            raise ValueError("Skill name cannot be empty.")
+            raise BusinessRuleError("Skill name cannot be empty.")
         if normalized in {".", ".."}:
-            raise ValueError("Invalid skill name.")
+            raise BusinessRuleError("Invalid skill name.")
         normalized = re.sub(r"[\\/]+", "-", normalized)
         return normalized
 

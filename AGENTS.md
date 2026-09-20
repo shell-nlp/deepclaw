@@ -20,7 +20,8 @@
   当前 FastAPI 官方装配入口。负责：
   - 创建 `FastAPI` 应用
   - 初始化 checkpointer 与 store
-  - 挂载 `auth`、`agent`、`rag`、`channels`、`skills`、`knowledge_bases` 路由
+  - 在 `create_app()` 中挂载模块级 `auth`、`agent`、`rag`、`channels`、`skills`、`knowledge_bases` 路由
+  - 提供 `/api/runtime-config` 运行时配置
   - 静态托管 `frontend/out`
 
 - `deepclaw/web_backend/lifespan.py`
@@ -37,18 +38,22 @@
   - 当配置 `PG_DATABASE_URL` 时，优先落统一 PG；未配置时回退各自 SQLite
 
 - `deepclaw/web_backend/common/agui_runs.py`
-  统一 AG-UI Run 生命周期路由，提供：
+  统一 AG-UI Run 生命周期路由与 Snapshot 响应模型，提供：
   - `POST /runs`
   - `GET /runs/{run_id}/events`
   - `GET /runs/{run_id}`
   - `POST /runs/{run_id}/actions`
   - `POST /runs/{run_id}/resume`
   - `POST /runs/{run_id}/cancel`
+  - `GET /api/runtime-config`
 
 - `deepclaw/web_backend/agent/run_manager.py`
   基于 `RunStore` 的 Run 管理器，负责 Run 执行、`Last-Event-ID` 重放、恢复、取消与事件流编排。
 - `deepclaw/web_backend/agent/run_store.py`
   Run 存储抽象层，定义 Run 状态、事件追加/重放、过期清理和订阅接口；当前提供 `InMemoryRunStore` 与 PostgreSQL/SQLite `SqlRunStore`，后续可新增 Redis 实现。
+
+- `deepclaw/web_backend/common/errors.py`
+  统一业务规则异常 `BusinessRuleError`，由 `create_app()` 注册的全局异常处理器转换为 `{"detail": ...}` 响应。
 
 - `deepclaw/web_backend/common/agui_runs.py`
   统一提供 AG-UI Run 生命周期路由、Agent/RAG Runs 路径解析、渠道 Agent URL 和前端 runtime-config；不再保留旧 `general_api` SSE 适配实现。
@@ -77,10 +82,10 @@
  知识库管理路由、请求模型、元数据存储与服务实现。
 
 - `deepclaw/web_backend/agent/router.py`
-  Agent 的 AG-UI Runs、会话列表与状态查询入口。
+  模块级 Agent 路由器；从 `app.state` 读取 checkpointer/store，并懒加载缓存 Agent 图与 Run 管理器。
 
 - `deepclaw/web_backend/rag/router.py`
-  RAG 的 AG-UI Runs 入口。
+  模块级 RAG 路由器；从 `app.state` 读取 checkpointer/store，并懒加载缓存 RAG 图与 Run 管理器。
 
 ### 核心能力层
 

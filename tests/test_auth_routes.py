@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 def build_client() -> TestClient:
     from deepclaw.web_backend.auth.router import create_auth_router
-    from deepclaw.web_backend.auth.service import AuthService
+    from deepclaw.web_backend.auth.service import AuthService, get_auth_service
     from deepclaw.web_backend.auth.store import AuthStore
 
     service = AuthService(
@@ -18,7 +18,8 @@ def build_client() -> TestClient:
     asyncio.run(service.bootstrap_admin_if_needed())
 
     app = FastAPI()
-    app.include_router(create_auth_router(service=service))
+    app.dependency_overrides[get_auth_service] = lambda: service
+    app.include_router(create_auth_router())
     return TestClient(app)
 
 

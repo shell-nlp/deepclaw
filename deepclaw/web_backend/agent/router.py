@@ -1,10 +1,13 @@
+from __future__ import annotations
+
+import asyncio
+from copy import deepcopy
 from typing import Any
 
-from fastapi import APIRouter, Response
-from fastapi.encoders import jsonable_encoder
+from fastapi import APIRouter, Depends, HTTPException, Request
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from loguru import logger
-from pydantic import BaseModel, field_serializer
+from pydantic import BaseModel, Field
 
 from deepclaw.agents.general.agent import Agent
 from deepclaw.web_backend.agent.run_manager import AgentRunManager
@@ -13,29 +16,133 @@ from deepclaw.web_backend.common.agui_runs import create_agui_run_router
 
 
 class GetHistoryRequest(BaseModel):
+    """Agent 会话状态查询请求。"""
+
     session_id: str
 
 
 class DeleteSessionRequest(BaseModel):
+    """Agent 会话删除请求。"""
+
     session_id: str
 
 
-class ApiResponse(BaseModel):
-    code: str
-    msg: str
-    data: Any = None
+class SessionSummary(BaseModel):
+    """Agent 会话摘要。"""
 
-    @field_serializer("data", when_used="json")
-    def serialize_data(self, data: Any) -> Any:
-        """将响应数据转换为 JSON 可传输的数据。
+    session_id: str
+    updated_at: str | None = None
+    title: str | None = None
 
-        Args:
-            data: 任意响应数据。
 
-        Returns:
-            JSON 可传输的数据。
-        """
-        return jsonable_encoder(data)
+class SessionListResponse(BaseModel):
+    """Agent 会话列表响应。"""
+
+    sessions: list[SessionSummary] = Field(default_factory=list)
+    total: int = 0
+
+
+class DeleteSessionResponse(BaseModel):
+    """删除 Agent 会话响应。"""
+
+    session_id: str
+
+
+_agent_graph_cache: dict[tuple[int, int, int], Any] = {}
+_agent_run_manager_cache: dict[tuple[int, int, int], AgentRunManager] = {}
+
+
+def get_checkpointer(request: Request) -> Any | None:
+    """从应用状态读取 LangGraph 检查点存储。
+
+    Args:
+        request: 当前 FastAPI 请求。
+
+    Returns:
+        当前应用的检查点存储，未初始化时返回 None。
+    """
+    return getattr(request.app.state, "checkpointer", None)
+
+
+def get_agent_store(request: Request) -> Any | None:
+    """从应用状态读取 LangGraph 长期存储。
+
+    Args:
+        request: 当前 FastAPI 请求。
+
+    Returns:
+        当前应用的长期存储，未初始化时返回 None。
+    """
+    return getattr(request.app.state, "store", None)
+
+
+async def get_agent_graph(
+    request: Request,
+    checkpointer: Any | None = Depends(get_checkpointer),
+    store: Any | None = Depends(get_agent_store),
+) -> Any:
+    """按应用状态懒加载并缓存 Agent 图。
+
+    Args:
+        request: 当前 FastAPI 请求。
+        checkpointer: LangGraph 检查点存储。
+        store: LangGraph 长期存储。
+
+    Returns:
+        当前应用使用的 Agent 图。
+    """
+    cache_key = (id(request.app), id(checkpointer), id(store))
+    cached = _agent_graph_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    lock = getattr(request.app.state, "agent_graph_lock", None)
+    if lock is None:
+        lock = asyncio.Lock()
+        request.app.state.agent_graph_lock = lock
+
+    async with lock:
+        cached = _agent_graph_cache.get(cache_key)
+        if cached is None:
+            cached = Agent(
+                deep_agent=True,
+                checkpointer=checkpointer,
+                store=store,
+            ).get_agent()
+            _agent_graph_cache[cache_key] = cached
+    return cached
+
+
+async def get_agent_run_manager(
+    request: Request,
+    graph: Any = Depends(get_agent_graph),
+) -> AgentRunManager:
+    """按 Agent 图懒加载并缓存 AG-UI Run 管理器。
+
+    Args:
+        request: 当前 FastAPI 请求。
+        graph: 当前应用的 Agent 图。
+
+    Returns:
+        当前应用使用的 Run 管理器。
+    """
+    run_store = get_run_store()
+    cache_key = (id(request.app), id(graph), id(run_store))
+    cached = _agent_run_manager_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    lock = getattr(request.app.state, "agent_run_manager_lock", None)
+    if lock is None:
+        lock = asyncio.Lock()
+        request.app.state.agent_run_manager_lock = lock
+
+    async with lock:
+        cached = _agent_run_manager_cache.get(cache_key)
+        if cached is None:
+            cached = AgentRunManager(graph, store=run_store)
+            _agent_run_manager_cache[cache_key] = cached
+    return cached
 
 
 def get_session_title(messages: Any) -> str | None:
@@ -96,176 +203,154 @@ def get_postgres_session_title(checkpointer: Any, row: dict[str, Any]) -> str | 
     return get_session_title(messages)
 
 
-def create_agent_router(checkpointer=None, store=None) -> APIRouter:
-    """创建 Agent API 路由，浏览器运行入口统一使用 AG-UI。
-
-    Args:
-        checkpointer: LangGraph 检查点存储。
-        store: LangGraph 长期存储。
-
-    Returns:
-        Agent API 路由器。
-    """
-    router = APIRouter(prefix="/api/agent")
-    agent = Agent(deep_agent=True, checkpointer=checkpointer, store=store).get_agent()
-    run_manager = AgentRunManager(agent, store=get_run_store())
-    router.include_router(
-        create_agui_run_router(
-            run_manager,
-            allowed_state_keys={"internet_search", "deep_thinking", "mcp_config"},
-            tags=["agent-ag-ui"],
-        )
+router = APIRouter(prefix="/api/agent")
+router.include_router(
+    create_agui_run_router(
+        get_agent_run_manager,
+        allowed_state_keys={"internet_search", "deep_thinking", "mcp_config"},
+        tags=["agent-ag-ui"],
     )
+)
 
-    @router.get(
-        "/get_session_list",
-        response_model=ApiResponse,
-        description="获取已存在的 agent 会话 ID 列表",
-        tags=["agent-state"],
 
-        summary="查询 Agent 会话列表"
-    )
-    async def list_sessions():
-        """获取检查点中已存在的会话 ID，并按最近检查点去重排序。"""
-        if checkpointer is None:
-            return ApiResponse(
-                code="200",
-                msg="查询成功",
-                data={"sessions": [], "total": 0},
-            )
+@router.get(
+    "/get_session_list",
+    response_model=SessionListResponse,
+    description="获取已存在的 agent 会话 ID 列表",
+    tags=["agent-state"],
+    summary="查询 Agent 会话列表",
+)
+async def list_sessions(
+    checkpointer: Any | None = Depends(get_checkpointer),
+):
+    """获取检查点中已存在的会话 ID，并按最近检查点去重排序。"""
+    if checkpointer is None:
+        return SessionListResponse()
 
-        if isinstance(checkpointer, AsyncPostgresSaver):
-            async with checkpointer.conn.connection() as connection:
-                async with connection.cursor() as cursor:
-                    await cursor.execute(
-                        """
-                        SELECT
-                            latest_sessions.thread_id,
-                            latest_sessions.checkpoint ->> 'ts' AS updated_at,
-                            messages.type AS messages_type,
-                            messages.blob AS messages_blob
-                        FROM (
-                            SELECT DISTINCT ON (thread_id)
-                                thread_id,
-                                checkpoint_ns,
-                                checkpoint,
-                                checkpoint_id
-                            FROM checkpoints
-                            ORDER BY
-                                thread_id,
-                                (checkpoint ->> 'ts')::timestamptz DESC NULLS LAST,
-                                checkpoint_id DESC
-                            ) AS latest_sessions
-                        LEFT JOIN checkpoint_blobs AS messages
-                            ON messages.thread_id = latest_sessions.thread_id
-                            AND messages.checkpoint_ns = latest_sessions.checkpoint_ns
-                            AND messages.channel = 'messages'
-                            AND messages.version =
-                                latest_sessions.checkpoint -> 'channel_versions' ->> 'messages'
+    if isinstance(checkpointer, AsyncPostgresSaver):
+        async with checkpointer.conn.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    SELECT
+                        latest_sessions.thread_id,
+                        latest_sessions.checkpoint ->> 'ts' AS updated_at,
+                        messages.type AS messages_type,
+                        messages.blob AS messages_blob
+                    FROM (
+                        SELECT DISTINCT ON (thread_id)
+                            thread_id,
+                            checkpoint_ns,
+                            checkpoint,
+                            checkpoint_id
+                        FROM checkpoints
                         ORDER BY
-                            (latest_sessions.checkpoint ->> 'ts')::timestamptz DESC NULLS LAST
-                        """
-                    )
-                    rows = await cursor.fetchall()
-            sessions = [
-                {
-                    "session_id": row["thread_id"],
-                    "updated_at": row["updated_at"],
-                    "title": get_postgres_session_title(checkpointer, row),
-                }
-                for row in rows
-            ]
-            return ApiResponse(
-                code="200",
-                msg="查询成功",
-                data={"sessions": sessions, "total": len(sessions)},
-            )
-
-        session_checkpoints: dict[str, dict[str, Any]] = {}
-        async for checkpoint in checkpointer.alist(None):
-            session_id = checkpoint.config["configurable"].get("thread_id")
-            if not isinstance(session_id, str) or session_id in session_checkpoints:
-                continue
-            checkpoint_data = getattr(checkpoint, "checkpoint", {})
-            if isinstance(checkpoint_data, dict):
-                session_checkpoints[session_id] = checkpoint_data
-            else:
-                session_checkpoints[session_id] = {}
-
+                            thread_id,
+                            (checkpoint ->> 'ts')::timestamptz DESC NULLS LAST,
+                            checkpoint_id DESC
+                        ) AS latest_sessions
+                    LEFT JOIN checkpoint_blobs AS messages
+                        ON messages.thread_id = latest_sessions.thread_id
+                        AND messages.checkpoint_ns = latest_sessions.checkpoint_ns
+                        AND messages.channel = 'messages'
+                        AND messages.version =
+                            latest_sessions.checkpoint -> 'channel_versions' ->> 'messages'
+                    ORDER BY
+                        (latest_sessions.checkpoint ->> 'ts')::timestamptz DESC NULLS LAST
+                    """
+                )
+                rows = await cursor.fetchall()
         sessions = [
             {
-                "session_id": session_id,
-                "updated_at": checkpoint_data.get("ts")
-                if isinstance(checkpoint_data.get("ts"), str)
-                else None,
-                "title": get_checkpoint_session_title(checkpoint_data),
+                "session_id": row["thread_id"],
+                "updated_at": row["updated_at"],
+                "title": get_postgres_session_title(checkpointer, row),
             }
-            for session_id, checkpoint_data in session_checkpoints.items()
+            for row in rows
         ]
-        sessions.sort(key=lambda session: session["updated_at"] or "", reverse=True)
+        return SessionListResponse(sessions=sessions, total=len(sessions))
 
-        return ApiResponse(
-            code="200",
-            msg="查询成功",
-            data={"sessions": sessions, "total": len(sessions)},
-        )
+    session_checkpoints: dict[str, dict[str, Any]] = {}
+    async for checkpoint in checkpointer.alist(None):
+        session_id = checkpoint.config["configurable"].get("thread_id")
+        if not isinstance(session_id, str) or session_id in session_checkpoints:
+            continue
+        checkpoint_data = getattr(checkpoint, "checkpoint", {})
+        if isinstance(checkpoint_data, dict):
+            session_checkpoints[session_id] = checkpoint_data
+        else:
+            session_checkpoints[session_id] = {}
 
-    @router.post(
-        "/delete_session",
-        response_model=ApiResponse,
-        description="删除指定 agent 会话的所有检查点和历史记录",
-        tags=["agent-state"],
+    sessions = [
+        {
+            "session_id": session_id,
+            "updated_at": checkpoint_data.get("ts")
+            if isinstance(checkpoint_data.get("ts"), str)
+            else None,
+            "title": get_checkpoint_session_title(checkpoint_data),
+        }
+        for session_id, checkpoint_data in session_checkpoints.items()
+    ]
+    sessions.sort(key=lambda session: session["updated_at"] or "", reverse=True)
 
-        summary="删除 Agent 会话"
-    )
-    async def delete_session(request: DeleteSessionRequest, response: Response):
-        """删除指定会话的全部检查点和历史记录。
+    return SessionListResponse(sessions=sessions, total=len(sessions))
 
-        Args:
-        - request: 包含待删除会话 ID 的请求体。
-        - response: HTTP 响应对象。
-        """
-        if checkpointer is None:
-            response.status_code = 503
-            return ApiResponse(code="503", msg="检查点存储不可用", data=None)
 
-        try:
-            await checkpointer.adelete_thread(request.session_id)
-        except Exception:
-            logger.exception("删除会话失败: session_id={}", request.session_id)
-            response.status_code = 500
-            return ApiResponse(code="500", msg="删除会话失败", data=None)
+@router.post(
+    "/delete_session",
+    response_model=DeleteSessionResponse,
+    description="删除指定 agent 会话的所有检查点和历史记录",
+    tags=["agent-state"],
+    summary="删除 Agent 会话",
+)
+async def delete_session(
+    request: DeleteSessionRequest,
+    checkpointer: Any | None = Depends(get_checkpointer),
+):
+    """删除指定会话的全部检查点和历史记录。
 
-        return ApiResponse(
-            code="200",
-            msg="删除成功",
-            data={"session_id": request.session_id},
-        )
+    Args:
+        request: 包含待删除会话 ID 的请求体。
+        checkpointer: LangGraph 检查点存储。
+    """
+    if checkpointer is None:
+        raise HTTPException(status_code=503, detail="检查点存储不可用")
 
-    @router.post(
-        "/get_state",
-        response_model=ApiResponse,
-        description="获取agent state",
-        tags=["agent-state"],
+    try:
+        await checkpointer.adelete_thread(request.session_id)
+    except Exception as exc:
+        logger.exception("删除会话失败: session_id={}", request.session_id)
+        raise HTTPException(status_code=500, detail="删除会话失败") from exc
 
-        summary="获取 Agent 状态"
-    )
-    async def get_state(request: GetHistoryRequest):
-        """获取agent state。"""
-        from copy import deepcopy
+    return DeleteSessionResponse(session_id=request.session_id)
 
-        logger.info(f"入参: {request.model_dump_json(indent=2)}")
-        config = {"configurable": {"thread_id": f"{request.session_id}"}}
-        state_snapshot = await agent.aget_state(config)
-        state = state_snapshot.values
-        final_state = deepcopy(state)
-        try:
-            messages = final_state["messages"]
-            title = messages[0].content
-            final_state["title"] = title
-        except (IndexError, KeyError):
-            return ApiResponse(code="400", msg="session_id 不存在", data=None)
 
-        return ApiResponse(code="200", msg="查询成功", data=final_state)
+@router.post(
+    "/get_state",
+    description="获取agent state",
+    tags=["agent-state"],
+    summary="获取 Agent 状态",
+)
+async def get_state(
+    request: GetHistoryRequest,
+    graph: Any = Depends(get_agent_graph),
+):
+    """获取指定会话的完整 Agent state。"""
+    logger.info("入参: {}", request.model_dump_json(indent=2))
+    config = {"configurable": {"thread_id": f"{request.session_id}"}}
+    state_snapshot = await graph.aget_state(config)
+    state = state_snapshot.values
+    final_state = deepcopy(state)
+    try:
+        messages = final_state["messages"]
+        title = messages[0].content
+        final_state["title"] = title
+    except (IndexError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail="session_id 不存在") from exc
 
+    return final_state
+
+
+def create_agent_router() -> APIRouter:
+    """返回模块级 Agent 路由器。"""
     return router

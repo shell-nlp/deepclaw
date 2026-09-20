@@ -52,16 +52,20 @@ def build_channels_client(
     weixin_client=None,
     raise_server_exceptions: bool = True,
 ) -> TestClient:
-    from deepclaw.web_backend.channels.router import create_channels_router
+    from deepclaw.web_backend.channels.router import router as channels_router
+    from deepclaw.web_backend.channels.service import get_channel_service
+    from deepclaw.web_backend.channels.store import get_channel_store
+    from deepclaw.web_backend.channels.weixin_clawbot.router import (
+        get_weixin_clawbot_client,
+    )
 
     app = FastAPI()
-    app.include_router(
-        create_channels_router(
-            store=store,
-            service=service,
-            weixin_client=weixin_client,
-        )
-    )
+    app.include_router(channels_router)
+    app.dependency_overrides[get_channel_store] = lambda: store
+    if service is not None:
+        app.dependency_overrides[get_channel_service] = lambda: service
+    if weixin_client is not None:
+        app.dependency_overrides[get_weixin_clawbot_client] = lambda: weixin_client
     if actor is not None:
         app.dependency_overrides[get_current_actor] = lambda: actor
     return TestClient(app, raise_server_exceptions=raise_server_exceptions)
@@ -243,12 +247,9 @@ def test_session_routes_allow_admin_override():
     assert 'streaming' == update_response.json()['reply_mode']
 
 def test_feishu_webhook_accepts_normalized_payload():
-    from deepclaw.web_backend.channels.router import create_channels_router
     store = ChannelStore('sqlite:///:memory:')
     service = FakeService()
-    app = FastAPI()
-    app.include_router(create_channels_router(store=store, service=service))
-    client = TestClient(app)
+    client = build_channels_client(store=store, service=service)
     response = client.post('/api/channels/feishu/events', json={'message_id': 'msg_1', 'channel_user_id': 'ou_1', 'channel_conversation_id': 'chat_a', 'text': 'hello'})
     assert 200 == response.status_code
     assert {'status': 'accepted'} == response.json()
@@ -269,11 +270,11 @@ def test_feishu_binding_routes_create_and_delete_binding(monkeypatch):
         stopped['binding_id'] = binding_id
 
     monkeypatch.setattr(
-        "deepclaw.web_backend.channels.feishu.router.start_feishu_runtime",
+        "deepclaw.web_backend.channels.feishu.service.start_feishu_runtime",
         fake_start_runtime,
     )
     monkeypatch.setattr(
-        "deepclaw.web_backend.channels.feishu.router.stop_feishu_runtime",
+        "deepclaw.web_backend.channels.feishu.service.stop_feishu_runtime",
         fake_stop_runtime,
     )
 
@@ -368,13 +369,14 @@ def test_feishu_binding_list_respects_actor_scope():
     )
 
 def test_weixin_clawbot_poll_accepts_text_updates():
-    from deepclaw.web_backend.channels.router import create_channels_router
     store = ChannelStore('sqlite:///:memory:')
     service = FakeService()
     weixin_client = FakeWeixinClient()
-    app = FastAPI()
-    app.include_router(create_channels_router(store=store, service=service, weixin_client=weixin_client))
-    client = TestClient(app)
+    client = build_channels_client(
+        store=store,
+        service=service,
+        weixin_client=weixin_client,
+    )
     response = client.post('/api/channels/weixin-clawbot/poll', json={'bot_token': 'token_1', 'get_updates_buf': 'old_buf'})
     assert 200 == response.status_code
     assert {'status': 'accepted', 'accepted': 1, 'get_updates_buf': 'next_buf'} == response.json()
@@ -384,12 +386,9 @@ def test_weixin_clawbot_poll_accepts_text_updates():
     assert 'weixin_clawbot' == service.calls[0][0].channel
 
 def test_weixin_clawbot_qrcode_routes_return_link_and_status():
-    from deepclaw.web_backend.channels.router import create_channels_router
     store = ChannelStore('sqlite:///:memory:')
     weixin_client = FakeWeixinClient()
-    app = FastAPI()
-    app.include_router(create_channels_router(store=store, weixin_client=weixin_client))
-    client = TestClient(app)
+    client = build_channels_client(store=store, weixin_client=weixin_client)
     qrcode_response = client.post('/api/channels/weixin-clawbot/qrcode', json={'local_token_list': ['old_token']})
     status_response = client.get('/api/channels/weixin-clawbot/qrcode/status', params={'qrcode': 'qr-content', 'verify_code': '1234'})
     assert 200 == qrcode_response.status_code
@@ -422,7 +421,7 @@ def test_weixin_clawbot_user_qrcode_routes_persist_user_runtime_state(monkeypatc
         weixin_client=weixin_client,
     )
     monkeypatch.setattr(
-        "deepclaw.web_backend.channels.weixin_clawbot.router.start_weixin_clawbot_runtime",
+        "deepclaw.web_backend.channels.weixin_clawbot.service.start_weixin_clawbot_runtime",
         fake_start_runtime,
     )
     qrcode_response = client.post('/api/channels/weixin-clawbot/users/user_1/qrcode')
@@ -498,7 +497,7 @@ def test_weixin_clawbot_user_management_lists_and_deletes_bound_users(monkeypatc
         ),
     )
     monkeypatch.setattr(
-        "deepclaw.web_backend.channels.weixin_clawbot.router.stop_weixin_clawbot_runtime",
+        "deepclaw.web_backend.channels.weixin_clawbot.service.stop_weixin_clawbot_runtime",
         fake_stop_runtime,
     )
     list_response = client.get('/api/channels/weixin-clawbot/users')
@@ -550,7 +549,7 @@ def test_weixin_clawbot_user_management_respects_guest_and_user_scope(monkeypatc
         stopped['state_key'] = state_key
 
     monkeypatch.setattr(
-        "deepclaw.web_backend.channels.weixin_clawbot.router.stop_weixin_clawbot_runtime",
+        "deepclaw.web_backend.channels.weixin_clawbot.service.stop_weixin_clawbot_runtime",
         fake_stop_runtime,
     )
 
@@ -614,7 +613,7 @@ def test_weixin_clawbot_user_management_allows_admin_override(monkeypatch):
         stopped['state_key'] = state_key
 
     monkeypatch.setattr(
-        "deepclaw.web_backend.channels.weixin_clawbot.router.stop_weixin_clawbot_runtime",
+        "deepclaw.web_backend.channels.weixin_clawbot.service.stop_weixin_clawbot_runtime",
         fake_stop_runtime,
     )
 
@@ -789,7 +788,7 @@ def test_owner_can_delete_collaborator_binding(monkeypatch):
         stopped['binding_id'] = binding_id
 
     monkeypatch.setattr(
-        'deepclaw.web_backend.channels.weixin_clawbot.router.stop_weixin_binding_runtime',
+        'deepclaw.web_backend.channels.weixin_clawbot.service.stop_weixin_binding_runtime',
         fake_stop_runtime,
     )
 
@@ -819,7 +818,7 @@ def test_feishu_binding_routes_support_multiple_bindings_per_owner(monkeypatch):
         started.append(binding_id)
 
     monkeypatch.setattr(
-        'deepclaw.web_backend.channels.feishu.router.start_feishu_runtime',
+        'deepclaw.web_backend.channels.feishu.service.start_feishu_runtime',
         fake_start_runtime,
     )
 
@@ -879,11 +878,11 @@ def legacy_weixin_binding_routes_create_status_and_delete(monkeypatch):
         stopped['binding_id'] = binding_id
 
     monkeypatch.setattr(
-        'deepclaw.web_backend.channels.weixin_clawbot.router.start_weixin_binding_runtime',
+        'deepclaw.web_backend.channels.weixin_clawbot.service.start_weixin_binding_runtime',
         fake_start_runtime,
     )
     monkeypatch.setattr(
-        'deepclaw.web_backend.channels.weixin_clawbot.router.stop_weixin_binding_runtime',
+        'deepclaw.web_backend.channels.weixin_clawbot.service.stop_weixin_binding_runtime',
         fake_stop_runtime,
     )
 
@@ -943,11 +942,11 @@ def test_weixin_binding_refresh_qrcode_restarts_runtime(monkeypatch):
         stopped.append(binding_id)
 
     monkeypatch.setattr(
-        'deepclaw.web_backend.channels.weixin_clawbot.router.start_weixin_binding_runtime',
+        'deepclaw.web_backend.channels.weixin_clawbot.service.start_weixin_binding_runtime',
         fake_start_runtime,
     )
     monkeypatch.setattr(
-        'deepclaw.web_backend.channels.weixin_clawbot.router.stop_weixin_binding_runtime',
+        'deepclaw.web_backend.channels.weixin_clawbot.service.stop_weixin_binding_runtime',
         fake_stop_runtime,
     )
 
@@ -997,11 +996,11 @@ def test_weixin_binding_routes_create_status_and_delete(monkeypatch):
         stopped['binding_id'] = binding_id
 
     monkeypatch.setattr(
-        'deepclaw.web_backend.channels.weixin_clawbot.router.start_weixin_binding_runtime',
+        'deepclaw.web_backend.channels.weixin_clawbot.service.start_weixin_binding_runtime',
         fake_start_runtime,
     )
     monkeypatch.setattr(
-        'deepclaw.web_backend.channels.weixin_clawbot.router.stop_weixin_binding_runtime',
+        'deepclaw.web_backend.channels.weixin_clawbot.service.stop_weixin_binding_runtime',
         fake_stop_runtime,
     )
 

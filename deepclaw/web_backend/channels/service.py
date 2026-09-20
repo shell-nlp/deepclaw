@@ -1,4 +1,6 @@
 ﻿import asyncio
+
+from fastapi import Depends
 from collections import defaultdict
 
 from deepclaw.web_backend.channels.adapters.base import ChannelAdapter
@@ -95,3 +97,18 @@ class ChannelService:
         if message.channel == "weixin_clawbot":
             return weixin_clawbot_settings.WEIXIN_CLAWBOT_DEFAULT_REPLY_MODE
         return "final"
+
+
+def get_channel_service(
+    store: ChannelStore = Depends(get_channel_store),
+) -> ChannelService:
+    """创建请求级渠道服务。
+
+    Args:
+        store: 渠道存储。
+
+    Returns:
+        使用当前存储构造的渠道服务。
+    """
+    return ChannelService(store=store)
+
