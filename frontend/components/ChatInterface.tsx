@@ -66,7 +66,6 @@ import { KnowledgeManagementView } from './chat-interface/KnowledgeManagementVie
 import { McpManagementView } from './chat-interface/McpManagementView'
 import { SkillManagementView } from './chat-interface/SkillManagementView'
 import type {
-  ApiResponse,
   AssistantMessageItem,
   ChannelManagementPage,
   AuthLoginResponse,
@@ -780,13 +779,10 @@ export default function ChatInterface() {
     setHistoryLoading(true)
     setHistoryError('')
     try {
-      const response = await requestJson<ApiResponse<ChatHistoryListData>>(
+      const response = await requestJson<ChatHistoryListData>(
         AGENT_SESSION_LIST_API_PATH
       )
-      if (response.code !== '200') {
-        throw new Error(response.msg || '获取聊天历史失败。')
-      }
-      setHistorySessions(response.data.sessions)
+      setHistorySessions(response.sessions)
     } catch (error) {
       setHistoryError(error instanceof Error ? error.message : '获取聊天历史失败。')
     } finally {
@@ -801,7 +797,7 @@ export default function ChatInterface() {
       setHistoryLoadingSessionId(targetSessionId)
       setHistoryError('')
       try {
-        const response = await requestJson<ApiResponse<{ messages?: unknown }>>(
+        const response = await requestJson<{ messages?: unknown }>(
           AGENT_SESSION_STATE_API_PATH,
           {
             method: 'POST',
@@ -809,12 +805,9 @@ export default function ChatInterface() {
             body: JSON.stringify({ session_id: targetSessionId }),
           }
         )
-        if (response.code !== '200') {
-          throw new Error(response.msg || '加载聊天历史失败。')
-        }
 
         clearChat()
-        setMessages(toHistoryMessages(response.data.messages))
+        setMessages(toHistoryMessages(response.messages))
         setSessionId(targetSessionId)
         if (typeof window !== 'undefined') {
           localStorage.setItem('rag_chat_session_id', targetSessionId)
@@ -838,7 +831,7 @@ export default function ChatInterface() {
       setHistoryLoadingSessionId(targetSessionId)
       setHistoryError('')
       try {
-        const response = await requestJson<ApiResponse<{ session_id: string }>>(
+        await requestJson<{ session_id: string }>(
           AGENT_SESSION_DELETE_API_PATH,
           {
             method: 'POST',
@@ -846,9 +839,6 @@ export default function ChatInterface() {
             body: JSON.stringify({ session_id: targetSessionId }),
           }
         )
-        if (response.code !== '200') {
-          throw new Error(response.msg || '删除聊天历史失败。')
-        }
 
         setHistorySessions((sessions) =>
           sessions.filter((session) => session.session_id !== targetSessionId)

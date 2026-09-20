@@ -11,6 +11,7 @@ from langchain_core.documents import Document
 from loguru import logger
 from pydantic import BaseModel, Field
 
+from deepclaw.web_backend.common.errors import BusinessRuleError
 from deepclaw.common import create_default_vector_store, create_graph_rag
 from deepclaw.common.graph_rag import BaseGraphRAG
 from deepclaw.common.text_splitter import PDFParser
@@ -165,7 +166,7 @@ class KnowledgeBaseManager:
     ) -> KnowledgeBaseRecord:
         normalized_name = name.strip()
         if not normalized_name:
-            raise ValueError("Knowledge base name is required.")
+            raise BusinessRuleError("Knowledge base name is required.")
 
         knowledge_base_id = uuid.uuid4().hex
         index_prefix = f"kb_{knowledge_base_id}"
@@ -215,7 +216,7 @@ class KnowledgeBaseManager:
         if name is not None:
             normalized_name = name.strip()
             if not normalized_name:
-                raise ValueError("Knowledge base name is required.")
+                raise BusinessRuleError("Knowledge base name is required.")
             source["name"] = normalized_name
         if description is not None:
             source["description"] = description.strip()
@@ -301,11 +302,11 @@ class KnowledgeBaseManager:
             error_message="Document not found.",
         )
         if source["knowledge_base_id"] != knowledge_base_id:
-            raise ValueError("Document does not belong to this knowledge base.")
+            raise BusinessRuleError("Document does not belong to this knowledge base.")
 
         normalized_name = display_name.strip()
         if not normalized_name:
-            raise ValueError("Document name is required.")
+            raise BusinessRuleError("Document name is required.")
 
         source["display_name"] = normalized_name
         source["updated_at"] = self._now()
@@ -331,7 +332,7 @@ class KnowledgeBaseManager:
             error_message="Document not found.",
         )
         if document_source["knowledge_base_id"] != knowledge_base_id:
-            raise ValueError("Document does not belong to this knowledge base.")
+            raise BusinessRuleError("Document does not belong to this knowledge base.")
         document = KnowledgeBaseDocumentRecord(**document_source)
 
         page, page_size = self._normalize_page(page, page_size)
@@ -386,7 +387,7 @@ class KnowledgeBaseManager:
             error_message="Document not found.",
         )
         if source["knowledge_base_id"] != knowledge_base_id:
-            raise ValueError("Document does not belong to this knowledge base.")
+            raise BusinessRuleError("Document does not belong to this knowledge base.")
 
         passage_ids = self._search_ids_by_term(
             index_name=knowledge_base.passage_index,
@@ -502,7 +503,7 @@ class KnowledgeBaseManager:
     ) -> KnowledgeBaseDocumentRecord:
         original_file_name = Path(uploaded_file.file_name or "unnamed").name
         if not original_file_name:
-            raise ValueError("Uploaded file name is required.")
+            raise BusinessRuleError("Uploaded file name is required.")
 
         document_id = uuid.uuid4().hex
         storage_name = f"{document_id}_{self._safe_file_name(original_file_name)}"

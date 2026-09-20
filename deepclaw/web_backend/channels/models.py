@@ -148,3 +148,48 @@ class ChannelSessionRead(BaseModel):
 class ChannelSessionList(BaseModel):
     items: list[ChannelSessionRead] = PydanticField(default_factory=list)
     total: int = 0
+
+
+class ChannelBindingRead(BaseModel):
+    """渠道绑定读模型。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    channel: str
+    owner_user_id: str
+    manager_user_id: str
+    status: str
+    display_name: str | None = None
+    credentials: dict[str, Any] = PydanticField(default_factory=dict)
+    config: dict[str, Any] = PydanticField(default_factory=dict)
+    runtime_state: dict[str, Any] = PydanticField(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+
+
+class ChannelBindingList(BaseModel):
+    """渠道绑定列表响应。"""
+
+    items: list[ChannelBindingRead] = PydanticField(default_factory=list)
+    total: int = 0
+
+
+class ChannelBindingDeleteResult(BaseModel):
+    """按绑定 ID 删除渠道绑定的结果。"""
+
+    binding_id: int
+    deleted: bool
+
+
+class ChannelBindingUserDeleteResult(BaseModel):
+    """按用户维度删除渠道绑定的结果。"""
+
+    user_id: str
+    deleted: bool
+
+
+class ChannelEventAccepted(BaseModel):
+    """渠道事件接收确认。"""
+
+    status: str = "accepted"

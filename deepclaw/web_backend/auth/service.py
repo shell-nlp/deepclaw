@@ -1,4 +1,5 @@
-﻿from deepclaw.web_backend.auth.security import (
+from deepclaw.web_backend.common.errors import BusinessRuleError
+from deepclaw.web_backend.auth.security import (
     generate_access_token,
     hash_password,
     verify_password,
@@ -27,7 +28,7 @@ class AuthService:
         normalized_email = email.strip().lower()
         existing = await self.store.get_user_by_email(normalized_email)
         if existing:
-            raise ValueError("该邮箱已注册，请直接登录。")
+            raise BusinessRuleError("该邮箱已注册，请直接登录。")
         return await self.store.create_user(
             email=normalized_email,
             password_hash=hash_password(password),
@@ -38,9 +39,9 @@ class AuthService:
         normalized_email = email.strip().lower()
         user = await self.store.get_user_by_email(normalized_email)
         if user is None or not verify_password(password, user.password_hash):
-            raise ValueError("邮箱或密码错误。")
+            raise BusinessRuleError("邮箱或密码错误。")
         if not user.is_active:
-            raise ValueError("当前账号已被禁用，请联系管理员。")
+            raise BusinessRuleError("当前账号已被禁用，请联系管理员。")
 
         return await self.store.issue_access_token(
             user=user,
@@ -55,9 +56,9 @@ class AuthService:
         """为仓库内的受信任调用方签发短生命周期用户令牌。"""
         user = await self.store.get_user_by_user_id(user_id)
         if user is None:
-            raise ValueError("用户不存在。")
+            raise BusinessRuleError("用户不存在。")
         if not user.is_active:
-            raise ValueError("当前账号已被禁用，请联系管理员。")
+            raise BusinessRuleError("当前账号已被禁用，请联系管理员。")
         return await self.store.issue_access_token(
             user=user,
             raw_token=generate_access_token(),
@@ -71,7 +72,7 @@ class AuthService:
         normalized_email = email.strip().lower()
         existing = await self.store.get_user_by_email(normalized_email)
         if existing:
-            raise ValueError("该邮箱已注册，请直接登录。")
+            raise BusinessRuleError("该邮箱已注册，请直接登录。")
         return await self.store.create_user(
             email=normalized_email,
             password_hash=hash_password(password),

@@ -6,6 +6,7 @@ from typing import Any, Protocol
 
 from sqlmodel import SQLModel, or_, select
 
+from deepclaw.web_backend.common.errors import BusinessRuleError
 from deepclaw.common.vector_store.elasticsearch import ElasticsearchVectorStore
 from deepclaw.constant import home_path
 from deepclaw.web_backend.db import (
@@ -354,12 +355,12 @@ class ElasticsearchKnowledgeBaseMetadataStore:
             result = self.es.es_client.get(index=index_name, id=document_id)
         except Exception as exc:
             if _is_elasticsearch_not_found_error(exc):
-                raise ValueError(error_message) from exc
+                raise BusinessRuleError(error_message) from exc
             raise
 
         source = result["_source"]
         if source.get("user_id") != user_id:
-            raise ValueError(error_message)
+            raise BusinessRuleError(error_message)
         return source
 
     def _search(
@@ -550,7 +551,7 @@ class SQLModelKnowledgeBaseMetadataStore:
             )
             model = result.first()
             if model is None or model.user_id != user_id:
-                raise ValueError(error_message)
+                raise BusinessRuleError(error_message)
             return model.model_dump()
 
     async def save_knowledge_base(
@@ -647,7 +648,7 @@ class SQLModelKnowledgeBaseMetadataStore:
             )
             model = result.first()
             if model is None or model.user_id != user_id:
-                raise ValueError(error_message)
+                raise BusinessRuleError(error_message)
             return model.model_dump()
 
     async def save_document(

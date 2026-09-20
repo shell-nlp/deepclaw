@@ -10,17 +10,17 @@ from deepclaw.web_backend.skills.router import add_skill_management_routes
 def test_guest_cannot_upload_skill_or_create_kb():
     app = FastAPI()
     router = APIRouter()
-    add_skill_management_routes(router, tags=["agent-skills"])
-    add_knowledge_base_management_routes(router, tags=["rag-knowledge-bases"])
+    add_skill_management_routes(router)
+    add_knowledge_base_management_routes(router)
     app.include_router(router)
     client = TestClient(app, raise_server_exceptions=False)
 
     skill = client.post(
-        "/skills/upload",
+        "/api/agent/skills/upload",
         files={"file": ("skill.zip", b"fake", "application/zip")},
     )
     kb = client.post(
-        "/knowledge-bases/create",
+        "/api/rag/knowledge-bases/create",
         json={"user_id": "guest", "name": "demo", "description": ""},
     )
 
