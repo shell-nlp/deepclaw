@@ -149,8 +149,3 @@ async def delete_feishu_binding_by_id(
     """按绑定 ID 删除飞书绑定。"""
     deleted = await binding_service.delete_binding(actor=actor, binding_id=binding_id)
     return ChannelBindingDeleteResult(binding_id=binding_id, deleted=deleted)
-
-
-def create_feishu_router() -> APIRouter:
-    """返回模块级飞书路由器。"""
-    return router

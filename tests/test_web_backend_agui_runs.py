@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from deepclaw.web_backend.agent.router import get_agent_run_manager, router as agent_router
 from deepclaw.web_backend.auth.dependencies import CurrentActor, get_current_actor
-from deepclaw.web_backend.common.agui_runs import create_agui_run_router
 
 
 class FakeRunManager:
@@ -47,13 +47,8 @@ class FakeRunManager:
 def build_client(manager):
     """构建测试应用。\n\n    Args:\n        manager: 测试 Run 管理器。\n    """
     app = FastAPI()
-    app.include_router(
-        create_agui_run_router(
-            manager,
-            allowed_state_keys={"deep_thinking", "mcp_config"},
-            tags=["test-agui"],
-        )
-    )
+    app.include_router(agent_router)
+    app.dependency_overrides[get_agent_run_manager] = lambda: manager
     app.dependency_overrides[get_current_actor] = lambda: CurrentActor(
         is_guest=True,
         user_id=None,
@@ -81,7 +76,7 @@ def test_create_run_overrides_user_id_with_trusted_actor():
     manager = FakeRunManager()
     client = build_client(manager)
 
-    response = client.post("/runs", json=payload())
+    response = client.post("/api/agent/runs", json=payload())
 
     assert response.status_code == 202
     assert manager.created.state["user_id"] == "guest"
@@ -93,16 +88,16 @@ def test_run_snapshot_events_resume_and_cancel():
     manager = FakeRunManager()
     client = build_client(manager)
 
-    assert client.get("/runs/run-1").json()["status"] == "finished"
-    assert client.get("/runs/missing").status_code == 404
-    events = client.get("/runs/run-1/events")
+    assert client.get("/api/agent/runs/run-1").json()["status"] == "finished"
+    assert client.get("/api/agent/runs/missing").status_code == 404
+    events = client.get("/api/agent/runs/run-1/events")
     assert events.status_code == 200
     assert "RUN_STARTED" in events.text
 
-    resumed = client.post("/runs/run-1/resume", json=payload())
+    resumed = client.post("/api/agent/runs/run-1/resume", json=payload())
     assert resumed.status_code == 202
     assert manager.resumed[0] == "run-1"
 
-    cancelled = client.post("/runs/run-1/cancel")
+    cancelled = client.post("/api/agent/runs/run-1/cancel")
     assert cancelled.status_code == 200
     assert manager.cancelled == "run-1"

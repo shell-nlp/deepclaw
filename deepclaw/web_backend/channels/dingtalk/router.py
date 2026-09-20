@@ -24,8 +24,3 @@ async def dingtalk_events(
     message = await adapter.parse_event(payload)
     background_tasks.add_task(service.process_message, message, adapter)
     return ChannelEventAccepted()
-
-
-def create_dingtalk_router() -> APIRouter:
-    """返回模块级钉钉路由器。"""
-    return router

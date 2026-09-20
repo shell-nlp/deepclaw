@@ -63,8 +63,3 @@ async def update_session(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     return ChannelSessionRead.model_validate(channel_session)
-
-
-def create_channel_sessions_router() -> APIRouter:
-    """返回模块级渠道会话路由器。"""
-    return router

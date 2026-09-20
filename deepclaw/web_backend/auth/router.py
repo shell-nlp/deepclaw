@@ -181,8 +181,3 @@ async def reset_user_password(
             "user_id": user.user_id,
         }
     }
-
-
-def create_auth_router() -> APIRouter:
-    """返回模块级认证路由器。"""
-    return router

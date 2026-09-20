@@ -248,8 +248,3 @@ async def weixin_clawbot_poll(
         accepted=len(messages),
         get_updates_buf=next_buf,
     )
-
-
-def create_weixin_clawbot_router() -> APIRouter:
-    """返回模块级微信 ClawBot 路由器。"""
-    return router
