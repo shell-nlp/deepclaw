@@ -12,6 +12,27 @@ from deepclaw.settings import settings
 _CHARTS_DIR: Path | None = None
 
 
+def finalize_chart_layout(
+    fig: plt.Figure,
+    *,
+    vertical_label_axes: tuple[plt.Axes, ...] = (),
+    horizontal_label_axes: tuple[plt.Axes, ...] = (),
+) -> None:
+    """为数据标签预留坐标轴空间并完成画布布局。
+
+    Args:
+        fig: 待调整布局的 Matplotlib 图形对象。
+        vertical_label_axes: 数据标签位于数据点上方的坐标轴，扩展 y 轴范围。
+        horizontal_label_axes: 数据标签位于水平条末端的坐标轴，扩展 x 轴范围。
+    """
+    for axis in vertical_label_axes:
+        axis.margins(y=0.15)
+    for axis in horizontal_label_axes:
+        axis.margins(x=0.15)
+    fig.tight_layout()
+    fig.subplots_adjust(top=0.92)
+
+
 def format_number(value: float) -> str:
     """将数值格式化为标准数值文本。
 
@@ -48,6 +69,7 @@ def setup_chinese_font() -> str:
         "Microsoft YaHei",
         "PingFang SC",
         "Noto Sans CJK SC",
+        "WenQuanYi Zen Hei",
         "WenQuanYi Micro Hei",
         "DejaVu Sans",
     ]
@@ -88,6 +110,20 @@ def cleanup_chart_files(charts_dir: Path | None = None) -> None:
             logger.warning("清理超额图表文件失败: path={}, error={}", file_path, repr(error))
 
 
+def _resolve_chart_public_url() -> str:
+    """解析图表公开地址前缀并兼容完整 URL 配置。
+
+    Returns:
+        str: 拼接图表路径前使用的地址前缀。
+    """
+    configured_url = settings.CHART_PUBLIC_URL.strip()
+    if not configured_url:
+        return ""
+    if configured_url.startswith(("http://", "https://")):
+        return configured_url.rstrip("/")
+    return f"{settings.LOCAL_HOST.rstrip('/')}/{configured_url.lstrip('/')}"
+
+
 def save_chart_to_workspace(fig: plt.Figure) -> str:
     """将 matplotlib 图表保存到工作区，并返回可访问地址。
 
@@ -101,11 +137,13 @@ def save_chart_to_workspace(fig: plt.Figure) -> str:
     file_name = f"{uuid.uuid4().hex}.png"
     file_path = charts_dir / file_name
     try:
+        # 统一兜底处理标题和坐标轴标签的画布边界。
+        fig.tight_layout()
         fig.savefig(file_path, dpi=150, bbox_inches="tight", facecolor="white")
     finally:
         plt.close(fig)
     cleanup_chart_files(charts_dir)
     logger.info("图表已保存: {}", file_path)
     base_path = f"/charts/{file_name}"
-    public_url = settings.CHART_PUBLIC_URL
-    return f"{public_url.rstrip('/')}{base_path}" if public_url else base_path
+    public_url = _resolve_chart_public_url()
+    return f"{public_url}{base_path}" if public_url else base_path

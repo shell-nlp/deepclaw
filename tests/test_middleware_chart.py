@@ -253,3 +253,39 @@ def test_grouped_bar_separates_quantity_and_rate_axes(monkeypatch):
     assert rate_axis.get_xlabel() == "处理率(%)"
     assert {text.get_text() for text in [*primary_axis.texts, *rate_axis.texts]} == {"165", "214", "5.45", "10.75"}
     plt.close(figure)
+
+def test_setup_chinese_font_detects_wqy_zenhei(monkeypatch):
+    """验证 WenQuanYi Zen Hei 字体族可被自动识别。
+
+    Args:
+        monkeypatch: pytest 提供的运行时属性替换工具。
+    """
+    font_entry = type("FontEntry", (), {"name": "WenQuanYi Zen Hei"})()
+    monkeypatch.setattr(utils.fm.fontManager, "ttflist", [font_entry])
+
+    assert utils.setup_chinese_font() == "WenQuanYi Zen Hei"
+
+
+def test_finalize_chart_layout_protects_data_label_bounds():
+    """验证统一布局函数为数据标签保留坐标轴边界。
+
+    Args:
+        无。
+    """
+    vertical_figure, vertical_axis = plt.subplots()
+    vertical_axis.plot([0, 1], [0, 100])
+    utils.finalize_chart_layout(
+        vertical_figure,
+        vertical_label_axes=(vertical_axis,),
+    )
+    assert vertical_axis.get_ylim()[1] > 100
+    plt.close(vertical_figure)
+
+    horizontal_figure, horizontal_axis = plt.subplots()
+    horizontal_axis.barh([0, 1], [0, 100])
+    utils.finalize_chart_layout(
+        horizontal_figure,
+        horizontal_label_axes=(horizontal_axis,),
+    )
+    assert horizontal_axis.get_xlim()[1] > 100
+    plt.close(horizontal_figure)

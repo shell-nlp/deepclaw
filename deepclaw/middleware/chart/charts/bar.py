@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 
 from deepclaw.middleware.chart.utils import (
+    finalize_chart_layout,
     format_number,
     save_chart_to_workspace,
 )
@@ -83,9 +84,12 @@ def render(params: dict) -> str:
         bars = ax.barh(sorted_df["category"], sorted_df["value"])
         ax.bar_label(bars, labels=[format_number(value) for value in bars.datavalues], padding=3)
     ax.invert_yaxis()
-    if not ("group" in df.columns and len(rate_groups) == 1 and value_groups):
+    if not ("group" in df.columns and rate_groups and value_groups):
         ax.set_xlabel(params.get("axisXTitle", ""))
         ax.set_ylabel(params.get("axisYTitle", ""))
     ax.set_title(params.get("title", ""))
-    fig.tight_layout()
+    horizontal_axes = [ax]
+    if "group" in df.columns and rate_groups and value_groups:
+        horizontal_axes.append(rate_ax)
+    finalize_chart_layout(fig, horizontal_label_axes=tuple(horizontal_axes))
     return save_chart_to_workspace(fig)

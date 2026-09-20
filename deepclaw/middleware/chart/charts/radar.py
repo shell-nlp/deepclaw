@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 
 from deepclaw.middleware.chart.utils import (
+    finalize_chart_layout,
     save_chart_to_workspace,
 )
 
@@ -39,5 +40,5 @@ def render(params: dict) -> str:
         ax.plot(angles, values, marker="o")
         ax.fill(angles, values, alpha=0.1)
     ax.set_title(params.get("title", ""), pad=20)
-    fig.tight_layout()
+    finalize_chart_layout(fig)
     return save_chart_to_workspace(fig)

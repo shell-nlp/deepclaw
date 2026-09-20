@@ -1,9 +1,8 @@
-﻿from typing import Any
+﻿from typing import TYPE_CHECKING, Any
 
 from deepclaw.common.graph_db import (
     GraphDatabaseBase,
     Neo4jGraph,
-    NetworkXGraph,
 )
 from deepclaw.common.graph_rag import BaseGraphRAG, ElasticGraphRAG, PgGraphRAG
 from deepclaw.common.vector_store import (
@@ -14,6 +13,9 @@ from deepclaw.common.vector_store import (
     create_default_vector_store,
     create_vector_store,
 )
+
+if TYPE_CHECKING:
+    from deepclaw.common.graph_db import NetworkXGraph
 
 
 def create_graph_rag(
@@ -27,6 +29,20 @@ def create_graph_rag(
     if isinstance(vector_store, PgVectorStore):
         return PgGraphRAG(vector_store, graph_name, chat_model)
     raise ValueError(f"不支持的向量库类型: {type(vector_store).__name__}")
+
+
+def __getattr__(name: str) -> Any:
+    """按需导出可选的 NetworkX 图数据库实现。
+
+    Args:
+        name: 请求的模块属性名。
+    """
+    if name == "NetworkXGraph":
+        from deepclaw.common.graph_db import NetworkXGraph
+
+        globals()[name] = NetworkXGraph
+        return NetworkXGraph
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 __all__ = [

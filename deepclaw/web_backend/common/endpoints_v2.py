@@ -12,7 +12,7 @@ import inspect
 import uuid
 from typing import Any, AsyncIterator, Literal
 
-from fastapi import APIRouter, Depends, FastAPI
+from fastapi import APIRouter, Depends, FastAPI, Request as FastAPIRequest
 from fastapi.responses import StreamingResponse
 from langchain_core.runnables.schema import StreamEvent
 from langchain_core.utils.json import parse_partial_json
@@ -80,6 +80,17 @@ def resolve_context_user_id(requested_user_id: str | None, actor: CurrentActor) 
         return actor.user_id
     return requested_user_id or GUEST_USER_ID
 
+
+def get_header_info(request: FastAPIRequest) -> dict[str, str]:
+    """获取当前请求的全部请求头。
+
+    Args:
+        request: 当前 FastAPI 请求对象。
+
+    Returns:
+        请求头名称到请求头值的映射。请求头名称统一为小写。
+    """
+    return dict(request.headers)
 
 def add_general_api_endpoint(
     app: FastAPI | APIRouter,
@@ -190,6 +201,7 @@ def add_general_api_endpoint(
     @app.post(path, response_model=StreamResponse, name=route_name, tags=tags)
     async def general_api(
         request: Request,
+        header_info: dict[str, str] = Depends(get_header_info),
         actor: CurrentActor = Depends(get_current_actor),
     ):
         request_payload = request.model_dump()
@@ -201,6 +213,7 @@ def add_general_api_endpoint(
 
         logger.debug(f"request: \n{Request(**request_payload).model_dump_json(indent=2)}")
         config = {"configurable": {"thread_id": f"{request.session_id}"}}
+        request_payload["header_info"] = header_info
 
         if request.query and request.resume:
             raise ValueError("query 和 resume 不能同时存在")

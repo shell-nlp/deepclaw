@@ -12,3 +12,5 @@ class AgentContext(BaseModel):
     deep_thinking: bool = Field(False, description="是否启用深度思考")
     # MCP 配置
     mcp_config: dict | None = Field(None, description="MCP 配置")
+    # 当前请求的原始 HTTP 请求头
+    header_info: dict | None = Field(default_factory=dict, description="请求头信息")

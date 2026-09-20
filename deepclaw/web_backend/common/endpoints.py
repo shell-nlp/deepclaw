@@ -1,4 +1,4 @@
-﻿"""通用 API 端点。
+"""通用 API 端点。
 
 本模块通过 ``add_general_api_endpoint`` 将一个 LangGraph
 ``CompiledStateGraph`` 注册为 POST SSE 接口；它不是固定路由。当前应用中：
@@ -24,7 +24,7 @@
   ``messages`` 与 ``updates`` 并逐 token 输出，``false`` 仅从 ``updates``
   投影模型消息；
 - Agent 上下文扩展字段：``user_id``、``internet_search``、``deep_thinking``、
-  ``mcp_config``；RAG 上下文扩展字段：``user_id``、``internet_search``、
+  ``mcp_config``、``header_info``；RAG 上下文扩展字段：``user_id``、``internet_search``、
   ``deep_thinking``、``index_name``、``graph_name``。
 
 已验证的 Python 调用示例：
@@ -194,7 +194,7 @@ SSE 响应契约
 import uuid
 from typing import Literal
 
-from fastapi import APIRouter, Depends, FastAPI
+from fastapi import APIRouter, Depends, FastAPI, Request as FastAPIRequest
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessageChunk
 from langgraph.graph.state import CompiledStateGraph
@@ -253,6 +253,17 @@ def resolve_context_user_id(requested_user_id: str | None, actor: CurrentActor) 
     return requested_user_id or GUEST_USER_ID
 
 
+def get_header_info(request: FastAPIRequest) -> dict[str, str]:
+    """获取当前请求的全部请求头。
+
+    Args:
+        request: 当前 FastAPI 请求对象。
+
+    Returns:
+        请求头名称到请求头值的映射。请求头名称统一为小写。
+    """
+    return dict(request.headers)
+
 def add_general_api_endpoint(
     app: FastAPI | APIRouter,
     agent: CompiledStateGraph,
@@ -281,6 +292,7 @@ def add_general_api_endpoint(
     @app.post(path, response_model=StreamResponse, name=route_name, tags=tags)
     async def general_api(
         request: Request,
+        header_info: dict[str, str] = Depends(get_header_info),
         actor: CurrentActor = Depends(get_current_actor),
     ):
         request_payload = request.model_dump()
@@ -292,6 +304,7 @@ def add_general_api_endpoint(
 
         logger.debug(f"request: \n{Request(**request_payload).model_dump_json(indent=2)}")
         config = {"configurable": {"thread_id": f"{request.session_id}"}}
+        request_payload["header_info"] = header_info
 
         if request.query and request.resume:
             raise ValueError("query 和 resume 不能同时存在")

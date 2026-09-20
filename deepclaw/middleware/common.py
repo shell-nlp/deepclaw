@@ -1,4 +1,4 @@
-﻿import os
+import os
 from typing import cast
 
 from langchain.agents.middleware import AgentMiddleware, ToolCallRequest
@@ -9,6 +9,21 @@ from deepclaw.agents.general.context import AgentContext
 from deepclaw.agents.general.state import StateSchema
 from deepclaw.utils import get_current_time
 
+
+def get_request_header_info(request) -> dict:
+    """从运行时上下文读取请求头字典。
+
+    Args:
+        request: LangChain 当前模型调用请求。
+
+    Returns:
+        请求头字典；上下文不存在或类型不符时返回空字典。
+    """
+    runtime = getattr(request, "runtime", None)
+    runtime_context = getattr(runtime, "context", None)
+    context = runtime_context.model_dump() if hasattr(runtime_context, "model_dump") else runtime_context
+    raw_header_info = context.get("header_info") if isinstance(context, dict) else None
+    return dict(raw_header_info) if isinstance(raw_header_info, dict) else {}
 
 # https://github.com/CopilotKit/CopilotKit/issues/2646
 class BusinessMiddleware(AgentMiddleware[None, AgentContext, None]):

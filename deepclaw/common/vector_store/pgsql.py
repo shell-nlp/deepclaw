@@ -7,7 +7,9 @@ from typing import Any
 
 import psycopg
 from loguru import logger
+from pgvector import Vector
 from pgvector.psycopg import register_vector
+from psycopg import sql
 from psycopg.rows import dict_row
 from psycopg.types.json import Json
 
@@ -988,8 +990,9 @@ class PgVectorStore(AbstractVectorStore):
         if not target_indexes:
             return []
 
-        query_vector = self.embedding_model.embed_query(query)
-        self._ensure_embedding_dimensions(query_vector)
+        raw_query_vector = self.embedding_model.embed_query(query)
+        self._ensure_embedding_dimensions(raw_query_vector)
+        query_vector = Vector(raw_query_vector)
         candidates: list[dict[str, Any]] = []
         for target_index in target_indexes:
             rows = self._fetch_vector_candidates(
@@ -1002,6 +1005,59 @@ class PgVectorStore(AbstractVectorStore):
         candidates = self._apply_min_similarity(candidates, min_similarity)
         candidates.sort(key=lambda item: item.get("score", 0.0), reverse=True)
         return candidates[:k]
+
+    def vector_search_existing_embeddings(
+        self,
+        query: str,
+        *,
+        schema_name: str,
+        table_name: str,
+        fields: list[str],
+        k: int = 3,
+    ) -> list[dict[str, Any]]:
+        """在已有 embedding 列的业务表中按余弦相似度检索。
+
+        Args:
+            query: 需要向量化的自然语言查询。
+            schema_name: 目标 PostgreSQL schema 名称。
+            table_name: 目标业务表名称。
+            fields: 需要返回的目标表字段名称列表。
+            k: 返回的最大记录数。
+
+        Returns:
+            包含指定字段和 score 的相似度降序结果列表。
+
+        Raises:
+            ValueError: 查询文本为空、返回数量非法或标识符不合法时抛出。
+        """
+        normalized_query = query.strip()
+        if not normalized_query:
+            raise ValueError("query 不能为空")
+        if k <= 0:
+            raise ValueError("k 必须大于 0")
+        identifiers = [schema_name, table_name, *fields]
+        if not fields or any(not identifier.isidentifier() for identifier in identifiers):
+            raise ValueError("schema、表名和字段名必须是合法标识符")
+
+        raw_query_vector = self.embedding_model.embed_query(normalized_query)
+        self._ensure_embedding_dimensions(raw_query_vector)
+        query_vector = Vector(raw_query_vector)
+        embedding_column = sql.Identifier("embedding")
+        statement = sql.SQL(
+            "SELECT {fields}, 1 - ({embedding} <=> %s) AS score "
+            "FROM {schema}.{table} "
+            "WHERE {embedding} IS NOT NULL "
+            "ORDER BY {embedding} <=> %s "
+            "LIMIT %s"
+        ).format(
+            fields=sql.SQL(", ").join(sql.Identifier(field) for field in fields),
+            embedding=embedding_column,
+            schema=sql.Identifier(schema_name),
+            table=sql.Identifier(table_name),
+        )
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(statement, (query_vector, query_vector, k))
+            return cur.fetchall()
 
     def keyword_search(
         self,

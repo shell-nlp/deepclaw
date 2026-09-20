@@ -169,6 +169,31 @@ def _extract_progress_callback(
     return callback
 
 
+def _extract_logging_callback(
+    config: RunnableConfig | None,
+) -> LoggingCallback | None:
+    """从 RunnableConfig.metadata.mcp_logging_callback 提取日志回调。
+
+    Args:
+        config: LangChain 工具调用配置。
+
+    Returns:
+        MCP 日志通知回调；未配置时返回 None。
+    """
+    if config is None:
+        return None
+
+    metadata = config.get("metadata")
+    if not isinstance(metadata, dict):
+        return None
+
+    callback = metadata.get("mcp_logging_callback")
+    if callback is None:
+        return None
+    if not callable(callback):
+        raise TypeError("`config.metadata.mcp_logging_callback` must be callable")
+    return callback
+
 def convert_mcp_tool_to_langchain_tool(
     session: ClientSession,
     tool: MCPTool,
@@ -258,7 +283,7 @@ def convert_mcp_tool_to_langchain_tool_from_config(
             config_source,
             server_name,
             tool_name_prefix=tool_name_prefix,
-            logging_callback=logging_callback,
+            logging_callback=_extract_logging_callback(runnable_config) or logging_callback,
         ) as client:
             result = await client._require_session().call_tool(
                 tool.name,
