@@ -4,8 +4,9 @@ from dotenv import find_dotenv, load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-env_path = find_dotenv(filename=".env", raise_error_if_not_found=True)
-load_dotenv()
+env_path = find_dotenv(filename=".env", raise_error_if_not_found=False)
+if env_path:
+    load_dotenv(env_path)
 
 
 class WeixinClawBotSettings(BaseSettings):
@@ -18,7 +19,7 @@ class WeixinClawBotSettings(BaseSettings):
     WEIXIN_CLAWBOT_DEFAULT_REPLY_MODE: Literal["final", "streaming"] = "streaming"
 
     model_config = SettingsConfigDict(
-        env_file=str(env_path),
+        env_file=env_path or None,
         env_file_encoding="utf-8",
         extra="ignore",
     )

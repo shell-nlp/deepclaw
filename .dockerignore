@@ -1,14 +1,56 @@
+# 版本控制与本地元数据
+.git/
+.gitignore
 .codegraph/
-.playwright-cli/
-.pytest_cache/
-.ruff_cache/
-.trae/
-assets/
-docs/
+.agents/
+.codex/
+.codex-spreadsheet-tmp/
 .opencode/
-node_modules/
-.next/
-*.pdf
+.trae/
+.vscode/
+.superpowers/
+
+# Python 缓存与虚拟环境
+.venv/
+.uv-cache/
+.uv-cache-task/
+.tmp-uv-cache/
+__pycache__/
+*.py[oc]
+*.db
+*.egg-info/
+build/
+dist/
+wheels/
+
+# 环境变量和本地数据
+.env
+.env.*
+!.env.example
+.deepclaw/
+user_workspace/
+neo4j_volumes/
 logs/
 .langgraph_api
-.deepclaw/workspace/charts/
+.playwright-cli/
+conversation_history/
+
+# 测试与临时产物
+.pytest_cache/
+.ruff_cache/
+tests/
+test/
+frontend/tests/
+tmp-spreadsheet/
+*.pdf
+
+# 前端构建缓存和旧导出产物
+node_modules/
+.next/
+frontend/node_modules/
+frontend/.next/
+frontend/tsconfig.tsbuildinfo
+
+# 构建上下文中的非运行时内容
+assets/
+docs/

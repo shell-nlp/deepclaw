@@ -1,0 +1,33 @@
+# 应用编排：deepclaw 主服务
+# 启动前需先起中间件：docker compose -f docker-compose.middleware.yml up -d
+# 启动应用：docker compose -f docker-compose.app.yml up -d
+# 首次使用请先复制配置：cp .env.example .env
+services:
+  deepclaw:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: deepclaw:latest
+    container_name: deepclaw
+    restart: always
+    ports:
+      - 7869:7869
+    # 宿主侧配置统一从 .env 读取，下方 environment 覆盖容器内需要改写的连接地址
+    env_file:
+      - .env
+    environment:
+      - HOST=0.0.0.0
+      - PORT=7869
+      - LOCAL_HOST=http://localhost:7869
+      # 容器内以服务名访问中间件，不能再用 .env 里的 localhost
+      - ES_URL=http://elasticsearch:9200
+      - PG_DATABASE_URL=postgresql://admin:admin@postgresql:5432/deepclaw
+      - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:6006
+      # .env 中 OPENAI_API_BASE 等指向宿主机服务的地址，需要改成宿主机 IP 或 host.docker.internal
+    networks:
+      - deepclaw
+
+networks:
+  deepclaw:
+    external: true
+    name: deepclaw

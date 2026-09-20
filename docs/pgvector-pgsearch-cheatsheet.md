@@ -204,7 +204,7 @@ ORDER BY n.nspname, proname;
 
 当前仓库中：
 
-- 主环境 `docker-compose.yml`
+- 主环境 `docker-compose.middleware.yml`
   - 保持原样
   - 不包含 PgVector/BM25 增强版 PostgreSQL
 

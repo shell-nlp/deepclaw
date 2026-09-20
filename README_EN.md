@@ -118,7 +118,8 @@ deepclaw/
 ├── .sandbox.toml            # OpenSandbox Server configuration (required for sandbox mode)
 ├── user_workspace/          # Per-user workspace directories (sandbox mode)
 ├── assets/                  # Screenshots and Elasticsearch plugins
-└── docker-compose.yml       # PostgreSQL / Elasticsearch / Phoenix
+├── docker-compose.middleware.yml  # Middleware: PostgreSQL / Elasticsearch / Phoenix / Neo4j
+└── docker-compose.app.yml         # Application: deepclaw main service
 ```
 
 ## System Architecture
@@ -236,13 +237,20 @@ After the service starts:
 If you need Elasticsearch knowledge bases or Postgres long-term memory, start the required services:
 
 ```bash
-docker-compose up -d postgresql elasticsearch
+docker compose -f docker-compose.middleware.yml up -d postgresql elasticsearch
 ```
 
 For Phoenix observability:
 
 ```bash
-docker-compose up -d phoenix
+docker compose -f docker-compose.middleware.yml up -d phoenix
+```
+
+To run the main service in containers, middleware and application are orchestrated separately:
+
+```bash
+docker compose -f docker-compose.middleware.yml up -d   # start middleware first
+docker compose -f docker-compose.app.yml up -d          # then start the application
 ```
 
 Phoenix console: `http://localhost:6006`

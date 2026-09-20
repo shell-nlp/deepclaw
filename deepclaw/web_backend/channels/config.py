@@ -2,8 +2,9 @@ from dotenv import find_dotenv, load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-env_path = find_dotenv(filename=".env", raise_error_if_not_found=True)
-load_dotenv()
+env_path = find_dotenv(filename=".env", raise_error_if_not_found=False)
+if env_path:
+    load_dotenv(env_path)
 
 
 class ChannelGatewaySettings(BaseSettings):
@@ -12,7 +13,7 @@ class ChannelGatewaySettings(BaseSettings):
     CHANNEL_AGENT_API_URL: str = ""
 
     model_config = SettingsConfigDict(
-        env_file=str(env_path),
+        env_file=env_path or None,
         env_file_encoding="utf-8",
         extra="ignore",
     )
