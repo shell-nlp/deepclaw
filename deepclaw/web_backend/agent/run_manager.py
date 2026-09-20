@@ -201,6 +201,8 @@ class AgentRunManager:
             name="deepclaw-agent",
             graph=self.graph,
             config=dict(self.config),
+            # 前端和渠道不消费原始 LangGraph 事件，关闭 RAW/raw_event 以降低流式传输体积。
+            emit_raw_events=False,
         )
         try:
             async for event in agent.run(payload):
