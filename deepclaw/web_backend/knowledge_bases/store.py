@@ -4,7 +4,6 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Protocol
 
-from elasticsearch import NotFoundError
 from sqlmodel import SQLModel, or_, select
 
 from deepclaw.common.vector_store.elasticsearch import ElasticsearchVectorStore
@@ -30,6 +29,24 @@ def _sqlite_table_exists(connection: sqlite3.Connection, table_name: str) -> boo
         (table_name,),
     ).fetchone()
     return row is not None
+
+
+
+
+def _is_elasticsearch_not_found_error(exc: Exception) -> bool:
+    """判断异常是否为 Elasticsearch NotFoundError。
+
+    Args:
+        exc: 待判断的异常对象。
+
+    Returns:
+        是 Elasticsearch NotFoundError 时返回 True；未安装可选依赖时返回 False。
+    """
+    try:
+        from elasticsearch import NotFoundError
+    except ModuleNotFoundError:
+        return False
+    return isinstance(exc, NotFoundError)
 
 
 class KnowledgeBaseMetadataStore(Protocol):
@@ -335,8 +352,10 @@ class ElasticsearchKnowledgeBaseMetadataStore:
         self._ensure_initialized()
         try:
             result = self.es.es_client.get(index=index_name, id=document_id)
-        except NotFoundError as exc:
-            raise ValueError(error_message) from exc
+        except Exception as exc:
+            if _is_elasticsearch_not_found_error(exc):
+                raise ValueError(error_message) from exc
+            raise
 
         source = result["_source"]
         if source.get("user_id") != user_id:
