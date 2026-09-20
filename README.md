@@ -120,7 +120,8 @@ deepclaw/
 ├── .sandbox.toml            # OpenSandbox Server 配置（sandbox 模式必需）
 ├── user_workspace/          # 用户工作区目录（sandbox 模式每用户独立子目录）
 ├── assets/                  # 截图和 Elasticsearch 插件
-└── docker-compose.yml       # PostgreSQL / Elasticsearch / Phoenix
+├── docker-compose.middleware.yml  # 中间件：PostgreSQL / Elasticsearch / Phoenix / Neo4j
+└── docker-compose.app.yml         # 应用：deepclaw 主服务
 ```
 
 ## 系统架构
@@ -237,13 +238,20 @@ uv run python -m deepclaw.main
 如果用到 Elasticsearch 知识库或 Postgres 长期记忆，需启动对应服务：
 
 ```bash
-docker-compose up -d postgresql elasticsearch
+docker compose -f docker-compose.middleware.yml up -d postgresql elasticsearch
 ```
 
 如需 Phoenix 观测：
 
 ```bash
-docker-compose up -d phoenix
+docker compose -f docker-compose.middleware.yml up -d phoenix
+```
+
+如果要用容器方式跑主服务，中间件和应用分开编排：
+
+```bash
+docker compose -f docker-compose.middleware.yml up -d   # 先起中间件
+docker compose -f docker-compose.app.yml up -d          # 再起应用
 ```
 
 Phoenix 控制台默认地址：`http://localhost:6006`

@@ -1,0 +1,119 @@
+# 中间件编排：PostgreSQL / Elasticsearch / Phoenix / Neo4j
+# 启动：docker compose -f docker-compose.middleware.yml up -d
+# 应用侧编排见 docker-compose.app.yml，两者通过外部网络 deepclaw 互通。
+services:
+  postgresql:
+    build:
+      context: .
+      dockerfile: docker/postgresql/Dockerfile
+    image: deepclaw-postgresql-hybrid:pg16
+    container_name: postgresql
+    restart: always
+    environment:
+      - POSTGRES_USER=admin  # 数据库用户名
+      - POSTGRES_PASSWORD=admin  # 数据库密码（必填）
+      - POSTGRES_DB=deepclaw  # 默认数据库名
+    ports:
+      - 5432:5432
+    volumes:
+      - postgres_pgvector:/var/lib/postgresql/data
+      # 首次初始化时自动启用 pgvector 和 pg_search（BM25）扩展
+      - ./docker/postgresql/initdb:/docker-entrypoint-initdb.d
+    networks:
+      - deepclaw
+  elasticsearch:
+    image: docker.1ms.run/elastic/elasticsearch:8.14.2
+    container_name: elasticsearch
+    restart: always
+    environment:
+      - discovery.type=single-node
+      - cluster.max_shards_per_node=10000
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+      # - xpack.security.enabled=false
+      - xpack.security.enabled=true   # 强制启用安全模块
+      - ELASTIC_PASSWORD=elastic@2024  # 设置elastic超级用户密码
+      - ELASTIC_USERNAME=elastic  # 显式声明用户名（可选）
+      - TZ=Asia/Shanghai
+      - http.max_content_length=500mb  # 在这里增加
+    volumes:
+      - ./assets/es_plugins/ik-8.14.2:/usr/share/elasticsearch/plugins
+      - es_data:/usr/share/elasticsearch/data
+      # - es_plugin:/usr/share/elasticsearch/plugins
+      # - es_config:/usr/share/elasticsearch/config
+      # 如果需要持久化日志，请取消以下行的注释
+      - es_logs:/usr/share/elasticsearch/logs
+    ports:
+      - target: 9200
+        published: 9200
+    networks:
+      - deepclaw
+  phoenix:
+    image: docker.1ms.run/arizephoenix/phoenix:latest
+    container_name: phoenix
+    restart: always
+    ports:
+      - 6006:6006
+      - 4317:4317
+    networks:
+      - deepclaw
+    depends_on:
+      - postgresql
+    environment:
+      - PHOENIX_SQL_DATABASE_URL=postgresql://admin:admin@postgresql:5432/phoenix
+  # 可选图数据库，供 Graph RAG 的 Neo4j 实现使用；不使用时可直接注释掉整个服务
+  neo4j:
+    image: docker.1ms.run/neo4j:5.26.27
+    container_name: neo4j
+    restart: always
+    ports:
+      - "7474:7474"  # 用于访问 Neo4j Browser（浏览器UI）和 HTTP API 的端口。
+      - "7687:7687"  # Bolt 协议端口，是应用程序驱动（如 Python, Java, Go 的驱动）连接 Neo4j 的主要方式。
+    environment:
+      # NEO4J_AUTH: none # 将 NEO4J_AUTH 指定为 none 可禁用身份验证
+      # 设置 Neo4j 的初始密码。第一次启动后，你需要使用 neo4j/你的密码 登录。
+      - NEO4J_AUTH=neo4j/neo4j@2025
+      # Neo4j Labs 插件，APOC 和 GDS 是非常常用的插件，建议开启
+      - NEO4J_PLUGINS=["apoc", "graph-data-science"]
+    volumes:
+      # 图数据目录，确保容器删除后数据依然保留在主机上
+      - ./neo4j_volumes/data:/data
+      # 配置文件目录，首次运行后可在主机上直接修改
+      - ./neo4j_volumes/conf:/conf
+      # 插件目录，用于安装自定义插件
+      - ./neo4j_volumes/plugins:/plugins
+      # 日志目录，方便在主机上查看 Neo4j 运行日志
+      - ./neo4j_volumes/logs:/logs
+    networks:
+      - deepclaw
+
+volumes:
+  postgres:
+    driver: local
+  postgres_pgvector:
+    driver: local
+  es_data:
+    driver: local
+    # driver_opts:
+    #   type: none
+    #   device: /home/data/docker/volumes/01middleware_es_data/
+    #   o: bind
+  # es_plugin:
+  #   driver: local
+  es_config:
+    driver: local
+    # driver_opts:
+    #   type: none
+    #   device: /home/data/docker/volumes/01middleware_es_config/
+    #   o: bind
+  es_logs:
+    driver: local
+    # driver_opts:
+    #   type: none
+    #   device: /home/data/docker/volumes/01middleware_es_logs/
+    #   o: bind
+
+networks:
+  deepclaw:
+    name: deepclaw
+    driver: bridge
+    # external: true
