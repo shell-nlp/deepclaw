@@ -53,9 +53,6 @@ class Settings(BaseSettings):
     # MCP 服务配置。不同发布版本可通过环境变量 MCP_CONFIG 注入 JSON 配置。
     MCP_CONFIG: dict[str, Any] = Field(default_factory=dict)
 
-    # 通用 SSE 接口版本：v1=endpoints.py，v2=endpoints_v2.py
-    # 同时控制前端默认路径与渠道默认调用地址（渠道也可被 CHANNEL_AGENT_API_URL 完整覆盖）
-    GENERAL_API_VERSION: Literal["v1", "v2"] = "v1"
 
     # opensandbox 配置
     OPEN_SANDBOX_CODE_INTERPRETER_IMAGE: str = (
