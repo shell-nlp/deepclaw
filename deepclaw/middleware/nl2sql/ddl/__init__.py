@@ -6,10 +6,10 @@ from deepclaw.middleware.nl2sql.ddl.base import (
 )
 
 try:
-    from . import oracle as _oracle  # noqa: F401 — 触发 Oracle 注册
+    from deepclaw.middleware.nl2sql.ddl import oracle as _oracle  # noqa: F401 — 触发 Oracle 注册
 except ImportError:
     pass  # oracledb 未安装，跳过 Oracle DDL 支持
-from . import pgsql as _pgsql  # noqa: F401 — 触发 PostgreSQL 注册
+from deepclaw.middleware.nl2sql.ddl import pgsql as _pgsql  # noqa: F401 — 触发 PostgreSQL 注册
 
 __all__ = [
     "BaseDdlFetcher",

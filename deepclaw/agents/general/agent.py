@@ -144,13 +144,11 @@ class Agent:
 
         if self.deep_agent:
             from deepclaw.middleware.chart import ChartMiddleware
-            from deepclaw.middleware.cron.middleware import CronMiddleware
             from deepclaw.middleware.deep_agent_prompt import DeepAgentPromptMiddleware
 
             middleware.extend([
                 ChartMiddleware(),
                 DeepAgentPromptMiddleware(),
-                CronMiddleware(),
             ])
             logger.info("使用 DeepAgent")
             from deepagents import FilesystemPermission, create_deep_agent
