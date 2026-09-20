@@ -1093,6 +1093,161 @@ textarea.interruptInput {
   transform: translateX(2px);
 }
 
+.processSummary {
+  width: min(100%, 880px);
+  max-width: min(100%, 880px);
+  margin: 0 0 10px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.82);
+  overflow: hidden;
+}
+
+.processSummaryHeader {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 36px;
+  gap: 8px;
+  padding: 8px 11px;
+  border: 0;
+  background: transparent;
+  color: #475569;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.processSummaryHeader:hover {
+  background: rgba(15, 118, 110, 0.06);
+  color: #0f766e;
+}
+
+.processSummaryHeader:focus-visible {
+  outline: 2px solid rgba(15, 118, 110, 0.45);
+  outline-offset: -2px;
+}
+
+.processSummaryMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  border-radius: 6px;
+  background: rgba(15, 118, 110, 0.1);
+  color: #0f766e;
+  font-size: 15px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.processSummaryStatus {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #94a3b8;
+  flex-shrink: 0;
+}
+
+.processSummaryStatusActive {
+  background: #0f9f83;
+  box-shadow: 0 0 0 4px rgba(15, 159, 131, 0.12);
+  animation: processStatusPulse 1.6s ease-in-out infinite;
+}
+
+.processSummaryLabel {
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.processSummaryLabelActive {
+  color: transparent;
+  background: linear-gradient(105deg, #334155 20%, #0f9f83 45%, #334155 70%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: processStateShimmer 2.4s ease-in-out infinite;
+}
+
+.processSummaryMeta {
+  min-width: 0;
+  overflow: hidden;
+  color: #94a3b8;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.processSummaryActivity {
+  min-width: 0;
+  overflow: hidden;
+  color: #0f766e;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.processSummaryAction {
+  margin-left: auto;
+  color: #0f766e;
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.processSummaryDetails {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 8px 8px;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.processSummaryDetails .reasoningContainer,
+.processSummaryDetails .toolCard {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+@keyframes processStatusPulse {
+  0%,
+  100% {
+    opacity: 0.58;
+    transform: scale(0.86);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes processStateShimmer {
+  0%,
+  100% {
+    background-position: 120% 0;
+  }
+  50% {
+    background-position: -20% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .processSummaryStatusActive,
+  .processSummaryLabelActive {
+    animation: none;
+  }
+
+  .processSummaryLabelActive {
+    color: #0f766e;
+    background: none;
+  }
+}
+
 .reasoningContainer {
   width: min(100%, 880px);
   max-width: min(100%, 880px);
@@ -1318,6 +1473,7 @@ textarea.interruptInput {
   z-index: 1;
   flex-shrink: 0;
   display: flex;
+  align-items: flex-start;
   gap: 16px;
   padding: 20px max(24px, calc((100% - 980px) / 2));
   background: var(--bg-card);
@@ -1330,6 +1486,7 @@ textarea.interruptInput {
 
 .inputContainer {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1467,7 +1624,7 @@ textarea.interruptInput {
   font-size: 15px;
   flex-shrink: 0;
   height: fit-content;
-  align-self: flex-end;
+  align-self: flex-start;
 }
 
 .sendBtn {
