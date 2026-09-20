@@ -13,7 +13,8 @@ interface ToolCardProps {
 
 export function ToolCard({ toolData, duration }: ToolCardProps) {
   const [expanded, setExpanded] = useState(false)
-  const toolName = toolData.toolCall?.name || 'tool'
+  const toolName =
+    toolData.toolCall?.tool_display_name || toolData.toolCall?.name || 'tool'
 
   const argsStr = toolData.toolCall?.args
     ? JSON.stringify(toolData.toolCall.args, null, 2)

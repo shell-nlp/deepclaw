@@ -11,8 +11,9 @@ import type {
   ChatStatus,
   InterruptData,
   Message,
+  ReasoningBlock,
 } from './types'
-import { getToolIcon, parseMarkdown } from './utils'
+import { formatDuration, getToolIcon, parseMarkdown } from './utils'
 
 type InterruptDecision = 'approve' | 'reject' | 'edit'
 type InterruptActionRequest = InterruptData['action_requests'][number]
@@ -124,13 +125,145 @@ function getAssistantMessageItems(msg: Message): AssistantMessageItem[] {
   return [...reasoningItems, ...toolItems, ...contentItems]
 }
 
+interface ProcessSummaryProps {
+  msg: Message
+  reasoningBlocks: ReasoningBlock[]
+  toolCallDurations?: Record<string, number>
+  isProcessing: boolean
+}
+
+/**
+ * 展示 AI 消息的推理和工具调用摘要，并允许用户展开查看完整过程。
+ *
+ * Args:
+ *   msg: 当前 AI 消息及其过程数据。
+ *   reasoningBlocks: 当前消息的推理分段。
+ *   toolCallDurations: 基于浏览器端时间计算的工具调用耗时映射。
+ *   isProcessing: 当前消息是否仍在处理中。
+ */
+function ProcessSummary({
+  msg,
+  reasoningBlocks,
+  toolCallDurations,
+  isProcessing,
+}: ProcessSummaryProps) {
+  const [expanded, setExpanded] = useState(false)
+  const processItems = getAssistantMessageItems(msg).filter(
+    (item) => item.type === 'reasoning' || item.type === 'tool'
+  )
+  const reasoningCount = processItems.filter((item) => item.type === 'reasoning').length
+  const toolCount = processItems.filter((item) => item.type === 'tool').length
+  const summary = [
+    reasoningCount > 0 ? `${reasoningCount} 段思考` : '',
+    toolCount > 0 ? `${toolCount} 个工具调用` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  const totalDuration = processItems.reduce((total, item) => {
+    if (item.type === 'reasoning') {
+      const duration = reasoningBlocks.find(
+        (block) => block.id === item.reasoningBlockId
+      )?.duration
+      return total + (duration || 0)
+    }
+    return total + (toolCallDurations?.[item.toolCallId] || 0)
+  }, 0)
+  const durationSummary = totalDuration > 0 ? `总耗时 ${formatDuration(totalDuration)}` : ''
+  const processMeta = [summary, durationSummary].filter(Boolean).join(' · ')
+
+  const activitySteps = processItems.map((item) => {
+    if (item.type === 'reasoning') return '正在思考中...'
+    const toolData = msg.toolData?.find((data) => data.toolCall.id === item.toolCallId)
+    const toolName = toolData?.toolCall.tool_display_name || toolData?.toolCall.name || '工具'
+    return `执行${toolName}`
+  })
+  const [activityIndex, setActivityIndex] = useState(0)
+
+  useEffect(() => {
+    if (!isProcessing || activitySteps.length <= 1) {
+      setActivityIndex(0)
+      return
+    }
+    const timer = window.setInterval(() => {
+      setActivityIndex((current) => (current + 1) % activitySteps.length)
+    }, 1800)
+    return () => window.clearInterval(timer)
+  }, [activitySteps.length, isProcessing])
+
+  const activityLabel = isProcessing
+    ? activitySteps[activityIndex % activitySteps.length] || '正在处理中...'
+    : '已完成'
+
+  if (processItems.length === 0) return null
+
+  return (
+    <section className={styles.processSummary}>
+      <button
+        type="button"
+        className={styles.processSummaryHeader}
+        aria-expanded={expanded}
+        onClick={() => setExpanded((current) => !current)}
+      >
+        <span className={styles.processSummaryMark} aria-hidden="true">
+          {expanded ? '−' : '+'}
+        </span>
+        <span
+          className={`${styles.processSummaryStatus} ${
+            isProcessing ? styles.processSummaryStatusActive : ''
+          }`}
+          aria-hidden="true"
+        />
+        <span
+          className={`${styles.processSummaryLabel} ${
+            isProcessing ? styles.processSummaryLabelActive : ''
+          }`}
+        >
+          分析与执行
+        </span>
+        <span className={styles.processSummaryActivity} aria-live="polite">
+          {activityLabel}
+        </span>
+        <span className={styles.processSummaryMeta}>{processMeta}</span>
+        <span className={styles.processSummaryAction}>
+          {expanded ? '收起' : '查看'}
+        </span>
+      </button>
+      {expanded && (
+        <div className={styles.processSummaryDetails}>
+          {processItems.map((item) => {
+            if (item.type === 'reasoning') {
+              const block = reasoningBlocks.find(
+                (reasoningBlock) => reasoningBlock.id === item.reasoningBlockId
+              )
+              return block ? <ReasoningCard key={item.id} block={block} /> : null
+            }
+
+            const toolData = msg.toolData?.find(
+              (data) => data.toolCall.id === item.toolCallId
+            )
+            return toolData ? (
+              <ToolCard
+                key={item.id}
+                toolData={toolData}
+                duration={toolCallDurations?.[item.toolCallId]}
+              />
+            ) : null
+          })}
+        </div>
+      )}
+    </section>
+  )
+}
+
 function AssistantMessageBody({
   msg,
   toolCallDurations,
+  isProcessing,
   onRecommendedQuestion,
 }: {
   msg: Message
   toolCallDurations?: Record<string, number>
+  isProcessing: boolean
   onRecommendedQuestion: (question: string) => void | Promise<void>
 }) {
   const reasoningBlocks =
@@ -145,43 +278,32 @@ function AssistantMessageBody({
       : msg.content
         ? [{ id: `${msg.id}_content_legacy`, content: msg.content }]
         : []
+  const assistantItems = getAssistantMessageItems(msg)
+  const firstToolIndex = assistantItems.findIndex((item) => item.type === 'tool')
+  const visibleContentIds = new Set(
+    (firstToolIndex >= 0 ? assistantItems.slice(firstToolIndex + 1) : assistantItems)
+      .filter((item) => item.type === 'content')
+      .map((item) => item.contentBlockId)
+  )
+  const visibleContentBlocks = contentBlocks.filter((block) =>
+    visibleContentIds.has(block.id)
+  )
 
   return (
     <>
-      {getAssistantMessageItems(msg).map((item) => {
-        if (item.type === 'reasoning') {
-          const block = reasoningBlocks.find(
-            (reasoningBlock) => reasoningBlock.id === item.reasoningBlockId
-          )
-          return block ? (
-            <ReasoningCard key={item.id} block={block} />
-          ) : null
-        }
-
-        if (item.type === 'tool') {
-          const toolData = msg.toolData?.find(
-            (data) => data.toolCall.id === item.toolCallId
-          )
-          return toolData ? (
-            <ToolCard
-              key={item.id}
-              toolData={toolData}
-              duration={toolCallDurations?.[item.toolCallId]}
-            />
-          ) : null
-        }
-
-        const block = contentBlocks.find(
-          (contentBlock) => contentBlock.id === item.contentBlockId
-        )
-        return block ? (
-          <div
-            key={item.id}
-            className={styles.messageContent}
-            dangerouslySetInnerHTML={{ __html: parseMarkdown(block.content) }}
-          />
-        ) : null
-      })}
+      <ProcessSummary
+        msg={msg}
+        reasoningBlocks={reasoningBlocks}
+        toolCallDurations={toolCallDurations}
+        isProcessing={isProcessing}
+      />
+      {visibleContentBlocks.map((block) => (
+        <div
+          key={block.id}
+          className={styles.messageContent}
+          dangerouslySetInnerHTML={{ __html: parseMarkdown(block.content) }}
+        />
+      ))}
       {msg.recommendedQuestions?.length ? (
         <div className={styles.recommendedQuestions}>
           <span className={styles.recommendedQuestionsTitle}>你可能还想问：</span>
@@ -765,6 +887,7 @@ export function ChatView({
                   <AssistantMessageBody
                     msg={msg}
                     toolCallDurations={toolCallDurations}
+                    isProcessing={isProcessing && msg.id === currentAssistantMessageId}
                     onRecommendedQuestion={onRecommendedQuestion}
                   />
                   {isProcessing &&

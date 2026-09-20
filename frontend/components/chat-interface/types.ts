@@ -54,6 +54,7 @@ export interface ToolData {
   toolCall: {
     id: string
     name: string
+    tool_display_name?: string
     args: Record<string, unknown>
   }
   toolOutput?: Array<{
