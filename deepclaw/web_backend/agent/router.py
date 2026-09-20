@@ -121,6 +121,8 @@ def create_agent_router(checkpointer=None, store=None) -> APIRouter:
         response_model=ApiResponse,
         description="获取已存在的 agent 会话 ID 列表",
         tags=["agent-state"],
+
+        summary="查询 Agent 会话列表"
     )
     async def list_sessions():
         """获取检查点中已存在的会话 ID，并按最近检查点去重排序。"""
@@ -212,6 +214,8 @@ def create_agent_router(checkpointer=None, store=None) -> APIRouter:
         response_model=ApiResponse,
         description="删除指定 agent 会话的所有检查点和历史记录",
         tags=["agent-state"],
+
+        summary="删除 Agent 会话"
     )
     async def delete_session(request: DeleteSessionRequest, response: Response):
         """删除指定会话的全部检查点和历史记录。
@@ -242,6 +246,8 @@ def create_agent_router(checkpointer=None, store=None) -> APIRouter:
         response_model=ApiResponse,
         description="获取agent state",
         tags=["agent-state"],
+
+        summary="获取 Agent 状态"
     )
     async def get_state(request: GetHistoryRequest):
         """获取agent state。"""

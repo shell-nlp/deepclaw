@@ -14,7 +14,7 @@ def create_dingtalk_router(
     channel_store = store or get_channel_store()
     channel_service = service or ChannelService(store=channel_store)
 
-    @router.post("/dingtalk/events")
+    @router.post("/dingtalk/events", summary="接收钉钉事件", description="接收钉钉回调事件并转换为渠道消息。")
     async def dingtalk_events(payload: dict, background_tasks: BackgroundTasks):
         adapter = DingTalkAdapter()
         message = await adapter.parse_event(payload)

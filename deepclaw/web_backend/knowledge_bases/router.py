@@ -49,6 +49,9 @@ def add_knowledge_base_management_routes(
         "/knowledge-bases/list",
         response_model=PaginatedKnowledgeBaseResponse,
         tags=tags,
+
+        summary="查询知识库列表",
+        description="分页查询当前用户可访问的知识库。"
     )
     async def list_knowledge_bases(
         request: KnowledgeBaseListRequest,
@@ -61,7 +64,7 @@ def add_knowledge_base_management_routes(
             page_size=request.page_size,
         )
 
-    @router.post("/knowledge-bases/create", response_model=KnowledgeBaseRecord, tags=tags)
+    @router.post("/knowledge-bases/create", response_model=KnowledgeBaseRecord, tags=tags, summary="创建知识库", description="创建知识库元数据并初始化对应的检索索引。")
     async def create_knowledge_base(
         request: CreateKnowledgeBaseRequest,
         actor=Depends(get_current_actor),
@@ -76,7 +79,7 @@ def add_knowledge_base_management_routes(
         except ValueError as exc:
             raise _handle_value_error(exc) from exc
 
-    @router.post("/knowledge-bases/detail", response_model=KnowledgeBaseRecord, tags=tags)
+    @router.post("/knowledge-bases/detail", response_model=KnowledgeBaseRecord, tags=tags, summary="获取知识库详情", description="返回指定知识库的元数据、文档统计和索引信息。")
     async def get_knowledge_base(
         request: KnowledgeBaseIdentityRequest,
         actor=Depends(get_current_actor),
@@ -89,7 +92,7 @@ def add_knowledge_base_management_routes(
         except ValueError as exc:
             raise _handle_value_error(exc) from exc
 
-    @router.post("/knowledge-bases/update", response_model=KnowledgeBaseRecord, tags=tags)
+    @router.post("/knowledge-bases/update", response_model=KnowledgeBaseRecord, tags=tags, summary="更新知识库", description="修改知识库名称、描述等元数据。")
     async def update_knowledge_base(
         request: UpdateKnowledgeBaseRequest,
         actor=Depends(get_current_actor),
@@ -105,7 +108,7 @@ def add_knowledge_base_management_routes(
         except ValueError as exc:
             raise _handle_value_error(exc) from exc
 
-    @router.post("/knowledge-bases/delete", response_model=KnowledgeBaseDeleteResult, tags=tags)
+    @router.post("/knowledge-bases/delete", response_model=KnowledgeBaseDeleteResult, tags=tags, summary="删除知识库", description="删除指定知识库及其关联索引和文档元数据。")
     async def delete_knowledge_base(
         request: KnowledgeBaseIdentityRequest,
         actor=Depends(get_current_actor),
@@ -123,6 +126,9 @@ def add_knowledge_base_management_routes(
         "/knowledge-bases/bulk-delete",
         response_model=BulkDeleteKnowledgeBaseResponse,
         tags=tags,
+
+        summary="批量删除知识库",
+        description="批量删除多个知识库及其关联数据。"
     )
     async def bulk_delete_knowledge_bases(
         request: BulkDeleteKnowledgeBaseRequest,
@@ -141,6 +147,9 @@ def add_knowledge_base_management_routes(
         "/knowledge-bases/documents/list",
         response_model=PaginatedKnowledgeBaseDocumentResponse,
         tags=tags,
+
+        summary="查询文档列表",
+        description="分页查询指定知识库中的文档。"
     )
     async def list_documents(
         request: DocumentListRequest,
@@ -161,6 +170,9 @@ def add_knowledge_base_management_routes(
         "/knowledge-bases/documents/detail",
         response_model=KnowledgeBaseDocumentDetailResponse,
         tags=tags,
+
+        summary="获取文档详情",
+        description="返回文档元数据、切片内容和索引状态。"
     )
     async def get_document_detail(
         request: DocumentDetailRequest,
@@ -181,6 +193,9 @@ def add_knowledge_base_management_routes(
         "/knowledge-bases/documents/upload",
         response_model=KnowledgeBaseUploadResponse,
         tags=tags,
+
+        summary="上传文档",
+        description="上传文件并写入指定知识库的检索索引。"
     )
     async def upload_documents(
         user_id: str = Form(..., description="User ID"),
@@ -213,6 +228,9 @@ def add_knowledge_base_management_routes(
         "/knowledge-bases/documents/update",
         response_model=KnowledgeBaseDocumentRecord,
         tags=tags,
+
+        summary="更新文档",
+        description="修改文档元数据或重新写入文档内容。"
     )
     async def update_document(
         request: UpdateKnowledgeBaseDocumentRequest,
@@ -229,7 +247,7 @@ def add_knowledge_base_management_routes(
         except ValueError as exc:
             raise _handle_value_error(exc) from exc
 
-    @router.post("/knowledge-bases/documents/delete", tags=tags)
+    @router.post("/knowledge-bases/documents/delete", tags=tags, summary="删除文档", description="删除指定文档及其关联索引数据。")
     async def delete_document(
         request: DeleteKnowledgeBaseDocumentRequest,
         actor=Depends(get_current_actor),
@@ -248,6 +266,9 @@ def add_knowledge_base_management_routes(
         "/knowledge-bases/documents/bulk-delete",
         response_model=BulkDeleteDocumentResponse,
         tags=tags,
+
+        summary="批量删除文档",
+        description="批量删除指定知识库中的多个文档。"
     )
     async def bulk_delete_documents(
         request: BulkDeleteKnowledgeBaseDocumentRequest,

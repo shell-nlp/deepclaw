@@ -14,7 +14,7 @@ def create_channel_bindings_router(
     router = APIRouter(tags=["channels"])
     channel_store = store or get_channel_store()
 
-    @router.get("/bindings")
+    @router.get("/bindings", summary="查询渠道绑定列表", description="按当前用户或管理员范围返回渠道绑定记录。")
     async def list_bindings(
         scope: Literal["my", "all"] = "my",
         channel: str | None = None,

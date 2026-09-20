@@ -41,14 +41,14 @@ def create_feishu_router(
     channel_store = store or get_channel_store()
     channel_service = service or ChannelService(store=channel_store)
 
-    @router.post("/feishu/events")
+    @router.post("/feishu/events", summary="接收飞书事件", description="接收飞书回调事件并转换为渠道消息。")
     async def feishu_events(payload: dict, background_tasks: BackgroundTasks):
         adapter = FeishuAdapter()
         message = await adapter.parse_event(payload)
         background_tasks.add_task(channel_service.process_message, message, adapter)
         return {"status": "accepted"}
 
-    @router.post("/feishu/users/{user_id}/binding")
+    @router.post("/feishu/users/{user_id}/binding", summary="创建或更新飞书绑定", description="按用户 ID 创建或更新飞书渠道绑定。")
     async def upsert_feishu_binding(
         user_id: str,
         request: FeishuBindingRequest,
@@ -76,7 +76,7 @@ def create_feishu_router(
         await start_feishu_runtime(binding_id=binding.id, store=channel_store)
         return binding.model_dump()
 
-    @router.post("/feishu/bindings")
+    @router.post("/feishu/bindings", summary="创建飞书绑定", description="为当前用户创建新的飞书渠道绑定。")
     async def create_feishu_binding(
         request: FeishuBindingRequest,
         actor: CurrentActor = Depends(get_current_actor),
@@ -107,7 +107,7 @@ def create_feishu_router(
         await start_feishu_runtime(binding_id=binding.id, store=channel_store)
         return binding.model_dump()
 
-    @router.get("/feishu/users/{user_id}/binding")
+    @router.get("/feishu/users/{user_id}/binding", summary="获取飞书绑定", description="返回指定用户当前使用的飞书绑定信息。")
     async def get_feishu_binding(
         user_id: str,
         actor: CurrentActor = Depends(get_current_actor),
@@ -117,7 +117,7 @@ def create_feishu_router(
         ensure_binding_access(actor=actor, binding=binding, not_found_detail="Feishu binding not found")
         return binding.model_dump()
 
-    @router.get("/feishu/users")
+    @router.get("/feishu/users", summary="查询飞书绑定列表", description="返回当前用户或管理员范围内的飞书绑定。")
     async def list_feishu_bindings(
         actor: CurrentActor = Depends(get_current_actor),
     ):
@@ -132,7 +132,7 @@ def create_feishu_router(
         ]
         return {"items": items, "total": len(items)}
 
-    @router.delete("/feishu/users/{user_id}/binding")
+    @router.delete("/feishu/users/{user_id}/binding", summary="删除飞书绑定", description="删除指定用户的飞书绑定及运行态信息。")
     async def delete_feishu_binding(
         user_id: str,
         actor: CurrentActor = Depends(get_current_actor),
@@ -144,7 +144,7 @@ def create_feishu_router(
         deleted = await channel_store.delete_binding(binding.id)
         return {"user_id": user_id, "deleted": deleted}
 
-    @router.delete("/feishu/bindings/{binding_id}")
+    @router.delete("/feishu/bindings/{binding_id}", summary="按 ID 删除飞书绑定", description="根据绑定 ID 删除飞书渠道绑定。")
     async def delete_feishu_binding_by_id(
         binding_id: int,
         actor: CurrentActor = Depends(get_current_actor),

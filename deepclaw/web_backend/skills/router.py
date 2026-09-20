@@ -20,14 +20,14 @@ def _handle_value_error(exc: ValueError) -> HTTPException:
 def add_skill_management_routes(
     router: APIRouter, tags: list[str] | None = None
 ) -> None:
-    @router.post("/skills/list", response_model=SkillListResponse, tags=tags)
+    @router.post("/skills/list", response_model=SkillListResponse, tags=tags, summary="查询技能列表", description="返回当前可用的技能包及其元数据。")
     def list_skills(request: SkillListRequest, actor=Depends(get_current_actor)):
         try:
             return skill_manager.list_skills(search=request.search)
         except ValueError as exc:
             raise _handle_value_error(exc) from exc
 
-    @router.post("/skills/upload", response_model=SkillUploadResponse, tags=tags)
+    @router.post("/skills/upload", response_model=SkillUploadResponse, tags=tags, summary="上传技能", description="上传技能包文件并保存到服务端技能目录。")
     async def upload_skill(
         file: UploadFile = File(..., description="Skill zip package"),
         actor=Depends(get_current_actor),
@@ -44,7 +44,7 @@ def add_skill_management_routes(
         except ValueError as exc:
             raise _handle_value_error(exc) from exc
 
-    @router.post("/skills/delete", response_model=SkillDeleteResponse, tags=tags)
+    @router.post("/skills/delete", response_model=SkillDeleteResponse, tags=tags, summary="删除技能", description="删除指定技能包及其关联文件。")
     def delete_skill(
         request: SkillDeleteRequest,
         actor=Depends(get_current_actor),
