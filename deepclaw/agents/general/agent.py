@@ -21,14 +21,13 @@ def user_namespace_factory(runtime: Any) -> tuple[str, ...]:
     """动态生成用户 namespace。
 
     Args:
-        runtime: 当前 Agent 运行时，状态中包含 user_id。
+        runtime: 当前 Agent 运行时，优先读取运行时身份信息。
     """
-    state = getattr(runtime, "state", {}) or {}
-    user_id = state.get("user_id", "default")
-    # TODO 获取config,未来可实现共享命名空间
-    # from langchain_core.runnables.config import var_child_runnable_config
-    # config = var_child_runnable_config.get()
-    return ("filesystem", user_id)  # 用户隔离！
+    server_info = getattr(runtime, "server_info", None)
+    user = getattr(server_info, "user", None)
+    identity = getattr(user, "identity", None)
+    user_id = str(identity) if identity else "default"
+    return ("filesystem", user_id)
 
 
 class Agent:
@@ -123,19 +122,15 @@ class Agent:
             copy_skills_to_store(skills_dir=workspace_path / "skills", store=self.store)
             logger.info("使用 StoreBackend 作为后端")
 
-        def make_backend(runtime):
-            from deepagents.backends import CompositeBackend, StoreBackend
+        from deepagents.backends import CompositeBackend, StoreBackend
 
-            nonlocal backend
-            if settings.BACKEND_TYPE == "store":
-                backend = StoreBackend(namespace=user_namespace_factory)
+        if settings.BACKEND_TYPE == "store":
+            backend = StoreBackend(namespace=user_namespace_factory)
 
-            return CompositeBackend(
-                default=backend,
-                routes={
-                    "/memories/": StoreBackend(namespace=user_namespace_factory),
-                },
-            )
+        composite_backend = CompositeBackend(
+            default=backend,
+            routes={"/memories/": StoreBackend(namespace=user_namespace_factory)},
+        )
 
         if settings.USE_TOOL_SEARCH:
             from deepclaw.middleware.tool_search import DeferredToolMiddleware
@@ -153,19 +148,29 @@ class Agent:
             logger.info("使用 DeepAgent")
             from deepagents import FilesystemPermission, create_deep_agent
 
+            permissions = None
+            if settings.BACKEND_TYPE == "store":
+                permissions = [
+                    FilesystemPermission(
+                        operations=["read", "write"],
+                        paths=["/**"],
+                        mode="allow",
+                    )
+                ]
+
             memory.append(AGENT_VIRTUAL_PREFERENCES)
             return create_deep_agent(
                 model=model,
                 tools=tools,
                 system_prompt=self.system_prompt,
                 middleware=middleware,
-                backend=make_backend,
+                backend=composite_backend,
                 skills=skills,
                 memory=memory,
                 checkpointer=self.checkpointer,
                 store=self.store,
                 state_schema=StateSchema,
-                permissions=[FilesystemPermission(operations=["read", "write"], paths=["/**"], mode="allow")],
+                permissions=permissions,
             )
         else:
             logger.info("正在使用 ReactAgent")
