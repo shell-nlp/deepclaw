@@ -1,7 +1,9 @@
 from typing import List, TypedDict
 
 from langchain.agents.middleware import AgentMiddleware
+from langchain_core.callbacks import adispatch_custom_event
 from langchain_core.messages import AIMessage, HumanMessage
+from langgraph.config import get_config
 from loguru import logger
 
 from deepclaw.utils import get_chat_model
@@ -12,7 +14,6 @@ class RecommendedQuestionsMiddleware(AgentMiddleware):
 
     async def aafter_agent(self, state, runtime):
         messages = state.get("messages", [])
-        stream_writer = runtime.stream_writer
         conversation_turns = []
         current_turn = None
         for msg in messages:
@@ -71,9 +72,16 @@ class RecommendedQuestionsMiddleware(AgentMiddleware):
                     "human",
                     f"最近 6 轮对话：\n{conversation_context}",
                 ),
-            ]
+            ],
+            config={"metadata": {"emit-messages": False, "emit-tool-calls": False}},
         )
         recommended_questions = recommend_result.get("questions") or []
-        recommended_questions = list(set(recommended_questions))[:3]
+        recommended_questions = list(dict.fromkeys(recommended_questions))[:3]
         logger.info(f"推荐问题：{recommended_questions}")
-        stream_writer({"recommended_questions": recommended_questions})
+        # stream_writer 的 custom 流不会进入 AG-UI 事件链；使用 LangChain
+        # 标准 custom event，由 ag-ui-langgraph 转换为 CUSTOM 事件。
+        await adispatch_custom_event(
+            "recommended_questions",
+            {"recommended_questions": recommended_questions},
+            config=get_config(),
+        )

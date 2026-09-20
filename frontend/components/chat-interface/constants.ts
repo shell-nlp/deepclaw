@@ -1,7 +1,7 @@
 import type { ChannelManagementPage, KnowledgePage } from './types.ts'
 
-export const DEFAULT_AGENT_API_PATH = '/api/agent/general_api'
-export const DEFAULT_RAG_API_PATH = '/api/rag/general_api'
+export const DEFAULT_AGENT_API_PATH = '/api/agent/runs'
+export const DEFAULT_RAG_API_PATH = '/api/rag/runs'
 export const AGENT_SESSION_LIST_API_PATH = '/api/agent/get_session_list'
 export const AGENT_SESSION_STATE_API_PATH = '/api/agent/get_state'
 export const AGENT_SESSION_DELETE_API_PATH = '/api/agent/delete_session'

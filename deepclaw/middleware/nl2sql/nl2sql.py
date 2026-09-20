@@ -647,10 +647,10 @@ class NL2SQLMiddleware(AgentMiddleware[None, AgentContext, None]):
         return run_sql
 
     def wrap_model_call(self, request, handler):
-        context: AgentContext = request.runtime.context
-        run_sql_tool = self.get_run_sql_tool(context.user_id)
-        list_tables_tool = self.get_list_tables_tool(context.user_id)
-        describe_tables_tool = self.get_describe_tables_tool(context.user_id)
+        user_id = (request.state or {}).get("user_id", "default")
+        run_sql_tool = self.get_run_sql_tool(user_id)
+        list_tables_tool = self.get_list_tables_tool(user_id)
+        describe_tables_tool = self.get_describe_tables_tool(user_id)
         new_tools = [*request.tools]
         new_tools.append(run_sql_tool)
         new_tools.append(list_tables_tool)
@@ -662,9 +662,9 @@ class NL2SQLMiddleware(AgentMiddleware[None, AgentContext, None]):
 
     async def awrap_tool_call(self, request, handler):
         tool_name = request.tool_call["name"]
-        context: AgentContext = request.runtime.context
+        user_id = (request.state or {}).get("user_id", "default")
         if tool_name == "run_sql":
-            run_sql_tool = self.get_run_sql_tool(context.user_id)
+            run_sql_tool = self.get_run_sql_tool(user_id)
             args = request.tool_call["args"]
             if isinstance(args, dict) and "code" in args and "sql" not in args:
                 args["sql"] = args.pop("code")
@@ -674,14 +674,14 @@ class NL2SQLMiddleware(AgentMiddleware[None, AgentContext, None]):
                 tool_call_id=request.tool_call["id"],
             )
         if tool_name == "list_tables_tool":
-            list_tables_tool = self.get_list_tables_tool(context.user_id)
+            list_tables_tool = self.get_list_tables_tool(user_id)
             result = await list_tables_tool.arun(request.tool_call["args"])
             return ToolMessage(
                 content=json.dumps(result, ensure_ascii=False, default=str),
                 tool_call_id=request.tool_call["id"],
             )
         if tool_name == "describe_tables_tool":
-            describe_tables_tool = self.get_describe_tables_tool(context.user_id)
+            describe_tables_tool = self.get_describe_tables_tool(user_id)
             result = await describe_tables_tool.arun(request.tool_call["args"])
             return ToolMessage(
                 content=json.dumps(result, ensure_ascii=False, default=str),

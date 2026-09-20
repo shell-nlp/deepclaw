@@ -5,15 +5,15 @@ from collections.abc import Callable
 from typing import Dict, List, Literal, NotRequired, TypedDict
 from zoneinfo import ZoneInfo
 
-from langchain.agents import AgentState
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.documents import Document
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage, SystemMessage
-from langchain_deepseek import ChatDeepSeek
 from langgraph.runtime import Runtime
+from langchain_deepseek import ChatDeepSeek
 from loguru import logger
 
+from deepclaw.agents.rag.state import StateSchema
 from deepclaw.common import create_graph_rag
 from deepclaw.common.vector_store import AbstractVectorStore
 
@@ -198,7 +198,7 @@ def rrf_fusion(
 shanghai_tz = ZoneInfo("Asia/Shanghai")  # 设置亚洲/上海时区
 
 
-class CustomState(AgentState):
+class CustomState(StateSchema):
     docs: NotRequired[List[Document]]
     system_msg: NotRequired[SystemMessage]
 
@@ -248,19 +248,19 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
         return self.vector_store
 
     def _get_index_name(self, runtime: Runtime) -> str:
-        context = runtime.context
-        index_name = getattr(context, "index_name", None) if context else None
+        state = runtime.state or {}
+        index_name = state.get("index_name")
         if not index_name:
-            raise ValueError("runtime.context.index_name is required")
+            raise ValueError("state.index_name is required")
         return index_name
 
     def _get_graph_name(self, runtime: Runtime) -> str | None:
-        context = runtime.context
-        graph_name = getattr(context, "graph_name", None) if context else None
+        state = runtime.state or {}
+        graph_name = state.get("graph_name")
         if graph_name:
             return graph_name
 
-        index_name = getattr(context, "index_name", None) if context else None
+        index_name = state.get("index_name")
         if index_name and str(index_name).endswith("_passages"):
             return str(index_name)[: -len("_passages")]
         return None

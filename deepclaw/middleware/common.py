@@ -5,7 +5,6 @@ from langchain.agents.middleware import AgentMiddleware, ToolCallRequest
 from langchain_core.messages import SystemMessage, ToolMessage
 from loguru import logger
 
-from deepclaw.agents.general.context import AgentContext
 from deepclaw.agents.general.state import StateSchema
 from deepclaw.utils import get_current_time
 
@@ -26,7 +25,7 @@ def get_request_header_info(request) -> dict:
     return dict(raw_header_info) if isinstance(raw_header_info, dict) else {}
 
 # https://github.com/CopilotKit/CopilotKit/issues/2646
-class BusinessMiddleware(AgentMiddleware[None, AgentContext, None]):
+class BusinessMiddleware(AgentMiddleware):
     """业务中间件，用于处理业务相关的逻辑"""
 
     state_schema = StateSchema
@@ -55,9 +54,9 @@ class BusinessMiddleware(AgentMiddleware[None, AgentContext, None]):
         return new_system_message
 
     def wrap_model_call(self, request, handler):
-        context: AgentContext = request.runtime.context
-        internet_search = context.internet_search
-        deep_thinking = context.deep_thinking
+        state = request.state or {}
+        internet_search = bool(state.get("internet_search", False))
+        deep_thinking = bool(state.get("deep_thinking", False))
         if not internet_search:
             # 禁用互联网搜索相关的工具调用
             filtered_tools = [tool for tool in request.tools if tool.name != "tavily_search"]

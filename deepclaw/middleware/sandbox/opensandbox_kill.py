@@ -14,7 +14,7 @@ class OpenSandboxKillMiddleware(AgentMiddleware):
     def after_agent(self, state, runtime):
         """目的：在代理执行完成后，统一杀死用户的沙箱环境"""
 
-        user_id = runtime.context.user_id
+        user_id = (state or {}).get("user_id", "default")
         user_store_item = runtime.store.get((f"user_{user_id}",), "sandbox_id")
         if user_store_item:
             try:

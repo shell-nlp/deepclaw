@@ -36,21 +36,23 @@
   - `auth` / `channels` / `knowledge_bases` 默认元数据数据库选择
   - 当配置 `PG_DATABASE_URL` 时，优先落统一 PG；未配置时回退各自 SQLite
 
-- `deepclaw/web_backend/common/endpoints.py`
-  通用 SSE 端点封装（v1，`agent.astream` + `messages`/`updates`）。当前 `query` 支持：
-  - 字符串
-  - 结构化多模态数组：`text` / `image`
-  正式路径保持：
-  - Agent：`POST /api/agent/general_api`
-  - RAG：`POST /api/rag/general_api`
+- `deepclaw/web_backend/common/agui_runs.py`
+  统一 AG-UI Run 生命周期路由，提供：
+  - `POST /runs`
+  - `GET /runs/{run_id}/events`
+  - `GET /runs/{run_id}`
+  - `POST /runs/{run_id}/actions`
+  - `POST /runs/{run_id}/resume`
+  - `POST /runs/{run_id}/cancel`
 
-- `deepclaw/web_backend/common/endpoints_v2.py`
-  通用 SSE 端点封装（v2，`agent.astream_events` version=`v3`），与 v1 并行挂载，便于对照测试。路径带 `v2` 前缀：
-  - Agent：`POST /api/agent/v2/general_api`
-  - RAG：`POST /api/rag/v2/general_api`
+- `deepclaw/web_backend/agent/run_manager.py`
+  进程内 Run 管理器，负责 Run 快照、事件缓存、`Last-Event-ID` 重放、恢复、取消与订阅者分发。
+
+- `deepclaw/web_backend/common/endpoints.py` / `endpoints_v2.py`
+  历史 SSE 适配实现，仅保留代码与单元测试；Agent/RAG 浏览器路由不再挂载。
 
 - `deepclaw/web_backend/common/api_version.py`
-  统一解析 `GENERAL_API_VERSION`，供前端 runtime-config 与渠道 AgentClient 选择 v1/v2 路径
+  统一提供 Agent/RAG Runs 路径；`GENERAL_API_VERSION` 仅作为历史配置兼容字段。
 
 ### Web 功能目录
 
@@ -76,10 +78,10 @@
  知识库管理路由、请求模型、元数据存储与服务实现。
 
 - `deepclaw/web_backend/agent/router.py`
-  Agent 的 AG-UI 与通用 SSE HTTP 入口。
+  Agent 的 AG-UI Runs、会话列表与状态查询入口。
 
 - `deepclaw/web_backend/rag/router.py`
-  RAG 的通用 SSE HTTP 入口。
+  RAG 的 AG-UI Runs 入口。
 
 ### 核心能力层
 
@@ -202,7 +204,7 @@ pnpm build
 - `LANGSMITH_API_KEY`
 - `USE_COPILOTKIT`
 - `USE_TOOL_SEARCH`
-- `GENERAL_API_VERSION`
+- `GENERAL_API_VERSION`（历史兼容，不再控制浏览器路径）
 - `MCP_CONFIG`
 - `CHART_PUBLIC_URL`
 - `CHART_RETENTION_HOURS`
@@ -283,11 +285,13 @@ pnpm build
 
 - 主入口同时挂载 `agent`、`rag`、`channels`
 - 主入口还挂载 `/api/auth/*` 登录鉴权接口
-- 通用 SSE 接口支持多模态 `query`
-- 通用 SSE 双版本并行：
-  - v1（`endpoints.py`）保留原 URL：`/api/agent/general_api`、`/api/rag/general_api`
-  - v2（`endpoints_v2.py`）路径加前缀：`/api/agent/v2/general_api`、`/api/rag/v2/general_api`
-  - 前端与渠道默认仍走 v1；v2 仅用于对照测试
+- 浏览器与渠道统一走 AG-UI Runs：
+  - Agent：`POST /api/agent/runs`
+  - RAG：`POST /api/rag/runs`
+  - 续流/重放：`GET /api/agent/runs/{run_id}/events`、`GET /api/rag/runs/{run_id}/events`
+  - 恢复：`POST /api/agent/runs/{run_id}/resume`、`POST /api/rag/runs/{run_id}/resume`
+  - 取消：`POST /api/agent/runs/{run_id}/cancel`、`POST /api/rag/runs/{run_id}/cancel`
+- 运行参数（`user_id`、`internet_search`、`deep_thinking`、`mcp_config`、`index_name`、`graph_name`、`header_info`）统一存放在 LangGraph state，不再依赖 `runtime.context`
 - 技能管理归属 `/api/agent/skills/*`
 - 知识库管理归属 `/api/rag/knowledge-bases/*`
 - 渠道管理归属 `/api/channels/*`

@@ -1,6 +1,5 @@
-﻿from typing import Any
+from typing import Any
 
-from ag_ui_langgraph import add_langgraph_fastapi_endpoint, LangGraphAgent
 from fastapi import APIRouter, Response
 from fastapi.encoders import jsonable_encoder
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -8,13 +7,8 @@ from loguru import logger
 from pydantic import BaseModel, field_serializer
 
 from deepclaw.agents.general.agent import Agent
-from deepclaw.agents.general.context import AgentContext
-from deepclaw.web_backend.common.endpoints import (
-    add_general_api_endpoint as add_general_api_endpoint_v1,
-)
-from deepclaw.web_backend.common.endpoints_v2 import (
-    add_general_api_endpoint as add_general_api_endpoint_v2,
-)
+from deepclaw.web_backend.agent.run_manager import AgentRunManager
+from deepclaw.web_backend.common.agui_runs import create_agui_run_router
 
 
 class GetHistoryRequest(BaseModel):
@@ -32,62 +26,62 @@ class ApiResponse(BaseModel):
 
     @field_serializer("data", when_used="json")
     def serialize_data(self, data: Any) -> Any:
-        """将响应数据转换为 JSON 可传输的结构。
+        """将响应数据转换为 JSON 可传输的数据。
 
         Args:
-        - data: 任意响应数据。
+            data: 任意响应数据。
 
         Returns:
-        - JSON 可传输的数据。
+            JSON 可传输的数据。
         """
         return jsonable_encoder(data)
 
 
 def get_session_title(messages: Any) -> str | None:
-    """从消息列表中提取首条用户消息，作为会话标题。
+    """从消息列表中提取首条用户消息作为会话标题。
 
     Args:
-    - messages: LangGraph 保存或反序列化后的消息列表。
+        messages: LangGraph 保存或反序列化后的消息列表。
+
+    Returns:
+        首条用户文本；没有时返回 None。
     """
     if not isinstance(messages, list):
         return None
-
     for message in messages:
-        message_type = (
-            message.get("type") if isinstance(message, dict) else getattr(message, "type", None)
-        )
+        message_type = message.get("type") if isinstance(message, dict) else getattr(message, "type", None)
         if message_type != "human":
             continue
-        content = (
-            message.get("content")
-            if isinstance(message, dict)
-            else getattr(message, "content", None)
-        )
+        content = message.get("content") if isinstance(message, dict) else getattr(message, "content", None)
         if isinstance(content, str) and content.strip():
             return content.strip()
     return None
 
 
 def get_checkpoint_session_title(checkpoint: Any) -> str | None:
-    """从内存检查点中提取会话标题。
+    """从内存检查点提取会话标题。
 
     Args:
-    - checkpoint: LangGraph 保存的检查点数据。
+        checkpoint: LangGraph 保存的检查点数据。
+
+    Returns:
+        会话标题或 None。
     """
     if not isinstance(checkpoint, dict):
         return None
-    channel_values = checkpoint.get("channel_values")
-    if not isinstance(channel_values, dict):
-        return None
-    return get_session_title(channel_values.get("messages"))
+    values = checkpoint.get("channel_values")
+    return get_session_title(values.get("messages")) if isinstance(values, dict) else None
 
 
 def get_postgres_session_title(checkpointer: Any, row: dict[str, Any]) -> str | None:
-    """从 PostgreSQL 的 messages blob 中反序列化会话标题。
+    """从 PostgreSQL 检查点 blob 反序列化会话标题。
 
     Args:
-    - checkpointer: 当前 LangGraph PostgreSQL 检查点存储。
-    - row: 会话列表 SQL 返回的单行数据。
+        checkpointer: 当前 LangGraph PostgreSQL 检查点存储。
+        row: 会话列表查询返回的行。
+
+    Returns:
+        会话标题或 None。
     """
     message_type = row.get("messages_type")
     message_blob = row.get("messages_blob")
@@ -96,48 +90,31 @@ def get_postgres_session_title(checkpointer: Any, row: dict[str, Any]) -> str | 
     try:
         messages = checkpointer.serde.loads_typed((message_type, message_blob))
     except Exception:
-        logger.exception("反序列化会话标题失败: session_id={}", row["thread_id"])
+        logger.exception("反序列化会话标题失败: session_id={}", row.get("thread_id"))
         return None
     return get_session_title(messages)
 
 
 def create_agent_router(checkpointer=None, store=None) -> APIRouter:
+    """创建 Agent API 路由，浏览器运行入口统一使用 AG-UI。
+
+    Args:
+        checkpointer: LangGraph 检查点存储。
+        store: LangGraph 长期存储。
+
+    Returns:
+        Agent API 路由器。
+    """
     router = APIRouter(prefix="/api/agent")
-    ag_ui_router = APIRouter(tags=["agent-ag-ui"])
-    general_api_router = APIRouter()
     agent = Agent(deep_agent=True, checkpointer=checkpointer, store=store).get_agent()
-
-    add_langgraph_fastapi_endpoint(
-        app=ag_ui_router,
-        agent=LangGraphAgent(
-            name="agent",
-            description="DeepAgent service.",
-            graph=agent,
-        ),
-        path="/ag_ui",
+    run_manager = AgentRunManager(agent)
+    router.include_router(
+        create_agui_run_router(
+            run_manager,
+            allowed_state_keys={"internet_search", "deep_thinking", "mcp_config"},
+            tags=["agent-ag-ui"],
+        )
     )
-
-    # v1：astream messages/updates
-    add_general_api_endpoint_v1(
-        app=general_api_router,
-        agent=agent,
-        path="/general_api",
-        context=AgentContext,
-        name="agent_general_api",
-        tags=["agent-chat"],
-    )
-    # v2：astream_events v3，便于对照测试
-    add_general_api_endpoint_v2(
-        app=general_api_router,
-        agent=agent,
-        path="/v2/general_api",
-        context=AgentContext,
-        name="agent_general_api_v2",
-        tags=["agent-chat-v2"],
-    )
-
-    router.include_router(ag_ui_router)
-    router.include_router(general_api_router)
 
     @router.get(
         "/get_session_list",

@@ -139,8 +139,8 @@ deepclaw/
 │                        ▼                                            │
 └──────────────────────────────────────────────────────────────────────┘
               ┌──────────────────────────────────────────────────┐
-              │  POST /api/agent/general_api                      │
-              │  POST /api/rag/general_api                        │
+              │  POST /api/agent/runs                      │
+              │  POST /api/rag/runs                        │
               │  POST /api/auth/*                                 │
               │  POST /api/channels/sessions                      │
               └─────────────────────┬────────────────────────────┘
@@ -226,9 +226,9 @@ uv run python -m deepclaw.main
 After the service starts:
 
 - Frontend: `http://localhost:7869/`
-- Agent SSE: `POST /api/agent/general_api`
+- Agent SSE: `POST /api/agent/runs`
 - Agent AG-UI: `POST /api/agent/ag_ui`
-- RAG SSE: `POST /api/rag/general_api`
+- RAG SSE: `POST /api/rag/runs`
 - Channels API: `/api/channels/*`
 
 ### 5. Start Dependencies (optional but recommended)
@@ -286,8 +286,12 @@ pnpm build
 
 | Method | Path | Protocol | Description |
 |--------|------|----------|-------------|
-| `POST` | `/api/agent/ag_ui` | AG-UI | Agent frontend protocol interface |
-| `POST` | `/api/agent/general_api` | SSE | General Agent streaming interface |
+| `POST` | `/api/agent/runs` | AG-UI | Create an Agent Run |
+| `GET` | `/api/agent/runs/{run_id}/events` | AG-UI SSE | Replay or continue Run events |
+| `GET` | `/api/agent/runs/{run_id}` | REST | Run snapshot |
+| `POST` | `/api/agent/runs/{run_id}/resume` | AG-UI | Resume an interrupted Run |
+| `POST` | `/api/agent/runs/{run_id}/actions` | AG-UI | Submit a card action |
+| `POST` | `/api/agent/runs/{run_id}/cancel` | REST | Cancel a Run |
 | `POST` | `/api/agent/skills/list` | REST | List skills |
 | `POST` | `/api/agent/skills/upload` | REST | Upload skill zip |
 | `POST` | `/api/agent/skills/delete` | REST | Delete skill |
@@ -296,7 +300,12 @@ pnpm build
 
 | Method | Path | Protocol | Description |
 |--------|------|----------|-------------|
-| `POST` | `/api/rag/general_api` | SSE | RAG streaming Q&A |
+| `POST` | `/api/rag/runs` | AG-UI | Create a RAG Run |
+| `GET` | `/api/rag/runs/{run_id}/events` | AG-UI SSE | Replay or continue RAG events |
+| `GET` | `/api/rag/runs/{run_id}` | REST | RAG Run snapshot |
+| `POST` | `/api/rag/runs/{run_id}/resume` | AG-UI | Resume an interrupted RAG Run |
+| `POST` | `/api/rag/runs/{run_id}/actions` | AG-UI | Submit a RAG action |
+| `POST` | `/api/rag/runs/{run_id}/cancel` | REST | Cancel a RAG Run |
 | `POST` | `/api/rag/knowledge-bases/list` | REST | Paginated knowledge base list |
 | `POST` | `/api/rag/knowledge-bases/create` | REST | Create knowledge base |
 | `POST` | `/api/rag/knowledge-bases/detail` | REST | Knowledge base details |
@@ -329,21 +338,27 @@ pnpm build
 ### General Agent Q&A
 
 ```bash
-curl -N -X POST http://localhost:7869/api/agent/general_api \
+curl -X POST http://localhost:7869/api/agent/runs \
   -H "Content-Type: application/json" \
   -d '{
-    "query": "Summarize today'\''s work schedule for me",
-    "session_id": "demo-session",
-    "user_id": "demo-user",
-    "internet_search": false,
-    "deep_thinking": false
+    "threadId": "demo-session",
+    "runId": "run-demo-1",
+    "state": { "internet_search": false, "deep_thinking": false },
+    "messages": [
+      { "id": "msg-1", "role": "user", "content": "Summarize today'\''s work schedule for me" }
+    ],
+    "tools": [],
+    "context": [],
+    "forwardedProps": {}
   }'
 ```
+
+After creation, subscribe to `GET /api/agent/runs/run-demo-1/events` for AG-UI SSE.
 
 ### Multimodal Agent Input
 
 ```bash
-curl -N -X POST http://localhost:7869/api/agent/general_api \
+curl -N -X POST http://localhost:7869/api/agent/runs \
   -H "Content-Type: application/json" \
   -d '{
     "query": [
@@ -385,16 +400,22 @@ curl -X POST http://localhost:7869/api/rag/knowledge-bases/documents/upload \
 `index_name` and `graph_name` can be obtained from the knowledge base detail response's `passage_index` and `index_prefix`.
 
 ```bash
-curl -N -X POST http://localhost:7869/api/rag/general_api \
+curl -X POST http://localhost:7869/api/rag/runs \
   -H "Content-Type: application/json" \
   -d '{
-    "query": "What are the core conclusions of this document?",
-    "session_id": "rag-session",
-    "user_id": "demo-user",
-    "index_name": "kb_xxx_passages",
-    "graph_name": "kb_xxx"
+    "threadId": "rag-session",
+    "runId": "rag-run-demo-1",
+    "state": { "index_name": "kb_xxx_passages", "graph_name": "kb_xxx" },
+    "messages": [
+      { "id": "msg-1", "role": "user", "content": "What are the core conclusions of this document?" }
+    ],
+    "tools": [],
+    "context": [],
+    "forwardedProps": {}
   }'
 ```
+
+After creation, subscribe to `GET /api/rag/runs/rag-run-demo-1/events` for AG-UI SSE.
 
 ## Configuration
 

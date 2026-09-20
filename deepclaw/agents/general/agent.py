@@ -1,10 +1,9 @@
 from typing import Any
 
 from langgraph.graph.state import CompiledStateGraph
-from langgraph.runtime import Runtime
 from loguru import logger
 
-from deepclaw.agents.general.context import AgentContext
+from deepclaw.agents.general.state import StateSchema
 from deepclaw.constant import (
     AGENT_VIRTUAL_PREFERENCES,
     SANDBOX_SHARED_AGENTS,
@@ -18,9 +17,14 @@ from deepclaw.settings import settings
 from deepclaw.utils import get_chat_model
 
 
-def user_namespace_factory(runtime: Runtime[Any]) -> tuple[str, ...]:
-    """动态生成用户namespace：('user123', 'filesystem')"""
-    user_id = runtime.context.user_id  # 从context获取
+def user_namespace_factory(runtime: Any) -> tuple[str, ...]:
+    """动态生成用户 namespace。
+
+    Args:
+        runtime: 当前 Agent 运行时，状态中包含 user_id。
+    """
+    state = getattr(runtime, "state", {}) or {}
+    user_id = state.get("user_id", "default")
     # TODO 获取config,未来可实现共享命名空间
     # from langchain_core.runnables.config import var_child_runnable_config
     # config = var_child_runnable_config.get()
@@ -162,7 +166,7 @@ class Agent:
                 memory=memory,
                 checkpointer=self.checkpointer,
                 store=self.store,
-                context_schema=AgentContext,
+                state_schema=StateSchema,
                 permissions=[FilesystemPermission(operations=["read", "write"], paths=["/**"], mode="allow")],
             )
         else:
@@ -188,7 +192,7 @@ class Agent:
                 middleware=middleware,
                 checkpointer=self.checkpointer,
                 store=self.store,
-                context_schema=AgentContext,
+                state_schema=StateSchema,
             )
 
     def get_agent(self) -> CompiledStateGraph:

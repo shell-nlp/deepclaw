@@ -136,14 +136,6 @@ def noop_endpoint(*args, **kwargs):
 def test_list_sessions_returns_deduplicated_sessions_with_titles(monkeypatch):
     """会话列表接口应按检查点顺序返回去重后的会话，并包含标题与更新时间。"""
     monkeypatch.setattr(agent_router, "Agent", FakeAgent)
-    monkeypatch.setattr(agent_router, "LangGraphAgent", FakeLangGraphAgent)
-    monkeypatch.setattr(
-        agent_router,
-        "add_langgraph_fastapi_endpoint",
-        noop_endpoint,
-    )
-    monkeypatch.setattr(agent_router, "add_general_api_endpoint_v1", noop_endpoint)
-    monkeypatch.setattr(agent_router, "add_general_api_endpoint_v2", noop_endpoint)
 
     app = FastAPI()
     app.include_router(agent_router.create_agent_router(FakeCheckpointer()))
@@ -208,15 +200,7 @@ def test_list_sessions_queries_postgres_thread_ids_directly(monkeypatch):
     checkpointer.serde = serde
 
     monkeypatch.setattr(agent_router, "Agent", FakeAgent)
-    monkeypatch.setattr(agent_router, "LangGraphAgent", FakeLangGraphAgent)
     monkeypatch.setattr(agent_router, "AsyncPostgresSaver", FakeAsyncPostgresSaver)
-    monkeypatch.setattr(
-        agent_router,
-        "add_langgraph_fastapi_endpoint",
-        noop_endpoint,
-    )
-    monkeypatch.setattr(agent_router, "add_general_api_endpoint_v1", noop_endpoint)
-    monkeypatch.setattr(agent_router, "add_general_api_endpoint_v2", noop_endpoint)
 
     app = FastAPI()
     app.include_router(agent_router.create_agent_router(checkpointer))
@@ -240,14 +224,6 @@ def test_delete_session_calls_checkpointer_delete_thread(monkeypatch):
     """删除会话接口应调用检查点存储的异步删除方法。"""
     checkpointer = FakeCheckpointer()
     monkeypatch.setattr(agent_router, "Agent", FakeAgent)
-    monkeypatch.setattr(agent_router, "LangGraphAgent", FakeLangGraphAgent)
-    monkeypatch.setattr(
-        agent_router,
-        "add_langgraph_fastapi_endpoint",
-        noop_endpoint,
-    )
-    monkeypatch.setattr(agent_router, "add_general_api_endpoint_v1", noop_endpoint)
-    monkeypatch.setattr(agent_router, "add_general_api_endpoint_v2", noop_endpoint)
 
     app = FastAPI()
     app.include_router(agent_router.create_agent_router(checkpointer))
@@ -270,14 +246,6 @@ def test_delete_session_calls_checkpointer_delete_thread(monkeypatch):
 def test_delete_session_returns_error_when_checkpointer_fails(monkeypatch):
     """检查点删除失败时接口应返回明确的服务端错误。"""
     monkeypatch.setattr(agent_router, "Agent", FakeAgent)
-    monkeypatch.setattr(agent_router, "LangGraphAgent", FakeLangGraphAgent)
-    monkeypatch.setattr(
-        agent_router,
-        "add_langgraph_fastapi_endpoint",
-        noop_endpoint,
-    )
-    monkeypatch.setattr(agent_router, "add_general_api_endpoint_v1", noop_endpoint)
-    monkeypatch.setattr(agent_router, "add_general_api_endpoint_v2", noop_endpoint)
 
     app = FastAPI()
     app.include_router(agent_router.create_agent_router(FailingCheckpointer()))
@@ -299,14 +267,6 @@ def test_delete_session_returns_error_when_checkpointer_fails(monkeypatch):
 def test_get_state_returns_standard_response(monkeypatch):
     """会话状态接口应将完整状态放入统一响应的 data 字段。"""
     monkeypatch.setattr(agent_router, "Agent", FakeStateAgent)
-    monkeypatch.setattr(agent_router, "LangGraphAgent", FakeLangGraphAgent)
-    monkeypatch.setattr(
-        agent_router,
-        "add_langgraph_fastapi_endpoint",
-        noop_endpoint,
-    )
-    monkeypatch.setattr(agent_router, "add_general_api_endpoint_v1", noop_endpoint)
-    monkeypatch.setattr(agent_router, "add_general_api_endpoint_v2", noop_endpoint)
 
     app = FastAPI()
     app.include_router(agent_router.create_agent_router(FakeCheckpointer()))
