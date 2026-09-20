@@ -38,14 +38,9 @@
   - 当配置 `PG_DATABASE_URL` 时，优先落统一 PG；未配置时回退各自 SQLite
 
 - `deepclaw/web_backend/common/agui_runs.py`
-  统一 AG-UI Run 生命周期路由与 Snapshot 响应模型，提供：
-  - `POST /runs`
-  - `GET /runs/{run_id}/events`
-  - `GET /runs/{run_id}`
-  - `POST /runs/{run_id}/actions`
-  - `POST /runs/{run_id}/resume`
-  - `POST /runs/{run_id}/cancel`
-  - `GET /api/runtime-config`
+  AG-UI Run 公共执行逻辑、Agent/RAG Runs 路径解析、渠道 Agent URL 与 runtime-config 路由。
+- `deepclaw/web_backend/common/agui_schemas.py`
+  AG-UI HTTP 协议模型，当前包含 `RunSnapshot` 与 `RunActionRequest`。
 
 - `deepclaw/web_backend/agent/run_manager.py`
   基于 `RunStore` 的 Run 管理器，负责 Run 执行、`Last-Event-ID` 重放、恢复、取消与事件流编排。
@@ -54,9 +49,6 @@
 
 - `deepclaw/web_backend/common/errors.py`
   统一业务规则异常 `BusinessRuleError`，由 `create_app()` 注册的全局异常处理器转换为 `{"detail": ...}` 响应。
-
-- `deepclaw/web_backend/common/agui_runs.py`
-  统一提供 AG-UI Run 生命周期路由、Agent/RAG Runs 路径解析、渠道 Agent URL 和前端 runtime-config；不再保留旧 `general_api` SSE 适配实现。
 
 ### Web 功能目录
 
@@ -83,6 +75,8 @@
 
 - `deepclaw/web_backend/agent/router.py`
   模块级 Agent 路由器；从 `app.state` 读取 checkpointer/store，并懒加载缓存 Agent 图与 Run 管理器。
+- `deepclaw/web_backend/agent/schemas.py`
+  Agent HTTP 请求与响应模型，包含会话列表、删除会话和状态查询模型。
 
 - `deepclaw/web_backend/rag/router.py`
   模块级 RAG 路由器；从 `app.state` 读取 checkpointer/store，并懒加载缓存 RAG 图与 Run 管理器。

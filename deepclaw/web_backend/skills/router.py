@@ -47,13 +47,3 @@ def delete_skill(
     if actor.is_guest:
         raise HTTPException(status_code=403, detail="登录后可删除技能。")
     return skill_manager.delete_skill(skill_name=request.skill_name)
-
-
-def add_skill_management_routes(target_router: APIRouter) -> None:
-    """把模块级技能路由加入目标路由器。"""
-    target_router.include_router(router)
-
-
-def create_skills_router() -> APIRouter:
-    """返回模块级技能路由器。"""
-    return router

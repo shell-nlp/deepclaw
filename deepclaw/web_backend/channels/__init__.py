@@ -1,6 +1,6 @@
 from deepclaw.web_backend.channels.agent_client import AgentClient
 from deepclaw.web_backend.channels.config import channel_gateway_settings
-from deepclaw.web_backend.channels.router import create_channels_router
+from deepclaw.web_backend.channels.router import router
 from deepclaw.web_backend.channels.runtime_manager import get_channel_runtime_manager
 from deepclaw.web_backend.channels.service import ChannelService
 from deepclaw.web_backend.channels.store import ChannelStore, get_channel_store
@@ -15,8 +15,8 @@ __all__ = [
     "ChannelStore",
     "channel_gateway_settings",
     "channel_lifespan",
-    "create_channels_router",
     "get_channel_runtime_manager",
     "get_channel_store",
+    "router",
     "weixin_clawbot_settings",
 ]

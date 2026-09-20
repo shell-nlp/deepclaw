@@ -4,48 +4,29 @@ import asyncio
 from copy import deepcopy
 from typing import Any
 
+from ag_ui.core import RunAgentInput
 from fastapi import APIRouter, Depends, HTTPException, Request
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from loguru import logger
-from pydantic import BaseModel, Field
-
 from deepclaw.agents.general.agent import Agent
 from deepclaw.web_backend.agent.run_manager import AgentRunManager
+from deepclaw.web_backend.agent.schemas import (
+    DeleteSessionRequest,
+    DeleteSessionResponse,
+    GetHistoryRequest,
+    SessionListResponse,
+)
 from deepclaw.web_backend.agent.run_store import get_run_store
-from deepclaw.web_backend.common.agui_runs import create_agui_run_router
-
-
-class GetHistoryRequest(BaseModel):
-    """Agent 会话状态查询请求。"""
-
-    session_id: str
-
-
-class DeleteSessionRequest(BaseModel):
-    """Agent 会话删除请求。"""
-
-    session_id: str
-
-
-class SessionSummary(BaseModel):
-    """Agent 会话摘要。"""
-
-    session_id: str
-    updated_at: str | None = None
-    title: str | None = None
-
-
-class SessionListResponse(BaseModel):
-    """Agent 会话列表响应。"""
-
-    sessions: list[SessionSummary] = Field(default_factory=list)
-    total: int = 0
-
-
-class DeleteSessionResponse(BaseModel):
-    """删除 Agent 会话响应。"""
-
-    session_id: str
+from deepclaw.web_backend.auth.dependencies import CurrentActor, get_current_actor
+from deepclaw.web_backend.common.agui_runs import (
+    cancel_agui_run,
+    create_agui_run,
+    get_agui_run_snapshot,
+    handle_agui_action,
+    resume_agui_run,
+    stream_agui_run_events,
+)
+from deepclaw.web_backend.common.agui_schemas import RunActionRequest, RunSnapshot
 
 
 _agent_graph_cache: dict[tuple[int, int, int], Any] = {}
@@ -204,13 +185,126 @@ def get_postgres_session_title(checkpointer: Any, row: dict[str, Any]) -> str | 
 
 
 router = APIRouter(prefix="/api/agent")
-router.include_router(
-    create_agui_run_router(
-        get_agent_run_manager,
-        allowed_state_keys={"internet_search", "deep_thinking", "mcp_config"},
-        tags=["agent-ag-ui"],
-    )
+_AGENT_ALLOWED_STATE_KEYS = {"internet_search", "deep_thinking", "mcp_config"}
+
+
+@router.post(
+    "/runs",
+    status_code=202,
+    response_model=RunSnapshot,
+    tags=["agent-ag-ui"],
+    summary="创建 Agent AG-UI Run",
+    description="创建一次 Agent 运行并返回 Run Snapshot，后续通过事件接口订阅 AG-UI 事件流。",
 )
+async def create_agent_run(
+    payload: RunAgentInput,
+    request: Request,
+    actor: CurrentActor = Depends(get_current_actor),
+    manager: AgentRunManager = Depends(get_agent_run_manager),
+):
+    """创建 Agent AG-UI Run。"""
+    return await create_agui_run(manager, payload, request, actor, _AGENT_ALLOWED_STATE_KEYS)
+
+
+@router.get(
+    "/runs/{run_id}",
+    response_model=RunSnapshot,
+    tags=["agent-ag-ui"],
+    summary="获取 Agent AG-UI Run",
+    description="查询指定 Agent Run 的当前状态、事件游标、更新时间和错误信息。",
+)
+async def get_agent_run(
+    run_id: str,
+    actor: CurrentActor = Depends(get_current_actor),
+    manager: AgentRunManager = Depends(get_agent_run_manager),
+):
+    """读取 Agent AG-UI Run Snapshot。"""
+    return await get_agui_run_snapshot(manager, run_id, actor)
+
+
+@router.get(
+    "/runs/{run_id}/events",
+    tags=["agent-ag-ui"],
+    summary="订阅 Agent AG-UI Run 事件",
+    description="以 SSE 流式返回 Agent AG-UI 事件，支持通过 Last-Event-ID 从指定位置重放。",
+)
+async def agent_run_events(
+    run_id: str,
+    request: Request,
+    after: str | None = None,
+    actor: CurrentActor = Depends(get_current_actor),
+    manager: AgentRunManager = Depends(get_agent_run_manager),
+):
+    """订阅 Agent AG-UI Run 事件。"""
+    return await stream_agui_run_events(manager, run_id, request, after, actor)
+
+
+@router.post(
+    "/runs/{run_id}/resume",
+    status_code=202,
+    response_model=RunSnapshot,
+    tags=["agent-ag-ui"],
+    summary="恢复 Agent AG-UI Run",
+    description="提交表单、审批或中断恢复输入，继续执行同一个 Agent Run。",
+)
+async def resume_agent_run(
+    run_id: str,
+    payload: RunAgentInput,
+    request: Request,
+    actor: CurrentActor = Depends(get_current_actor),
+    manager: AgentRunManager = Depends(get_agent_run_manager),
+):
+    """恢复 Agent AG-UI Run。"""
+    return await resume_agui_run(
+        manager,
+        run_id,
+        payload,
+        request,
+        actor,
+        _AGENT_ALLOWED_STATE_KEYS,
+    )
+
+
+@router.post(
+    "/runs/{run_id}/actions",
+    status_code=202,
+    response_model=RunSnapshot,
+    tags=["agent-ag-ui"],
+    summary="处理 Agent AG-UI Action",
+    description="将前端卡片 Action 转换为 AG-UI resume 命令并继续当前 Agent Run。",
+)
+async def handle_agent_action(
+    run_id: str,
+    payload: RunActionRequest,
+    request: Request,
+    actor: CurrentActor = Depends(get_current_actor),
+    manager: AgentRunManager = Depends(get_agent_run_manager),
+):
+    """处理 Agent AG-UI Action。"""
+    return await handle_agui_action(
+        manager,
+        run_id,
+        payload,
+        request,
+        actor,
+        _AGENT_ALLOWED_STATE_KEYS,
+    )
+
+
+@router.post(
+    "/runs/{run_id}/cancel",
+    response_model=RunSnapshot,
+    tags=["agent-ag-ui"],
+    summary="取消 Agent AG-UI Run",
+    description="请求取消指定 Agent Run，并返回取消后的 Run Snapshot。",
+)
+async def cancel_agent_run(
+    run_id: str,
+    actor: CurrentActor = Depends(get_current_actor),
+    manager: AgentRunManager = Depends(get_agent_run_manager),
+):
+    """取消 Agent AG-UI Run。"""
+    return await cancel_agui_run(manager, run_id, actor)
 
 
 @router.get(
@@ -350,7 +444,3 @@ async def get_state(
 
     return final_state
 
-
-def create_agent_router() -> APIRouter:
-    """返回模块级 Agent 路由器。"""
-    return router

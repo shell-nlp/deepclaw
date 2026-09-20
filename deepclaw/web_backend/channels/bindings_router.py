@@ -39,8 +39,3 @@ async def list_bindings(
     )
     items = [ChannelBindingRead.model_validate(binding) for binding in bindings]
     return ChannelBindingList(items=items, total=len(items))
-
-
-def create_channel_bindings_router() -> APIRouter:
-    """返回模块级渠道绑定路由器。"""
-    return router

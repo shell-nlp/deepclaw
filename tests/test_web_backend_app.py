@@ -10,19 +10,17 @@ from fastapi.testclient import TestClient
 
 
 def _load_app_module(monkeypatch):
-    router_modules = {
-        "deepclaw.web_backend.agent.router": "create_agent_router",
-        "deepclaw.web_backend.auth.router": "create_auth_router",
-        "deepclaw.web_backend.channels.router": "create_channels_router",
-        "deepclaw.web_backend.knowledge_bases.router": "create_knowledge_bases_router",
-        "deepclaw.web_backend.rag.router": "create_rag_router",
-        "deepclaw.web_backend.skills.router": "create_skills_router",
-    }
-
-    for module_name, factory_name in router_modules.items():
+    router_modules = [
+        "deepclaw.web_backend.agent.router",
+        "deepclaw.web_backend.auth.router",
+        "deepclaw.web_backend.channels.router",
+        "deepclaw.web_backend.knowledge_bases.router",
+        "deepclaw.web_backend.rag.router",
+        "deepclaw.web_backend.skills.router",
+    ]
+    for module_name in router_modules:
         module = types.ModuleType(module_name)
         module.router = APIRouter()
-        setattr(module, factory_name, lambda: APIRouter())
         monkeypatch.setitem(sys.modules, module_name, module)
 
     from deepclaw.web_backend import app as app_module

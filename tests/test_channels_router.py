@@ -2,7 +2,7 @@ import asyncio
 import importlib
 
 import pytest
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 import httpx
 from deepclaw.web_backend.auth.dependencies import CurrentActor, get_current_actor
@@ -71,25 +71,23 @@ def build_channels_client(
     return TestClient(app, raise_server_exceptions=raise_server_exceptions)
 
 def test_channels_router_is_importable_from_nested_business_api_package():
-    from deepclaw.web_backend.channels.router import create_channels_router
+    from deepclaw.web_backend.channels.router import router as channels_router
 
-    assert callable(create_channels_router)
+    assert isinstance(channels_router, APIRouter)
 
 
 def test_channels_router_assembles_domain_routers():
-    from deepclaw.web_backend.channels.dingtalk.router import create_dingtalk_router
-    from deepclaw.web_backend.channels.feishu.router import create_feishu_router
-    from deepclaw.web_backend.channels.session_router import (
-        create_channel_sessions_router,
-    )
+    from deepclaw.web_backend.channels.dingtalk.router import router as dingtalk_router
+    from deepclaw.web_backend.channels.feishu.router import router as feishu_router
+    from deepclaw.web_backend.channels.session_router import router as sessions_router
     from deepclaw.web_backend.channels.weixin_clawbot.router import (
-        create_weixin_clawbot_router,
+        router as weixin_clawbot_router,
     )
 
-    assert callable(create_channel_sessions_router)
-    assert callable(create_feishu_router)
-    assert callable(create_dingtalk_router)
-    assert callable(create_weixin_clawbot_router)
+    assert isinstance(sessions_router, APIRouter)
+    assert isinstance(feishu_router, APIRouter)
+    assert isinstance(dingtalk_router, APIRouter)
+    assert isinstance(weixin_clawbot_router, APIRouter)
 
 
 def test_channels_schema_is_importable_from_business_schema_package():

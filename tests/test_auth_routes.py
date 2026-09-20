@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 
 def build_client() -> TestClient:
-    from deepclaw.web_backend.auth.router import create_auth_router
+    from deepclaw.web_backend.auth.router import router as auth_router
     from deepclaw.web_backend.auth.service import AuthService, get_auth_service
     from deepclaw.web_backend.auth.store import AuthStore
 
@@ -19,7 +19,7 @@ def build_client() -> TestClient:
 
     app = FastAPI()
     app.dependency_overrides[get_auth_service] = lambda: service
-    app.include_router(create_auth_router())
+    app.include_router(auth_router)
     return TestClient(app)
 
 

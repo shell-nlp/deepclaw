@@ -233,12 +233,3 @@ async def bulk_delete_documents(
         knowledge_base_id=request.knowledge_base_id,
         document_ids=request.document_ids,
     )
-
-def add_knowledge_base_management_routes(target_router: APIRouter) -> None:
-    """把模块级知识库路由加入目标路由器。"""
-    target_router.include_router(router)
-
-
-def create_knowledge_bases_router() -> APIRouter:
-    """返回模块级知识库路由器。"""
-    return router

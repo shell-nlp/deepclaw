@@ -17,8 +17,3 @@ router.include_router(sessions_router)
 router.include_router(feishu_router)
 router.include_router(dingtalk_router)
 router.include_router(weixin_clawbot_router)
-
-
-def create_channels_router() -> APIRouter:
-    """返回模块级渠道路由器。"""
-    return router
