@@ -8,6 +8,7 @@ from pydantic import BaseModel, field_serializer
 
 from deepclaw.agents.general.agent import Agent
 from deepclaw.web_backend.agent.run_manager import AgentRunManager
+from deepclaw.web_backend.agent.run_store import get_run_store
 from deepclaw.web_backend.common.agui_runs import create_agui_run_router
 
 
@@ -107,7 +108,7 @@ def create_agent_router(checkpointer=None, store=None) -> APIRouter:
     """
     router = APIRouter(prefix="/api/agent")
     agent = Agent(deep_agent=True, checkpointer=checkpointer, store=store).get_agent()
-    run_manager = AgentRunManager(agent)
+    run_manager = AgentRunManager(agent, store=get_run_store())
     router.include_router(
         create_agui_run_router(
             run_manager,

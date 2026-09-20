@@ -46,7 +46,9 @@
   - `POST /runs/{run_id}/cancel`
 
 - `deepclaw/web_backend/agent/run_manager.py`
-  进程内 Run 管理器，负责 Run 快照、事件缓存、`Last-Event-ID` 重放、恢复、取消与订阅者分发。
+  基于 `RunStore` 的 Run 管理器，负责 Run 执行、`Last-Event-ID` 重放、恢复、取消与事件流编排。
+- `deepclaw/web_backend/agent/run_store.py`
+  Run 存储抽象层，定义 Run 状态、事件追加/重放、过期清理和订阅接口；当前提供 `InMemoryRunStore` 与 PostgreSQL/SQLite `SqlRunStore`，后续可新增 Redis 实现。
 
 - `deepclaw/web_backend/common/agui_runs.py`
   统一提供 AG-UI Run 生命周期路由、Agent/RAG Runs 路径解析、渠道 Agent URL 和前端 runtime-config；不再保留旧 `general_api` SSE 适配实现。
@@ -202,6 +204,10 @@ pnpm build
 - `USE_COPILOTKIT`
 - `USE_TOOL_SEARCH`
 - `MCP_CONFIG`
+- `AGUI_RUN_RETENTION_SECONDS`
+- `AGUI_RUN_MAX_EVENTS`
+- `AGUI_RUN_CLEANUP_INTERVAL_SECONDS`
+- `AGUI_RUN_POLL_INTERVAL_SECONDS`
 - `CHART_PUBLIC_URL`
 - `CHART_RETENTION_HOURS`
 - `CHART_MAX_FILES`

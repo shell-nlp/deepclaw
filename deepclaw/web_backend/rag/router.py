@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from deepclaw.agents.rag.agent import create_rag_agent
 from deepclaw.web_backend.agent.run_manager import AgentRunManager
+from deepclaw.web_backend.agent.run_store import get_run_store
 from deepclaw.web_backend.common.agui_runs import create_agui_run_router
 
 
@@ -19,7 +20,7 @@ def create_rag_router(checkpointer=None, store=None) -> APIRouter:
     agent = create_rag_agent(checkpointer, store)
     router.include_router(
         create_agui_run_router(
-            AgentRunManager(agent),
+            AgentRunManager(agent, store=get_run_store()),
             allowed_state_keys={
                 "index_name",
                 "graph_name",
