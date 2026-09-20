@@ -53,6 +53,12 @@ class Settings(BaseSettings):
     # MCP 服务配置。不同发布版本可通过环境变量 MCP_CONFIG 注入 JSON 配置。
     MCP_CONFIG: dict[str, Any] = Field(default_factory=dict)
 
+    # AG-UI Run 存储与过期清理配置
+    AGUI_RUN_RETENTION_SECONDS: int = Field(default=3600, ge=60)
+    AGUI_RUN_MAX_EVENTS: int = Field(default=2000, ge=100)
+    AGUI_RUN_CLEANUP_INTERVAL_SECONDS: int = Field(default=60, ge=10)
+    AGUI_RUN_POLL_INTERVAL_SECONDS: float = Field(default=0.5, ge=0.1)
+
 
     # opensandbox 配置
     OPEN_SANDBOX_CODE_INTERPRETER_IMAGE: str = (

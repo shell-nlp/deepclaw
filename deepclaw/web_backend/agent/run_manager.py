@@ -2,30 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import time
-from dataclasses import dataclass, field
 from typing import Any
 
 from ag_ui.core import RunAgentInput, RunErrorEvent
 from ag_ui.encoder import EventEncoder
 from ag_ui_langgraph import LangGraphAgent
 from langgraph.graph.state import CompiledStateGraph
+from loguru import logger
 
-
-@dataclass
-class RunRecord:
-    """一个 AG-UI Run 的进程内运行记录。"""
-
-    run_id: str
-    thread_id: str
-    input: RunAgentInput
-    status: str = "queued"
-    next_event_id: int = 1
-    events: list[tuple[int, str]] = field(default_factory=list)
-    task: asyncio.Task[None] | None = None
-    subscribers: set[asyncio.Queue[str | None]] = field(default_factory=set)
-    created_at: float = field(default_factory=time.time)
-    updated_at: float = field(default_factory=time.time)
-    error: str | None = None
+from deepclaw.web_backend.agent.run_store import RunState, RunStore, get_run_store
 
 
 class AgentRunManager:
@@ -34,169 +19,298 @@ class AgentRunManager:
     Args:
         graph: 已装配完成的 LangGraph Agent 图。
         config: 每次 AG-UI 运行共享的 LangGraph 配置。
+        store: 可选 Run 存储；为空时使用进程级默认存储。
     """
 
-    def __init__(self, graph: CompiledStateGraph, config: dict[str, Any] | None = None) -> None:
-        self.graph = graph
-        self.config = config or {}
-        self._runs: dict[str, RunRecord] = {}
-        self._lock = asyncio.Lock()
-
-    def _snapshot(self, record: RunRecord) -> dict[str, Any]:
-        """将运行记录转换为浏览器可读的 Run Snapshot。
+    def __init__(
+        self,
+        graph: CompiledStateGraph,
+        config: dict[str, Any] | None = None,
+        store: RunStore | None = None,
+    ) -> None:
+        """初始化 Run 管理器。
 
         Args:
-            record: 待读取的运行记录。
+            graph: 已装配完成的 LangGraph Agent 图。
+            config: 每次 AG-UI 运行共享的 LangGraph 配置。
+            store: 可选 Run 存储。
+        """
+        self.graph = graph
+        self.config = config or {}
+        self.store = store or get_run_store()
+        self._tasks: dict[str, asyncio.Task[None]] = {}
+        self._watchers: dict[str, asyncio.Task[None]] = {}
+        self._cleanup_task: asyncio.Task[None] | None = None
+        self._start_cleanup_task()
+
+    @staticmethod
+    def _owner_user_id(payload: RunAgentInput) -> str:
+        """从可信 AG-UI state 中提取 Run 所属用户。
+
+        Args:
+            payload: 已由路由层覆盖可信 state 的 AG-UI 输入。
+
+        Returns:
+            登录用户 ID 或 guest。
+        """
+        state = payload.state if isinstance(payload.state, dict) else {}
+        return str(state.get("user_id") or "guest")
+
+    def _snapshot(self, state: RunState) -> dict[str, Any]:
+        """将 Run 状态转换为浏览器可读 Snapshot。
+
+        Args:
+            state: 当前 Run 状态。
 
         Returns:
             Run Snapshot 字典。
         """
         return {
-            "runId": record.run_id,
-            "threadId": record.thread_id,
-            "status": record.status,
-            "lastEventId": f"{record.run_id}:{record.next_event_id - 1}",
-            "eventCount": len(record.events),
-            "createdAt": record.created_at,
-            "updatedAt": record.updated_at,
-            "error": record.error,
+            "runId": state.run_id,
+            "threadId": state.thread_id,
+            "status": state.status,
+            "lastEventId": f"{state.run_id}:{state.last_event_id}",
+            "eventCount": state.last_event_id,
+            "createdAt": state.created_at,
+            "updatedAt": state.updated_at,
+            "error": state.error,
         }
 
+    def _start_cleanup_task(self) -> None:
+        """在当前事件循环中启动过期清理任务。
+
+        Args:
+            无。
+
+        Returns:
+            无。
+        """
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        self._cleanup_task = loop.create_task(self._cleanup_loop())
+
+    async def _cleanup_loop(self) -> None:
+        """周期性清理已过期 Run。
+
+        Args:
+            无。
+
+        Returns:
+            无。
+        """
+        interval = float(getattr(self.store, "cleanup_interval_seconds", 60))
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                await self.store.prune_expired()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("清理过期 AG-UI Run 失败")
+
+    async def _watch_cancellation(
+        self,
+        run_id: str,
+        task: asyncio.Task[None],
+    ) -> None:
+        """监听数据库中的取消状态并取消本地执行任务。
+
+        Args:
+            run_id: Run ID。
+            task: 当前 worker 中执行该 Run 的异步任务。
+
+        Returns:
+            无。
+        """
+        interval = float(getattr(self.store, "poll_interval_seconds", 0.5))
+        try:
+            while not task.done():
+                state = await self.store.get_run(run_id)
+                if state is None or state.status in {"cancelling", "cancelled"}:
+                    task.cancel()
+                    return
+                await asyncio.sleep(interval)
+        except asyncio.CancelledError:
+            return
+
+    def _start_task(self, run_id: str, payload: RunAgentInput) -> asyncio.Task[None]:
+        """启动 Run 后台执行任务和取消监听任务。
+
+        Args:
+            run_id: Run ID。
+            payload: AG-UI 输入。
+
+        Returns:
+            已创建的异步任务。
+        """
+        task = asyncio.create_task(self._execute(run_id, payload))
+        self._tasks[run_id] = task
+        watcher = asyncio.create_task(self._watch_cancellation(run_id, task))
+        self._watchers[run_id] = watcher
+
+        def cleanup(_: asyncio.Task[None]) -> None:
+            """清理任务引用。
+
+            Args:
+                _: 已结束的执行任务。
+
+            Returns:
+                无。
+            """
+            self._tasks.pop(run_id, None)
+            watcher.cancel()
+            self._watchers.pop(run_id, None)
+
+        task.add_done_callback(cleanup)
+        return task
+
     async def create(self, payload: RunAgentInput) -> dict[str, Any]:
-        """创建并异步启动一个新的 AG-UI Run。
+        """幂等创建并异步启动一个新的 AG-UI Run。
 
         Args:
             payload: AG-UI 标准 RunAgentInput。
 
         Returns:
-            新建 Run 的 Snapshot。
+            新建或已存在 Run 的 Snapshot。
 
         Raises:
-            ValueError: run_id 或 thread_id 已有活动运行。
+            ValueError: run_id 已存在但归属用户或 thread_id 不一致。
         """
-        async with self._lock:
-            existing = self._runs.get(payload.run_id)
-            if existing is not None and existing.status in {"queued", "running"}:
-                raise ValueError("run_id 已存在且仍在运行")
-            record = RunRecord(
-                run_id=payload.run_id,
-                thread_id=payload.thread_id,
-                input=payload,
-            )
-            self._runs[payload.run_id] = record
-            record.task = asyncio.create_task(self._execute(record, payload))
-            return self._snapshot(record)
+        owner_user_id = self._owner_user_id(payload)
+        existing = await self.store.get_run(payload.run_id, user_id=owner_user_id)
+        if existing is not None:
+            if existing.thread_id != payload.thread_id:
+                raise ValueError("run_id 已存在且 thread_id 不一致")
+            return self._snapshot(existing)
 
-    async def continue_run(self, run_id: str, payload: RunAgentInput) -> dict[str, Any]:
+        state = RunState(
+            run_id=payload.run_id,
+            thread_id=payload.thread_id,
+            input=payload,
+            owner_user_id=owner_user_id,
+        )
+        created = await self.store.create_run(state)
+        if not created:
+            existing = await self.store.get_run(payload.run_id, user_id=owner_user_id)
+            if existing is not None and existing.thread_id == payload.thread_id:
+                return self._snapshot(existing)
+            raise ValueError("run_id 已存在且不属于当前用户或 thread_id 不一致")
+        self._start_task(state.run_id, payload)
+        return self._snapshot(state)
+
+    async def continue_run(
+        self,
+        run_id: str,
+        payload: RunAgentInput,
+        user_id: str | None = None,
+    ) -> dict[str, Any]:
         """在同一 Run 资源下启动恢复或 Action 产生的后续执行。
 
         Args:
             run_id: 路径中的 Run ID。
             payload: 包含同一 thread_id 和 command.resume 的 AG-UI 输入。
+            user_id: 可选当前用户 ID，用于归属校验。
 
         Returns:
             更新后的 Run Snapshot。
 
         Raises:
-            ValueError: Run 不存在、仍在运行或输入 ID 不匹配。
+            ValueError: Run 不存在、不属于当前用户、仍在运行或输入 ID 不匹配。
         """
-        async with self._lock:
-            record = self._runs.get(run_id)
-            if record is None:
-                raise ValueError("Run 不存在")
-            if record.status in {"queued", "running"}:
-                raise ValueError("Run 仍在运行，不能重复提交恢复操作")
-            if payload.run_id != run_id or payload.thread_id != record.thread_id:
-                raise ValueError("run_id 或 thread_id 与当前 Run 不一致")
-            record.input = payload
-            record.status = "queued"
-            record.error = None
-            record.updated_at = time.time()
-            record.task = asyncio.create_task(self._execute(record, payload))
-            return self._snapshot(record)
+        state = await self.store.get_run(run_id, user_id=user_id)
+        if state is None:
+            raise ValueError("Run 不存在")
+        if self._owner_user_id(payload) != state.owner_user_id:
+            raise ValueError("Run 所属用户与当前输入不一致")
+        if state.status in {"queued", "running", "cancelling"}:
+            raise ValueError("Run 仍在运行，不能重复提交恢复操作")
+        if payload.run_id != run_id or payload.thread_id != state.thread_id:
+            raise ValueError("run_id 或 thread_id 与当前 Run 不一致")
+        state.input = payload
+        state.status = "queued"
+        state.error = None
+        state.updated_at = time.time()
+        await self.store.save_run(state)
+        self._start_task(run_id, payload)
+        return self._snapshot(state)
 
-    async def get_snapshot(self, run_id: str) -> dict[str, Any] | None:
+    async def get_snapshot(self, run_id: str, user_id: str | None = None) -> dict[str, Any] | None:
         """读取指定 Run 的 Snapshot。
 
         Args:
             run_id: Run ID。
+            user_id: 可选当前用户 ID，用于归属校验。
 
         Returns:
-            Snapshot；Run 不存在时返回 None。
+            Snapshot；Run 不存在或不属于当前用户时返回 None。
         """
-        async with self._lock:
-            record = self._runs.get(run_id)
-            return self._snapshot(record) if record else None
+        state = await self.store.get_run(run_id, user_id=user_id)
+        return self._snapshot(state) if state else None
 
-    async def cancel(self, run_id: str) -> dict[str, Any] | None:
-        """取消指定 Run 的后台任务。
+    async def get_input(self, run_id: str, user_id: str | None = None) -> RunAgentInput | None:
+        """读取指定 Run 最近一次输入。
 
         Args:
             run_id: Run ID。
+            user_id: 可选当前用户 ID，用于归属校验。
 
         Returns:
-            更新后的 Snapshot；Run 不存在时返回 None。
+            最近一次 AG-UI 输入；Run 不存在或不属于当前用户时返回 None。
         """
-        async with self._lock:
-            record = self._runs.get(run_id)
-            if record is None:
-                return None
-            record.status = "cancelled"
-            record.updated_at = time.time()
-            task = record.task
-            if task is not None and not task.done():
-                task.cancel()
-            return self._snapshot(record)
+        state = await self.store.get_run(run_id, user_id=user_id)
+        return state.input if state else None
 
-    async def events(self, run_id: str, after: int = 0):
+    async def cancel(self, run_id: str, user_id: str | None = None) -> dict[str, Any] | None:
+        """请求取消指定 Run。
+
+        Args:
+            run_id: Run ID。
+            user_id: 可选当前用户 ID，用于归属校验。
+
+        Returns:
+            更新后的 Snapshot；Run 不存在或不属于当前用户时返回 None。
+        """
+        state = await self.store.get_run(run_id, user_id=user_id)
+        if state is None:
+            return None
+        if state.status not in {"queued", "running", "cancelling"}:
+            return self._snapshot(state)
+
+        state = await self.store.update_run_status(run_id, "cancelling")
+        task = self._tasks.get(run_id)
+        if task is not None and not task.done():
+            task.cancel()
+        return self._snapshot(state) if state else None
+
+    async def events(self, run_id: str, after: int = 0, user_id: str | None = None):
         """订阅指定 Run 的 AG-UI SSE 事件，并支持从事件序号重放。
 
         Args:
             run_id: Run ID。
             after: 只返回大于该序号的事件。
+            user_id: 可选当前用户 ID，用于归属校验。
 
         Yields:
             带有 SSE id 的 AG-UI 事件帧。
-
-        Raises:
-            ValueError: Run 不存在。
         """
-        async with self._lock:
-            record = self._runs.get(run_id)
-            if record is None:
-                raise ValueError("Run 不存在")
-            replay = [frame for event_id, frame in record.events if event_id > after]
-            queue: asyncio.Queue[str | None] = asyncio.Queue()
-            active = record.status in {"queued", "running"}
-            if active:
-                record.subscribers.add(queue)
+        async for event_id, encoded in self.store.subscribe(
+            run_id,
+            after=after,
+            user_id=user_id,
+        ):
+            yield f"id: {run_id}:{event_id}\n{encoded}"
 
-        try:
-            for frame in replay:
-                yield frame
-            if not active:
-                return
-            while True:
-                frame = await queue.get()
-                if frame is None:
-                    return
-                yield frame
-        finally:
-            async with self._lock:
-                record = self._runs.get(run_id)
-                if record is not None:
-                    record.subscribers.discard(queue)
-
-    async def _execute(self, record: RunRecord, payload: RunAgentInput) -> None:
-        """执行 LangGraphAgent 并将 AG-UI 事件写入缓存和订阅者。
+    async def _execute(self, run_id: str, payload: RunAgentInput) -> None:
+        """执行 LangGraphAgent 并将 AG-UI 事件写入存储。
 
         Args:
-            record: 当前运行记录。
+            run_id: Run ID。
             payload: 本次 AG-UI 输入。
         """
         encoder = EventEncoder()
-        record.status = "running"
-        record.updated_at = time.time()
+        await self.store.update_run_status(run_id, "running")
         agent = LangGraphAgent(
             name="deepclaw-agent",
             graph=self.graph,
@@ -206,67 +320,42 @@ class AgentRunManager:
         )
         try:
             async for event in agent.run(payload):
-                await self._append_event(record, encoder.encode(event))
-            record.status = "finished"
+                state = await self.store.get_run(run_id)
+                if state is None or state.status in {"cancelling", "cancelled"}:
+                    raise asyncio.CancelledError
+                await self.store.append_event(run_id, encoder.encode(event))
+            await self.store.update_run_status(run_id, "finished")
         except asyncio.CancelledError:
-            record.status = "cancelled"
-            record.error = "运行已取消"
-            await self._append_event(
-                record,
-                encoder.encode(
-                    RunErrorEvent(
-                        message=record.error,
-                        code="RUN_CANCELLED",
-                    )
-                ),
+            await self.store.append_event(
+                run_id,
+                encoder.encode(RunErrorEvent(message="运行已取消", code="RUN_CANCELLED")),
             )
+            await self.store.update_run_status(run_id, "cancelled", "运行已取消")
         except Exception as exc:
-            record.status = "error"
-            record.error = str(exc)
-            await self._append_event(
-                record,
-                encoder.encode(RunErrorEvent(message=record.error, code="RUN_ERROR")),
+            error_message = str(exc)
+            await self.store.append_event(
+                run_id,
+                encoder.encode(RunErrorEvent(message=error_message, code="RUN_ERROR")),
             )
-        finally:
-            record.updated_at = time.time()
-            await self._close_subscribers(record)
+            await self.store.update_run_status(run_id, "error", error_message)
 
-    async def _append_event(self, record: RunRecord, encoded: str) -> None:
-        """为 AG-UI 事件追加可重放的 Run 内事件 ID。
+    async def close(self) -> None:
+        """取消活动任务并释放 Run 存储资源。
 
         Args:
-            record: 当前运行记录。
-            encoded: EventEncoder 编码后的 AG-UI SSE 帧。
-        """
-        async with self._lock:
-            event_id = record.next_event_id
-            record.next_event_id += 1
-            frame = f"id: {record.run_id}:{event_id}\n{encoded}"
-            record.events.append((event_id, frame))
-            record.updated_at = time.time()
-            subscribers = list(record.subscribers)
-        for subscriber in subscribers:
-            await subscriber.put(frame)
-
-    async def _close_subscribers(self, record: RunRecord) -> None:
-        """通知所有 AG-UI 事件订阅者 Run 已结束。
-
-        Args:
-            record: 当前运行记录。
-        """
-        async with self._lock:
-            subscribers = list(record.subscribers)
-        for subscriber in subscribers:
-            await subscriber.put(None)
-
-    def snapshot_for_test(self, run_id: str) -> dict[str, Any] | None:
-        """同步读取 Snapshot，供不启动事件循环的单元测试使用。
-
-        Args:
-            run_id: Run ID。
+            无。
 
         Returns:
-            Snapshot 或 None。
+            无。
         """
-        record = self._runs.get(run_id)
-        return self._snapshot(record) if record else None
+        if self._cleanup_task is not None:
+            self._cleanup_task.cancel()
+        for watcher in list(self._watchers.values()):
+            watcher.cancel()
+        tasks = list(self._tasks.values())
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        await self.store.close()

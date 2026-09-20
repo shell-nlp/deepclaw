@@ -18,27 +18,27 @@ class FakeRunManager:
         self.created = payload
         return {"runId": payload.run_id, "threadId": payload.thread_id, "status": "queued"}
 
-    async def get_snapshot(self, run_id):
+    async def get_snapshot(self, run_id, user_id=None):
         """返回固定 Snapshot。\n\n        Args:\n            run_id: Run ID。\n        """
         if run_id != "run-1":
             return None
         return {"runId": run_id, "threadId": "thread-1", "status": "finished"}
 
-    async def get_input(self, run_id):
+    async def get_input(self, run_id, user_id=None):
         """返回固定输入。\n\n        Args:\n            run_id: Run ID。\n        """
         return None
 
-    async def continue_run(self, run_id, payload):
+    async def continue_run(self, run_id, payload, user_id=None):
         """记录恢复请求。\n\n        Args:\n            run_id: Run ID。\n            payload: AG-UI 输入。\n        """
         self.resumed = (run_id, payload)
         return {"runId": run_id, "threadId": payload.thread_id, "status": "queued"}
 
-    async def cancel(self, run_id):
+    async def cancel(self, run_id, user_id=None):
         """记录取消请求。\n\n        Args:\n            run_id: Run ID。\n        """
         self.cancelled = run_id
         return {"runId": run_id, "threadId": "thread-1", "status": "cancelled"}
 
-    async def events(self, run_id, after=0):
+    async def events(self, run_id, after=0, user_id=None):
         """返回可重放事件。\n\n        Args:\n            run_id: Run ID。\n            after: 事件序号。\n        """
         _ = after
         yield f"id: {run_id}:1\ndata: {{\"type\":\"RUN_STARTED\"}}\n\n"
