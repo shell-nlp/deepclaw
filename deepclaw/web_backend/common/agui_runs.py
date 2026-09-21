@@ -17,11 +17,12 @@ from deepclaw.web_backend.agent.run_manager import (
 from deepclaw.web_backend.agent.run_store import RunStore, get_or_backfill_thread
 from deepclaw.web_backend.auth.dependencies import CurrentActor
 from deepclaw.web_backend.common.agui_schemas import (
+    AgUiRunRequest,
     RunActionRequest,
     ThreadDeleteResponse,
     ThreadListResponse,
     ThreadRunListResponse,
-    ThreadSummary,
+    ThreadSummaryResponse,
 )
 
 
@@ -34,22 +35,22 @@ _SENSITIVE_HEADER_NAMES = {
 }
 
 
-def get_agent_runs_path() -> str:
-    """返回 Agent AG-UI Runs 路径。
+def get_agui_runs_path() -> str:
+    """返回统一 AG-UI Runs 路径。
 
     Returns:
-        固定为 ``/api/agent/runs``。
+        固定为 ``/api/agui/runs``。
     """
-    return "/api/agent/runs"
+    return "/api/agui/runs"
 
 
-def get_rag_runs_path() -> str:
-    """返回 RAG AG-UI Runs 路径。
+def get_agui_agents_path() -> str:
+    """返回统一 AG-UI 智能体列表路径。
 
     Returns:
-        固定为 ``/api/rag/runs``。
+        固定为 ``/api/agui/agents``。
     """
-    return "/api/rag/runs"
+    return "/api/agui/agents"
 
 
 def get_channel_agent_api_url(
@@ -71,18 +72,18 @@ def get_channel_agent_api_url(
     if explicit_url:
         return explicit_url
     resolved_port = settings.PORT if port is None else port
-    return f"http://{host}:{resolved_port}{get_agent_runs_path()}"
+    return f"http://{host}:{resolved_port}{get_agui_runs_path()}"
 
 
 def get_runtime_api_config() -> dict[str, str]:
     """构造前端 runtime-config 响应体。
 
     Returns:
-        包含 Agent/RAG Runs 路径的配置字典。
+        包含统一 AG-UI Runs 与 Agents 路径的配置字典。
     """
     return {
-        "agent_runs_path": get_agent_runs_path(),
-        "rag_runs_path": get_rag_runs_path(),
+        "agui_runs_path": get_agui_runs_path(),
+        "agents_path": get_agui_agents_path(),
     }
 
 
@@ -92,7 +93,7 @@ runtime_router = APIRouter(tags=["runtime"])
 @runtime_router.get(
     "/api/runtime-config",
     summary="获取前端运行时配置",
-    description="返回前端需要使用的 Agent 与 RAG AG-UI Runs 路径。",
+    description="返回前端需要使用的统一 AG-UI Runs 与智能体列表路径。",
 )
 async def runtime_config() -> dict[str, str]:
     """返回前端运行时 AG-UI 路径配置。"""
@@ -185,6 +186,7 @@ async def list_agui_threads(
     store: RunStore,
     actor: CurrentActor,
     *,
+    agent_id: str | None = None,
     limit: int,
 ) -> ThreadListResponse:
     """查询当前用户的 Thread 列表。
@@ -192,6 +194,7 @@ async def list_agui_threads(
     Args:
         store: 当前域使用的 Run/Thread 存储。
         actor: 当前鉴权主体。
+        agent_id: 可选智能体 ID，用于过滤。
         limit: 最大返回数量。
 
     Returns:
@@ -199,14 +202,16 @@ async def list_agui_threads(
     """
     threads = await store.list_threads(
         _actor_user_id(actor),
+        agent_id=agent_id,
         limit=limit,
     )
     items = [
-        ThreadSummary(
-            threadId=thread.thread_id,
+        ThreadSummaryResponse(
+            thread_id=thread.thread_id,
+            agent_id=thread.agent_id,
             title=thread.title,
-            createdAt=thread.created_at,
-            updatedAt=thread.updated_at,
+            created_at=thread.created_at,
+            updated_at=thread.updated_at,
         )
         for thread in threads
     ]
@@ -245,10 +250,11 @@ async def list_agui_thread_runs(
     runs = await store.list_runs_by_thread(
         thread_id,
         user_id=user_id,
+        agent_id=thread.agent_id,
         limit=limit,
     )
     items = [run_state_to_snapshot(run) for run in runs]
-    return ThreadRunListResponse(threadId=thread_id, items=items, total=len(items))
+    return ThreadRunListResponse(thread_id=thread_id, items=items, total=len(items))
 
 
 async def get_agui_thread_state(
@@ -325,7 +331,7 @@ async def delete_agui_thread(
     deleted = await store.delete_thread(thread_id, user_id=user_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Thread 不存在")
-    return ThreadDeleteResponse(threadId=thread_id, deleted=True)
+    return ThreadDeleteResponse(thread_id=thread_id, deleted=True)
 
 
 async def create_agui_run(
@@ -359,15 +365,15 @@ async def create_agui_run(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-async def get_agui_run_snapshot(
-    manager: AgentRunManager,
+async def get_agui_run_snapshot_from_store(
+    store: RunStore,
     run_id: str,
     actor: CurrentActor,
 ) -> dict[str, Any]:
-    """读取 AG-UI Run Snapshot。
+    """从 RunStore 读取 AG-UI Run Snapshot。
 
     Args:
-        manager: 当前域使用的 Run 管理器。
+        store: AG-UI Run 存储。
         run_id: Run ID。
         actor: 当前鉴权主体。
 
@@ -377,23 +383,23 @@ async def get_agui_run_snapshot(
     Raises:
         HTTPException: Run 不存在时返回 404。
     """
-    snapshot = await manager.get_snapshot(run_id, user_id=_actor_user_id(actor))
-    if snapshot is None:
+    state = await store.get_run(run_id, user_id=_actor_user_id(actor))
+    if state is None:
         raise HTTPException(status_code=404, detail="Run 不存在")
-    return snapshot
+    return run_state_to_snapshot(state)
 
 
-async def stream_agui_run_events(
-    manager: AgentRunManager,
+async def stream_agui_run_events_from_store(
+    store: RunStore,
     run_id: str,
     request: Request,
     after: str | None,
     actor: CurrentActor,
 ) -> StreamingResponse:
-    """构建 AG-UI Run 的 SSE 事件流。
+    """从 RunStore 构建 AG-UI Run 的 SSE 事件流。
 
     Args:
-        manager: 当前域使用的 Run 管理器。
+        store: AG-UI Run 存储。
         run_id: Run ID。
         request: 当前 HTTP 请求。
         after: 查询参数中的事件游标。
@@ -403,21 +409,52 @@ async def stream_agui_run_events(
         SSE StreamingResponse。
     """
     user_id = _actor_user_id(actor)
-    snapshot = await manager.get_snapshot(run_id, user_id=user_id)
-    if snapshot is None:
+    state = await store.get_run(run_id, user_id=user_id)
+    if state is None:
         raise HTTPException(status_code=404, detail="Run 不存在")
     cursor = _event_cursor(run_id, request.headers.get("last-event-id") or after)
     return StreamingResponse(
-        manager.events(run_id, after=cursor, user_id=user_id),
+        _store_event_frames(
+            store,
+            run_id,
+            after=cursor,
+            user_id=user_id,
+        ),
         media_type=EventEncoder().get_content_type(),
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
+async def _store_event_frames(
+    store: RunStore,
+    run_id: str,
+    *,
+    after: int,
+    user_id: str,
+):
+    """将 RunStore 事件转换为带 SSE id 的帧。
+
+    Args:
+        store: AG-UI Run 存储。
+        run_id: Run ID。
+        after: 只返回大于该序号的事件。
+        user_id: 当前用户 ID。
+
+    Yields:
+        带 SSE id 的事件帧。
+    """
+    async for event_id, frame in store.subscribe(
+        run_id,
+        after=after,
+        user_id=user_id,
+    ):
+        yield f"id: {run_id}:{event_id}\n{frame}"
+
+
 async def resume_agui_run(
     manager: AgentRunManager,
     run_id: str,
-    payload: RunAgentInput,
+    payload: AgUiRunRequest,
     request: Request,
     actor: CurrentActor,
     allowed_state_keys: Iterable[str],
@@ -486,22 +523,30 @@ async def handle_agui_action(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-async def cancel_agui_run(
-    manager: AgentRunManager,
+async def cancel_agui_run_from_store(
+    store: RunStore,
     run_id: str,
     actor: CurrentActor,
 ) -> dict[str, Any]:
-    """取消 AG-UI Run。
+    """从 RunStore 请求取消 AG-UI Run。
 
     Args:
-        manager: 当前域使用的 Run 管理器。
+        store: AG-UI Run 存储。
         run_id: Run ID。
         actor: 当前鉴权主体。
 
     Returns:
         取消后的 Run Snapshot。
+
+    Raises:
+        HTTPException: Run 不存在时返回 404。
     """
-    snapshot = await manager.cancel(run_id, user_id=_actor_user_id(actor))
-    if snapshot is None:
+    user_id = _actor_user_id(actor)
+    state = await store.get_run(run_id, user_id=user_id)
+    if state is None:
         raise HTTPException(status_code=404, detail="Run 不存在")
-    return snapshot
+    if state.status in {"queued", "running", "cancelling"}:
+        state = await store.update_run_status(run_id, "cancelling")
+    if state is None:
+        raise HTTPException(status_code=404, detail="Run 不存在")
+    return run_state_to_snapshot(state)

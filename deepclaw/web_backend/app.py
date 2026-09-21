@@ -13,7 +13,7 @@ from psycopg_pool import AsyncConnectionPool
 from deepclaw.constant import root_dir, workspace_path
 from deepclaw.patch.langchain import patch_langchain
 from deepclaw.settings import settings
-from deepclaw.web_backend.agent.router import router as agent_router
+from deepclaw.web_backend.agui.router import router as agui_router
 from deepclaw.web_backend.agent.run_store import get_run_store
 from deepclaw.web_backend.auth.router import router as auth_router
 from deepclaw.web_backend.auth.service import get_auth_service
@@ -21,14 +21,13 @@ from deepclaw.web_backend.channels.router import router as channels_router
 from deepclaw.web_backend.channels.weixin_clawbot.lifespan import channel_lifespan
 from deepclaw.web_backend.common.errors import BusinessRuleError
 from deepclaw.web_backend.common.agui_runs import (
-    get_agent_runs_path,
-    get_rag_runs_path,
+    get_agui_agents_path,
+    get_agui_runs_path,
     runtime_router,
 )
 from deepclaw.web_backend.knowledge_bases.router import (
     router as knowledge_bases_router,
 )
-from deepclaw.web_backend.rag.router import router as rag_router
 from deepclaw.web_backend.skills.router import router as skills_router
 
 
@@ -149,9 +148,9 @@ async def app_lifespan(app: FastAPI):
     await get_run_store().initialize()
     register_frontend_routes(app)
     logger.info(
-        "AG-UI runs | agent={} | rag={}",
-        get_agent_runs_path(),
-        get_rag_runs_path(),
+        "AG-UI runs={} | agents={}",
+        get_agui_runs_path(),
+        get_agui_agents_path(),
     )
     await get_auth_service().bootstrap_admin_if_needed()
     try:
@@ -204,8 +203,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(auth_router)
-    app.include_router(agent_router)
-    app.include_router(rag_router)
+    app.include_router(agui_router)
     app.include_router(channels_router)
     app.include_router(skills_router)
     app.include_router(knowledge_bases_router)

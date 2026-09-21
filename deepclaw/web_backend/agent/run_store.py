@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from typing import Any, AsyncIterator, Protocol
 
 from ag_ui.core import RunAgentInput
-from sqlalchemy import JSON, Column, Index, UniqueConstraint, text
+from sqlalchemy import JSON, Column, Index, UniqueConstraint, inspect, text
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Field, SQLModel, select
 
@@ -109,6 +109,7 @@ class RunState:
     thread_id: str
     input: RunAgentInput
     owner_user_id: str = "guest"
+    agent_id: str = "agent"
     status: str = "queued"
     last_event_id: int = 0
     created_at: float = field(default_factory=time.time)
@@ -123,6 +124,7 @@ class ThreadState:
 
     thread_id: str
     owner_user_id: str = "guest"
+    agent_id: str = "agent"
     title: str | None = None
     created_at: float = 0.0
     updated_at: float = 0.0
@@ -174,12 +176,14 @@ class RunStore(Protocol):
         self,
         user_id: str,
         *,
+        agent_id: str | None = None,
         limit: int = 100,
     ) -> list[ThreadState]:
         """列出当前用户的 Thread。
 
         Args:
             user_id: 当前用户 ID。
+            agent_id: 可选智能体 ID，用于过滤。
             limit: 最大返回数量。
 
         Returns:
@@ -208,6 +212,7 @@ class RunStore(Protocol):
         thread_id: str,
         user_id: str | None = None,
         *,
+        agent_id: str | None = None,
         limit: int = 100,
     ) -> list[RunState]:
         """按 Thread 查询 Run。
@@ -215,6 +220,7 @@ class RunStore(Protocol):
         Args:
             thread_id: Thread ID。
             user_id: 可选当前用户 ID，用于归属校验。
+            agent_id: 可选智能体 ID，用于过滤。
             limit: 最大返回数量。
 
         Returns:
@@ -381,6 +387,7 @@ async def get_or_backfill_thread(
     thread = ThreadState(
         thread_id=thread_id,
         owner_user_id=run.owner_user_id,
+        agent_id=run.agent_id,
         title=get_thread_title(run.input),
         created_at=run.created_at,
         updated_at=run.updated_at,
@@ -535,6 +542,7 @@ class InMemoryRunStore(BaseRunStore):
             self._threads[run.thread_id] = ThreadState(
                 thread_id=run.thread_id,
                 owner_user_id=run.owner_user_id,
+                agent_id=run.agent_id,
                 title=get_thread_title(run.input),
                 created_at=run.created_at,
                 updated_at=run.updated_at,
@@ -604,12 +612,14 @@ class InMemoryRunStore(BaseRunStore):
         self,
         user_id: str,
         *,
+        agent_id: str | None = None,
         limit: int = 100,
     ) -> list[ThreadState]:
         """列出当前用户的 Thread。
 
         Args:
             user_id: 当前用户 ID。
+            agent_id: 可选智能体 ID，用于过滤。
             limit: 最大返回数量。
 
         Returns:
@@ -622,6 +632,7 @@ class InMemoryRunStore(BaseRunStore):
                 copy.deepcopy(state)
                 for state in self._threads.values()
                 if state.owner_user_id == user_id
+                and (agent_id is None or state.agent_id == agent_id)
             ]
         states.sort(key=lambda state: state.updated_at, reverse=True)
         return states[:limit]
@@ -663,6 +674,7 @@ class InMemoryRunStore(BaseRunStore):
         thread_id: str,
         user_id: str | None = None,
         *,
+        agent_id: str | None = None,
         limit: int = 100,
     ) -> list[RunState]:
         """按 Thread 查询 Run。
@@ -670,6 +682,7 @@ class InMemoryRunStore(BaseRunStore):
         Args:
             thread_id: Thread ID。
             user_id: 可选当前用户 ID，用于归属校验。
+            agent_id: 可选智能体 ID，用于过滤。
             limit: 最大返回数量。
 
         Returns:
@@ -682,6 +695,7 @@ class InMemoryRunStore(BaseRunStore):
                 for state in self._runs.values()
                 if state.thread_id == thread_id
                 and (user_id is None or state.owner_user_id == user_id)
+                and (agent_id is None or state.agent_id == agent_id)
             ]
         states.sort(key=lambda state: state.updated_at, reverse=True)
         return states[:limit]
@@ -907,11 +921,13 @@ class AgUiRunRecord(SQLModel, table=True):
     __tablename__ = "agui_runs"
     __table_args__ = (
         Index("ix_agui_runs_owner_updated", "owner_user_id", "updated_at"),
+        Index("ix_agui_runs_owner_agent_updated", "owner_user_id", "agent_id", "updated_at"),
     )
 
     run_id: str = Field(primary_key=True)
     thread_id: str = Field(index=True)
     owner_user_id: str = Field(index=True)
+    agent_id: str = Field(default="agent", index=True)
     status: str = Field(default="queued", index=True)
     input_json: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     last_event_id: int = 0
@@ -943,10 +959,12 @@ class AgUiThreadRecord(SQLModel, table=True):
     __tablename__ = "agui_threads"
     __table_args__ = (
         Index("ix_agui_threads_owner_updated", "owner_user_id", "updated_at"),
+        Index("ix_agui_threads_owner_agent_updated", "owner_user_id", "agent_id", "updated_at"),
     )
 
     thread_id: str = Field(primary_key=True)
     owner_user_id: str = Field(index=True)
+    agent_id: str = Field(default="agent", index=True)
     title: str | None = None
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
@@ -988,6 +1006,36 @@ class SqlRunStore(BaseRunStore):
         self._backfilled_users: set[str] = set()
         self._backfill_lock = asyncio.Lock()
 
+    @staticmethod
+    def _ensure_agent_columns_sync(connection) -> None:
+        """为历史 AG-UI 表补齐 agent_id 列。
+
+        Args:
+            connection: SQLAlchemy 同步数据库连接。
+
+        Returns:
+            无。
+        """
+        inspector = inspect(connection)
+        run_columns = {column["name"] for column in inspector.get_columns("agui_runs")}
+        if "agent_id" not in run_columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE agui_runs "
+                    "ADD COLUMN agent_id VARCHAR(64) NOT NULL DEFAULT 'agent'"
+                )
+            )
+        thread_columns = {
+            column["name"] for column in inspector.get_columns("agui_threads")
+        }
+        if "agent_id" not in thread_columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE agui_threads "
+                    "ADD COLUMN agent_id VARCHAR(64) NOT NULL DEFAULT 'agent'"
+                )
+            )
+
     async def _ensure_init(self) -> None:
         """确保 Run 表已经创建。
 
@@ -1004,6 +1052,7 @@ class SqlRunStore(BaseRunStore):
                 return
             async with self.engine.begin() as connection:
                 await connection.run_sync(SQLModel.metadata.create_all)
+                await connection.run_sync(self._ensure_agent_columns_sync)
                 await connection.execute(
                     text(
                         "CREATE INDEX IF NOT EXISTS ix_agui_runs_owner_updated "
@@ -1012,8 +1061,45 @@ class SqlRunStore(BaseRunStore):
                 )
                 await connection.execute(
                     text(
+                        "CREATE INDEX IF NOT EXISTS ix_agui_runs_owner_agent_updated "
+                        "ON agui_runs (owner_user_id, agent_id, updated_at)"
+                    )
+                )
+                await connection.execute(
+                    text(
                         "CREATE INDEX IF NOT EXISTS ix_agui_threads_owner_updated "
                         "ON agui_threads (owner_user_id, updated_at)"
+                    )
+                )
+                await connection.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_agui_threads_owner_agent_updated "
+                        "ON agui_threads (owner_user_id, agent_id, updated_at)"
+                    )
+                )
+                await connection.execute(
+                    text(
+                        "UPDATE agui_runs "
+                        "SET agent_id = 'rag' "
+                        "WHERE agent_id = 'agent' "
+                        "AND ("
+                        "CAST(input_json AS TEXT) LIKE '%\"index_name\"%' "
+                        "OR CAST(input_json AS TEXT) LIKE '%\"graph_name\"%'"
+                        ")"
+                    )
+                )
+                await connection.execute(
+                    text(
+                        "UPDATE agui_threads "
+                        "SET agent_id = ("
+                        "SELECT agent_id FROM agui_runs "
+                        "WHERE agui_runs.thread_id = agui_threads.thread_id "
+                        "ORDER BY updated_at DESC LIMIT 1"
+                        ") "
+                        "WHERE EXISTS ("
+                        "SELECT 1 FROM agui_runs "
+                        "WHERE agui_runs.thread_id = agui_threads.thread_id"
+                        ")"
                     )
                 )
             self._init_done = True
@@ -1043,6 +1129,7 @@ class SqlRunStore(BaseRunStore):
         return ThreadState(
             thread_id=record.thread_id,
             owner_user_id=record.owner_user_id,
+            agent_id=record.agent_id,
             title=record.title,
             created_at=timestamp_from_datetime(record.created_at),
             updated_at=timestamp_from_datetime(record.updated_at),
@@ -1062,6 +1149,7 @@ class SqlRunStore(BaseRunStore):
         return AgUiThreadRecord(
             thread_id=state.thread_id,
             owner_user_id=state.owner_user_id,
+            agent_id=state.agent_id,
             title=state.title,
             created_at=datetime_from_timestamp(state.created_at),
             updated_at=datetime_from_timestamp(state.updated_at),
@@ -1080,6 +1168,7 @@ class SqlRunStore(BaseRunStore):
             无。
         """
         record.owner_user_id = state.owner_user_id
+        record.agent_id = state.agent_id
         record.title = state.title
         record.created_at = datetime_from_timestamp(state.created_at)
         record.updated_at = datetime_from_timestamp(state.updated_at)
@@ -1119,6 +1208,7 @@ class SqlRunStore(BaseRunStore):
             thread_id=record.thread_id,
             input=deserialize_run_input(record.input_json),
             owner_user_id=record.owner_user_id,
+            agent_id=record.agent_id,
             status=record.status,
             last_event_id=record.last_event_id,
             created_at=timestamp_from_datetime(record.created_at),
@@ -1141,6 +1231,7 @@ class SqlRunStore(BaseRunStore):
             run_id=state.run_id,
             thread_id=state.thread_id,
             owner_user_id=state.owner_user_id,
+            agent_id=state.agent_id,
             status=state.status,
             input_json=serialize_run_input(state.input),
             last_event_id=state.last_event_id,
@@ -1163,6 +1254,7 @@ class SqlRunStore(BaseRunStore):
         """
         record.thread_id = state.thread_id
         record.owner_user_id = state.owner_user_id
+        record.agent_id = state.agent_id
         record.status = state.status
         record.input_json = serialize_run_input(state.input)
         record.last_event_id = state.last_event_id
@@ -1209,6 +1301,7 @@ class SqlRunStore(BaseRunStore):
                         thread = ThreadState(
                             thread_id=run.thread_id,
                             owner_user_id=run.owner_user_id,
+                            agent_id=run.agent_id,
                             title=get_thread_title(
                                 deserialize_run_input(run.input_json)
                             ),
@@ -1298,12 +1391,14 @@ class SqlRunStore(BaseRunStore):
         self,
         user_id: str,
         *,
+        agent_id: str | None = None,
         limit: int = 100,
     ) -> list[ThreadState]:
         """列出当前用户的 Thread。
 
         Args:
             user_id: 当前用户 ID。
+            agent_id: 可选智能体 ID，用于过滤。
             limit: 最大返回数量。
 
         Returns:
@@ -1313,11 +1408,13 @@ class SqlRunStore(BaseRunStore):
         await self._maybe_prune()
         await self._backfill_threads(user_id)
         async with self.async_session() as session:
+            statement = select(AgUiThreadRecord).where(
+                AgUiThreadRecord.owner_user_id == user_id
+            )
+            if agent_id is not None:
+                statement = statement.where(AgUiThreadRecord.agent_id == agent_id)
             result = await session.exec(
-                select(AgUiThreadRecord)
-                .where(AgUiThreadRecord.owner_user_id == user_id)
-                .order_by(AgUiThreadRecord.updated_at.desc())
-                .limit(limit)
+                statement.order_by(AgUiThreadRecord.updated_at.desc()).limit(limit)
             )
             return [self._to_thread_state(record) for record in result.all()]
 
@@ -1363,6 +1460,7 @@ class SqlRunStore(BaseRunStore):
         thread_id: str,
         user_id: str | None = None,
         *,
+        agent_id: str | None = None,
         limit: int = 100,
     ) -> list[RunState]:
         """按 Thread 查询 Run。
@@ -1370,6 +1468,7 @@ class SqlRunStore(BaseRunStore):
         Args:
             thread_id: Thread ID。
             user_id: 可选当前用户 ID，用于归属校验。
+            agent_id: 可选智能体 ID，用于过滤。
             limit: 最大返回数量。
 
         Returns:
@@ -1380,6 +1479,8 @@ class SqlRunStore(BaseRunStore):
         statement = select(AgUiRunRecord).where(AgUiRunRecord.thread_id == thread_id)
         if user_id is not None:
             statement = statement.where(AgUiRunRecord.owner_user_id == user_id)
+        if agent_id is not None:
+            statement = statement.where(AgUiRunRecord.agent_id == agent_id)
         async with self.async_session() as session:
             result = await session.exec(
                 statement.order_by(AgUiRunRecord.updated_at.desc()).limit(limit)

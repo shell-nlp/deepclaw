@@ -1,14 +1,14 @@
 import type { ChannelManagementPage, KnowledgePage } from './types.ts'
 
-export const DEFAULT_AGENT_API_PATH = '/api/agent/runs'
-export const DEFAULT_RAG_API_PATH = '/api/rag/runs'
-export const AGENT_THREADS_API_PATH = '/api/agent/threads'
-export const AGENT_THREAD_RUNS_API_PATH = (threadId: string) =>
-  `/api/agent/threads/${encodeURIComponent(threadId)}/runs`
-export const AGENT_THREAD_STATE_API_PATH = (threadId: string) =>
-  `/api/agent/threads/${encodeURIComponent(threadId)}/state`
-export const AGENT_THREAD_DELETE_API_PATH = (threadId: string) =>
-  `/api/agent/threads/${encodeURIComponent(threadId)}`
+export const DEFAULT_AGUI_API_PATH = '/api/agui/runs'
+export const AGUI_AGENTS_API_PATH = '/api/agui/agents'
+export const AGUI_THREADS_API_PATH = '/api/agui/threads'
+export const AGUI_THREAD_RUNS_API_PATH = (threadId: string) =>
+  `/api/agui/threads/${encodeURIComponent(threadId)}/runs`
+export const AGUI_THREAD_STATE_API_PATH = (threadId: string) =>
+  `/api/agui/threads/${encodeURIComponent(threadId)}/state`
+export const AGUI_THREAD_DELETE_API_PATH = (threadId: string) =>
+  `/api/agui/threads/${encodeURIComponent(threadId)}`
 export const RUNTIME_CONFIG_API_PATH = '/api/runtime-config'
 export const AUTH_LOGIN_API_PATH = '/api/auth/login'
 export const AUTH_REGISTER_API_PATH = '/api/auth/register'

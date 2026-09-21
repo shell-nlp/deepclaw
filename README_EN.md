@@ -140,8 +140,8 @@ deepclaw/
 │                        ▼                                            │
 └──────────────────────────────────────────────────────────────────────┘
               ┌──────────────────────────────────────────────────┐
-              │  POST /api/agent/runs                      │
-              │  POST /api/rag/runs                        │
+              │  POST /api/agui/runs                              │
+              │  GET  /api/agui/agents                            │
               │  POST /api/auth/*                                 │
               │  POST /api/channels/sessions                      │
               └─────────────────────┬────────────────────────────┘
@@ -149,8 +149,8 @@ deepclaw/
 ┌──────────────────────────────────────────────────────────────────────┐
 │                         API Layer / FastAPI                           │
 │  ┌──────────┐ ┌──────────────┐ ┌──────────────┐ ┌────────────────┐  │
-│  │Auth Route│ │ Agent Route  │ │  RAG Route   │ │Channel Mgmt   │  │
-│  │/api/auth │ │ /api/agent   │ │ /api/rag     │ │/api/channels  │  │
+│  │Auth Route│ │ AG-UI Route  │ │ Skills/KB    │ │Channel Mgmt   │  │
+│  │/api/auth │ │ /api/agui    │ │ /api/...     │ │/api/channels  │  │
 │  └────┬─────┘ └──────┬───────┘ └──────┬───────┘ └───────┬────────┘  │
 │       │              │               │                 │            │
 └───────┼──────────────┼───────────────┼─────────────────┼────────────┘
@@ -227,9 +227,8 @@ uv run python -m deepclaw.main
 After the service starts:
 
 - Frontend: `http://localhost:7869/`
-- Agent SSE: `POST /api/agent/runs`
-- Agent AG-UI: `POST /api/agent/ag_ui`
-- RAG SSE: `POST /api/rag/runs`
+- AG-UI Runs: `POST /api/agui/runs`
+- AG-UI Agents: `GET /api/agui/agents`
 - Channels API: `/api/channels/*`
 
 ### 5. Start Dependencies (optional but recommended)
@@ -290,30 +289,34 @@ pnpm build
 
 ## API Endpoints
 
-### Agent
+### AG-UI (Unified Agent/RAG)
 
 | Method | Path | Protocol | Description |
 |--------|------|----------|-------------|
-| `POST` | `/api/agent/runs` | AG-UI | Create an Agent Run |
-| `GET` | `/api/agent/runs/{run_id}/events` | AG-UI SSE | Replay or continue Run events |
-| `GET` | `/api/agent/runs/{run_id}` | REST | Run snapshot |
-| `POST` | `/api/agent/runs/{run_id}/resume` | AG-UI | Resume an interrupted Run |
-| `POST` | `/api/agent/runs/{run_id}/actions` | AG-UI | Submit a card action |
-| `POST` | `/api/agent/runs/{run_id}/cancel` | REST | Cancel a Run |
+| `GET` | `/api/agui/agents` | REST | List available agents |
+| `POST` | `/api/agui/runs` | AG-UI | Create a Run; select agent with top-level `agentId` |
+| `GET` | `/api/agui/runs/{run_id}/events` | AG-UI SSE | Replay or continue Run events |
+| `GET` | `/api/agui/runs/{run_id}` | REST | Run snapshot |
+| `POST` | `/api/agui/runs/{run_id}/resume` | AG-UI | Resume an interrupted Run |
+| `POST` | `/api/agui/runs/{run_id}/actions` | AG-UI | Submit a card action |
+| `POST` | `/api/agui/runs/{run_id}/cancel` | REST | Cancel a Run |
+| `GET` | `/api/agui/threads` | REST | List threads |
+| `GET` | `/api/agui/threads/{thread_id}/runs` | REST | List runs in a thread |
+| `GET` | `/api/agui/threads/{thread_id}/state` | REST | Thread graph state |
+| `DELETE` | `/api/agui/threads/{thread_id}` | REST | Delete a thread |
+
+### Agent Management
+
+| Method | Path | Protocol | Description |
+|--------|------|----------|-------------|
 | `POST` | `/api/agent/skills/list` | REST | List skills |
 | `POST` | `/api/agent/skills/upload` | REST | Upload skill zip |
 | `POST` | `/api/agent/skills/delete` | REST | Delete skill |
 
-### RAG
+### Knowledge Base
 
 | Method | Path | Protocol | Description |
 |--------|------|----------|-------------|
-| `POST` | `/api/rag/runs` | AG-UI | Create a RAG Run |
-| `GET` | `/api/rag/runs/{run_id}/events` | AG-UI SSE | Replay or continue RAG events |
-| `GET` | `/api/rag/runs/{run_id}` | REST | RAG Run snapshot |
-| `POST` | `/api/rag/runs/{run_id}/resume` | AG-UI | Resume an interrupted RAG Run |
-| `POST` | `/api/rag/runs/{run_id}/actions` | AG-UI | Submit a RAG action |
-| `POST` | `/api/rag/runs/{run_id}/cancel` | REST | Cancel a RAG Run |
 | `POST` | `/api/rag/knowledge-bases/list` | REST | Paginated knowledge base list |
 | `POST` | `/api/rag/knowledge-bases/create` | REST | Create knowledge base |
 | `POST` | `/api/rag/knowledge-bases/detail` | REST | Knowledge base details |
@@ -346,9 +349,10 @@ pnpm build
 ### General Agent Q&A
 
 ```bash
-curl -X POST http://localhost:7869/api/agent/runs \
+curl -X POST http://localhost:7869/api/agui/runs \
   -H "Content-Type: application/json" \
   -d '{
+    "agentId": "agent",
     "threadId": "demo-session",
     "runId": "run-demo-1",
     "state": { "internet_search": false, "deep_thinking": false },
@@ -361,14 +365,15 @@ curl -X POST http://localhost:7869/api/agent/runs \
   }'
 ```
 
-After creation, subscribe to `GET /api/agent/runs/run-demo-1/events` for AG-UI SSE.
+After creation, subscribe to `GET /api/agui/runs/run-demo-1/events` for AG-UI SSE.
 
 ### Multimodal Agent Input
 
 ```bash
-curl -N -X POST http://localhost:7869/api/agent/runs \
+curl -N -X POST http://localhost:7869/api/agui/runs \
   -H "Content-Type: application/json" \
   -d '{
+    "agentId": "agent",
     "query": [
       { "type": "text", "text": "What is in this image?" },
       {
@@ -408,9 +413,10 @@ curl -X POST http://localhost:7869/api/rag/knowledge-bases/documents/upload \
 `index_name` and `graph_name` can be obtained from the knowledge base detail response's `passage_index` and `index_prefix`.
 
 ```bash
-curl -X POST http://localhost:7869/api/rag/runs \
+curl -X POST http://localhost:7869/api/agui/runs \
   -H "Content-Type: application/json" \
   -d '{
+    "agentId": "rag",
     "threadId": "rag-session",
     "runId": "rag-run-demo-1",
     "state": { "index_name": "kb_xxx_passages", "graph_name": "kb_xxx" },
@@ -423,7 +429,7 @@ curl -X POST http://localhost:7869/api/rag/runs \
   }'
 ```
 
-After creation, subscribe to `GET /api/rag/runs/rag-run-demo-1/events` for AG-UI SSE.
+After creation, subscribe to `GET /api/agui/runs/rag-run-demo-1/events` for AG-UI SSE.
 
 ## Configuration
 
