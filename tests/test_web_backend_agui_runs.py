@@ -60,23 +60,23 @@ class FakeRuntimeRegistry:
     def __init__(self, manager):
         self.manager = manager
 
-    async def get_graph(self, request, definition, checkpointer, store):
+    async def get_graph(self, request, agent, checkpointer, store):
         """返回空图占位对象。
 
         Args:
             request: 当前请求。
-            definition: 智能体定义。
+            agent: 智能体类。
             checkpointer: 检查点存储。
             store: 长期存储。
         """
         return object()
 
-    async def get_manager(self, request, definition, graph, run_store):
+    async def get_manager(self, request, agent, graph, run_store):
         """返回测试 Run 管理器。
 
         Args:
             request: 当前请求。
-            definition: 智能体定义。
+            agent: 智能体类。
             graph: 图对象。
             run_store: Run 存储。
         """
