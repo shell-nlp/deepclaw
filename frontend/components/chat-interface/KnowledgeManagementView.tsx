@@ -3,10 +3,6 @@
 import type { ChangeEvent, MouseEvent, Ref } from 'react'
 
 import styles from '../ChatInterface.module.css'
-import {
-  MANAGEMENT_PAGE_DESCRIPTION_MAP,
-  MANAGEMENT_PAGE_TITLE_MAP,
-} from './constants'
 import { CreateKnowledgeBaseModal } from './CreateKnowledgeBaseModal'
 import { Pagination } from './Pagination'
 import type {
@@ -155,92 +151,101 @@ export function KnowledgeManagementView({
 }: KnowledgeManagementViewProps) {
   const renderDocumentDetailPage = () =>
     selectedDocumentDetail ? (
-      <div className={styles.managementPageGrid}>
-        <section className={styles.managementCard}>
-          <div className={styles.managementHeader}>
-            <h3>{selectedDocumentDetail.document.display_name}</h3>
-            <span className={styles.managementMeta}>
-              {loadingDocumentDetail
-                ? '加载中...'
-                : `${selectedDocumentDetail.total_chunks} 个切片`}
-            </span>
+      <div className={styles.managementWorkspace}>
+        <section className={styles.managementHero}>
+          <div className={styles.managementHeroCopy}>
+            <span className={styles.managementHeroEyebrow}>Document Detail</span>
+            <h2>查看文档切片与检索元数据</h2>
+            <p>核对原始文件、切片数量和更新时间，再逐条检查用于检索的文本片段。</p>
           </div>
-          <div className={styles.managementMetaPanel}>
-            <span>所属知识库: {selectedDocumentDetail.knowledge_base.name}</span>
-            <span>原始文件: {selectedDocumentDetail.document.file_name}</span>
-            <span>
-              文件大小: {Math.max(1, Math.round(selectedDocumentDetail.document.file_size / 1024))} KB
-            </span>
-            <span>切片数量: {selectedDocumentDetail.document.chunk_count}</span>
-            <span>更新时间: {formatDateTime(selectedDocumentDetail.document.updated_at)}</span>
-          </div>
-          <div className={styles.managementToolbar}>
-            <button
-              className={styles.managementMinorButton}
-              onClick={() => onNavigateTo('knowledge', 'library-detail')}
-            >
-              返回知识库详情
-            </button>
-            <button
-              className={styles.managementMinorButton}
-              disabled={writeDisabled}
-              onClick={() => void onRenameDocument(selectedDocumentDetail.document)}
-            >
-              重命名
-            </button>
-            <button
-              className={styles.managementDangerButton}
-              disabled={writeDisabled}
-              onClick={() =>
-                void onDeleteDocument(
-                  selectedDocumentDetail.document.document_id,
-                  selectedDocumentDetail.document.display_name
+        </section>
+        <div className={styles.managementPageGrid}>
+          <section className={styles.managementCard}>
+            <div className={styles.managementHeader}>
+              <h3>{selectedDocumentDetail.document.display_name}</h3>
+              <span className={styles.managementMeta}>
+                {loadingDocumentDetail
+                  ? '加载中...'
+                  : `${selectedDocumentDetail.total_chunks} 个切片`}
+              </span>
+            </div>
+            <div className={styles.managementMetaPanel}>
+              <span>所属知识库: {selectedDocumentDetail.knowledge_base.name}</span>
+              <span>原始文件: {selectedDocumentDetail.document.file_name}</span>
+              <span>
+                文件大小: {Math.max(1, Math.round(selectedDocumentDetail.document.file_size / 1024))} KB
+              </span>
+              <span>切片数量: {selectedDocumentDetail.document.chunk_count}</span>
+              <span>更新时间: {formatDateTime(selectedDocumentDetail.document.updated_at)}</span>
+            </div>
+            <div className={styles.managementToolbar}>
+              <button
+                className={styles.managementMinorButton}
+                onClick={() => onNavigateTo('knowledge', 'library-detail')}
+              >
+                返回知识库详情
+              </button>
+              <button
+                className={styles.managementMinorButton}
+                disabled={writeDisabled}
+                onClick={() => void onRenameDocument(selectedDocumentDetail.document)}
+              >
+                重命名
+              </button>
+              <button
+                className={styles.managementDangerButton}
+                disabled={writeDisabled}
+                onClick={() =>
+                  void onDeleteDocument(
+                    selectedDocumentDetail.document.document_id,
+                    selectedDocumentDetail.document.display_name
+                  )
+                }
+              >
+                删除文档
+              </button>
+            </div>
+          </section>
+
+          <section className={styles.managementCard}>
+            <div className={styles.managementHeader}>
+              <h3>切片详情</h3>
+              <span className={styles.managementMeta}>
+                第 {documentChunkPage} / {documentChunkPageTotal} 页
+              </span>
+            </div>
+            <div className={styles.managementList}>
+              {selectedDocumentDetail.chunks.length === 0 ? (
+                <div className={styles.managementEmpty}>暂无切片数据</div>
+              ) : (
+                selectedDocumentDetail.chunks.map((chunk) => (
+                  <div key={chunk.chunk_id} className={styles.managementListItemStatic}>
+                    <div className={styles.managementListHeader}>
+                      <strong>切片 #{chunk.segment_id || '-'}</strong>
+                      <span>{chunk.chunk_id}</span>
+                    </div>
+                    <p className={styles.managementDescription}>{chunk.content}</p>
+                    <div className={styles.managementListMeta}>
+                      <span>页码: {String(chunk.metadata.pages_number ?? '-')}</span>
+                      <span>标题: {String(chunk.metadata.title ?? '-')}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            <Pagination
+              page={documentChunkPage}
+              pageTotal={documentChunkPageTotal}
+              total={selectedDocumentDetail.total_chunks}
+              onPrev={() => onDocumentChunkPageChange((prev) => Math.max(1, prev - 1))}
+              onNext={() =>
+                onDocumentChunkPageChange((prev) =>
+                  Math.min(documentChunkPageTotal, prev + 1)
                 )
               }
-            >
-              删除文档
-            </button>
-          </div>
-        </section>
-
-        <section className={styles.managementCard}>
-          <div className={styles.managementHeader}>
-            <h3>切片详情</h3>
-            <span className={styles.managementMeta}>
-              第 {documentChunkPage} / {documentChunkPageTotal} 页
-            </span>
-          </div>
-          <div className={styles.managementList}>
-            {selectedDocumentDetail.chunks.length === 0 ? (
-              <div className={styles.managementEmpty}>暂无切片数据</div>
-            ) : (
-              selectedDocumentDetail.chunks.map((chunk) => (
-                <div key={chunk.chunk_id} className={styles.managementListItemStatic}>
-                  <div className={styles.managementListHeader}>
-                    <strong>切片 #{chunk.segment_id || '-'}</strong>
-                    <span>{chunk.chunk_id}</span>
-                  </div>
-                  <p className={styles.managementDescription}>{chunk.content}</p>
-                  <div className={styles.managementListMeta}>
-                    <span>页码: {String(chunk.metadata.pages_number ?? '-')}</span>
-                    <span>标题: {String(chunk.metadata.title ?? '-')}</span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-          <Pagination
-            page={documentChunkPage}
-            pageTotal={documentChunkPageTotal}
-            total={selectedDocumentDetail.total_chunks}
-            onPrev={() => onDocumentChunkPageChange((prev) => Math.max(1, prev - 1))}
-            onNext={() =>
-              onDocumentChunkPageChange((prev) =>
-                Math.min(documentChunkPageTotal, prev + 1)
-              )
-            }
-          />
-        </section>
+            />
+          </section>
+        </div>
       </div>
     ) : (
       <div className={styles.managementEmptyState}>
@@ -513,10 +518,17 @@ export function KnowledgeManagementView({
       <section className={styles.managementHero}>
         <div className={styles.managementHeroCopy}>
           <span className={styles.managementHeroEyebrow}>Knowledge Bases</span>
-          <h2>按知识库管理你的知识</h2>
-          <p>
-            这里展示当前账号下的所有知识库。点开卡片可继续上传知识文档，并查看检索切片详情。
-          </p>
+          <h2>知识库</h2>
+        </div>
+        <div className={styles.managementHeroActions}>
+          <button
+            type="button"
+            className={styles.managementButton}
+            disabled={writeDisabled}
+            onClick={() => onShowCreateKnowledgeBaseModalChange(true)}
+          >
+            新建知识库
+          </button>
         </div>
       </section>
 
@@ -566,66 +578,59 @@ export function KnowledgeManagementView({
         </button>
       </div>
 
-      <div className={styles.managementLibraryGrid}>
-        <button
-          type="button"
-          className={styles.managementCreateCard}
-          disabled={writeDisabled}
-          onClick={() => onShowCreateKnowledgeBaseModalChange(true)}
-        >
-          <span className={styles.managementCreateIcon}>+</span>
-          <strong>新建知识库</strong>
-          <span>点击后填写知识库名称和描述</span>
-        </button>
-
+      <div className={styles.managementDataList}>
         {knowledgeBases.length === 0 ? (
           <div className={styles.managementEmpty}>暂无知识库。</div>
         ) : (
           knowledgeBases.map((knowledgeBase) => (
             <div
               key={knowledgeBase.knowledge_base_id}
-              className={`${styles.managementLibraryCard} ${
+              className={`${styles.managementDataRow} ${
                 selectedKnowledgeBaseId === knowledgeBase.knowledge_base_id
                   ? styles.managementListItemActive
                   : ''
               }`}
             >
-              <div className={styles.managementListHeader}>
-                <label
-                  className={styles.managementCheckbox}
-                  onClick={(event) =>
-                    onToggleKnowledgeBaseChecked(
-                      knowledgeBase.knowledge_base_id,
-                      event as unknown as MouseEvent<
-                        HTMLButtonElement | HTMLInputElement
-                      >
-                    )
-                  }
-                >
-                  <input
-                    type="checkbox"
-                    checked={checkedKnowledgeBaseIds.includes(
-                      knowledgeBase.knowledge_base_id
-                    )}
-                    onChange={() => undefined}
-                  />
-                </label>
-                <strong>{knowledgeBase.name}</strong>
-                <span>{knowledgeBase.document_count} 文档</span>
+              <div className={styles.managementDataPrimary}>
+                <div className={styles.managementDataTitle}>
+                  <label
+                    className={styles.managementCheckbox}
+                    onClick={(event) =>
+                      onToggleKnowledgeBaseChecked(
+                        knowledgeBase.knowledge_base_id,
+                        event as unknown as MouseEvent<
+                          HTMLButtonElement | HTMLInputElement
+                        >
+                      )
+                    }
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checkedKnowledgeBaseIds.includes(
+                        knowledgeBase.knowledge_base_id
+                      )}
+                      onChange={() => undefined}
+                    />
+                  </label>
+                  <strong>{knowledgeBase.name}</strong>
+                </div>
+                <span className={styles.managementDataDescription}>
+                  {knowledgeBase.description || '暂无描述'}
+                </span>
               </div>
-              <p className={styles.managementDescription}>
-                {knowledgeBase.description || '暂无描述'}
-              </p>
-              <div className={styles.managementListMeta}>
+
+              <div className={styles.managementDataMetrics}>
+                <span>{knowledgeBase.document_count} 文档</span>
                 <span>{knowledgeBase.chunk_count} 切片</span>
                 <span>{formatDateTime(knowledgeBase.updated_at)}</span>
               </div>
-              <div className={styles.managementActionRow}>
+
+              <div className={styles.managementDataActions}>
                 <button
-                  className={styles.managementButton}
+                  className={styles.managementMinorButton}
                   onClick={() => onOpenKnowledgeBaseLibrary(knowledgeBase)}
                 >
-                  进入知识库
+                  打开
                 </button>
                 <button
                   className={styles.managementDangerMinorButton}
@@ -670,16 +675,6 @@ export function KnowledgeManagementView({
           ) : null}
           {managementError ? <div className={styles.managementError}>{managementError}</div> : null}
         </div>
-        <div className={styles.managementTopbar}>
-          <div className={styles.managementRouteInfo}>
-            <span className={styles.managementBreadcrumb}>
-              知识管理 / {MANAGEMENT_PAGE_TITLE_MAP[knowledgePage]}
-            </span>
-            <h2>{MANAGEMENT_PAGE_TITLE_MAP[knowledgePage]}</h2>
-            <p>{MANAGEMENT_PAGE_DESCRIPTION_MAP[knowledgePage]}</p>
-          </div>
-        </div>
-
         {renderKnowledgePage()}
       </div>
 

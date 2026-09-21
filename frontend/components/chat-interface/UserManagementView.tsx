@@ -207,23 +207,29 @@ export function UserManagementView({
             </div>
           </div>
 
-          <div className={styles.managementCardGrid}>
+          <div className={styles.managementDataList}>
             {users.length === 0 ? (
               <div className={styles.managementEmpty}>当前没有匹配的用户。</div>
             ) : (
               users.map((user) => (
-                <div key={user.user_id} className={styles.managementTileCard}>
-                  <div className={styles.managementListHeader}>
-                    <strong>{user.email}</strong>
-                    <span className={styles.accountRoleBadge}>
-                      {user.role === 'admin' ? '管理员' : '普通用户'}
+                <div key={user.user_id} className={styles.managementDataRow}>
+                  <div className={styles.managementDataPrimary}>
+                    <div className={styles.managementDataTitle}>
+                      <strong>{user.email}</strong>
+                      <span className={styles.accountRoleBadge}>
+                        {user.role === 'admin' ? '管理员' : '普通用户'}
+                      </span>
+                    </div>
+                    <span className={styles.managementDataDescription}>
+                      用户 ID: {user.user_id}
                     </span>
                   </div>
-                  <div className={styles.managementMetaPanel}>
-                    <span>用户 ID: {user.user_id}</span>
+
+                  <div className={styles.managementDataMetrics}>
                     <span>状态: {user.is_active ? '启用中' : '已停用'}</span>
                   </div>
-                  <div className={styles.managementActionRow}>
+
+                  <div className={styles.managementDataActions}>
                     <button
                       type="button"
                       className={styles.managementMinorButton}
