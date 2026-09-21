@@ -4,16 +4,13 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from deepclaw.web_backend.agui.registry import (
-    AgentRegistry,
-    AgentRuntimeRegistry,
-    build_default_registry,
-)
+from deepclaw.agent_registry import AgentRegistry
 from deepclaw.web_backend.agent.run_store import (
     RunStore,
     get_or_backfill_thread,
     get_run_store,
 )
+from deepclaw.web_backend.agui.runtime import AgentRuntimeCache
 from deepclaw.web_backend.auth.dependencies import CurrentActor, get_current_actor
 from deepclaw.web_backend.common.agui_runs import (
     _actor_user_id,
@@ -39,33 +36,19 @@ from deepclaw.web_backend.common.agui_schemas import (
     ThreadRunListResponse,
 )
 
-
-_agent_registry = build_default_registry()
-_agent_runtime_registry = AgentRuntimeRegistry()
+_agent_runtime_cache = AgentRuntimeCache()
 
 
-def get_agent_registry() -> AgentRegistry:
-    """返回进程级智能体注册表。
+def get_agent_runtime_cache() -> AgentRuntimeCache:
+    """返回进程级智能体运行时缓存。
 
     Args:
         无。
 
     Returns:
-        当前进程使用的智能体注册表。
+        当前进程使用的智能体运行时缓存。
     """
-    return _agent_registry
-
-
-def get_agent_runtime_registry() -> AgentRuntimeRegistry:
-    """返回进程级智能体运行时注册表。
-
-    Args:
-        无。
-
-    Returns:
-        当前进程使用的智能体运行时注册表。
-    """
-    return _agent_runtime_registry
+    return _agent_runtime_cache
 
 
 def get_checkpointer(request: Request) -> Any | None:
@@ -111,7 +94,7 @@ async def _resolve_run_manager(
     actor: CurrentActor,
     run_store: RunStore,
     registry: AgentRegistry,
-    runtime_registry: AgentRuntimeRegistry,
+    runtime_registry: AgentRuntimeCache,
     checkpointer: Any | None,
     store: Any | None,
 ):
@@ -137,17 +120,22 @@ async def _resolve_run_manager(
     if state is None:
         raise HTTPException(status_code=404, detail="Run 不存在")
     try:
-        spec = registry.get(state.agent_id)
+        definition = registry.get(state.agent_id)
     except KeyError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    graph = await runtime_registry.get_graph(request, spec, checkpointer, store)
+    graph = await runtime_registry.get_graph(
+        request,
+        definition,
+        checkpointer,
+        store,
+    )
     manager = await runtime_registry.get_manager(
         request,
-        spec,
+        definition,
         graph,
         run_store,
     )
-    return state, spec, manager
+    return state, definition, manager
 
 
 router = APIRouter(prefix="/api/agui")
@@ -161,18 +149,19 @@ router = APIRouter(prefix="/api/agui")
     description="返回当前服务可调用的智能体列表。",
 )
 async def list_agents(
-    registry: AgentRegistry = Depends(get_agent_registry),
+    request: Request,
 ) -> AgentListResponse:
     """查询可用智能体列表。"""
+    registry = request.app.state.agent_registry
     items = [
         AgentSummaryResponse(
-            id=spec.agent_id,
-            name=spec.name,
-            description=spec.description,
-            is_default=spec.is_default,
-            capabilities=list(spec.capabilities),
+            id=definition.agent_id,
+            name=definition.name,
+            description=definition.description,
+            is_default=definition.is_default,
+            capabilities=list(definition.capabilities),
         )
-        for spec in registry.list_specs()
+        for definition in registry.list_definitions()
     ]
     return AgentListResponse(items=items, total=len(items))
 
@@ -189,21 +178,26 @@ async def create_run(
     payload: AgUiRunRequest,
     request: Request,
     actor: CurrentActor = Depends(get_current_actor),
-    registry: AgentRegistry = Depends(get_agent_registry),
-    runtime_registry: AgentRuntimeRegistry = Depends(get_agent_runtime_registry),
+    runtime_registry: AgentRuntimeCache = Depends(get_agent_runtime_cache),
     checkpointer: Any | None = Depends(get_checkpointer),
     store: Any | None = Depends(get_langgraph_store),
     run_store: RunStore = Depends(get_agui_run_store),
 ):
     """创建统一 AG-UI Run。"""
+    registry = request.app.state.agent_registry
     try:
-        spec = registry.resolve(payload.agent_id)
+        definition = registry.resolve(payload.agent_id)
     except KeyError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    graph = await runtime_registry.get_graph(request, spec, checkpointer, store)
+    graph = await runtime_registry.get_graph(
+        request,
+        definition,
+        checkpointer,
+        store,
+    )
     manager = await runtime_registry.get_manager(
         request,
-        spec,
+        definition,
         graph,
         run_store,
     )
@@ -212,7 +206,7 @@ async def create_run(
         payload,
         request,
         actor,
-        spec.allowed_state_keys,
+        definition.allowed_state_keys,
     )
 
 
@@ -268,14 +262,14 @@ async def resume_run(
     payload: AgUiRunRequest,
     request: Request,
     actor: CurrentActor = Depends(get_current_actor),
-    registry: AgentRegistry = Depends(get_agent_registry),
-    runtime_registry: AgentRuntimeRegistry = Depends(get_agent_runtime_registry),
+    runtime_registry: AgentRuntimeCache = Depends(get_agent_runtime_cache),
     checkpointer: Any | None = Depends(get_checkpointer),
     store: Any | None = Depends(get_langgraph_store),
     run_store: RunStore = Depends(get_agui_run_store),
 ):
     """恢复统一 AG-UI Run。"""
-    state, spec, manager = await _resolve_run_manager(
+    registry = request.app.state.agent_registry
+    state, definition, manager = await _resolve_run_manager(
         request=request,
         run_id=run_id,
         actor=actor,
@@ -293,7 +287,7 @@ async def resume_run(
         payload,
         request,
         actor,
-        spec.allowed_state_keys,
+        definition.allowed_state_keys,
     )
 
 
@@ -310,14 +304,14 @@ async def handle_action(
     payload: RunActionRequest,
     request: Request,
     actor: CurrentActor = Depends(get_current_actor),
-    registry: AgentRegistry = Depends(get_agent_registry),
-    runtime_registry: AgentRuntimeRegistry = Depends(get_agent_runtime_registry),
+    runtime_registry: AgentRuntimeCache = Depends(get_agent_runtime_cache),
     checkpointer: Any | None = Depends(get_checkpointer),
     store: Any | None = Depends(get_langgraph_store),
     run_store: RunStore = Depends(get_agui_run_store),
 ):
     """处理统一 AG-UI Action。"""
-    _, spec, manager = await _resolve_run_manager(
+    registry = request.app.state.agent_registry
+    _, definition, manager = await _resolve_run_manager(
         request=request,
         run_id=run_id,
         actor=actor,
@@ -333,7 +327,7 @@ async def handle_action(
         payload,
         request,
         actor,
-        spec.allowed_state_keys,
+        definition.allowed_state_keys,
     )
 
 
@@ -407,13 +401,13 @@ async def get_thread_state(
     thread_id: str,
     request: Request,
     actor: CurrentActor = Depends(get_current_actor),
-    registry: AgentRegistry = Depends(get_agent_registry),
-    runtime_registry: AgentRuntimeRegistry = Depends(get_agent_runtime_registry),
+    runtime_registry: AgentRuntimeCache = Depends(get_agent_runtime_cache),
     checkpointer: Any | None = Depends(get_checkpointer),
     store: Any | None = Depends(get_langgraph_store),
     run_store: RunStore = Depends(get_agui_run_store),
 ):
     """查询指定 Thread 的图状态。"""
+    registry = request.app.state.agent_registry
     thread = await get_or_backfill_thread(
         run_store,
         thread_id,
@@ -422,10 +416,15 @@ async def get_thread_state(
     if thread is None:
         raise HTTPException(status_code=404, detail="Thread 不存在")
     try:
-        spec = registry.get(thread.agent_id)
+        definition = registry.get(thread.agent_id)
     except KeyError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    graph = await runtime_registry.get_graph(request, spec, checkpointer, store)
+    graph = await runtime_registry.get_graph(
+        request,
+        definition,
+        checkpointer,
+        store,
+    )
     return await get_agui_thread_state(
         run_store,
         graph,

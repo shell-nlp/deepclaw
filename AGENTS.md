@@ -20,7 +20,8 @@
   当前 FastAPI 官方装配入口。负责：
   - 创建 `FastAPI` 应用
   - 初始化 checkpointer 与 store
-  - 在 `create_app()` 中挂载模块级 `auth`、`agent`、`rag`、`channels`、`skills`、`knowledge_bases` 路由
+  - 在 `create_app()` 中挂载模块级 `auth`、`agui`、`channels`、`skills`、`knowledge_bases` 路由
+  - 在应用生命周期中初始化 `AgentRegistry`
   - 提供 `/api/runtime-config` 运行时配置
   - 静态托管 `frontend/out`
 
@@ -42,8 +43,10 @@
 - `deepclaw/web_backend/common/agui_schemas.py`
   AG-UI HTTP 协议模型，当前包含 `AgUiRunRequest`、`RunSnapshotResponse`、`RunActionRequest` 与 Thread/Agent 响应模型。
 
-- `deepclaw/web_backend/agui/registry.py`
-  统一 AG-UI 智能体注册表，定义 `AgentSpec`，按 `agent_id` 解析通用 Agent 与 RAG Agent，并缓存对应图和 Run 管理器。
+- `deepclaw/agent_registry.py`
+  统一 Agent 基类与自动发现入口。定义 `Agent` 与 `AgentRegistry`，扫描 `deepclaw.agents.*.agent` 模块并校验 `agent_id`、默认智能体和 `build_agent` 构建入口。
+- `deepclaw/web_backend/agui/runtime.py`
+  AG-UI 智能体运行时缓存，按应用和智能体缓存图与 Run 管理器。
 - `deepclaw/web_backend/agui/router.py`
   模块级统一 AG-UI 路由器，提供 `/api/agui/agents`、`/api/agui/runs/*`、`/api/agui/threads/*`。
 
@@ -81,10 +84,10 @@
 ### 核心能力层
 
 - `deepclaw/agents/general/`
-  通用 Agent 组装、上下文、状态与运行时相关逻辑。
+  通用 Agent 组装、上下文、状态与运行时相关逻辑；`general/agent.py` 的 `GeneralAgent.build_agent` 直接承载构建实现。
 
 - `deepclaw/agents/rag/`
-  RAG Agent 组装、上下文与状态定义。
+  RAG Agent 组装、上下文与状态定义；`rag/agent.py` 的 `RagAgent.build_agent` 直接承载构建实现。
 
 - `deepclaw/common/`
   Elasticsearch、向量数据库抽象、Graph RAG（`BaseGraphRAG` + `ElasticGraphRAG` + `PgGraphRAG`）、PDF 切分等通用算法实现。
@@ -241,6 +244,7 @@ pnpm build
 - 只改任务直接相关的代码，不做顺手重构。
 - Python 导入统一使用 `deepclaw.*` 绝对导入，禁止使用 `from .`、`from ..` 等相对导入。
 - 包结构调整后同步更新本文档的「当前代码结构」。
+- `deepclaw/agents/` 只放 Agent 实现与对应的 `Agent` 子类；Agent 自动发现和注册基础设施放在 `deepclaw/agent_registry.py`。
 - 未经用户明确要求，不要执行 `git add`、`git commit`、`git amend`。
 - 测试统一使用 `pytest`，不要引入 `unittest` 风格测试。
 - 不要新增仅校验日志输出内容的测试用例；日志无需专门测试。
@@ -292,6 +296,7 @@ pnpm build
   - 续流/重放：`GET /api/agui/runs/{run_id}/events`
   - 恢复：`POST /api/agui/runs/{run_id}/resume`
   - 取消：`POST /api/agui/runs/{run_id}/cancel`
+- 新增 Agent 时只需在 `deepclaw/agents/<name>/agent.py` 中定义 `Agent` 子类，`AgentRegistry.discover()` 会自动加载；不需要修改 Web 路由或集中式 Agent 列表。
 - 运行参数（`user_id`、`internet_search`、`deep_thinking`、`mcp_config`、`index_name`、`graph_name`、`header_info`）统一存放在 LangGraph state，不再依赖 `runtime.context`
 - Thread 资源现在记录 `thread_id -> owner_user_id + agent_id`，创建 Run 时会自动创建或校验 Thread 归属
 - Thread 接口：`GET /api/agui/threads`、`GET /api/agui/threads/{thread_id}/runs`、`GET /api/agui/threads/{thread_id}/state`、`DELETE /api/agui/threads/{thread_id}`

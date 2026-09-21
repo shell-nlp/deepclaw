@@ -10,6 +10,7 @@ from loguru import logger
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
+from deepclaw.agent_registry import AgentRegistry
 from deepclaw.constant import root_dir, workspace_path
 from deepclaw.patch.langchain import patch_langchain
 from deepclaw.settings import settings
@@ -145,6 +146,7 @@ async def app_lifespan(app: FastAPI):
     setup_observability()
     patch_langchain()
     await init_agent_env(app)
+    app.state.agent_registry = AgentRegistry.discover()
     await get_run_store().initialize()
     register_frontend_routes(app)
     logger.info(

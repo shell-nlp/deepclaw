@@ -3,6 +3,7 @@ from typing import Any
 from langgraph.graph.state import CompiledStateGraph
 from loguru import logger
 
+from deepclaw.agent_registry import Agent
 from deepclaw.agents.general.state import StateSchema
 from deepclaw.constant import (
     AGENT_VIRTUAL_PREFERENCES,
@@ -30,36 +31,63 @@ def user_namespace_factory(runtime: Any) -> tuple[str, ...]:
     return ("filesystem", user_id)
 
 
-class Agent:
-    def __init__(
-        self,
-        system_prompt="",
-        tools: list = [],
+class GeneralAgent(Agent):
+    """通用智能体。"""
+
+    agent_id = "agent"
+    name = "通用智能体"
+    description = "通用工具调用、MCP 与深度思考"
+    capabilities = frozenset({"mcp", "deep_thinking", "internet_search"})
+    allowed_state_keys = frozenset(
+        {"internet_search", "deep_thinking", "mcp_config"}
+    )
+    is_default = True
+
+    @classmethod
+    def build_agent(
+        cls,
+        *,
+        system_prompt: str = "",
+        tools: list | None = None,
         deep_agent: bool = False,
-        checkpointer=None,
-        store=None,
-    ):
-        self.system_prompt = system_prompt
-        self.tools = tools
-        self.checkpointer = checkpointer
-        self.store = store
-        self.deep_agent = deep_agent
-        self.agent = self.init_agent()
+        checkpointer: Any | None = None,
+        store: Any | None = None,
+    ) -> CompiledStateGraph:
+        """构建通用 Agent 图。
 
-    def get_common_middleware(self):
-        """获取通用中间件列表"""
-        from deepclaw.middleware import BusinessMiddleware, MCPMiddleware
+        Args:
+            system_prompt: Agent 系统提示词。
+            tools: 额外工具列表。
+            deep_agent: 是否构建 DeepAgent。
+            checkpointer: LangGraph 检查点存储。
+            store: LangGraph 长期存储。
 
-        middleware = []
-        from deepclaw.middleware import RecommendedQuestionsMiddleware
+        Returns:
+            已装配的通用 Agent 图。
+        """
+        from langchain.agents.middleware.human_in_the_loop import (
+            HumanInTheLoopMiddleware,
+        )
 
-        middleware.append(RecommendedQuestionsMiddleware())
-        middleware.append(BusinessMiddleware())
-        middleware.append(MCPMiddleware())
-        # HumanInTheLoopMiddleware
-        from langchain.agents.middleware.human_in_the_loop import HumanInTheLoopMiddleware
+        from deepclaw.middleware import (
+            BusinessMiddleware,
+            MCPMiddleware,
+            RecommendedQuestionsMiddleware,
+        )
+        from deepclaw.tools import ask_user, get_weather, web_fetch
+
+        middleware = [
+            RecommendedQuestionsMiddleware(),
+            BusinessMiddleware(),
+            MCPMiddleware(),
+        ]
 
         def when_get_weather(request) -> bool:
+            """判断天气工具调用是否需要人工审批。
+
+            Args:
+                request: 工具调用请求。
+            """
             query = request.tool_call["args"].get("location", "")
             return query.startswith("南阳")
 
@@ -76,30 +104,22 @@ class Agent:
                 description_prefix="工具执行等待批准",
             )
         )
-        return middleware
 
-    def get_common_tools(self):
-        """获取通用工具列表"""
-        from deepclaw.tools import ask_user, get_weather, web_fetch
-
-        return [get_weather, web_fetch, ask_user]
-
-    def init_agent(self) -> CompiledStateGraph:
         skills = None
         memory = None
-        middleware = self.get_common_middleware()
-
         model = get_chat_model()
         model.tags = ["agent"]
 
         backend = None
-        tools = self.tools + self.get_common_tools()
+        agent_tools = (tools or []) + [get_weather, web_fetch, ask_user]
 
         if not workspace_path.exists():
             workspace_path.mkdir(parents=True, exist_ok=True)
         if settings.BACKEND_TYPE == "sandbox":
             from deepclaw.backend.open_sandbox import OpenSandbox
-            from deepclaw.middleware.sandbox.opensandbox_kill import OpenSandboxKillMiddleware
+            from deepclaw.middleware.sandbox.opensandbox_kill import (
+                OpenSandboxKillMiddleware,
+            )
 
             # 注意：以下是 Docker 容器内路径（容器 OS 永远为 Linux），
             # 与宿主 OS 无关，不要替换为 workspace_path 等 host 路径。
@@ -114,12 +134,19 @@ class Agent:
             # 宿主机路径，使用 pathlib.Path 自动处理 Windows / Linux / macOS 分隔符
             skills = [str(workspace_path / "skills")]
             memory = [str(workspace_path / "AGENTS.md")]
-            backend = LocalShellBackend(root_dir=home_path, virtual_mode=False, inherit_env=True)
+            backend = LocalShellBackend(
+                root_dir=home_path,
+                virtual_mode=False,
+                inherit_env=True,
+            )
             logger.info("使用 LocalShellBackend 作为后端")
         elif settings.BACKEND_TYPE == "store":
             from deepclaw.agents.general.utils import copy_skills_to_store
 
-            copy_skills_to_store(skills_dir=workspace_path / "skills", store=self.store)
+            copy_skills_to_store(
+                skills_dir=workspace_path / "skills",
+                store=store,
+            )
             logger.info("使用 StoreBackend 作为后端")
 
         from deepagents.backends import CompositeBackend, StoreBackend
@@ -137,14 +164,18 @@ class Agent:
 
             middleware.append(DeferredToolMiddleware())
 
-        if self.deep_agent:
+        if deep_agent:
             from deepclaw.middleware.chart import ChartMiddleware
-            from deepclaw.middleware.deep_agent_prompt import DeepAgentPromptMiddleware
+            from deepclaw.middleware.deep_agent_prompt import (
+                DeepAgentPromptMiddleware,
+            )
 
-            middleware.extend([
-                ChartMiddleware(),
-                DeepAgentPromptMiddleware(),
-            ])
+            middleware.extend(
+                [
+                    ChartMiddleware(),
+                    DeepAgentPromptMiddleware(),
+                ]
+            )
             logger.info("使用 DeepAgent")
             from deepagents import FilesystemPermission, create_deep_agent
 
@@ -161,46 +192,42 @@ class Agent:
             memory.append(AGENT_VIRTUAL_PREFERENCES)
             return create_deep_agent(
                 model=model,
-                tools=tools,
-                system_prompt=self.system_prompt,
+                tools=agent_tools,
+                system_prompt=system_prompt,
                 middleware=middleware,
                 backend=composite_backend,
                 skills=skills,
                 memory=memory,
-                checkpointer=self.checkpointer,
-                store=self.store,
+                checkpointer=checkpointer,
+                store=store,
                 state_schema=StateSchema,
                 permissions=permissions,
             )
-        else:
-            logger.info("正在使用 ReactAgent")
-            from langchain.agents import create_agent
-            from langchain.agents.middleware import SummarizationMiddleware
 
-            from deepclaw.middleware.nl2sql import NL2SQLMiddleware
+        logger.info("正在使用 ReactAgent")
+        from langchain.agents import create_agent
+        from langchain.agents.middleware import SummarizationMiddleware
 
-            middleware.extend(
-                [
-                    SummarizationMiddleware(
-                        model=get_chat_model(),
-                        # token_counter=count_message_tokens,
-                    ),
-                    NL2SQLMiddleware(allowed_tables=None),
-                ]
-            )
-            return create_agent(
-                model=model,
-                tools=tools,
-                system_prompt=self.system_prompt,
-                middleware=middleware,
-                checkpointer=self.checkpointer,
-                store=self.store,
-                state_schema=StateSchema,
-            )
+        from deepclaw.middleware.nl2sql import NL2SQLMiddleware
 
-    def get_agent(self) -> CompiledStateGraph:
-        return self.agent
-
+        middleware.extend(
+            [
+                SummarizationMiddleware(
+                    model=get_chat_model(),
+                    # token_counter=count_message_tokens,
+                ),
+                NL2SQLMiddleware(allowed_tables=None),
+            ]
+        )
+        return create_agent(
+            model=model,
+            tools=agent_tools,
+            system_prompt=system_prompt,
+            middleware=middleware,
+            checkpointer=checkpointer,
+            store=store,
+            state_schema=StateSchema,
+        )
 
 if __name__ == "__main__":
     model = get_chat_model()
