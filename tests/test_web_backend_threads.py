@@ -13,7 +13,12 @@ from deepclaw.web_backend.agui.router import (
     router as agui_router,
 )
 from deepclaw.web_backend.agent.run_manager import AgentRunManager
-from deepclaw.web_backend.agent.run_store import InMemoryRunStore, RunState, ThreadState
+from deepclaw.web_backend.agent.run_store import (
+    InMemoryRunStore,
+    RunState,
+    SqlRunStore,
+    ThreadState,
+)
 from deepclaw.web_backend.auth.dependencies import CurrentActor, get_current_actor
 
 
@@ -293,6 +298,51 @@ def test_memory_thread_store_owner_isolation():
         assert await store.get_thread("thread-1", user_id="user-2") is None
         assert await store.delete_thread("thread-1", user_id="user-1")
         assert await store.get_thread("thread-1") is None
+
+    asyncio.run(scenario())
+
+
+def test_sql_thread_store_deletes_runs_and_events(tmp_path):
+    """验证 SQL 存储删除 Thread 时同步清理 Run 与事件。"""
+
+    async def scenario():
+        """执行 SQL 存储删除场景。"""
+        store = SqlRunStore(f"sqlite:///{tmp_path / 'run-store.db'}")
+        await store.initialize()
+        payload = RunAgentInput.model_validate(
+            {
+                "threadId": "thread-sql",
+                "runId": "run-sql",
+                "state": {"user_id": "user-1"},
+                "messages": [
+                    {"id": "message-sql", "role": "user", "content": "删除测试"}
+                ],
+                "tools": [],
+            }
+        )
+        assert await store.create_thread(
+            ThreadState(
+                thread_id="thread-sql",
+                owner_user_id="user-1",
+                agent_id="agent",
+            )
+        )
+        assert await store.create_run(
+            RunState(
+                run_id="run-sql",
+                thread_id="thread-sql",
+                input=payload,
+                owner_user_id="user-1",
+                agent_id="agent",
+            )
+        )
+        await store.append_event("run-sql", 'data: {"type": "RUN_STARTED"}\n\n')
+
+        assert await store.delete_thread("thread-sql", user_id="user-1")
+        assert await store.get_thread("thread-sql") is None
+        assert await store.get_run("run-sql") is None
+        assert await store.get_events("run-sql") == []
+        await store.close()
 
     asyncio.run(scenario())
 
