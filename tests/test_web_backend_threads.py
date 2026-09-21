@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from deepclaw.web_backend.agent.run_manager import AgentRunManager
 from deepclaw.web_backend.agent.router import (
     get_agent_graph,
-    get_agent_run_manager,
+    get_agent_run_store,
     get_checkpointer,
     router as agent_router,
 )
@@ -16,10 +16,10 @@ from deepclaw.web_backend.agent.run_store import InMemoryRunStore, RunState, Thr
 from deepclaw.web_backend.auth.dependencies import CurrentActor, get_current_actor
 
 
-class FakeThreadManager:
-    """测试用 Thread/Run 管理器。"""
+class FakeThreadStore:
+    """测试用 Thread/Run 存储。"""
 
-    async def list_thread_runs(self, thread_id, user_id=None, limit=100):
+    async def list_runs_by_thread(self, thread_id, user_id=None, limit=100):
         """返回固定 Thread Run 列表。
 
         Args:
@@ -30,16 +30,15 @@ class FakeThreadManager:
         if thread_id != "thread-1" or user_id != "guest":
             return None
         return [
-            {
-                "runId": "run-1",
-                "threadId": "thread-1",
-                "status": "finished",
-                "lastEventId": "run-1:1",
-                "eventCount": 1,
-                "createdAt": 1.0,
-                "updatedAt": 2.0,
-                "error": None,
-            }
+            SimpleNamespace(
+                run_id="run-1",
+                thread_id="thread-1",
+                status="finished",
+                last_event_id=1,
+                created_at=1.0,
+                updated_at=2.0,
+                error=None,
+            )
         ][:limit]
 
     async def list_threads(self, user_id, limit=100):
@@ -63,6 +62,14 @@ class FakeThreadManager:
         if thread_id != "thread-1" or user_id != "guest":
             return None
         return ThreadState(thread_id=thread_id, owner_user_id="guest")
+
+    async def create_thread(self, state):
+        """模拟创建 Thread。
+
+        Args:
+            state: Thread 状态。
+        """
+        return True
 
     async def delete_thread(self, thread_id, user_id=None):
         """记录删除的 Thread。
@@ -104,18 +111,18 @@ class FakeCheckpointer:
         self.deleted_thread_id = thread_id
 
 
-def build_client(*, actor=None, manager=None, graph=None, checkpointer=None):
+def build_client(*, actor=None, store=None, graph=None, checkpointer=None):
     """构建 Thread API 测试客户端。
 
     Args:
         actor: 可选当前鉴权主体。
-        manager: 可选测试 Run 管理器。
+        store: 可选测试 Run/Thread 存储。
         graph: 可选测试图。
         checkpointer: 可选测试检查点存储。
     """
     app = FastAPI()
     app.include_router(agent_router)
-    app.dependency_overrides[get_agent_run_manager] = lambda: manager or FakeThreadManager()
+    app.dependency_overrides[get_agent_run_store] = lambda: store or FakeThreadStore()
     app.dependency_overrides[get_agent_graph] = lambda: graph or FakeGraph()
     app.dependency_overrides[get_checkpointer] = lambda: checkpointer or FakeCheckpointer()
     app.dependency_overrides[get_current_actor] = lambda: actor or CurrentActor(
@@ -136,6 +143,35 @@ def test_thread_list_returns_current_user_threads():
     assert response.status_code == 200
     assert response.json()["total"] == 1
     assert response.json()["items"][0]["threadId"] == "thread-1"
+
+
+def test_thread_list_does_not_build_agent_graph():
+    """验证 Thread 列表不会触发 Agent 图初始化。"""
+
+    def fail_graph():
+        """在依赖被调用时抛出断言错误。
+
+        Args:
+            无。
+        """
+        raise AssertionError("Thread 列表不应构建 Agent 图")
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    app.dependency_overrides[get_agent_run_store] = lambda: FakeThreadStore()
+    app.dependency_overrides[get_agent_graph] = fail_graph
+    app.dependency_overrides[get_current_actor] = lambda: CurrentActor(
+        is_guest=True,
+        user_id=None,
+        email=None,
+        role="guest",
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/api/agent/threads")
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
 
 
 def test_thread_run_list_returns_snapshots():

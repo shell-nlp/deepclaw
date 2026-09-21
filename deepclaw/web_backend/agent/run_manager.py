@@ -14,6 +14,7 @@ from deepclaw.web_backend.agent.run_store import (
     RunState,
     RunStore,
     ThreadState,
+    get_or_backfill_thread,
     get_run_store,
 )
 
@@ -21,6 +22,27 @@ from deepclaw.web_backend.agent.run_store import (
 
 class ThreadOwnershipError(ValueError):
     """Thread 归属校验失败异常。"""
+
+
+def run_state_to_snapshot(state: RunState) -> dict[str, Any]:
+    """将 Run 状态转换为浏览器可读 Snapshot。
+
+    Args:
+        state: 当前 Run 状态。
+
+    Returns:
+        Run Snapshot 字典。
+    """
+    return {
+        "runId": state.run_id,
+        "threadId": state.thread_id,
+        "status": state.status,
+        "lastEventId": f"{state.run_id}:{state.last_event_id}",
+        "eventCount": state.last_event_id,
+        "createdAt": state.created_at,
+        "updatedAt": state.updated_at,
+        "error": state.error,
+    }
 
 
 class AgentRunManager:
@@ -131,16 +153,7 @@ class AgentRunManager:
         Returns:
             Run Snapshot 字典。
         """
-        return {
-            "runId": state.run_id,
-            "threadId": state.thread_id,
-            "status": state.status,
-            "lastEventId": f"{state.run_id}:{state.last_event_id}",
-            "eventCount": state.last_event_id,
-            "createdAt": state.created_at,
-            "updatedAt": state.updated_at,
-            "error": state.error,
-        }
+        return run_state_to_snapshot(state)
 
     def _start_cleanup_task(self) -> None:
         """在当前事件循环中启动过期清理任务。
@@ -343,27 +356,11 @@ class AgentRunManager:
         Returns:
             Thread 状态；不存在或不属于当前用户时返回 None。
         """
-        thread = await self.store.get_thread(thread_id, user_id=user_id)
-        if thread is not None:
-            return thread
-        runs = await self.store.list_runs_by_thread(
+        return await get_or_backfill_thread(
+            self.store,
             thread_id,
             user_id=user_id,
-            limit=1,
         )
-        if not runs:
-            return None
-        run = runs[0]
-        thread = ThreadState(
-            thread_id=thread_id,
-            owner_user_id=run.owner_user_id,
-            title=self._thread_title(run.input),
-            created_at=run.created_at,
-            updated_at=run.updated_at,
-            expires_at=run.expires_at,
-        )
-        await self.store.create_thread(thread)
-        return thread
 
     async def list_threads(
         self,
