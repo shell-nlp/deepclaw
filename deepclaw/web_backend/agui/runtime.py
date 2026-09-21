@@ -150,3 +150,22 @@ class AgentRuntimeCache:
                 graph,
                 run_store,
             )
+
+    async def close(self) -> None:
+        """取消全部 Run 管理器后台任务并清理缓存。
+
+        Args:
+            无。
+
+        Returns:
+            无。
+        """
+        managers = list(self._managers.values())
+        if managers:
+            await asyncio.gather(
+                *(manager.shutdown() for manager in managers),
+                return_exceptions=True,
+            )
+        self._managers.clear()
+        self._graphs.clear()
+        self._locks.clear()

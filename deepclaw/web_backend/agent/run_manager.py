@@ -520,8 +520,8 @@ class AgentRunManager:
             )
             await self.store.update_run_status(run_id, "error", error_message)
 
-    async def close(self) -> None:
-        """取消活动任务并释放 Run 存储资源。
+    async def shutdown(self) -> None:
+        """取消活动任务但不关闭共享 Run 存储。
 
         Args:
             无。
@@ -531,12 +531,32 @@ class AgentRunManager:
         """
         if self._cleanup_task is not None:
             self._cleanup_task.cancel()
-        for watcher in list(self._watchers.values()):
+            await asyncio.gather(self._cleanup_task, return_exceptions=True)
+            self._cleanup_task = None
+
+        watchers = list(self._watchers.values())
+        for watcher in watchers:
             watcher.cancel()
+        self._watchers.clear()
+
         tasks = list(self._tasks.values())
         for task in tasks:
             if not task.done():
                 task.cancel()
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+        self._tasks.clear()
+
+        pending_tasks = [*watchers, *tasks]
+        if pending_tasks:
+            await asyncio.gather(*pending_tasks, return_exceptions=True)
+
+    async def close(self) -> None:
+        """取消活动任务并释放 Run 存储资源。
+
+        Args:
+            无。
+
+        Returns:
+            无。
+        """
+        await self.shutdown()
         await self.store.close()
