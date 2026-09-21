@@ -10,7 +10,7 @@ from typing import Any, AsyncIterator, Protocol
 from ag_ui.core import RunAgentInput
 from sqlalchemy import JSON, Column, Index, UniqueConstraint, inspect, text
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import Field, SQLModel, select
+from sqlmodel import Field, SQLModel, delete, select
 
 from deepclaw.settings import settings
 from deepclaw.web_backend.db import (
@@ -1439,19 +1439,27 @@ class SqlRunStore(BaseRunStore):
             if thread is None or (user_id is not None and thread.owner_user_id != user_id):
                 return False
             run_result = await session.exec(
-                select(AgUiRunRecord).where(AgUiRunRecord.thread_id == thread_id)
-            )
-            runs = list(run_result.all())
-            for run in runs:
-                event_result = await session.exec(
-                    select(AgUiRunEventRecord).where(
-                        AgUiRunEventRecord.run_id == run.run_id
-                    )
+                select(AgUiRunRecord.run_id).where(
+                    AgUiRunRecord.thread_id == thread_id
                 )
-                for event in event_result.all():
-                    await session.delete(event)
-                await session.delete(run)
-            await session.delete(thread)
+            )
+            run_ids = list(run_result.all())
+            if run_ids:
+                await session.exec(
+                    delete(AgUiRunEventRecord)
+                    .where(AgUiRunEventRecord.run_id.in_(run_ids))
+                    .execution_options(synchronize_session=False)
+                )
+                await session.exec(
+                    delete(AgUiRunRecord)
+                    .where(AgUiRunRecord.thread_id == thread_id)
+                    .execution_options(synchronize_session=False)
+                )
+            await session.exec(
+                delete(AgUiThreadRecord)
+                .where(AgUiThreadRecord.thread_id == thread_id)
+                .execution_options(synchronize_session=False)
+            )
             await session.commit()
             return True
 
@@ -1631,13 +1639,18 @@ class SqlRunStore(BaseRunStore):
             无。
         """
         result = await session.exec(
-            select(AgUiRunEventRecord)
+            select(AgUiRunEventRecord.id)
             .where(AgUiRunEventRecord.run_id == run_id)
             .order_by(AgUiRunEventRecord.event_id.desc())
         )
-        records = list(result.all())
-        for record in records[self.max_events_per_run :]:
-            await session.delete(record)
+        event_ids = list(result.all())
+        expired_event_ids = event_ids[self.max_events_per_run :]
+        if expired_event_ids:
+            await session.exec(
+                delete(AgUiRunEventRecord)
+                .where(AgUiRunEventRecord.id.in_(expired_event_ids))
+                .execution_options(synchronize_session=False)
+            )
         await session.commit()
 
     async def get_events(self, run_id: str, after: int = 0) -> list[tuple[int, str]]:
@@ -1710,26 +1723,33 @@ class SqlRunStore(BaseRunStore):
         now = utc_now()
         async with self.async_session() as session:
             run_result = await session.exec(
-                select(AgUiRunRecord).where(AgUiRunRecord.expires_at <= now)
+                select(AgUiRunRecord.run_id).where(AgUiRunRecord.expires_at <= now)
             )
-            expired_runs = list(run_result.all())
-            event_result = await session.exec(
-                select(AgUiRunEventRecord).where(AgUiRunEventRecord.expires_at <= now)
+            expired_run_ids = list(run_result.all())
+            if expired_run_ids:
+                await session.exec(
+                    delete(AgUiRunEventRecord)
+                    .where(AgUiRunEventRecord.run_id.in_(expired_run_ids))
+                    .execution_options(synchronize_session=False)
+                )
+            await session.exec(
+                delete(AgUiRunEventRecord)
+                .where(AgUiRunEventRecord.expires_at <= now)
+                .execution_options(synchronize_session=False)
             )
-            expired_events = list(event_result.all())
-            thread_result = await session.exec(
-                select(AgUiThreadRecord).where(AgUiThreadRecord.expires_at <= now)
+            await session.exec(
+                delete(AgUiRunRecord)
+                .where(AgUiRunRecord.expires_at <= now)
+                .execution_options(synchronize_session=False)
             )
-            expired_threads = list(thread_result.all())
-            for record in expired_events:
-                await session.delete(record)
-            for record in expired_runs:
-                await session.delete(record)
-            for record in expired_threads:
-                await session.delete(record)
+            await session.exec(
+                delete(AgUiThreadRecord)
+                .where(AgUiThreadRecord.expires_at <= now)
+                .execution_options(synchronize_session=False)
+            )
             await session.commit()
         self._last_prune_at = time.time()
-        return len(expired_runs)
+        return len(expired_run_ids)
 
     async def close(self) -> None:
         """释放数据库连接资源。
