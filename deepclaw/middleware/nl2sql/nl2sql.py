@@ -10,7 +10,6 @@ from langchain_core.messages import ToolMessage
 from loguru import logger
 from pydantic import Field
 
-from deepclaw.agents.general.context import AgentContext
 from deepclaw.middleware.nl2sql.ddl import fetch_schema_ddl, list_tables
 from deepclaw.settings import settings
 
@@ -443,7 +442,7 @@ def _build_json_row(columns: list[str], row: tuple[object, ...]) -> dict[str, ob
     )
 
 
-class NL2SQLMiddleware(AgentMiddleware[None, AgentContext, None]):
+class NL2SQLMiddleware(AgentMiddleware[None, None, None]):
     def __init__(
         self,
         allowed_tables: list[str] | None = None,
