@@ -16,6 +16,18 @@ export interface ChatHistorySession {
   title: string | null
 }
 
+export interface ThreadSummary {
+  threadId: string
+  title: string | null
+  createdAt: number
+  updatedAt: number
+}
+
+export interface ThreadListResponse {
+  items: ThreadSummary[]
+  total: number
+}
+
 export interface ChatHistoryListData {
   sessions: ChatHistorySession[]
   total: number

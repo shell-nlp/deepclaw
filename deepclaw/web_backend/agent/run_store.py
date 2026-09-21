@@ -81,6 +81,26 @@ def deserialize_run_input(payload: dict[str, Any]) -> RunAgentInput:
     return RunAgentInput.model_validate(payload)
 
 
+def get_thread_title(payload: RunAgentInput) -> str | None:
+    """从 AG-UI 输入提取 Thread 标题。
+
+    Args:
+        payload: AG-UI 标准输入。
+
+    Returns:
+        首条用户消息文本；没有时返回 None。
+    """
+    for message in payload.messages:
+        role = getattr(message, "role", None)
+        normalized_role = getattr(role, "value", role)
+        if normalized_role not in {"user", "human"}:
+            continue
+        content = getattr(message, "content", None)
+        if isinstance(content, str) and content.strip():
+            return content.strip()[:240]
+    return None
+
+
 @dataclass(slots=True)
 class RunState:
     """可持久化的 AG-UI Run 状态。"""
@@ -97,8 +117,110 @@ class RunState:
     error: str | None = None
 
 
+@dataclass(slots=True)
+class ThreadState:
+    """可持久化的 AG-UI Thread 状态。"""
+
+    thread_id: str
+    owner_user_id: str = "guest"
+    title: str | None = None
+    created_at: float = 0.0
+    updated_at: float = 0.0
+    expires_at: float = 0.0
+
+
 class RunStore(Protocol):
     """AG-UI Run 存储抽象。"""
+
+    async def create_thread(self, state: ThreadState) -> bool:
+        """创建 Thread。
+
+        Args:
+            state: Thread 状态。
+
+        Returns:
+            是否创建成功。
+        """
+        ...
+
+    async def get_thread(
+        self,
+        thread_id: str,
+        user_id: str | None = None,
+    ) -> ThreadState | None:
+        """读取 Thread。
+
+        Args:
+            thread_id: Thread ID。
+            user_id: 可选当前用户 ID，用于归属校验。
+
+        Returns:
+            Thread 状态；不存在或不属于当前用户时返回 None。
+        """
+        ...
+
+    async def save_thread(self, state: ThreadState) -> None:
+        """保存 Thread。
+
+        Args:
+            state: Thread 状态。
+
+        Returns:
+            无。
+        """
+        ...
+
+    async def list_threads(
+        self,
+        user_id: str,
+        *,
+        limit: int = 100,
+    ) -> list[ThreadState]:
+        """列出当前用户的 Thread。
+
+        Args:
+            user_id: 当前用户 ID。
+            limit: 最大返回数量。
+
+        Returns:
+            按更新时间倒序排列的 Thread 列表。
+        """
+        ...
+
+    async def delete_thread(
+        self,
+        thread_id: str,
+        user_id: str | None = None,
+    ) -> bool:
+        """删除 Thread 及其关联 Run 与事件。
+
+        Args:
+            thread_id: Thread ID。
+            user_id: 可选当前用户 ID，用于归属校验。
+
+        Returns:
+            是否删除成功。
+        """
+        ...
+
+    async def list_runs_by_thread(
+        self,
+        thread_id: str,
+        user_id: str | None = None,
+        *,
+        limit: int = 100,
+    ) -> list[RunState]:
+        """按 Thread 查询 Run。
+
+        Args:
+            thread_id: Thread ID。
+            user_id: 可选当前用户 ID，用于归属校验。
+            limit: 最大返回数量。
+
+        Returns:
+            按更新时间倒序排列的 Run 列表。
+        """
+        ...
 
     async def create_run(self, state: RunState) -> bool:
         """创建 Run。
@@ -285,6 +407,7 @@ class InMemoryRunStore(BaseRunStore):
             cleanup_interval_seconds=cleanup_interval_seconds,
         )
         self._runs: dict[str, RunState] = {}
+        self._threads: dict[str, ThreadState] = {}
         self._events: dict[str, list[tuple[int, str]]] = {}
         self._subscribers: dict[str, set[asyncio.Queue[tuple[int, str] | None]]] = {}
         self._lock = asyncio.Lock()
@@ -309,6 +432,13 @@ class InMemoryRunStore(BaseRunStore):
             self._events.pop(run_id, None)
             for queue in self._subscribers.pop(run_id, set()):
                 queue.put_nowait(None)
+        expired_threads = [
+            thread_id
+            for thread_id, state in self._threads.items()
+            if state.expires_at > 0 and state.expires_at <= now
+        ]
+        for thread_id in expired_threads:
+            self._threads.pop(thread_id, None)
         self._last_prune_at = now
         return len(expired)
 
@@ -323,6 +453,187 @@ class InMemoryRunStore(BaseRunStore):
         """
         if self._should_prune():
             self._prune_expired_locked()
+
+    def _touch_thread_locked(self, thread_id: str) -> None:
+        """更新 Thread 最近活跃时间。
+
+        Args:
+            thread_id: Thread ID。
+
+        Returns:
+            无。
+        """
+        thread = self._threads.get(thread_id)
+        if thread is None:
+            return
+        thread.updated_at = time.time()
+        thread.expires_at = self._expires_at(thread.updated_at)
+
+    def _backfill_threads_locked(self) -> None:
+        """从已有 Run 回填缺失的 Thread 记录。
+
+        Args:
+            无。
+
+        Returns:
+            无。
+        """
+        for run in self._runs.values():
+            if run.thread_id in self._threads:
+                continue
+            self._threads[run.thread_id] = ThreadState(
+                thread_id=run.thread_id,
+                owner_user_id=run.owner_user_id,
+                title=get_thread_title(run.input),
+                created_at=run.created_at,
+                updated_at=run.updated_at,
+                expires_at=run.expires_at,
+            )
+
+    async def create_thread(self, state: ThreadState) -> bool:
+        """创建 Thread。
+
+        Args:
+            state: Thread 状态。
+
+        Returns:
+            是否创建成功。
+        """
+        async with self._lock:
+            await self._maybe_prune()
+            if state.thread_id in self._threads:
+                return False
+            now = time.time()
+            if state.created_at <= 0:
+                state.created_at = now
+            if state.updated_at <= 0:
+                state.updated_at = state.created_at
+            if state.expires_at <= 0:
+                state.expires_at = self._expires_at(state.updated_at)
+            self._threads[state.thread_id] = copy.deepcopy(state)
+            return True
+
+    async def get_thread(
+        self,
+        thread_id: str,
+        user_id: str | None = None,
+    ) -> ThreadState | None:
+        """读取 Thread。
+
+        Args:
+            thread_id: Thread ID。
+            user_id: 可选当前用户 ID，用于归属校验。
+
+        Returns:
+            Thread 状态；不存在或不属于当前用户时返回 None。
+        """
+        async with self._lock:
+            await self._maybe_prune()
+            state = self._threads.get(thread_id)
+            if state is None or (user_id is not None and state.owner_user_id != user_id):
+                return None
+            return copy.deepcopy(state)
+
+    async def save_thread(self, state: ThreadState) -> None:
+        """保存 Thread。
+
+        Args:
+            state: Thread 状态。
+
+        Returns:
+            无。
+        """
+        async with self._lock:
+            await self._maybe_prune()
+            state.updated_at = time.time()
+            state.expires_at = self._expires_at(state.updated_at)
+            self._threads[state.thread_id] = copy.deepcopy(state)
+
+    async def list_threads(
+        self,
+        user_id: str,
+        *,
+        limit: int = 100,
+    ) -> list[ThreadState]:
+        """列出当前用户的 Thread。
+
+        Args:
+            user_id: 当前用户 ID。
+            limit: 最大返回数量。
+
+        Returns:
+            按更新时间倒序排列的 Thread 列表。
+        """
+        async with self._lock:
+            await self._maybe_prune()
+            self._backfill_threads_locked()
+            states = [
+                copy.deepcopy(state)
+                for state in self._threads.values()
+                if state.owner_user_id == user_id
+            ]
+        states.sort(key=lambda state: state.updated_at, reverse=True)
+        return states[:limit]
+
+    async def delete_thread(
+        self,
+        thread_id: str,
+        user_id: str | None = None,
+    ) -> bool:
+        """删除 Thread 及其关联 Run 与事件。
+
+        Args:
+            thread_id: Thread ID。
+            user_id: 可选当前用户 ID，用于归属校验。
+
+        Returns:
+            是否删除成功。
+        """
+        async with self._lock:
+            await self._maybe_prune()
+            thread = self._threads.get(thread_id)
+            if thread is None or (user_id is not None and thread.owner_user_id != user_id):
+                return False
+            self._threads.pop(thread_id, None)
+            run_ids = [
+                run_id
+                for run_id, state in self._runs.items()
+                if state.thread_id == thread_id
+            ]
+            for run_id in run_ids:
+                self._runs.pop(run_id, None)
+                self._events.pop(run_id, None)
+                for queue in self._subscribers.pop(run_id, set()):
+                    queue.put_nowait(None)
+            return True
+
+    async def list_runs_by_thread(
+        self,
+        thread_id: str,
+        user_id: str | None = None,
+        *,
+        limit: int = 100,
+    ) -> list[RunState]:
+        """按 Thread 查询 Run。
+
+        Args:
+            thread_id: Thread ID。
+            user_id: 可选当前用户 ID，用于归属校验。
+            limit: 最大返回数量。
+
+        Returns:
+            按更新时间倒序排列的 Run 列表。
+        """
+        async with self._lock:
+            await self._maybe_prune()
+            states = [
+                copy.deepcopy(state)
+                for state in self._runs.values()
+                if state.thread_id == thread_id
+                and (user_id is None or state.owner_user_id == user_id)
+            ]
+        states.sort(key=lambda state: state.updated_at, reverse=True)
+        return states[:limit]
 
     async def create_run(self, state: RunState) -> bool:
         """创建 Run。
@@ -343,6 +654,7 @@ class InMemoryRunStore(BaseRunStore):
             state.expires_at = self._expires_at(now)
             self._runs[state.run_id] = state
             self._events[state.run_id] = []
+            self._touch_thread_locked(state.thread_id)
             return True
 
     async def get_run(self, run_id: str, user_id: str | None = None) -> RunState | None:
@@ -376,6 +688,7 @@ class InMemoryRunStore(BaseRunStore):
             state.updated_at = time.time()
             state.expires_at = self._expires_at(state.updated_at)
             self._runs[state.run_id] = copy.deepcopy(state)
+            self._touch_thread_locked(state.thread_id)
 
     async def update_run_status(
         self,
@@ -402,6 +715,7 @@ class InMemoryRunStore(BaseRunStore):
             state.error = error
             state.updated_at = time.time()
             state.expires_at = self._expires_at(state.updated_at)
+            self._touch_thread_locked(state.thread_id)
             if status not in {"queued", "running", "cancelling"}:
                 for queue in self._subscribers.get(run_id, set()):
                     queue.put_nowait(None)
@@ -426,6 +740,7 @@ class InMemoryRunStore(BaseRunStore):
             state.last_event_id = event_id
             state.updated_at = time.time()
             state.expires_at = self._expires_at(state.updated_at)
+            self._touch_thread_locked(state.thread_id)
             events = self._events.setdefault(run_id, [])
             events.append((event_id, frame))
             if len(events) > self.max_events_per_run:
@@ -557,6 +872,19 @@ class AgUiRunEventRecord(SQLModel, table=True):
     expires_at: datetime = Field(default_factory=utc_now, index=True)
 
 
+class AgUiThreadRecord(SQLModel, table=True):
+    """PostgreSQL/SQLite 中的 AG-UI Thread 记录。"""
+
+    __tablename__ = "agui_threads"
+
+    thread_id: str = Field(primary_key=True)
+    owner_user_id: str = Field(index=True)
+    title: str | None = None
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+    expires_at: datetime = Field(default_factory=utc_now, index=True)
+
+
 class SqlRunStore(BaseRunStore):
     """基于 SQLModel 的 Run 存储，当前用于 PostgreSQL。"""
 
@@ -619,6 +947,80 @@ class SqlRunStore(BaseRunStore):
         """
         if self._should_prune():
             await self.prune_expired()
+
+    @staticmethod
+    def _to_thread_state(record: AgUiThreadRecord) -> ThreadState:
+        """将数据库记录转换为 Thread 状态。
+
+        Args:
+            record: 数据库 Thread 记录。
+
+        Returns:
+            Thread 状态。
+        """
+        return ThreadState(
+            thread_id=record.thread_id,
+            owner_user_id=record.owner_user_id,
+            title=record.title,
+            created_at=timestamp_from_datetime(record.created_at),
+            updated_at=timestamp_from_datetime(record.updated_at),
+            expires_at=timestamp_from_datetime(record.expires_at),
+        )
+
+    @staticmethod
+    def _to_thread_record(state: ThreadState) -> AgUiThreadRecord:
+        """将 Thread 状态转换为数据库记录。
+
+        Args:
+            state: Thread 状态。
+
+        Returns:
+            数据库 Thread 记录。
+        """
+        return AgUiThreadRecord(
+            thread_id=state.thread_id,
+            owner_user_id=state.owner_user_id,
+            title=state.title,
+            created_at=datetime_from_timestamp(state.created_at),
+            updated_at=datetime_from_timestamp(state.updated_at),
+            expires_at=datetime_from_timestamp(state.expires_at),
+        )
+
+    @staticmethod
+    def _copy_thread_values(record: AgUiThreadRecord, state: ThreadState) -> None:
+        """将 Thread 状态字段复制到数据库记录。
+
+        Args:
+            record: 数据库 Thread 记录。
+            state: Thread 状态。
+
+        Returns:
+            无。
+        """
+        record.owner_user_id = state.owner_user_id
+        record.title = state.title
+        record.created_at = datetime_from_timestamp(state.created_at)
+        record.updated_at = datetime_from_timestamp(state.updated_at)
+        record.expires_at = datetime_from_timestamp(state.expires_at)
+
+    async def _touch_thread(self, thread_id: str) -> None:
+        """更新 Thread 最近活跃时间。
+
+        Args:
+            thread_id: Thread ID。
+
+        Returns:
+            无。
+        """
+        await self._ensure_init()
+        async with self.async_session() as session:
+            record = await session.get(AgUiThreadRecord, thread_id)
+            if record is None:
+                return
+            record.updated_at = utc_now()
+            record.expires_at = datetime_from_timestamp(self._expires_at())
+            session.add(record)
+            await session.commit()
 
     @staticmethod
     def _to_state(record: AgUiRunRecord) -> RunState:
@@ -687,6 +1089,211 @@ class SqlRunStore(BaseRunStore):
         record.expires_at = datetime_from_timestamp(state.expires_at)
         record.error = state.error
 
+    async def _backfill_threads(self, user_id: str) -> None:
+        """从已有 Run 回填缺失的 Thread 记录。
+
+        Args:
+            user_id: 当前用户 ID。
+
+        Returns:
+            无。
+        """
+        await self._ensure_init()
+        async with self.async_session() as session:
+            run_result = await session.exec(
+                select(AgUiRunRecord)
+                .where(AgUiRunRecord.owner_user_id == user_id)
+                .order_by(AgUiRunRecord.updated_at.desc())
+            )
+            runs = list(run_result.all())
+            if not runs:
+                return
+            thread_result = await session.exec(
+                select(AgUiThreadRecord).where(
+                    AgUiThreadRecord.owner_user_id == user_id
+                )
+            )
+            existing_ids = {record.thread_id for record in thread_result.all()}
+            for run in runs:
+                if run.thread_id in existing_ids:
+                    continue
+                thread = ThreadState(
+                    thread_id=run.thread_id,
+                    owner_user_id=run.owner_user_id,
+                    title=get_thread_title(deserialize_run_input(run.input_json)),
+                    created_at=timestamp_from_datetime(run.created_at),
+                    updated_at=timestamp_from_datetime(run.updated_at),
+                    expires_at=timestamp_from_datetime(run.expires_at),
+                )
+                session.add(self._to_thread_record(thread))
+                existing_ids.add(run.thread_id)
+            await session.commit()
+
+    async def create_thread(self, state: ThreadState) -> bool:
+        """创建 Thread。
+
+        Args:
+            state: Thread 状态。
+
+        Returns:
+            是否创建成功。
+        """
+        await self._ensure_init()
+        await self._maybe_prune()
+        async with self.async_session() as session:
+            existing = await session.get(AgUiThreadRecord, state.thread_id)
+            if existing is not None:
+                return False
+            now = time.time()
+            if state.created_at <= 0:
+                state.created_at = now
+            if state.updated_at <= 0:
+                state.updated_at = state.created_at
+            if state.expires_at <= 0:
+                state.expires_at = self._expires_at(state.updated_at)
+            session.add(self._to_thread_record(state))
+            try:
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+                return False
+            return True
+
+    async def get_thread(
+        self,
+        thread_id: str,
+        user_id: str | None = None,
+    ) -> ThreadState | None:
+        """读取 Thread。
+
+        Args:
+            thread_id: Thread ID。
+            user_id: 可选当前用户 ID，用于归属校验。
+
+        Returns:
+            Thread 状态；不存在或不属于当前用户时返回 None。
+        """
+        await self._ensure_init()
+        await self._maybe_prune()
+        async with self.async_session() as session:
+            record = await session.get(AgUiThreadRecord, thread_id)
+            if record is None or (user_id is not None and record.owner_user_id != user_id):
+                return None
+            return self._to_thread_state(record)
+
+    async def save_thread(self, state: ThreadState) -> None:
+        """保存 Thread。
+
+        Args:
+            state: Thread 状态。
+
+        Returns:
+            无。
+        """
+        await self._ensure_init()
+        await self._maybe_prune()
+        async with self.async_session() as session:
+            record = await session.get(AgUiThreadRecord, state.thread_id)
+            if record is None:
+                return
+            state.updated_at = time.time()
+            state.expires_at = self._expires_at(state.updated_at)
+            self._copy_thread_values(record, state)
+            session.add(record)
+            await session.commit()
+
+    async def list_threads(
+        self,
+        user_id: str,
+        *,
+        limit: int = 100,
+    ) -> list[ThreadState]:
+        """列出当前用户的 Thread。
+
+        Args:
+            user_id: 当前用户 ID。
+            limit: 最大返回数量。
+
+        Returns:
+            按更新时间倒序排列的 Thread 列表。
+        """
+        await self._ensure_init()
+        await self._maybe_prune()
+        await self._backfill_threads(user_id)
+        async with self.async_session() as session:
+            result = await session.exec(
+                select(AgUiThreadRecord)
+                .where(AgUiThreadRecord.owner_user_id == user_id)
+                .order_by(AgUiThreadRecord.updated_at.desc())
+                .limit(limit)
+            )
+            return [self._to_thread_state(record) for record in result.all()]
+
+    async def delete_thread(
+        self,
+        thread_id: str,
+        user_id: str | None = None,
+    ) -> bool:
+        """删除 Thread 及其关联 Run 与事件。
+
+        Args:
+            thread_id: Thread ID。
+            user_id: 可选当前用户 ID，用于归属校验。
+
+        Returns:
+            是否删除成功。
+        """
+        await self._ensure_init()
+        await self._maybe_prune()
+        async with self.async_session() as session:
+            thread = await session.get(AgUiThreadRecord, thread_id)
+            if thread is None or (user_id is not None and thread.owner_user_id != user_id):
+                return False
+            run_result = await session.exec(
+                select(AgUiRunRecord).where(AgUiRunRecord.thread_id == thread_id)
+            )
+            runs = list(run_result.all())
+            for run in runs:
+                event_result = await session.exec(
+                    select(AgUiRunEventRecord).where(
+                        AgUiRunEventRecord.run_id == run.run_id
+                    )
+                )
+                for event in event_result.all():
+                    await session.delete(event)
+                await session.delete(run)
+            await session.delete(thread)
+            await session.commit()
+            return True
+
+    async def list_runs_by_thread(
+        self,
+        thread_id: str,
+        user_id: str | None = None,
+        *,
+        limit: int = 100,
+    ) -> list[RunState]:
+        """按 Thread 查询 Run。
+
+        Args:
+            thread_id: Thread ID。
+            user_id: 可选当前用户 ID，用于归属校验。
+            limit: 最大返回数量。
+
+        Returns:
+            按更新时间倒序排列的 Run 列表。
+        """
+        await self._ensure_init()
+        await self._maybe_prune()
+        statement = select(AgUiRunRecord).where(AgUiRunRecord.thread_id == thread_id)
+        if user_id is not None:
+            statement = statement.where(AgUiRunRecord.owner_user_id == user_id)
+        async with self.async_session() as session:
+            result = await session.exec(
+                statement.order_by(AgUiRunRecord.updated_at.desc()).limit(limit)
+            )
+            return [self._to_state(record) for record in result.all()]
+
     async def create_run(self, state: RunState) -> bool:
         """创建 Run。
 
@@ -752,6 +1359,7 @@ class SqlRunStore(BaseRunStore):
             self._copy_record_values(record, state)
             session.add(record)
             await session.commit()
+            await self._touch_thread(state.thread_id)
 
     async def update_run_status(
         self,
@@ -782,6 +1390,7 @@ class SqlRunStore(BaseRunStore):
             session.add(record)
             await session.commit()
             await session.refresh(record)
+            await self._touch_thread(record.thread_id)
             return self._to_state(record)
 
     async def append_event(self, run_id: str, frame: str) -> int:
@@ -815,6 +1424,7 @@ class SqlRunStore(BaseRunStore):
             )
             await session.commit()
             await self._trim_events(session, run_id)
+            await self._touch_thread(record.thread_id)
             return event_id
 
     async def _trim_events(self, session, run_id: str) -> None:
@@ -914,9 +1524,15 @@ class SqlRunStore(BaseRunStore):
                 select(AgUiRunEventRecord).where(AgUiRunEventRecord.expires_at <= now)
             )
             expired_events = list(event_result.all())
+            thread_result = await session.exec(
+                select(AgUiThreadRecord).where(AgUiThreadRecord.expires_at <= now)
+            )
+            expired_threads = list(thread_result.all())
             for record in expired_events:
                 await session.delete(record)
             for record in expired_runs:
+                await session.delete(record)
+            for record in expired_threads:
                 await session.delete(record)
             await session.commit()
         self._last_prune_at = time.time()

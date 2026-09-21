@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any, Iterable
 
 from ag_ui.core import RunAgentInput
@@ -8,9 +9,18 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from deepclaw.settings import settings
-from deepclaw.web_backend.agent.run_manager import AgentRunManager
+from deepclaw.web_backend.agent.run_manager import (
+    AgentRunManager,
+    ThreadOwnershipError,
+)
 from deepclaw.web_backend.auth.dependencies import CurrentActor
-from deepclaw.web_backend.common.agui_schemas import RunActionRequest
+from deepclaw.web_backend.common.agui_schemas import (
+    RunActionRequest,
+    ThreadDeleteResponse,
+    ThreadListResponse,
+    ThreadRunListResponse,
+    ThreadSummary,
+)
 
 
 _SENSITIVE_HEADER_NAMES = {
@@ -169,6 +179,145 @@ def _with_trusted_state(
     return payload.model_copy(update={"state": _trusted_state(payload, request, actor, allowed_keys)})
 
 
+async def list_agui_threads(
+    manager: AgentRunManager,
+    actor: CurrentActor,
+    *,
+    limit: int,
+) -> ThreadListResponse:
+    """查询当前用户的 Thread 列表。
+
+    Args:
+        manager: 当前域使用的 Run 管理器。
+        actor: 当前鉴权主体。
+        limit: 最大返回数量。
+
+    Returns:
+        当前用户的 Thread 列表。
+    """
+    threads = await manager.list_threads(
+        _actor_user_id(actor),
+        limit=limit,
+    )
+    items = [
+        ThreadSummary(
+            threadId=thread.thread_id,
+            title=thread.title,
+            createdAt=thread.created_at,
+            updatedAt=thread.updated_at,
+        )
+        for thread in threads
+    ]
+    return ThreadListResponse(items=items, total=len(items))
+
+
+async def list_agui_thread_runs(
+    manager: AgentRunManager,
+    thread_id: str,
+    actor: CurrentActor,
+    *,
+    limit: int,
+) -> ThreadRunListResponse:
+    """查询指定 Thread 下的 Run。
+
+    Args:
+        manager: 当前域使用的 Run 管理器。
+        thread_id: Thread ID。
+        actor: 当前鉴权主体。
+        limit: 最大返回数量。
+
+    Returns:
+        Thread 下的 Run 列表。
+
+    Raises:
+        HTTPException: Thread 不存在或无权访问时返回 404。
+    """
+    runs = await manager.list_thread_runs(
+        thread_id,
+        user_id=_actor_user_id(actor),
+        limit=limit,
+    )
+    if runs is None:
+        raise HTTPException(status_code=404, detail="Thread 不存在")
+    return ThreadRunListResponse(threadId=thread_id, items=runs, total=len(runs))
+
+
+async def get_agui_thread_state(
+    manager: AgentRunManager,
+    graph: Any,
+    thread_id: str,
+    actor: CurrentActor,
+) -> dict[str, Any]:
+    """读取指定 Thread 的图状态。
+
+    Args:
+        manager: 当前域使用的 Run 管理器。
+        graph: 当前域使用的 LangGraph 图。
+        thread_id: Thread ID。
+        actor: 当前鉴权主体。
+
+    Returns:
+        Thread 的完整图状态。
+
+    Raises:
+        HTTPException: Thread 或状态不存在时返回 404。
+    """
+    thread = await manager.get_thread(
+        thread_id,
+        user_id=_actor_user_id(actor),
+    )
+    if thread is None:
+        raise HTTPException(status_code=404, detail="Thread 不存在")
+
+    config = {"configurable": {"thread_id": thread_id}}
+    state_snapshot = await graph.aget_state(config)
+    final_state = deepcopy(state_snapshot.values)
+    messages = final_state.get("messages")
+    if not messages:
+        raise HTTPException(status_code=404, detail="Thread 状态不存在")
+    title = getattr(messages[0], "content", None)
+    if isinstance(title, str):
+        final_state["title"] = title
+    return final_state
+
+
+async def delete_agui_thread(
+    manager: AgentRunManager,
+    checkpointer: Any | None,
+    thread_id: str,
+    actor: CurrentActor,
+) -> ThreadDeleteResponse:
+    """删除 Thread 的 checkpoint、Run 和事件记录。
+
+    Args:
+        manager: 当前域使用的 Run 管理器。
+        checkpointer: LangGraph 检查点存储。
+        thread_id: Thread ID。
+        actor: 当前鉴权主体。
+
+    Returns:
+        Thread 删除结果。
+
+    Raises:
+        HTTPException: Thread 不存在、无权访问或删除失败时返回错误。
+    """
+    user_id = _actor_user_id(actor)
+    thread = await manager.get_thread(thread_id, user_id=user_id)
+    if thread is None:
+        raise HTTPException(status_code=404, detail="Thread 不存在")
+
+    if checkpointer is not None:
+        try:
+            await checkpointer.adelete_thread(thread_id)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail="删除 Thread 状态失败") from exc
+
+    deleted = await manager.delete_thread(thread_id, user_id=user_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Thread 不存在")
+    return ThreadDeleteResponse(threadId=thread_id, deleted=True)
+
+
 async def create_agui_run(
     manager: AgentRunManager,
     payload: RunAgentInput,
@@ -194,6 +343,8 @@ async def create_agui_run(
     try:
         trusted_payload = _with_trusted_state(payload, request, actor, allowed_state_keys)
         return await manager.create(trusted_payload)
+    except ThreadOwnershipError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
