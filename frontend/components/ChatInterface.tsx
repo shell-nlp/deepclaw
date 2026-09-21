@@ -29,6 +29,7 @@ import { resolveChannelEntryPage } from './chat-interface/channelManagement'
 import { ChannelManagementView } from './chat-interface/ChannelManagementView'
 import { ChatView } from './chat-interface/ChatView'
 import {
+  AGENT_THREAD_RUNS_API_PATH,
   AGENT_THREADS_API_PATH,
   AGENT_THREAD_DELETE_API_PATH,
   AGENT_THREAD_STATE_API_PATH,
@@ -75,6 +76,7 @@ import type {
   AuthUserSummary,
   BulkDeleteDocumentResponse,
   BulkDeleteKnowledgeBaseResponse,
+  ChatStatus,
   InterruptData,
   KnowledgeBase,
   KnowledgeDocument,
@@ -89,13 +91,13 @@ import type {
   SkillListResponse,
   SkillRecord,
   SkillUploadResponse,
+  ThreadRunListResponse,
   ToolData,
   UploadResult,
   ViewMode,
 } from './chat-interface/types'
 import { UserManagementView } from './chat-interface/UserManagementView'
 import {
-  createClearedChatState,
   fetchJson,
   formatDateTime,
   generateMessageId,
@@ -107,6 +109,73 @@ import {
   parseMcpConfig,
   stringifyToolContent,
 } from './chat-interface/utils'
+
+type AssistantStreamKind = 'reasoning' | 'content' | 'tool' | 'interrupt' | null
+
+type ThreadRuntime = {
+  threadId: string
+  messages: Message[]
+  basePath: string
+  runId: string | null
+  runInput: Record<string, unknown> | null
+  lastEventId: string | null
+  status: ChatStatus
+  processing: boolean
+  showInterrupt: boolean
+  interruptData: InterruptData | null
+  toolCallDurations: Record<string, number>
+  assistantMessageId: string | null
+  processedToolCallIds: string[]
+  lastAssistantStreamEvent: AssistantStreamKind
+  reasoningStartTime: number | null
+  toolCallStartTimes: Record<string, number>
+  toolCallArgs: Record<string, string>
+  reasoningBlockCounter: number
+  contentBlockCounter: number
+  requestMode: RequestMode
+  requestKnowledgeBase: KnowledgeBase | null
+  requestMcpConfig: Record<string, unknown> | null
+  abortController: AbortController | null
+}
+
+function createThreadRuntime(threadId: string): ThreadRuntime {
+  return {
+    threadId,
+    messages: [],
+    basePath: DEFAULT_AGENT_API_PATH,
+    runId: null,
+    runInput: null,
+    lastEventId: null,
+    status: 'ready',
+    processing: false,
+    showInterrupt: false,
+    interruptData: null,
+    toolCallDurations: {},
+    assistantMessageId: null,
+    processedToolCallIds: [],
+    lastAssistantStreamEvent: null,
+    reasoningStartTime: null,
+    toolCallStartTimes: {},
+    toolCallArgs: {},
+    reasoningBlockCounter: 0,
+    contentBlockCounter: 0,
+    requestMode: 'agent',
+    requestKnowledgeBase: null,
+    requestMcpConfig: null,
+    abortController: null,
+  }
+}
+
+function isActiveRunStatus(status: string): boolean {
+  return status === 'queued' || status === 'running' || status === 'cancelling'
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    (error instanceof DOMException && error.name === 'AbortError') ||
+    (error instanceof Error && error.name === 'AbortError')
+  )
+}
 
 function getHistoryMessageContent(content: unknown): string {
   if (typeof content === 'string') return content
@@ -427,6 +496,7 @@ export default function ChatInterface() {
   const [agentApiPath, setAgentApiPath] = useState(DEFAULT_AGENT_API_PATH)
   const [ragApiPath, setRagApiPath] = useState(DEFAULT_RAG_API_PATH)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [runningThreadIds, setRunningThreadIds] = useState<string[]>([])
   const [internetSearch, setInternetSearch] = useState(false)
   const [deepThinking, setDeepThinking] = useState(true)
   const [useKnowledgeBase, setUseKnowledgeBase] = useState(false)
@@ -500,6 +570,13 @@ export default function ChatInterface() {
   const uploadInputRef = useRef<HTMLInputElement>(null)
   const skillUploadInputRef = useRef<HTMLInputElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const activeThreadIdRef = useRef('')
+  const threadRuntimesRef = useRef<Map<string, ThreadRuntime>>(new Map())
+  const messagesRef = useRef<Message[]>([])
+  const streamGenerationRef = useRef(0)
+  const switchToThreadRef = useRef<(threadId: string) => Promise<void>>(
+    async () => undefined
+  )
   const currentRunIdRef = useRef<string | null>(null)
   const currentRunInputRef = useRef<Record<string, unknown> | null>(null)
   const lastEventIdRef = useRef<string | null>(null)
@@ -516,6 +593,139 @@ export default function ChatInterface() {
   const requestModeRef = useRef<RequestMode>('agent')
   const requestKnowledgeBaseRef = useRef<KnowledgeBase | null>(null)
   const requestMcpConfigRef = useRef<Record<string, unknown> | null>(null)
+
+  const setMessagesAndRef = useCallback(
+    (updater: Message[] | ((prev: Message[]) => Message[])) => {
+      setMessages((prev) => {
+        const next =
+          typeof updater === 'function'
+            ? (updater as (current: Message[]) => Message[])(prev)
+            : updater
+        messagesRef.current = next
+        return next
+      })
+    },
+    []
+  )
+
+  const setThreadRunning = useCallback((threadId: string, running: boolean) => {
+    setRunningThreadIds((prev) => {
+      if (running) {
+        return prev.includes(threadId) ? prev : [...prev, threadId]
+      }
+      return prev.filter((item) => item !== threadId)
+    })
+  }, [])
+
+  const getThreadRuntime = useCallback((threadId: string): ThreadRuntime => {
+    const existing = threadRuntimesRef.current.get(threadId)
+    if (existing) return existing
+    const runtime = createThreadRuntime(threadId)
+    threadRuntimesRef.current.set(threadId, runtime)
+    return runtime
+  }, [])
+
+  const syncRuntimeToRefs = useCallback((runtime: ThreadRuntime) => {
+    currentRunIdRef.current = runtime.runId
+    currentRunInputRef.current = runtime.runInput
+    lastEventIdRef.current = runtime.lastEventId
+    currentAssistantMessageIdRef.current = runtime.assistantMessageId
+    processedToolCallIdsRef.current = new Set(runtime.processedToolCallIds)
+    lastAssistantStreamEventRef.current = runtime.lastAssistantStreamEvent
+    reasoningStartTimeRef.current = runtime.reasoningStartTime
+    toolCallStartTimesRef.current = { ...runtime.toolCallStartTimes }
+    toolCallArgsRef.current = { ...runtime.toolCallArgs }
+    reasoningBlockCounterRef.current = runtime.reasoningBlockCounter
+    contentBlockCounterRef.current = runtime.contentBlockCounter
+    requestModeRef.current = runtime.requestMode
+    requestKnowledgeBaseRef.current = runtime.requestKnowledgeBase
+    requestMcpConfigRef.current = runtime.requestMcpConfig
+    abortControllerRef.current = runtime.abortController
+  }, [])
+
+  const syncRuntimeToView = useCallback(
+    (runtime: ThreadRuntime) => {
+      activeThreadIdRef.current = runtime.threadId
+      messagesRef.current = runtime.messages
+      setSessionId(runtime.threadId)
+      setMessagesAndRef(runtime.messages)
+      setStatus(runtime.status)
+      setIsProcessing(runtime.processing)
+      setShowInterrupt(runtime.showInterrupt)
+      setInterruptData(runtime.interruptData)
+      setToolCallDurations(runtime.toolCallDurations)
+      syncRuntimeToRefs(runtime)
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('rag_chat_session_id', runtime.threadId)
+      }
+    },
+    [setMessagesAndRef, syncRuntimeToRefs]
+  )
+
+  const persistActiveRuntime = useCallback((): ThreadRuntime | null => {
+    const threadId = activeThreadIdRef.current
+    if (!threadId) return null
+    const runtime = getThreadRuntime(threadId)
+    runtime.messages = messagesRef.current
+    runtime.runId = currentRunIdRef.current
+    runtime.runInput = currentRunInputRef.current
+    runtime.lastEventId = lastEventIdRef.current
+    runtime.showInterrupt = showInterrupt
+    runtime.interruptData = interruptData
+    runtime.toolCallDurations = toolCallDurations
+    runtime.assistantMessageId = currentAssistantMessageIdRef.current
+    runtime.processedToolCallIds = Array.from(processedToolCallIdsRef.current)
+    runtime.lastAssistantStreamEvent = lastAssistantStreamEventRef.current
+    runtime.reasoningStartTime = reasoningStartTimeRef.current
+    runtime.toolCallStartTimes = { ...toolCallStartTimesRef.current }
+    runtime.toolCallArgs = { ...toolCallArgsRef.current }
+    runtime.reasoningBlockCounter = reasoningBlockCounterRef.current
+    runtime.contentBlockCounter = contentBlockCounterRef.current
+    runtime.requestMode = requestModeRef.current
+    runtime.requestKnowledgeBase = requestKnowledgeBaseRef.current
+    runtime.requestMcpConfig = requestMcpConfigRef.current
+    runtime.abortController = abortControllerRef.current
+    return runtime
+  }, [
+    getThreadRuntime,
+    interruptData,
+    showInterrupt,
+    toolCallDurations,
+  ])
+
+  const resetActiveChatView = useCallback(
+    (nextSessionId: string) => {
+      activeThreadIdRef.current = nextSessionId
+      messagesRef.current = []
+      setSessionId(nextSessionId)
+      setMessagesAndRef([])
+      setShowInterrupt(false)
+      setInterruptData(null)
+      setToolCallDurations({})
+      setStatus('ready')
+      setIsProcessing(false)
+      currentRunIdRef.current = null
+      currentRunInputRef.current = null
+      lastEventIdRef.current = null
+      currentAssistantMessageIdRef.current = null
+      processedToolCallIdsRef.current.clear()
+      lastAssistantStreamEventRef.current = null
+      reasoningStartTimeRef.current = null
+      toolCallStartTimesRef.current = {}
+      toolCallArgsRef.current = {}
+      reasoningBlockCounterRef.current = 0
+      contentBlockCounterRef.current = 0
+      requestModeRef.current = 'agent'
+      requestKnowledgeBaseRef.current = null
+      requestMcpConfigRef.current = null
+      abortControllerRef.current = null
+      isChatAtBottomRef.current = true
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('rag_chat_session_id', nextSessionId)
+      }
+    },
+    [setMessagesAndRef]
+  )
 
   const actorCapabilities = getActorCapabilities(actor)
   const currentUserId = actor.userId || GUEST_USER_ID
@@ -549,28 +759,35 @@ export default function ChatInterface() {
   }, [])
 
   const clearChat = useCallback(() => {
-    const clearedState = createClearedChatState()
-    setMessages([])
-    setShowInterrupt(clearedState.showInterrupt)
-    setInterruptData(clearedState.interruptData)
-    setToolCallDurations({})
-    currentAssistantMessageIdRef.current = null
-    processedToolCallIdsRef.current.clear()
-    lastAssistantStreamEventRef.current = null
-    reasoningStartTimeRef.current = null
-    toolCallStartTimesRef.current = {}
-    toolCallArgsRef.current = {}
-    reasoningBlockCounterRef.current = 0
-    contentBlockCounterRef.current = 0
-    requestModeRef.current = 'agent'
-    requestKnowledgeBaseRef.current = null
-    requestMcpConfigRef.current = null
-    isChatAtBottomRef.current = true
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('rag_chat_session_id', clearedState.sessionId)
+    const previousRuntime = persistActiveRuntime()
+    streamGenerationRef.current += 1
+    previousRuntime?.abortController?.abort()
+    if (previousRuntime) {
+      previousRuntime.abortController = null
     }
-    setSessionId(clearedState.sessionId)
-  }, [])
+    abortControllerRef.current = null
+
+    const nextSessionId = generateSessionId()
+    resetActiveChatView(nextSessionId)
+    getThreadRuntime(nextSessionId)
+    setThreadRunning(nextSessionId, false)
+  }, [
+    getThreadRuntime,
+    persistActiveRuntime,
+    resetActiveChatView,
+    setThreadRunning,
+  ])
+
+  const resetAllRuntimesAndChat = useCallback(() => {
+    streamGenerationRef.current += 1
+    abortControllerRef.current?.abort()
+    threadRuntimesRef.current.forEach((runtime) => runtime.abortController?.abort())
+    threadRuntimesRef.current.clear()
+    setRunningThreadIds([])
+    const nextSessionId = generateSessionId()
+    resetActiveChatView(nextSessionId)
+    getThreadRuntime(nextSessionId)
+  }, [getThreadRuntime, resetActiveChatView])
 
   const resetUserScopedState = useCallback(() => {
     setKnowledgeBasePage(1)
@@ -595,8 +812,8 @@ export default function ChatInterface() {
     setDocumentChunkPage(1)
 
     setAdminUsers([])
-    clearChat()
-  }, [clearChat])
+    resetAllRuntimesAndChat()
+  }, [resetAllRuntimesAndChat])
 
   const applyActorState = useCallback(
     (nextActor: ActorState) => {
@@ -645,7 +862,7 @@ export default function ChatInterface() {
   )
 
   const addMessage = useCallback((message: Message) => {
-    setMessages((prev) => {
+    setMessagesAndRef((prev) => {
       const existing = prev.find((item) => item.id === message.id)
       if (existing) {
         return prev.map((item) =>
@@ -654,7 +871,7 @@ export default function ChatInterface() {
       }
       return [...prev, message]
     })
-  }, [])
+  }, [setMessagesAndRef])
 
   const ensureAssistantMessage = useCallback(() => {
     let assistantMessageId = currentAssistantMessageIdRef.current
@@ -669,11 +886,11 @@ export default function ChatInterface() {
   const updateAssistantMessage = useCallback(
     (updater: (message: Message) => Message) => {
       const assistantMessageId = ensureAssistantMessage()
-      setMessages((prev) =>
+      setMessagesAndRef((prev) =>
         prev.map((item) => (item.id === assistantMessageId ? updater(item) : item))
       )
     },
-    [ensureAssistantMessage]
+    [ensureAssistantMessage, setMessagesAndRef]
   )
 
   useEffect(() => {
@@ -690,7 +907,10 @@ export default function ChatInterface() {
       parsedMcpConfig.config && storedMcpEnabled ? 'true' : 'false'
     )
 
+    activeThreadIdRef.current = freshSessionId
+    messagesRef.current = []
     setSessionId(freshSessionId)
+    getThreadRuntime(freshSessionId)
     setMcpConfigDraft(storedMcpConfig)
     setSavedMcpConfigText(storedMcpConfig)
     setMcpConfig(parsedMcpConfig.config)
@@ -736,7 +956,11 @@ export default function ChatInterface() {
       .catch(() => {
         clearAuthState('登录状态已失效，已切换为游客模式。')
       })
-  }, [applyActorState, clearAuthState])
+  }, [applyActorState, clearAuthState, getThreadRuntime])
+
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
 
   const navigateTo = useCallback(
     (
@@ -796,21 +1020,12 @@ export default function ChatInterface() {
 
   const openHistorySession = useCallback(
     async (targetSessionId: string) => {
-      if (isProcessing || targetSessionId === sessionId) return
+      if (targetSessionId === sessionId) return
 
       setHistoryLoadingSessionId(targetSessionId)
       setHistoryError('')
       try {
-        const response = await requestJson<{ messages?: unknown }>(
-          AGENT_THREAD_STATE_API_PATH(targetSessionId)
-        )
-
-        clearChat()
-        setMessages(toHistoryMessages(response.messages))
-        setSessionId(targetSessionId)
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('rag_chat_session_id', targetSessionId)
-        }
+        await switchToThreadRef.current(targetSessionId)
         navigateTo('chat')
         requestAnimationFrame(scrollToBottom)
       } catch (error) {
@@ -819,13 +1034,13 @@ export default function ChatInterface() {
         setHistoryLoadingSessionId(null)
       }
     },
-    [clearChat, isProcessing, navigateTo, requestJson, scrollToBottom, sessionId]
+    [navigateTo, scrollToBottom, sessionId]
   )
 
   const deleteHistorySession = useCallback(
     async (targetSessionId: string, event: MouseEvent<HTMLButtonElement>) => {
       event.stopPropagation()
-      if (isProcessing) return
+      if (runningThreadIds.includes(targetSessionId)) return
 
       setHistoryLoadingSessionId(targetSessionId)
       setHistoryError('')
@@ -838,8 +1053,18 @@ export default function ChatInterface() {
         setHistorySessions((sessions) =>
           sessions.filter((session) => session.session_id !== targetSessionId)
         )
+        const runtime = threadRuntimesRef.current.get(targetSessionId)
+        runtime?.abortController?.abort()
+        threadRuntimesRef.current.delete(targetSessionId)
+        setThreadRunning(targetSessionId, false)
         if (targetSessionId === sessionId) {
-          clearChat()
+          streamGenerationRef.current += 1
+          abortControllerRef.current?.abort()
+          abortControllerRef.current = null
+          const nextSessionId = generateSessionId()
+          resetActiveChatView(nextSessionId)
+          getThreadRuntime(nextSessionId)
+          setThreadRunning(nextSessionId, false)
         }
       } catch (error) {
         setHistoryError(error instanceof Error ? error.message : '删除聊天历史失败。')
@@ -847,7 +1072,14 @@ export default function ChatInterface() {
         setHistoryLoadingSessionId(null)
       }
     },
-    [clearChat, isProcessing, requestJson, sessionId]
+    [
+      getThreadRuntime,
+      requestJson,
+      resetActiveChatView,
+      runningThreadIds,
+      sessionId,
+      setThreadRunning,
+    ]
   )
 
   useEffect(() => {
@@ -1952,11 +2184,18 @@ export default function ChatInterface() {
           if (lastAssistantStreamEventRef.current === 'reasoning') {
             finishReasoningBlock()
           }
-          setInterruptData({
+          const nextInterruptData: InterruptData = {
             action_requests: interrupt.action_requests ?? [],
             review_configs: interrupt.review_configs,
-          })
+          }
+          setInterruptData(nextInterruptData)
           setShowInterrupt(true)
+          const activeThreadId = activeThreadIdRef.current
+          if (activeThreadId) {
+            const runtime = getThreadRuntime(activeThreadId)
+            runtime.showInterrupt = true
+            runtime.interruptData = nextInterruptData
+          }
           setIsProcessing(false)
           setStatus('ready')
           lastAssistantStreamEventRef.current = 'interrupt'
@@ -1966,7 +2205,7 @@ export default function ChatInterface() {
         const recommendedQuestions = getRecommendedQuestions(event)
         const assistantMessageId = currentAssistantMessageIdRef.current
         if (recommendedQuestions.length > 0 && assistantMessageId) {
-          setMessages((prev) =>
+          setMessagesAndRef((prev) =>
             prev.map((message) =>
               message.role === 'ai'
                 ? {
@@ -1993,11 +2232,23 @@ export default function ChatInterface() {
 
       return null
     },
-    [finishReasoningBlock, updateAssistantMessage]
+    [
+      finishReasoningBlock,
+      getThreadRuntime,
+      setMessagesAndRef,
+      updateAssistantMessage,
+    ]
+  )
+
+  const isCurrentStream = useCallback(
+    (threadId: string, generation: number) =>
+      activeThreadIdRef.current === threadId &&
+      streamGenerationRef.current === generation,
+    []
   )
 
   const readEventStream = useCallback(
-    async (response: Response) => {
+    async (response: Response, threadId: string, generation: number) => {
       const reader = response.body?.getReader()
       if (!reader) throw new Error('No response body')
 
@@ -2005,24 +2256,44 @@ export default function ChatInterface() {
       let buffer = ''
       let interrupted = false
       let completed = false
+      let stale = false
 
       const processChunk = (chunk: string) => {
+        if (!isCurrentStream(threadId, generation)) {
+          stale = true
+          return
+        }
+
         const normalized = chunk.replace(/\r\n/g, '\n')
         const parts = normalized.split('\n\n')
         buffer = parts.pop() || ''
 
         for (const part of parts) {
+          if (!isCurrentStream(threadId, generation)) {
+            stale = true
+            return
+          }
           const frame = parseAgUiSseFrame(part)
           if (!frame) continue
+          const runtime = getThreadRuntime(threadId)
           if (frame.id) {
             lastEventIdRef.current = frame.id
+            runtime.lastEventId = frame.id
           }
           const handledEvent = handleAgUiEvent(frame.event)
           if (handledEvent === 'interrupt') {
             interrupted = true
+            runtime.processing = false
+            runtime.status = 'ready'
+            runtime.messages = messagesRef.current
+            setThreadRunning(threadId, false)
           }
           if (handledEvent === 'finished') {
             completed = true
+            runtime.processing = false
+            runtime.status = 'ready'
+            runtime.messages = messagesRef.current
+            setThreadRunning(threadId, false)
             setIsProcessing(false)
             setStatus('ready')
           }
@@ -2030,31 +2301,45 @@ export default function ChatInterface() {
       }
 
       while (true) {
+        if (!isCurrentStream(threadId, generation)) {
+          stale = true
+          break
+        }
         const { done, value } = await reader.read()
         if (done) break
         buffer += decoder.decode(value, { stream: true })
         processChunk(buffer)
-        if (completed) {
+        if (completed || stale) {
           await reader.cancel()
           break
         }
       }
 
-      buffer += decoder.decode()
-      if (buffer.trim()) {
-        processChunk(`${buffer}\n\n`)
+      if (!stale) {
+        buffer += decoder.decode()
+        if (buffer.trim()) {
+          processChunk(`${buffer}\n\n`)
+        }
       }
 
-      return { interrupted, completed }
+      return { interrupted, completed, stale }
     },
-    [handleAgUiEvent]
+    [getThreadRuntime, handleAgUiEvent, isCurrentStream, setThreadRunning]
   )
 
   const subscribeAgUiEvents = useCallback(
-    async (basePath: string, signal?: AbortSignal) => {
-      const runId = currentRunIdRef.current
+    async (
+      basePath: string,
+      runId: string,
+      threadId: string,
+      generation: number,
+      signal?: AbortSignal
+    ) => {
       if (!runId) throw new Error('Run ID missing')
       for (let attempt = 0; attempt < 3; attempt += 1) {
+        if (!isCurrentStream(threadId, generation)) {
+          return { interrupted: false, completed: false, stale: true }
+        }
         const response = await fetch(
           getApiUrl(`${basePath}/${encodeURIComponent(runId)}/events`),
           {
@@ -2068,17 +2353,23 @@ export default function ChatInterface() {
           }
         )
         if (!response.ok) throw new Error(`HTTP ${response.status}`)
-        const result = await readEventStream(response)
-        if (result.completed || result.interrupted) return result
+        const result = await readEventStream(response, threadId, generation)
+        if (result.stale || result.completed || result.interrupted) return result
         await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)))
       }
       throw new Error('AG-UI 事件流中断，重放次数已用尽')
     },
-    [readEventStream, withAuthHeaders]
+    [isCurrentStream, readEventStream, withAuthHeaders]
   )
 
   const startAgUiRun = useCallback(
-    async (basePath: string, runInput: Record<string, unknown>, signal?: AbortSignal) => {
+    async (
+      basePath: string,
+      runInput: Record<string, unknown>,
+      threadId: string,
+      generation: number,
+      signal?: AbortSignal
+    ) => {
       const createResponse = await fetch(getApiUrl(basePath), {
         method: 'POST',
         headers: withAuthHeaders({
@@ -2094,15 +2385,41 @@ export default function ChatInterface() {
       const snapshot = (await createResponse.json()) as { runId?: string }
       const runId = snapshot.runId
       if (!runId) throw new Error('Run ID missing')
+
+      const runtime = getThreadRuntime(threadId)
+      runtime.runId = runId
+      runtime.basePath = basePath
+      runtime.runInput = runInput
+      runtime.lastEventId = null
+      runtime.processing = true
+      runtime.status = 'connecting'
+      setThreadRunning(threadId, true)
+
+      if (!isCurrentStream(threadId, generation)) {
+        return { interrupted: false, completed: false, stale: true }
+      }
+
       currentRunIdRef.current = runId
       lastEventIdRef.current = null
-      return subscribeAgUiEvents(basePath, signal)
+      return subscribeAgUiEvents(basePath, runId, threadId, generation, signal)
     },
-    [subscribeAgUiEvents, withAuthHeaders]
+    [
+      getThreadRuntime,
+      isCurrentStream,
+      setThreadRunning,
+      subscribeAgUiEvents,
+      withAuthHeaders,
+    ]
   )
 
   const resumeAgUiRun = useCallback(
-    async (basePath: string, runInput: Record<string, unknown>, signal?: AbortSignal) => {
+    async (
+      basePath: string,
+      runInput: Record<string, unknown>,
+      threadId: string,
+      generation: number,
+      signal?: AbortSignal
+    ) => {
       const runId = currentRunIdRef.current
       if (!runId) throw new Error('当前没有可恢复的 Run')
       const resumeResponse = await fetch(
@@ -2120,14 +2437,173 @@ export default function ChatInterface() {
       if (!resumeResponse.ok) {
         throw new Error(`HTTP ${resumeResponse.status}`)
       }
-      return subscribeAgUiEvents(basePath, signal)
+      setThreadRunning(threadId, true)
+      return subscribeAgUiEvents(basePath, runId, threadId, generation, signal)
     },
-    [subscribeAgUiEvents, withAuthHeaders]
+    [setThreadRunning, subscribeAgUiEvents, withAuthHeaders]
   )
+
+  const resumeThreadStream = useCallback(
+    async (runtime: ThreadRuntime) => {
+      if (!runtime.runId || !runtime.processing) return
+
+      const controller = new AbortController()
+      runtime.abortController = controller
+      abortControllerRef.current = controller
+      const generation = streamGenerationRef.current
+
+      const refreshTerminalState = async (): Promise<boolean> => {
+        if (!runtime.runId) return false
+        try {
+          const snapshot = await requestJson<{ status?: string }>(
+            `${runtime.basePath}/${encodeURIComponent(runtime.runId)}`
+          )
+          if (!snapshot.status || isActiveRunStatus(snapshot.status)) {
+            return false
+          }
+          runtime.processing = false
+          runtime.status = snapshot.status === 'error' ? 'error' : 'ready'
+          if (activeThreadIdRef.current === runtime.threadId) {
+            setIsProcessing(false)
+            setStatus(runtime.status)
+          }
+          setThreadRunning(runtime.threadId, false)
+          return true
+        } catch {
+          return false
+        }
+      }
+
+      try {
+        const result = await subscribeAgUiEvents(
+          runtime.basePath,
+          runtime.runId,
+          runtime.threadId,
+          generation,
+          controller.signal
+        )
+        if (result.stale) return
+        if (!result.completed && !result.interrupted) {
+          if (await refreshTerminalState()) return
+          runtime.processing = false
+          runtime.status = 'error'
+          if (activeThreadIdRef.current === runtime.threadId) {
+            setIsProcessing(false)
+            setStatus('error')
+          }
+          setThreadRunning(runtime.threadId, false)
+        }
+      } catch (error) {
+        if (!isAbortError(error)) {
+          if (await refreshTerminalState()) return
+          runtime.processing = false
+          runtime.status = 'error'
+          if (activeThreadIdRef.current === runtime.threadId) {
+            setIsProcessing(false)
+            setStatus('error')
+          }
+          setThreadRunning(runtime.threadId, false)
+        }
+      } finally {
+        if (runtime.abortController === controller) {
+          runtime.abortController = null
+        }
+      }
+    },
+    [requestJson, setThreadRunning, subscribeAgUiEvents]
+  )
+
+  const switchToThread = useCallback(
+    async (targetThreadId: string) => {
+      if (targetThreadId === activeThreadIdRef.current) return
+
+      const previousRuntime = persistActiveRuntime()
+      streamGenerationRef.current += 1
+      previousRuntime?.abortController?.abort()
+      if (previousRuntime) {
+        previousRuntime.abortController = null
+      }
+      abortControllerRef.current = null
+
+      const existingRuntime = threadRuntimesRef.current.get(targetThreadId)
+      if (existingRuntime) {
+        if (existingRuntime.processing && !existingRuntime.runId) {
+          existingRuntime.processing = false
+          existingRuntime.status = 'ready'
+        }
+        syncRuntimeToView(existingRuntime)
+        setThreadRunning(targetThreadId, existingRuntime.processing)
+        if (existingRuntime.processing && existingRuntime.runId) {
+          void resumeThreadStream(existingRuntime)
+        }
+        return
+      }
+
+      const runtime = createThreadRuntime(targetThreadId)
+      runtime.basePath = agentApiPath
+      threadRuntimesRef.current.set(targetThreadId, runtime)
+      syncRuntimeToView(runtime)
+      setThreadRunning(targetThreadId, false)
+
+      let stateMessages: unknown = []
+      try {
+        const response = await requestJson<{ messages?: unknown }>(
+          AGENT_THREAD_STATE_API_PATH(targetThreadId)
+        )
+        stateMessages = response.messages
+      } catch (error) {
+        if (!(error instanceof Error) || !error.message.includes('404')) {
+          throw error
+        }
+      }
+      runtime.messages = toHistoryMessages(stateMessages)
+      if (activeThreadIdRef.current === targetThreadId) {
+        messagesRef.current = runtime.messages
+        setMessagesAndRef(runtime.messages)
+      }
+
+      const runsResponse = await requestJson<ThreadRunListResponse>(
+        AGENT_THREAD_RUNS_API_PATH(targetThreadId)
+      )
+      const latestRun = runsResponse.items[0]
+      if (!latestRun || !isActiveRunStatus(latestRun.status)) return
+
+      runtime.runId = latestRun.runId
+      runtime.lastEventId = latestRun.lastEventId
+      runtime.processing = true
+      runtime.status = 'connecting'
+      if (activeThreadIdRef.current !== targetThreadId) {
+        setThreadRunning(targetThreadId, true)
+        return
+      }
+      if (activeThreadIdRef.current === targetThreadId) {
+        syncRuntimeToView(runtime)
+      }
+      setThreadRunning(targetThreadId, true)
+      void resumeThreadStream(runtime)
+    },
+    [
+      agentApiPath,
+      persistActiveRuntime,
+      requestJson,
+      resumeThreadStream,
+      setMessagesAndRef,
+      setThreadRunning,
+      syncRuntimeToView,
+    ]
+  )
+
+  useEffect(() => {
+    switchToThreadRef.current = switchToThread
+  }, [switchToThread])
 
   const sendMessage = async (recommendedQuestion?: string) => {
     const query = (recommendedQuestion ?? inputValue).trim()
     if (!query || isProcessing || !sessionId) return
+    const threadId = sessionId
+    const generation = streamGenerationRef.current + 1
+    streamGenerationRef.current = generation
+    const runtime = getThreadRuntime(threadId)
 
     const requestMode: RequestMode = useKnowledgeBase ? 'rag' : 'agent'
     const requestMcpConfig = requestMode === 'agent' && mcpEnabled ? mcpConfig : null
@@ -2143,7 +2619,7 @@ export default function ChatInterface() {
       return
     }
 
-    setMessages((prev) =>
+    setMessagesAndRef((prev) =>
       prev.map((message) =>
         message.recommendedQuestions
           ? { ...message, recommendedQuestions: undefined }
@@ -2164,6 +2640,10 @@ export default function ChatInterface() {
     setIsProcessing(true)
     setStatus('connecting')
     setToolCallDurations({})
+    setThreadRunning(threadId, true)
+    runtime.processing = true
+    runtime.status = 'connecting'
+    runtime.basePath = requestMode === 'rag' ? ragApiPath : agentApiPath
 
     const assistantMessageId = generateMessageId()
     currentAssistantMessageIdRef.current = assistantMessageId
@@ -2178,8 +2658,14 @@ export default function ChatInterface() {
     requestKnowledgeBaseRef.current = selectedKnowledgeBase
     requestMcpConfigRef.current = requestMcpConfig
     addMessage({ id: assistantMessageId, role: 'ai', content: '', toolData: [] })
+    runtime.messages = messagesRef.current
+    runtime.assistantMessageId = assistantMessageId
+    runtime.requestMode = requestMode
+    runtime.requestKnowledgeBase = selectedKnowledgeBase
+    runtime.requestMcpConfig = requestMcpConfig
 
     abortControllerRef.current = new AbortController()
+    runtime.abortController = abortControllerRef.current
 
     try {
       const state: Record<string, unknown> = {
@@ -2193,42 +2679,50 @@ export default function ChatInterface() {
         state.mcp_config = requestMcpConfig
       }
       const runInput = createAgUiRunInput({
-        threadId: sessionId,
+        threadId,
         runId: generateMessageId(),
         messageId: generateMessageId(),
         query,
         state,
       })
       currentRunInputRef.current = runInput as unknown as Record<string, unknown>
+      runtime.runInput = currentRunInputRef.current
       await startAgUiRun(
-        requestMode === 'rag' ? ragApiPath : agentApiPath,
+        runtime.basePath,
         currentRunInputRef.current,
+        threadId,
+        generation,
         abortControllerRef.current.signal
       )
-      setStatus('ready')
-    } catch (error: unknown) {
-      if (error instanceof Error && error.name !== 'AbortError') {
-        setStatus('error')
-        addMessage({
-          id: generateMessageId(),
-          role: 'ai',
-          content: `Request failed: ${error.message}`,
-        })
-      } else {
+      if (isCurrentStream(threadId, generation)) {
         setStatus('ready')
       }
+    } catch (error: unknown) {
+      if (!isAbortError(error)) {
+        runtime.processing = false
+        runtime.status = 'error'
+        setThreadRunning(threadId, false)
+        if (isCurrentStream(threadId, generation)) {
+          setStatus('error')
+          addMessage({
+            id: generateMessageId(),
+            role: 'ai',
+            content: `Request failed: ${error instanceof Error ? error.message : '未知错误'}`,
+          })
+        }
+      }
     } finally {
-      finishReasoningBlock()
-      setIsProcessing(false)
+      if (isCurrentStream(threadId, generation)) {
+        finishReasoningBlock()
+        setIsProcessing(false)
+        runtime.processing = false
+        runtime.status = 'ready'
+        runtime.messages = messagesRef.current
+        runtime.lastEventId = lastEventIdRef.current
+        runtime.abortController = null
+        abortControllerRef.current = null
+      }
       void loadHistorySessions()
-      currentAssistantMessageIdRef.current = null
-      processedToolCallIdsRef.current.clear()
-      lastAssistantStreamEventRef.current = null
-      reasoningStartTimeRef.current = null
-      toolCallStartTimesRef.current = {}
-    toolCallArgsRef.current = {}
-      reasoningBlockCounterRef.current = 0
-      contentBlockCounterRef.current = 0
     }
   }
 
@@ -2255,7 +2749,16 @@ export default function ChatInterface() {
   const abortRequest = () => {
     const runId = currentRunIdRef.current
     const basePath = requestModeRef.current === 'rag' ? ragApiPath : agentApiPath
+    const threadId = activeThreadIdRef.current
     abortControllerRef.current?.abort()
+    abortControllerRef.current = null
+    if (threadId) {
+      const runtime = getThreadRuntime(threadId)
+      runtime.processing = false
+      runtime.status = 'ready'
+      runtime.abortController = null
+      setThreadRunning(threadId, false)
+    }
     if (runId) {
       void fetch(getApiUrl(`${basePath}/${encodeURIComponent(runId)}/cancel`), {
         method: 'POST',
@@ -2273,6 +2776,10 @@ export default function ChatInterface() {
     const requestMode = requestModeRef.current
     const requestKnowledgeBase = requestKnowledgeBaseRef.current
     const requestMcpConfig = requestMcpConfigRef.current
+    const threadId = activeThreadIdRef.current
+    const generation = streamGenerationRef.current + 1
+    streamGenerationRef.current = generation
+    const runtime = getThreadRuntime(threadId)
     if (requestMode === 'rag' && !requestKnowledgeBase) {
       setManagementError('当前中断来自知识库问答，但未找到对应知识库，请重新发起请求。')
       setShowInterrupt(false)
@@ -2281,6 +2788,7 @@ export default function ChatInterface() {
     }
 
     setShowInterrupt(false)
+    runtime.showInterrupt = false
     addMessage({
       id: generateMessageId(),
       role: 'user',
@@ -2294,10 +2802,14 @@ export default function ChatInterface() {
 
     setIsProcessing(true)
     setStatus('connecting')
+    setThreadRunning(threadId, true)
+    runtime.processing = true
+    runtime.status = 'connecting'
     lastAssistantStreamEventRef.current = null
     reasoningBlockCounterRef.current = 0
     contentBlockCounterRef.current = 0
     abortControllerRef.current = new AbortController()
+    runtime.abortController = abortControllerRef.current
     let receivedInterrupt = false
 
     try {
@@ -2329,33 +2841,47 @@ export default function ChatInterface() {
         },
       }
       currentRunInputRef.current = runInput
+      runtime.runInput = runInput
       const streamResult = await resumeAgUiRun(
         requestMode === 'rag' ? ragApiPath : agentApiPath,
         runInput,
+        threadId,
+        generation,
         abortControllerRef.current.signal
       )
       receivedInterrupt = streamResult.interrupted
-      setStatus('ready')
+      if (isCurrentStream(threadId, generation)) {
+        setStatus('ready')
+      }
     } catch (error: unknown) {
-      if (error instanceof Error && error.name !== 'AbortError') {
-        setStatus('error')
-        addMessage({
-          id: generateMessageId(),
-          role: 'ai',
-          content: `Resume failed: ${error.message}`,
-        })
+      if (!isAbortError(error)) {
+        runtime.processing = false
+        runtime.status = 'error'
+        setThreadRunning(threadId, false)
+        if (isCurrentStream(threadId, generation)) {
+          setStatus('error')
+          addMessage({
+            id: generateMessageId(),
+            role: 'ai',
+            content: `Resume failed: ${error instanceof Error ? error.message : '未知错误'}`,
+          })
+        }
       }
     } finally {
-      finishReasoningBlock()
-      setIsProcessing(false)
-      if (!receivedInterrupt) {
-        setInterruptData(null)
+      if (isCurrentStream(threadId, generation) && runtime.status !== 'error') {
+        finishReasoningBlock()
+        setIsProcessing(false)
+        runtime.processing = false
+        runtime.status = 'ready'
+        runtime.messages = messagesRef.current
+        runtime.lastEventId = lastEventIdRef.current
+        runtime.abortController = null
+        abortControllerRef.current = null
+        if (!receivedInterrupt) {
+          setInterruptData(null)
+          runtime.interruptData = null
+        }
       }
-      currentAssistantMessageIdRef.current = null
-      processedToolCallIdsRef.current.clear()
-      lastAssistantStreamEventRef.current = null
-      reasoningBlockCounterRef.current = 0
-      contentBlockCounterRef.current = 0
     }
   }
 
@@ -2371,6 +2897,10 @@ export default function ChatInterface() {
     const requestMode = requestModeRef.current
     const requestKnowledgeBase = requestKnowledgeBaseRef.current
     const requestMcpConfig = requestMcpConfigRef.current
+    const threadId = activeThreadIdRef.current
+    const generation = streamGenerationRef.current + 1
+    streamGenerationRef.current = generation
+    const runtime = getThreadRuntime(threadId)
     if (requestMode === 'rag' && !requestKnowledgeBase) {
       setManagementError('当前中断来自知识库问答，但未找到对应知识库，请重新发起请求。')
       setShowInterrupt(false)
@@ -2379,6 +2909,7 @@ export default function ChatInterface() {
     }
 
     setShowInterrupt(false)
+    runtime.showInterrupt = false
     addMessage({
       id: generateMessageId(),
       role: 'user',
@@ -2386,10 +2917,14 @@ export default function ChatInterface() {
     })
     setIsProcessing(true)
     setStatus('connecting')
+    setThreadRunning(threadId, true)
+    runtime.processing = true
+    runtime.status = 'connecting'
     lastAssistantStreamEventRef.current = null
     reasoningBlockCounterRef.current = 0
     contentBlockCounterRef.current = 0
     abortControllerRef.current = new AbortController()
+    runtime.abortController = abortControllerRef.current
     let receivedInterrupt = false
 
     try {
@@ -2405,34 +2940,48 @@ export default function ChatInterface() {
         },
       }
       currentRunInputRef.current = runInput
+      runtime.runInput = runInput
       const streamResult = await resumeAgUiRun(
         requestMode === 'rag' ? ragApiPath : agentApiPath,
         runInput,
+        threadId,
+        generation,
         abortControllerRef.current.signal
       )
       receivedInterrupt = streamResult.interrupted
-      setStatus('ready')
+      if (isCurrentStream(threadId, generation)) {
+        setStatus('ready')
+      }
     } catch (error: unknown) {
-      if (error instanceof Error && error.name !== 'AbortError') {
-        setStatus('error')
-        addMessage({
-          id: generateMessageId(),
-          role: 'ai',
-          content: `恢复提问失败：${error.message}`,
-        })
+      if (!isAbortError(error)) {
+        runtime.processing = false
+        runtime.status = 'error'
+        setThreadRunning(threadId, false)
+        if (isCurrentStream(threadId, generation)) {
+          setStatus('error')
+          addMessage({
+            id: generateMessageId(),
+            role: 'ai',
+            content: `恢复提问失败：${error instanceof Error ? error.message : '未知错误'}`,
+          })
+        }
       }
     } finally {
-      finishReasoningBlock()
-      setIsProcessing(false)
-      void loadHistorySessions()
-      if (!receivedInterrupt) {
-        setInterruptData(null)
+      if (isCurrentStream(threadId, generation) && runtime.status !== 'error') {
+        finishReasoningBlock()
+        setIsProcessing(false)
+        runtime.processing = false
+        runtime.status = 'ready'
+        runtime.messages = messagesRef.current
+        runtime.lastEventId = lastEventIdRef.current
+        runtime.abortController = null
+        abortControllerRef.current = null
+        if (!receivedInterrupt) {
+          setInterruptData(null)
+          runtime.interruptData = null
+        }
       }
-      currentAssistantMessageIdRef.current = null
-      processedToolCallIdsRef.current.clear()
-      lastAssistantStreamEventRef.current = null
-      reasoningBlockCounterRef.current = 0
-      contentBlockCounterRef.current = 0
+      void loadHistorySessions()
     }
   }
 
@@ -2550,6 +3099,9 @@ export default function ChatInterface() {
                       const isActive = historySession.session_id === sessionId
                       const isLoading =
                         historyLoadingSessionId === historySession.session_id
+                      const isRunning = runningThreadIds.includes(
+                        historySession.session_id
+                      )
                       return (
                         <div
                           key={historySession.session_id}
@@ -2561,13 +3113,18 @@ export default function ChatInterface() {
                             type="button"
                             className={styles.chatHistoryOpenButton}
                             onClick={() => void openHistorySession(historySession.session_id)}
-                            disabled={isProcessing || isLoading}
+                            disabled={isLoading}
                           >
                             <span className={styles.chatHistoryItemContent}>
                               <span className={styles.chatHistorySessionTitle}>
                                 {historySession.title || '未命名对话'}
                               </span>
                               <span className={styles.chatHistoryTime}>
+                                {isRunning
+                                  ? isActive
+                                    ? '运行中 · '
+                                    : '后台运行中 · '
+                                  : ''}
                                 {historySession.updated_at
                                   ? formatDateTime(historySession.updated_at)
                                   : '时间未知'}
@@ -2580,7 +3137,7 @@ export default function ChatInterface() {
                             onClick={(event) =>
                               void deleteHistorySession(historySession.session_id, event)
                             }
-                            disabled={isProcessing || isLoading}
+                            disabled={isLoading || isRunning}
                             aria-label={`删除会话 ${historySession.session_id}`}
                           >
                             删除
