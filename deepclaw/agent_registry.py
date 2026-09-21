@@ -11,11 +11,17 @@ from typing import Any, ClassVar, Iterable
 class Agent(ABC):
     """统一 AG-UI 可暴露的智能体基类。"""
 
+    # 对外暴露的智能体 ID，也是 AG-UI 请求顶层 agentId 的取值。
     agent_id: ClassVar[str]
+    # 前端展示名称。
     name: ClassVar[str]
+    # 前端展示说明。
     description: ClassVar[str]
+    # 当前智能体支持的能力标签，供前端按能力展示或启用功能。
     capabilities: ClassVar[frozenset[str]] = frozenset()
+    # 允许从客户端 state 传入并写入 LangGraph state 的字段集合。
     allowed_state_keys: ClassVar[frozenset[str]] = frozenset()
+    # 未显式指定 agentId 时是否作为默认智能体。
     is_default: ClassVar[bool] = False
 
     @classmethod
