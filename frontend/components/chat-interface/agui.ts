@@ -83,8 +83,42 @@ export function parseAgUiSseFrame(frame: string): AgUiSseFrame | null {
 
 export function getAgUiInterrupt(event: AgUiEvent): AgUiInterrupt | null {
   if (event.type !== 'CUSTOM' || event.name !== 'on_interrupt') return null
-  const value = event.value
-  return value && typeof value === 'object' ? (value as AgUiInterrupt) : null
+  const value = parseAgUiValue(event.value)
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+
+  const record = value as Record<string, unknown>
+  if (Array.isArray(record.action_requests)) {
+    return record as AgUiInterrupt
+  }
+
+  if (typeof record.question === 'string') {
+    return {
+      action_requests: [
+        {
+          name: 'ask_user',
+          description: record.question,
+          args: record,
+        },
+      ],
+      review_configs: [
+        {
+          action_name: 'ask_user',
+          allowed_decisions: ['respond'],
+        },
+      ],
+    }
+  }
+
+  return null
+}
+
+function parseAgUiValue(value: unknown): unknown {
+  if (typeof value !== 'string') return value
+  try {
+    return JSON.parse(value) as unknown
+  } catch {
+    return null
+  }
 }
 
 export function getRecommendedQuestions(event: AgUiEvent): string[] {
