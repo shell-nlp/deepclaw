@@ -171,6 +171,10 @@ async def app_lifespan(app: FastAPI):
         async with channel_lifespan():
             yield
     finally:
+        runtime_cache = getattr(app.state, "agent_runtime_cache", None)
+        if runtime_cache is not None:
+            await runtime_cache.close()
+        await get_run_store().close()
         checkpointer_pool = getattr(app.state, "agent_checkpointer_pool", None)
         if checkpointer_pool is not None:
             await checkpointer_pool.close()
