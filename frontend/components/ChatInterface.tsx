@@ -2262,10 +2262,18 @@ export default function ChatInterface() {
             (tool) => tool.toolCall.id === toolCallId
           )
           if (existingToolIndex >= 0) {
+            const existingTool = tools[existingToolIndex]
+            if (
+              existingTool.toolOutput?.some(
+                (output) => output.content === normalizedOutput.content
+              )
+            ) {
+              return message
+            }
             tools[existingToolIndex] = {
-              ...tools[existingToolIndex],
+              ...existingTool,
               toolOutput: [
-                ...(tools[existingToolIndex].toolOutput || []),
+                ...(existingTool.toolOutput || []),
                 normalizedOutput,
               ],
             }
@@ -2294,6 +2302,35 @@ export default function ChatInterface() {
           const nextInterruptData: InterruptData = {
             action_requests: interrupt.action_requests ?? [],
             review_configs: interrupt.review_configs,
+          }
+          const interruptedToolNames = new Set(
+            nextInterruptData.action_requests
+              .map((action) => action.name)
+              .filter(
+                (name): name is string =>
+                  Boolean(name) && name !== 'ask_user'
+              )
+          )
+          if (interruptedToolNames.size > 0) {
+            updateAssistantMessage((message) => {
+              const removedToolCallIds = new Set(
+                (message.toolData || [])
+                  .filter((tool) => interruptedToolNames.has(tool.toolCall.name))
+                  .map((tool) => tool.toolCall.id)
+              )
+              if (removedToolCallIds.size === 0) return message
+              return {
+                ...message,
+                toolData: (message.toolData || []).filter(
+                  (tool) => !removedToolCallIds.has(tool.toolCall.id)
+                ),
+                messageItems: (message.messageItems || []).filter(
+                  (item) =>
+                    item.type !== 'tool' ||
+                    !removedToolCallIds.has(item.toolCallId)
+                ),
+              }
+            })
           }
           setInterruptData(nextInterruptData)
           setShowInterrupt(true)
@@ -3030,10 +3067,32 @@ export default function ChatInterface() {
 
     setShowInterrupt(false)
     runtime.showInterrupt = false
-    addMessage({
-      id: generateMessageId(),
-      role: 'user',
-      content: answer,
+    updateAssistantMessage((message) => {
+      const toolIndex = [...(message.toolData || [])]
+        .map((tool, index) => ({ tool, index }))
+        .reverse()
+        .find(({ tool }) => tool.toolCall.name === 'ask_user')?.index
+      if (toolIndex === undefined) return message
+
+      const tool = message.toolData?.[toolIndex]
+      if (!tool) return message
+      const responseContent = stringifyToolContent(answer)
+      if (tool.toolOutput?.some((item) => item.content === responseContent)) {
+        return message
+      }
+
+      const toolData = [...(message.toolData || [])]
+      toolData[toolIndex] = {
+        ...tool,
+        toolOutput: [
+          ...(tool.toolOutput || []),
+          {
+            tool_call_id: tool.toolCall.id,
+            content: responseContent,
+          },
+        ],
+      }
+      return { ...message, toolData }
     })
     setIsProcessing(true)
     setStatus('connecting')
