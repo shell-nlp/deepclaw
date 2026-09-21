@@ -1,8 +1,9 @@
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -184,17 +185,65 @@ async def app_lifespan(app: FastAPI):
 
 
 def register_charts_static(app: FastAPI) -> None:
-    """挂载 /charts 目录，使图表图片可通过 URL 访问。"""
+    """挂载图表目录，使默认路径和自定义公网前缀都可访问图片。
+
+    Args:
+        app: 待挂载图表静态路由的 FastAPI 应用。
+    """
     charts_dir = workspace_path / "charts"
     charts_dir.mkdir(parents=True, exist_ok=True)
-    for route in app.routes:
-        if hasattr(route, "path") and route.path == "/charts":
-            return
-    app.mount(
-        "/charts",
-        StaticFiles(directory=str(charts_dir)),
-        name="charts",
-    )
+    chart_routes = [("/charts", "charts")]
+    configured_url = settings.CHART_PUBLIC_URL.strip()
+    configured_path = (
+        urlsplit(configured_url).path
+        if configured_url.startswith(("http://", "https://"))
+        else configured_url
+    ).rstrip("/")
+    if configured_path and configured_path not in {"", "/", "/charts"}:
+        chart_routes.append((f"{configured_path}/charts", "public_charts"))
+
+    existing_paths = {
+        route.path for route in app.routes if hasattr(route, "path")
+    }
+    for route_path, route_name in chart_routes:
+        if route_path in existing_paths:
+            continue
+        if route_path == "/charts":
+            app.mount(
+                route_path,
+                StaticFiles(directory=str(charts_dir)),
+                name=route_name,
+            )
+            continue
+
+        async def serve_configured_chart(file_name: str) -> FileResponse:
+            """返回配置前缀下的图表 PNG 文件。
+
+            Args:
+                file_name: 图表文件名，只允许 charts 目录下的 PNG 文件。
+
+            Returns:
+                FileResponse: 图表文件响应。
+
+            Raises:
+                HTTPException: 文件名非法或文件不存在时返回 404。
+            """
+            if Path(file_name).name != file_name or not file_name.lower().endswith(
+                ".png"
+            ):
+                raise HTTPException(status_code=404, detail="图表不存在")
+            file_path = charts_dir / file_name
+            if not file_path.is_file():
+                raise HTTPException(status_code=404, detail="图表不存在")
+            return FileResponse(file_path, media_type="image/png")
+
+        app.add_api_route(
+            f"{route_path}/{{file_name}}",
+            serve_configured_chart,
+            methods=["GET"],
+            include_in_schema=False,
+            name=route_name,
+        )
 
 
 def _register_exported_html_routes(app: FastAPI, frontend_dir: Path) -> None:
