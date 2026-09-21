@@ -120,22 +120,22 @@ async def _resolve_run_manager(
     if state is None:
         raise HTTPException(status_code=404, detail="Run 不存在")
     try:
-        definition = registry.get(state.agent_id)
+        agent = registry.get(state.agent_id)
     except KeyError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     graph = await runtime_registry.get_graph(
         request,
-        definition,
+        agent,
         checkpointer,
         store,
     )
     manager = await runtime_registry.get_manager(
         request,
-        definition,
+        agent,
         graph,
         run_store,
     )
-    return state, definition, manager
+    return state, agent, manager
 
 
 router = APIRouter(prefix="/api/agui")
@@ -155,13 +155,13 @@ async def list_agents(
     registry = request.app.state.agent_registry
     items = [
         AgentSummaryResponse(
-            id=definition.agent_id,
-            name=definition.name,
-            description=definition.description,
-            is_default=definition.is_default,
-            capabilities=list(definition.capabilities),
+            id=agent.agent_id,
+            name=agent.name,
+            description=agent.description,
+            is_default=agent.is_default,
+            capabilities=list(agent.capabilities),
         )
-        for definition in registry.list_definitions()
+        for agent in registry.list_agents()
     ]
     return AgentListResponse(items=items, total=len(items))
 
@@ -186,18 +186,18 @@ async def create_run(
     """创建统一 AG-UI Run。"""
     registry = request.app.state.agent_registry
     try:
-        definition = registry.resolve(payload.agent_id)
+        agent = registry.resolve(payload.agent_id)
     except KeyError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     graph = await runtime_registry.get_graph(
         request,
-        definition,
+        agent,
         checkpointer,
         store,
     )
     manager = await runtime_registry.get_manager(
         request,
-        definition,
+        agent,
         graph,
         run_store,
     )
@@ -206,7 +206,7 @@ async def create_run(
         payload,
         request,
         actor,
-        definition.allowed_state_keys,
+        agent.allowed_state_keys,
     )
 
 
@@ -269,7 +269,7 @@ async def resume_run(
 ):
     """恢复统一 AG-UI Run。"""
     registry = request.app.state.agent_registry
-    state, definition, manager = await _resolve_run_manager(
+    state, agent, manager = await _resolve_run_manager(
         request=request,
         run_id=run_id,
         actor=actor,
@@ -287,7 +287,7 @@ async def resume_run(
         payload,
         request,
         actor,
-        definition.allowed_state_keys,
+        agent.allowed_state_keys,
     )
 
 
@@ -311,7 +311,7 @@ async def handle_action(
 ):
     """处理统一 AG-UI Action。"""
     registry = request.app.state.agent_registry
-    _, definition, manager = await _resolve_run_manager(
+    _, agent, manager = await _resolve_run_manager(
         request=request,
         run_id=run_id,
         actor=actor,
@@ -327,7 +327,7 @@ async def handle_action(
         payload,
         request,
         actor,
-        definition.allowed_state_keys,
+        agent.allowed_state_keys,
     )
 
 
@@ -416,12 +416,12 @@ async def get_thread_state(
     if thread is None:
         raise HTTPException(status_code=404, detail="Thread 不存在")
     try:
-        definition = registry.get(thread.agent_id)
+        agent = registry.get(thread.agent_id)
     except KeyError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     graph = await runtime_registry.get_graph(
         request,
-        definition,
+        agent,
         checkpointer,
         store,
     )

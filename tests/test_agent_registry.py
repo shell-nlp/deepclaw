@@ -24,11 +24,11 @@ class DummyAgent(Agent):
         return object()
 
 
-def test_discover_finds_project_agent_definitions():
+def test_discover_finds_project_agents():
     """验证自动发现能识别项目内置智能体。"""
     registry = AgentRegistry.discover()
 
-    assert {definition.agent_id for definition in registry.list_definitions()} == {
+    assert {agent.agent_id for agent in registry.list_agents()} == {
         "agent",
         "rag",
     }

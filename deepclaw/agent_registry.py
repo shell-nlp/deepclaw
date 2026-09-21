@@ -42,62 +42,59 @@ class Agent(ABC):
 
 
 class AgentRegistry:
-    """自动发现、保存并按 ID 解析智能体定义。"""
+    """自动发现、保存并按 ID 解析智能体类。"""
 
-    def __init__(self, definitions: Iterable[type[Agent]]) -> None:
+    def __init__(self, agents: Iterable[type[Agent]]) -> None:
         """初始化智能体注册表。
 
         Args:
-            definitions: 可用智能体定义类。
+            agents: 可用智能体类。
         """
-        self._definitions: dict[str, type[Agent]] = {}
-        for definition in definitions:
-            self._register(definition)
+        self._agents: dict[str, type[Agent]] = {}
+        for agent in agents:
+            self._register(agent)
 
-        default_definitions = [
-            definition
-            for definition in self._definitions.values()
-            if definition.is_default
+        default_agents = [
+            agent
+            for agent in self._agents.values()
+            if agent.is_default
         ]
-        if len(default_definitions) > 1:
+        if len(default_agents) > 1:
             raise ValueError("只能配置一个默认智能体")
         self._default_agent_id = (
-            default_definitions[0].agent_id if default_definitions else None
+            default_agents[0].agent_id if default_agents else None
         )
 
-    def _register(self, definition: type[Agent]) -> None:
-        """校验并登记一个智能体定义。
+    def _register(self, agent: type[Agent]) -> None:
+        """校验并登记一个智能体类。
 
         Args:
-            definition: 待登记的智能体定义类。
+            agent: 待登记的智能体类。
 
         Raises:
-            TypeError: 定义类型不合法。
-            ValueError: 定义元数据不合法或 ID 重复。
+            TypeError: 智能体类型不合法。
+            ValueError: 智能体元数据不合法或 ID 重复。
         """
-        if not inspect.isclass(definition) or not issubclass(
-            definition,
-            Agent,
-        ):
+        if not inspect.isclass(agent) or not issubclass(agent, Agent):
             raise TypeError("注册项必须是 Agent 子类")
-        if inspect.isabstract(definition):
-            raise TypeError("不能注册抽象智能体定义")
+        if inspect.isabstract(agent):
+            raise TypeError("不能注册抽象智能体")
 
-        agent_id = getattr(definition, "agent_id", "")
-        name = getattr(definition, "name", "")
-        description = getattr(definition, "description", "")
+        agent_id = getattr(agent, "agent_id", "")
+        name = getattr(agent, "name", "")
+        description = getattr(agent, "description", "")
         if not isinstance(agent_id, str) or not agent_id.strip():
             raise ValueError("智能体 agent_id 不能为空")
         if not isinstance(name, str) or not name.strip():
             raise ValueError(f"智能体 {agent_id} 的 name 不能为空")
         if not isinstance(description, str) or not description.strip():
             raise ValueError(f"智能体 {agent_id} 的 description 不能为空")
-        if not callable(getattr(definition, "build_agent", None)):
+        if not callable(getattr(agent, "build_agent", None)):
             raise ValueError(f"智能体 {agent_id} 未实现 build_agent")
-        if agent_id in self._definitions:
+        if agent_id in self._agents:
             raise ValueError(f"智能体 ID 重复: {agent_id}")
 
-        self._definitions[agent_id] = definition
+        self._agents[agent_id] = agent
 
     @classmethod
     def discover(cls) -> AgentRegistry:
@@ -110,11 +107,11 @@ class AgentRegistry:
             自动发现得到的智能体注册表。
 
         Raises:
-            ValueError: 未发现任何智能体定义。
+            ValueError: 未发现任何智能体类。
         """
         import deepclaw.agents as agents_package
 
-        definitions: list[type[Agent]] = []
+        agents: list[type[Agent]] = []
         package_prefix = f"{agents_package.__name__}."
         for module_info in pkgutil.iter_modules(
             agents_package.__path__,
@@ -131,51 +128,48 @@ class AgentRegistry:
             for value in vars(module).values():
                 if not inspect.isclass(value):
                     continue
-                if value is Agent or not issubclass(
-                    value,
-                    Agent,
-                ):
+                if value is Agent or not issubclass(value, Agent):
                     continue
                 if value.__module__ != module.__name__:
                     continue
-                definitions.append(value)
+                agents.append(value)
 
-        if not definitions:
-            raise ValueError("未发现任何智能体定义")
-        return cls(definitions)
+        if not agents:
+            raise ValueError("未发现任何智能体类")
+        return cls(agents)
 
-    def list_definitions(self) -> list[type[Agent]]:
-        """返回全部智能体定义。
+    def list_agents(self) -> list[type[Agent]]:
+        """返回全部智能体类。
 
         Args:
             无。
 
         Returns:
-            按默认智能体优先排序的定义列表。
+            按默认智能体优先排序的智能体类列表。
         """
-        definitions = list(self._definitions.values())
-        definitions.sort(
-            key=lambda definition: (
-                not definition.is_default,
-                definition.agent_id,
+        agents = list(self._agents.values())
+        agents.sort(
+            key=lambda agent: (
+                not agent.is_default,
+                agent.agent_id,
             )
         )
-        return definitions
+        return agents
 
     def get(self, agent_id: str) -> type[Agent]:
-        """按 ID 获取智能体定义。
+        """按 ID 获取智能体类。
 
         Args:
             agent_id: 智能体 ID。
 
         Returns:
-            对应智能体定义。
+            对应智能体类。
 
         Raises:
             KeyError: 智能体 ID 不存在。
         """
         try:
-            return self._definitions[agent_id]
+            return self._agents[agent_id]
         except KeyError as exc:
             raise KeyError(f"未知智能体: {agent_id}") from exc
 
@@ -186,7 +180,7 @@ class AgentRegistry:
             agent_id: 请求中的可选智能体 ID。
 
         Returns:
-            对应智能体定义。
+            对应智能体类。
 
         Raises:
             KeyError: 智能体 ID 不存在或未配置默认智能体。

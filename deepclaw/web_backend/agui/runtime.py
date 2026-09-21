@@ -43,7 +43,7 @@ class AgentRuntimeCache:
     async def get_graph(
         self,
         request: Request,
-        definition: type[Agent],
+        agent: type[Agent],
         checkpointer: Any | None,
         store: Any | None,
     ) -> Any:
@@ -51,7 +51,7 @@ class AgentRuntimeCache:
 
         Args:
             request: 当前 FastAPI 请求。
-            definition: 智能体定义。
+            agent: 智能体类。
             checkpointer: LangGraph 检查点存储。
             store: LangGraph 长期存储。
 
@@ -61,7 +61,7 @@ class AgentRuntimeCache:
         app_id = id(request.app)
         cache_key = (
             app_id,
-            definition.agent_id,
+            agent.agent_id,
             id(checkpointer),
             id(store),
         )
@@ -69,10 +69,10 @@ class AgentRuntimeCache:
         if cached is not None:
             return cached
 
-        async with self._lock_for(app_id, definition.agent_id):
+        async with self._lock_for(app_id, agent.agent_id):
             cached = self._graphs.get(cache_key)
             if cached is None:
-                cached = definition.build_agent(
+                cached = agent.build_agent(
                     checkpointer=checkpointer,
                     store=store,
                 )
@@ -82,7 +82,7 @@ class AgentRuntimeCache:
     async def get_manager(
         self,
         request: Request,
-        definition: type[Agent],
+        agent: type[Agent],
         graph: Any,
         run_store: RunStore,
     ) -> AgentRunManager:
@@ -90,7 +90,7 @@ class AgentRuntimeCache:
 
         Args:
             request: 当前 FastAPI 请求。
-            definition: 智能体定义。
+            agent: 智能体类。
             graph: 已装配的 LangGraph 图。
             run_store: AG-UI Run 存储。
 
@@ -100,7 +100,7 @@ class AgentRuntimeCache:
         app_id = id(request.app)
         cache_key = (
             app_id,
-            definition.agent_id,
+            agent.agent_id,
             id(graph),
             id(run_store),
         )
@@ -108,13 +108,13 @@ class AgentRuntimeCache:
         if cached is not None:
             return cached
 
-        async with self._lock_for(app_id, definition.agent_id):
+        async with self._lock_for(app_id, agent.agent_id):
             cached = self._managers.get(cache_key)
             if cached is None:
                 cached = AgentRunManager(
                     graph,
                     store=run_store,
-                    agent_id=definition.agent_id,
+                    agent_id=agent.agent_id,
                 )
                 self._managers[cache_key] = cached
         return cached

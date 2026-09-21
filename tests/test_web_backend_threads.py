@@ -128,12 +128,12 @@ class FakeRuntimeRegistry:
     def __init__(self, graph):
         self.graph = graph
 
-    async def get_graph(self, request, definition, checkpointer, store):
+    async def get_graph(self, request, agent, checkpointer, store):
         """返回测试图。
 
         Args:
             request: 当前请求。
-            definition: 智能体定义。
+            agent: 智能体类。
             checkpointer: 检查点存储。
             store: 长期存储。
         """
@@ -199,12 +199,12 @@ def test_thread_list_does_not_build_agent_graph():
     class FailRuntimeRegistry:
         """在调用时失败的运行时注册表。"""
 
-        async def get_graph(self, request, definition, checkpointer, store):
+        async def get_graph(self, request, agent, checkpointer, store):
             """在依赖被调用时抛出断言错误。
 
             Args:
                 request: 当前请求。
-                definition: 智能体定义。
+                agent: 智能体类。
                 checkpointer: 检查点存储。
                 store: 长期存储。
             """
