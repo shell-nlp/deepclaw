@@ -28,8 +28,20 @@ export interface ThreadListResponse {
   total: number
 }
 
-export interface ChatHistoryListData {
-  sessions: ChatHistorySession[]
+export interface ThreadRunSnapshot {
+  runId: string
+  threadId: string
+  status: string
+  lastEventId: string | null
+  eventCount: number
+  createdAt: number | null
+  updatedAt: number | null
+  error: string | null
+}
+
+export interface ThreadRunListResponse {
+  threadId: string
+  items: ThreadRunSnapshot[]
   total: number
 }
 
