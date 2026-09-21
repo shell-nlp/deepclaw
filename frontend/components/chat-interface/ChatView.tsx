@@ -13,7 +13,12 @@ import type {
   Message,
   ReasoningBlock,
 } from './types'
-import { formatDuration, getToolIcon, parseMarkdown } from './utils'
+import {
+  formatDuration,
+  getToolIcon,
+  normalizeChartMarkdown,
+  parseMarkdown,
+} from './utils'
 
 type InterruptDecision = 'approve' | 'reject' | 'edit'
 type InterruptActionRequest = InterruptData['action_requests'][number]
@@ -301,7 +306,9 @@ function AssistantMessageBody({
         <div
           key={block.id}
           className={styles.messageContent}
-          dangerouslySetInnerHTML={{ __html: parseMarkdown(block.content) }}
+          dangerouslySetInnerHTML={{
+            __html: parseMarkdown(normalizeChartMarkdown(block.content, msg.toolData)),
+          }}
         />
       ))}
       {msg.recommendedQuestions?.length ? (

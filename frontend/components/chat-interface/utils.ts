@@ -238,6 +238,67 @@ export function parseMarkdown(text: string): string {
   }
 }
 
+/**
+ * 用工具实际返回的地址校正模型改写过的图表 Markdown 链接。
+ *
+ * Args:
+ *   text: 模型生成的 Markdown 文本。
+ *   toolData: 当前助手消息关联的工具调用及其输出。
+ *
+ * Returns:
+ *   校正后的 Markdown 文本；找不到对应工具地址时保留原文。
+ */
+export function normalizeChartMarkdown(
+  text: string,
+  toolData?: ToolData[]
+): string {
+  const canonicalUrls = new Map<string, string>()
+  for (const tool of toolData || []) {
+    for (const output of tool.toolOutput || []) {
+      const matches = output.content.matchAll(
+        /!?\[[^\]]*\]\(\s*<?([^\s)>]+)>?\s*\)/g
+      )
+      for (const match of matches) {
+        const url = match[1].replace(/[，。；！？、,.;!?]+$/g, '')
+        const normalizedUrl = url.replace(/[\uFF0C\u3002\uFF1B\uFF01\uFF1F\u3001,.;!?]+$/g, '')
+        const fileName = normalizedUrl.match(/\/charts\/([^/?#)<>\s]+\.png)/i)?.[1]
+        if (fileName) canonicalUrls.set(fileName, getBrowserChartUrl(normalizedUrl))
+      }
+    }
+  }
+  return text.replace(
+    /(!?)\[([^\]]*)\]\(\s*<?([^\s)>]+)>?\s*\)/g,
+    (markdown, imageMarker: string, altText: string, rawUrl: string) => {
+      const url = rawUrl.replace(/[，。；！？、,.;!?]+$/g, '')
+      const normalizedUrl = url.replace(/[\uFF0C\u3002\uFF1B\uFF01\uFF1F\u3001,.;!?]+$/g, '')
+      const fileName = normalizedUrl.match(/\/charts\/([^/?#)<>\s]+\.png)/i)?.[1]
+      const canonicalUrl = fileName ? canonicalUrls.get(fileName) : undefined
+      const browserUrl = fileName ? getBrowserChartUrl(normalizedUrl) : undefined
+      const chartUrl = canonicalUrl || browserUrl
+      return chartUrl ? `${imageMarker}[${altText}](${chartUrl})` : markdown
+    }
+  )
+}
+
+/**
+ * 将图表地址切换到当前浏览器访问的域名，同时保留后端代理路径。
+ *
+ * Args:
+ *   url: 工具返回的图表 URL。
+ *
+ * Returns:
+ *   使用当前前端 origin 的图表 URL；无法解析或非浏览器环境下返回原地址。
+ */
+function getBrowserChartUrl(url: string): string {
+  if (typeof window === 'undefined') return url
+  try {
+    const parsed = new URL(url, window.location.origin)
+    return `${window.location.origin}${parsed.pathname}${parsed.search}${parsed.hash}`
+  } catch {
+    return url
+  }
+}
+
 export function stringifyToolContent(content: unknown): string {
   if (typeof content === 'string') {
     try {
