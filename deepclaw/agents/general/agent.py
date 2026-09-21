@@ -38,10 +38,70 @@ class GeneralAgent(Agent):
     name = "通用智能体"
     description = "通用工具调用、MCP 与深度思考"
     capabilities = frozenset({"mcp", "deep_thinking", "internet_search"})
-    allowed_state_keys = frozenset(
-        {"internet_search", "deep_thinking", "mcp_config"}
-    )
+    allowed_state_keys = frozenset({"internet_search", "deep_thinking", "mcp_config"})
     is_default = True
+
+    @classmethod
+    def get_common_middleware(cls) -> list:
+        """返回所有 Agent 可复用的通用中间件。
+
+        Args:
+            无。
+
+        Returns:
+            通用中间件实例列表。
+        """
+        from langchain.agents.middleware.human_in_the_loop import (
+            HumanInTheLoopMiddleware,
+        )
+
+        from deepclaw.middleware import (
+            BusinessMiddleware,
+            MCPMiddleware,
+            RecommendedQuestionsMiddleware,
+        )
+        from deepclaw.middleware.chart import ChartMiddleware
+
+        def when_get_weather(request) -> bool:
+            """判断天气工具调用是否需要人工审批。
+
+            Args:
+                request: 工具调用请求。
+            """
+            query = request.tool_call["args"].get("location", "")
+            return query.startswith("南阳")
+
+        return [
+            RecommendedQuestionsMiddleware(),
+            BusinessMiddleware(),
+            MCPMiddleware(),
+            HumanInTheLoopMiddleware(
+                interrupt_on={
+                    "get_weather": {
+                        "allowed_decisions": ["approve", "edit", "reject"],
+                        "description": "工具执行等待批准",
+                        "when": when_get_weather,
+                    },
+                    "ask_user": True,
+                },
+                description_prefix="工具执行等待批准",
+            ),
+            ChartMiddleware(),
+        ]
+
+    @classmethod
+    def get_common_tools(cls) -> list:
+        """返回所有 Agent 可复用的通用工具。
+
+        Args:
+            无。
+
+        Returns:
+            通用工具列表。
+        """
+        from deepclaw.tools import ask_user, get_weather, web_fetch
+
+        return [get_weather, web_fetch, ask_user]
 
     @classmethod
     def build_agent(
@@ -65,45 +125,9 @@ class GeneralAgent(Agent):
         Returns:
             已装配的通用 Agent 图。
         """
-        from langchain.agents.middleware.human_in_the_loop import (
-            HumanInTheLoopMiddleware,
-        )
 
-        from deepclaw.middleware import (
-            BusinessMiddleware,
-            MCPMiddleware,
-            RecommendedQuestionsMiddleware,
-        )
-        from deepclaw.tools import ask_user, get_weather, web_fetch
-
-        middleware = [
-            RecommendedQuestionsMiddleware(),
-            BusinessMiddleware(),
-            MCPMiddleware(),
-        ]
-
-        def when_get_weather(request) -> bool:
-            """判断天气工具调用是否需要人工审批。
-
-            Args:
-                request: 工具调用请求。
-            """
-            query = request.tool_call["args"].get("location", "")
-            return query.startswith("南阳")
-
-        middleware.append(
-            HumanInTheLoopMiddleware(
-                interrupt_on={
-                    "get_weather": {
-                        "allowed_decisions": ["approve", "edit", "reject"],
-                        "description": "工具执行等待批准",
-                        "when": when_get_weather,
-                    },
-                    "ask_user": True,
-                },
-                description_prefix="工具执行等待批准",
-            )
-        )
+        middleware = cls.get_common_middleware()
+        agent_tools = cls.get_common_tools()
 
         skills = None
         memory = None
@@ -111,7 +135,6 @@ class GeneralAgent(Agent):
         model.tags = ["agent"]
 
         backend = None
-        agent_tools = (tools or []) + [get_weather, web_fetch, ask_user]
 
         if not workspace_path.exists():
             workspace_path.mkdir(parents=True, exist_ok=True)
@@ -165,14 +188,12 @@ class GeneralAgent(Agent):
             middleware.append(DeferredToolMiddleware())
 
         if deep_agent:
-            from deepclaw.middleware.chart import ChartMiddleware
             from deepclaw.middleware.deep_agent_prompt import (
                 DeepAgentPromptMiddleware,
             )
 
             middleware.extend(
                 [
-                    ChartMiddleware(),
                     DeepAgentPromptMiddleware(),
                 ]
             )
@@ -208,7 +229,6 @@ class GeneralAgent(Agent):
         from langchain.agents import create_agent
         from langchain.agents.middleware import SummarizationMiddleware
 
-
         middleware.extend(
             [
                 SummarizationMiddleware(
@@ -226,6 +246,7 @@ class GeneralAgent(Agent):
             store=store,
             state_schema=StateSchema,
         )
+
 
 if __name__ == "__main__":
     model = get_chat_model()
