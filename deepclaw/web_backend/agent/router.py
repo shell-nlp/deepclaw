@@ -5,7 +5,7 @@ from copy import deepcopy
 from typing import Any
 
 from ag_ui.core import RunAgentInput
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from loguru import logger
 from deepclaw.agents.general.agent import Agent
@@ -21,12 +21,22 @@ from deepclaw.web_backend.auth.dependencies import CurrentActor, get_current_act
 from deepclaw.web_backend.common.agui_runs import (
     cancel_agui_run,
     create_agui_run,
+    delete_agui_thread,
     get_agui_run_snapshot,
+    get_agui_thread_state,
     handle_agui_action,
+    list_agui_thread_runs,
+    list_agui_threads,
     resume_agui_run,
     stream_agui_run_events,
 )
-from deepclaw.web_backend.common.agui_schemas import RunActionRequest, RunSnapshot
+from deepclaw.web_backend.common.agui_schemas import (
+    RunActionRequest,
+    RunSnapshot,
+    ThreadDeleteResponse,
+    ThreadListResponse,
+    ThreadRunListResponse,
+)
 
 
 _agent_graph_cache: dict[tuple[int, int, int], Any] = {}
@@ -305,6 +315,72 @@ async def cancel_agent_run(
 ):
     """取消 Agent AG-UI Run。"""
     return await cancel_agui_run(manager, run_id, actor)
+
+
+@router.get(
+    "/threads",
+    response_model=ThreadListResponse,
+    tags=["agent-thread"],
+    summary="查询 Thread 列表",
+    description="返回当前用户可见的 Thread 列表。",
+)
+async def list_threads(
+    limit: int = Query(default=100, ge=1, le=200),
+    actor: CurrentActor = Depends(get_current_actor),
+    manager: AgentRunManager = Depends(get_agent_run_manager),
+):
+    """查询当前用户的 Thread 列表。"""
+    return await list_agui_threads(manager, actor, limit=limit)
+
+
+@router.get(
+    "/threads/{thread_id}/runs",
+    response_model=ThreadRunListResponse,
+    tags=["agent-thread"],
+    summary="查询 Agent Thread 下的 Run",
+    description="返回指定 Thread 下属于当前用户的 Run 列表。",
+)
+async def list_agent_thread_runs(
+    thread_id: str,
+    limit: int = Query(default=100, ge=1, le=200),
+    actor: CurrentActor = Depends(get_current_actor),
+    manager: AgentRunManager = Depends(get_agent_run_manager),
+):
+    """查询 Agent Thread 下的 Run。"""
+    return await list_agui_thread_runs(manager, thread_id, actor, limit=limit)
+
+
+@router.get(
+    "/threads/{thread_id}/state",
+    tags=["agent-thread"],
+    summary="查询 Agent Thread 状态",
+    description="返回指定 Thread 的 LangGraph state。",
+)
+async def get_agent_thread_state(
+    thread_id: str,
+    actor: CurrentActor = Depends(get_current_actor),
+    manager: AgentRunManager = Depends(get_agent_run_manager),
+    graph: Any = Depends(get_agent_graph),
+):
+    """查询 Agent Thread 状态。"""
+    return await get_agui_thread_state(manager, graph, thread_id, actor)
+
+
+@router.delete(
+    "/threads/{thread_id}",
+    response_model=ThreadDeleteResponse,
+    tags=["agent-thread"],
+    summary="删除 Agent Thread",
+    description="删除指定 Thread 的 checkpoint、Run 和事件记录。",
+)
+async def delete_agent_thread(
+    thread_id: str,
+    actor: CurrentActor = Depends(get_current_actor),
+    manager: AgentRunManager = Depends(get_agent_run_manager),
+    checkpointer: Any | None = Depends(get_checkpointer),
+):
+    """删除 Agent Thread。"""
+    return await delete_agui_thread(manager, checkpointer, thread_id, actor)
 
 
 @router.get(

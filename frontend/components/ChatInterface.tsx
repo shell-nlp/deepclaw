@@ -29,9 +29,9 @@ import { resolveChannelEntryPage } from './chat-interface/channelManagement'
 import { ChannelManagementView } from './chat-interface/ChannelManagementView'
 import { ChatView } from './chat-interface/ChatView'
 import {
-  AGENT_SESSION_DELETE_API_PATH,
-  AGENT_SESSION_LIST_API_PATH,
-  AGENT_SESSION_STATE_API_PATH,
+  AGENT_THREADS_API_PATH,
+  AGENT_THREAD_DELETE_API_PATH,
+  AGENT_THREAD_STATE_API_PATH,
   AUTH_USERS_CREATE_API_PATH,
   AUTH_USERS_LIST_API_PATH,
   AUTH_USERS_RESET_PASSWORD_API_PATH,
@@ -69,7 +69,7 @@ import type {
   AssistantMessageItem,
   ChannelManagementPage,
   AuthLoginResponse,
-  ChatHistoryListData,
+  ThreadListResponse,
   ChatHistorySession,
   AuthUserListResponse,
   AuthUserSummary,
@@ -779,10 +779,14 @@ export default function ChatInterface() {
     setHistoryLoading(true)
     setHistoryError('')
     try {
-      const response = await requestJson<ChatHistoryListData>(
-        AGENT_SESSION_LIST_API_PATH
+      const response = await requestJson<ThreadListResponse>(AGENT_THREADS_API_PATH)
+      setHistorySessions(
+        response.items.map((thread) => ({
+          session_id: thread.threadId,
+          updated_at: new Date(thread.updatedAt * 1000).toISOString(),
+          title: thread.title,
+        }))
       )
-      setHistorySessions(response.sessions)
     } catch (error) {
       setHistoryError(error instanceof Error ? error.message : '获取聊天历史失败。')
     } finally {
@@ -798,12 +802,7 @@ export default function ChatInterface() {
       setHistoryError('')
       try {
         const response = await requestJson<{ messages?: unknown }>(
-          AGENT_SESSION_STATE_API_PATH,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session_id: targetSessionId }),
-          }
+          AGENT_THREAD_STATE_API_PATH(targetSessionId)
         )
 
         clearChat()
@@ -831,13 +830,9 @@ export default function ChatInterface() {
       setHistoryLoadingSessionId(targetSessionId)
       setHistoryError('')
       try {
-        await requestJson<{ session_id: string }>(
-          AGENT_SESSION_DELETE_API_PATH,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session_id: targetSessionId }),
-          }
+        await requestJson<{ threadId: string; deleted: boolean }>(
+          AGENT_THREAD_DELETE_API_PATH(targetSessionId),
+          { method: 'DELETE' }
         )
 
         setHistorySessions((sessions) =>

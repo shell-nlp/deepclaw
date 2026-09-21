@@ -2,9 +2,11 @@ import type { ChannelManagementPage, KnowledgePage } from './types.ts'
 
 export const DEFAULT_AGENT_API_PATH = '/api/agent/runs'
 export const DEFAULT_RAG_API_PATH = '/api/rag/runs'
-export const AGENT_SESSION_LIST_API_PATH = '/api/agent/get_session_list'
-export const AGENT_SESSION_STATE_API_PATH = '/api/agent/get_state'
-export const AGENT_SESSION_DELETE_API_PATH = '/api/agent/delete_session'
+export const AGENT_THREADS_API_PATH = '/api/agent/threads'
+export const AGENT_THREAD_STATE_API_PATH = (threadId: string) =>
+  `/api/agent/threads/${encodeURIComponent(threadId)}/state`
+export const AGENT_THREAD_DELETE_API_PATH = (threadId: string) =>
+  `/api/agent/threads/${encodeURIComponent(threadId)}`
 export const RUNTIME_CONFIG_API_PATH = '/api/runtime-config'
 export const AUTH_LOGIN_API_PATH = '/api/auth/login'
 export const AUTH_REGISTER_API_PATH = '/api/auth/register'

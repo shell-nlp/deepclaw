@@ -10,7 +10,17 @@ from ag_ui_langgraph import LangGraphAgent
 from langgraph.graph.state import CompiledStateGraph
 from loguru import logger
 
-from deepclaw.web_backend.agent.run_store import RunState, RunStore, get_run_store
+from deepclaw.web_backend.agent.run_store import (
+    RunState,
+    RunStore,
+    ThreadState,
+    get_run_store,
+)
+
+
+
+class ThreadOwnershipError(ValueError):
+    """Thread 归属校验失败异常。"""
 
 
 class AgentRunManager:
@@ -55,6 +65,62 @@ class AgentRunManager:
         """
         state = payload.state if isinstance(payload.state, dict) else {}
         return str(state.get("user_id") or "guest")
+
+    @staticmethod
+    def _thread_title(payload: RunAgentInput) -> str | None:
+        """从 AG-UI 输入提取 Thread 标题。
+
+        Args:
+            payload: AG-UI 标准输入。
+
+        Returns:
+            首条用户消息文本；没有时返回 None。
+        """
+        for message in payload.messages:
+            role = getattr(message, "role", None)
+            normalized_role = getattr(role, "value", role)
+            if normalized_role not in {"user", "human"}:
+                continue
+            content = getattr(message, "content", None)
+            if isinstance(content, str) and content.strip():
+                return content.strip()[:240]
+        return None
+
+    async def _ensure_thread(self, payload: RunAgentInput) -> ThreadState:
+        """确保当前 Run 的 Thread 存在且属于同一用户。
+
+        Args:
+            payload: 已由路由层覆盖可信 state 的 AG-UI 输入。
+
+        Returns:
+            当前 Run 对应的 Thread 状态。
+
+        Raises:
+            ThreadOwnershipError: Thread 已存在但归属其他用户。
+        """
+        owner_user_id = self._owner_user_id(payload)
+        existing = await self.store.get_thread(payload.thread_id)
+        if existing is not None:
+            if existing.owner_user_id != owner_user_id:
+                raise ThreadOwnershipError("thread_id 不属于当前用户")
+            title = self._thread_title(payload)
+            if existing.title is None and title is not None:
+                existing.title = title
+                await self.store.save_thread(existing)
+            return existing
+
+        state = ThreadState(
+            thread_id=payload.thread_id,
+            owner_user_id=owner_user_id,
+            title=self._thread_title(payload),
+        )
+        created = await self.store.create_thread(state)
+        if created:
+            return state
+        existing = await self.store.get_thread(payload.thread_id)
+        if existing is None or existing.owner_user_id != owner_user_id:
+            raise ThreadOwnershipError("thread_id 不属于当前用户")
+        return existing
 
     def _snapshot(self, state: RunState) -> dict[str, Any]:
         """将 Run 状态转换为浏览器可读 Snapshot。
@@ -178,6 +244,7 @@ class AgentRunManager:
         Raises:
             ValueError: run_id 已存在但归属用户或 thread_id 不一致。
         """
+        await self._ensure_thread(payload)
         owner_user_id = self._owner_user_id(payload)
         existing = await self.store.get_run(payload.run_id, user_id=owner_user_id)
         if existing is not None:
@@ -261,6 +328,102 @@ class AgentRunManager:
         """
         state = await self.store.get_run(run_id, user_id=user_id)
         return state.input if state else None
+
+    async def get_thread(
+        self,
+        thread_id: str,
+        user_id: str | None = None,
+    ) -> ThreadState | None:
+        """读取 Thread 状态，并在必要时从历史 Run 回填。
+
+        Args:
+            thread_id: Thread ID。
+            user_id: 可选当前用户 ID，用于归属校验。
+
+        Returns:
+            Thread 状态；不存在或不属于当前用户时返回 None。
+        """
+        thread = await self.store.get_thread(thread_id, user_id=user_id)
+        if thread is not None:
+            return thread
+        runs = await self.store.list_runs_by_thread(
+            thread_id,
+            user_id=user_id,
+            limit=1,
+        )
+        if not runs:
+            return None
+        run = runs[0]
+        thread = ThreadState(
+            thread_id=thread_id,
+            owner_user_id=run.owner_user_id,
+            title=self._thread_title(run.input),
+            created_at=run.created_at,
+            updated_at=run.updated_at,
+            expires_at=run.expires_at,
+        )
+        await self.store.create_thread(thread)
+        return thread
+
+    async def list_threads(
+        self,
+        user_id: str,
+        *,
+        limit: int = 100,
+    ) -> list[ThreadState]:
+        """列出当前用户的 Thread。
+
+        Args:
+            user_id: 当前用户 ID。
+            limit: 最大返回数量。
+
+        Returns:
+            按更新时间倒序排列的 Thread 列表。
+        """
+        return await self.store.list_threads(user_id, limit=limit)
+
+    async def list_thread_runs(
+        self,
+        thread_id: str,
+        user_id: str | None = None,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]] | None:
+        """查询指定 Thread 下的 Run。
+
+        Args:
+            thread_id: Thread ID。
+            user_id: 可选当前用户 ID，用于归属校验。
+            limit: 最大返回数量。
+
+        Returns:
+            Run Snapshot 列表；Thread 不存在或不属于当前用户时返回 None。
+        """
+        thread = await self.get_thread(thread_id, user_id=user_id)
+        if thread is None:
+            return None
+        runs = await self.store.list_runs_by_thread(
+            thread_id,
+            user_id=user_id,
+            limit=limit,
+        )
+        return [self._snapshot(run) for run in runs]
+
+    async def delete_thread(
+        self,
+        thread_id: str,
+        user_id: str | None = None,
+    ) -> bool:
+        """删除 Thread 及其 Run 记录。
+
+        Args:
+            thread_id: Thread ID。
+            user_id: 可选当前用户 ID，用于归属校验。
+
+        Returns:
+            是否删除成功。
+        """
+        return await self.store.delete_thread(thread_id, user_id=user_id)
 
     async def cancel(self, run_id: str, user_id: str | None = None) -> dict[str, Any] | None:
         """请求取消指定 Run。
