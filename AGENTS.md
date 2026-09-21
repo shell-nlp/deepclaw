@@ -38,9 +38,14 @@
   - 当配置 `PG_DATABASE_URL` 时，优先落统一 PG；未配置时回退各自 SQLite
 
 - `deepclaw/web_backend/common/agui_runs.py`
-  AG-UI Run 公共执行逻辑、Agent/RAG Runs 路径解析、渠道 Agent URL 与 runtime-config 路由。
+  AG-UI Run 公共执行逻辑、统一 Runs 路径解析、渠道 Agent URL 与 runtime-config 路由。
 - `deepclaw/web_backend/common/agui_schemas.py`
-  AG-UI HTTP 协议模型，当前包含 `RunSnapshot` 与 `RunActionRequest`。
+  AG-UI HTTP 协议模型，当前包含 `AgUiRunRequest`、`RunSnapshotResponse`、`RunActionRequest` 与 Thread/Agent 响应模型。
+
+- `deepclaw/web_backend/agui/registry.py`
+  统一 AG-UI 智能体注册表，定义 `AgentSpec`，按 `agent_id` 解析通用 Agent 与 RAG Agent，并缓存对应图和 Run 管理器。
+- `deepclaw/web_backend/agui/router.py`
+  模块级统一 AG-UI 路由器，提供 `/api/agui/agents`、`/api/agui/runs/*`、`/api/agui/threads/*`。
 
 - `deepclaw/web_backend/agent/run_manager.py`
   基于 `RunStore` 的 Run 管理器，负责 Run 执行、`Last-Event-ID` 重放、恢复、取消与事件流编排。
@@ -72,11 +77,6 @@
 
 - `deepclaw/web_backend/knowledge_bases/`
  知识库管理路由、请求模型、元数据存储与服务实现。
-
-- `deepclaw/web_backend/agent/router.py`
-  模块级 Agent 路由器；从 `app.state` 读取 checkpointer/store，懒加载缓存 Agent 图与 Run 管理器，并提供 Thread Run 列表、Thread state 与 Thread 删除接口。
-- `deepclaw/web_backend/rag/router.py`
-  模块级 RAG 路由器；从 `app.state` 读取 checkpointer/store，并懒加载缓存 RAG 图与 Run 管理器。
 
 ### 核心能力层
 
@@ -236,6 +236,8 @@ pnpm build
 ## 必须要遵守的开发约束
 
 - 所有新写的函数/方法都必须带中文 docstring（功能说明 + Args 每行）。禁止 `"""...""" ...` 同行。
+- 所有 schema 类名必须通过后缀区分请求与响应：请求模型以 `Request` 结尾，响应模型以 `Response` 结尾；嵌套响应模型也必须遵守该规则。
+- Python 字段、变量、参数和函数名统一使用 `snake_case`；对外 JSON 需要 `camelCase` 时通过 Pydantic alias 映射，不直接把 Python 字段命名为 camelCase。
 - 只改任务直接相关的代码，不做顺手重构。
 - Python 导入统一使用 `deepclaw.*` 绝对导入，禁止使用 `from .`、`from ..` 等相对导入。
 - 包结构调整后同步更新本文档的「当前代码结构」。
@@ -282,17 +284,17 @@ pnpm build
 
 ## 当前公开接口事实
 
-- 主入口同时挂载 `agent`、`rag`、`channels`
+- 主入口挂载统一 `agui` 路由，以及 `channels`、技能、知识库等业务路由
 - 主入口还挂载 `/api/auth/*` 登录鉴权接口
 - 浏览器与渠道统一走 AG-UI Runs：
-  - Agent：`POST /api/agent/runs`
-  - RAG：`POST /api/rag/runs`
-  - 续流/重放：`GET /api/agent/runs/{run_id}/events`、`GET /api/rag/runs/{run_id}/events`
-  - 恢复：`POST /api/agent/runs/{run_id}/resume`、`POST /api/rag/runs/{run_id}/resume`
-  - 取消：`POST /api/agent/runs/{run_id}/cancel`、`POST /api/rag/runs/{run_id}/cancel`
+  - 智能体列表：`GET /api/agui/agents`
+  - 创建 Run：`POST /api/agui/runs`，通过顶层 `agentId` 选择通用 Agent 或 RAG Agent
+  - 续流/重放：`GET /api/agui/runs/{run_id}/events`
+  - 恢复：`POST /api/agui/runs/{run_id}/resume`
+  - 取消：`POST /api/agui/runs/{run_id}/cancel`
 - 运行参数（`user_id`、`internet_search`、`deep_thinking`、`mcp_config`、`index_name`、`graph_name`、`header_info`）统一存放在 LangGraph state，不再依赖 `runtime.context`
-- Thread 资源现在记录 `thread_id -> owner_user_id`，创建 Run 时会自动创建或校验 Thread 归属
-- 新增 Thread 接口：`GET /api/agent/threads`、`GET /api/agent/threads/{thread_id}/runs`、`GET /api/agent/threads/{thread_id}/state`、`DELETE /api/agent/threads/{thread_id}`，RAG 提供对应 `/api/rag/threads/*` 接口
+- Thread 资源现在记录 `thread_id -> owner_user_id + agent_id`，创建 Run 时会自动创建或校验 Thread 归属
+- Thread 接口：`GET /api/agui/threads`、`GET /api/agui/threads/{thread_id}/runs`、`GET /api/agui/threads/{thread_id}/state`、`DELETE /api/agui/threads/{thread_id}`
 - 旧的 `/api/agent/get_session_list`、`/api/agent/delete_session`、`/api/agent/get_state` 已移除，统一使用 Thread API。
 - 技能管理归属 `/api/agent/skills/*`
 - 知识库管理归属 `/api/rag/knowledge-bases/*`

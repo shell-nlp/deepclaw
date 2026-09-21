@@ -36,6 +36,7 @@ def run_state_to_snapshot(state: RunState) -> dict[str, Any]:
     return {
         "runId": state.run_id,
         "threadId": state.thread_id,
+        "agentId": state.agent_id,
         "status": state.status,
         "lastEventId": f"{state.run_id}:{state.last_event_id}",
         "eventCount": state.last_event_id,
@@ -59,6 +60,7 @@ class AgentRunManager:
         graph: CompiledStateGraph,
         config: dict[str, Any] | None = None,
         store: RunStore | None = None,
+        agent_id: str = "agent",
     ) -> None:
         """初始化 Run 管理器。
 
@@ -66,10 +68,12 @@ class AgentRunManager:
             graph: 已装配完成的 LangGraph Agent 图。
             config: 每次 AG-UI 运行共享的 LangGraph 配置。
             store: 可选 Run 存储。
+            agent_id: 当前 Run 管理器绑定的智能体 ID。
         """
         self.graph = graph
         self.config = config or {}
         self.store = store or get_run_store()
+        self.agent_id = agent_id
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._watchers: dict[str, asyncio.Task[None]] = {}
         self._cleanup_task: asyncio.Task[None] | None = None
@@ -125,6 +129,8 @@ class AgentRunManager:
         if existing is not None:
             if existing.owner_user_id != owner_user_id:
                 raise ThreadOwnershipError("thread_id 不属于当前用户")
+            if existing.agent_id != self.agent_id:
+                raise ThreadOwnershipError("thread_id 已属于其他智能体")
             title = self._thread_title(payload)
             if existing.title is None and title is not None:
                 existing.title = title
@@ -134,6 +140,7 @@ class AgentRunManager:
         state = ThreadState(
             thread_id=payload.thread_id,
             owner_user_id=owner_user_id,
+            agent_id=self.agent_id,
             title=self._thread_title(payload),
         )
         created = await self.store.create_thread(state)
@@ -261,6 +268,8 @@ class AgentRunManager:
         owner_user_id = self._owner_user_id(payload)
         existing = await self.store.get_run(payload.run_id, user_id=owner_user_id)
         if existing is not None:
+            if existing.agent_id != self.agent_id:
+                raise ValueError("run_id 已存在且属于其他智能体")
             if existing.thread_id != payload.thread_id:
                 raise ValueError("run_id 已存在且 thread_id 不一致")
             return self._snapshot(existing)
@@ -270,6 +279,7 @@ class AgentRunManager:
             thread_id=payload.thread_id,
             input=payload,
             owner_user_id=owner_user_id,
+            agent_id=self.agent_id,
         )
         created = await self.store.create_run(state)
         if not created:
@@ -302,6 +312,8 @@ class AgentRunManager:
         state = await self.store.get_run(run_id, user_id=user_id)
         if state is None:
             raise ValueError("Run 不存在")
+        if state.agent_id != self.agent_id:
+            raise ValueError("Run 所属智能体与当前管理器不一致")
         if self._owner_user_id(payload) != state.owner_user_id:
             raise ValueError("Run 所属用户与当前输入不一致")
         if state.status in {"queued", "running", "cancelling"}:
@@ -366,24 +378,31 @@ class AgentRunManager:
         self,
         user_id: str,
         *,
+        agent_id: str | None = None,
         limit: int = 100,
     ) -> list[ThreadState]:
         """列出当前用户的 Thread。
 
         Args:
             user_id: 当前用户 ID。
+            agent_id: 可选智能体 ID，用于过滤。
             limit: 最大返回数量。
 
         Returns:
             按更新时间倒序排列的 Thread 列表。
         """
-        return await self.store.list_threads(user_id, limit=limit)
+        return await self.store.list_threads(
+            user_id,
+            agent_id=agent_id,
+            limit=limit,
+        )
 
     async def list_thread_runs(
         self,
         thread_id: str,
         user_id: str | None = None,
         *,
+        agent_id: str | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]] | None:
         """查询指定 Thread 下的 Run。
@@ -391,6 +410,7 @@ class AgentRunManager:
         Args:
             thread_id: Thread ID。
             user_id: 可选当前用户 ID，用于归属校验。
+            agent_id: 可选智能体 ID，用于过滤。
             limit: 最大返回数量。
 
         Returns:
@@ -402,6 +422,7 @@ class AgentRunManager:
         runs = await self.store.list_runs_by_thread(
             thread_id,
             user_id=user_id,
+            agent_id=agent_id,
             limit=limit,
         )
         return [self._snapshot(run) for run in runs]

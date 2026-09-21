@@ -9,7 +9,7 @@ if env_path:
 
 class ChannelGatewaySettings(BaseSettings):
     # 可选：完整覆盖渠道调用的 Agent AG-UI Runs URL。
-    # 为空时自动拼接为 http://127.0.0.1:{PORT}/api/agent/runs。
+    # 为空时自动拼接为 http://127.0.0.1:{PORT}/api/agui/runs。
     CHANNEL_AGENT_API_URL: str = ""
 
     model_config = SettingsConfigDict(

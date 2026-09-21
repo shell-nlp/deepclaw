@@ -11,11 +11,10 @@ from fastapi.testclient import TestClient
 
 def _load_app_module(monkeypatch):
     router_modules = [
-        "deepclaw.web_backend.agent.router",
+        "deepclaw.web_backend.agui.router",
         "deepclaw.web_backend.auth.router",
         "deepclaw.web_backend.channels.router",
         "deepclaw.web_backend.knowledge_bases.router",
-        "deepclaw.web_backend.rag.router",
         "deepclaw.web_backend.skills.router",
     ]
     for module_name in router_modules:
@@ -195,9 +194,9 @@ def test_create_app_agent_route_remains_postable_with_frontend_mount(monkeypatch
         app.state.store = object()
         app.state.agent_store_ctx = None
 
-    fake_agent_router = APIRouter()
+    fake_agui_router = APIRouter()
 
-    @fake_agent_router.post("/api/agent/runs")
+    @fake_agui_router.post("/api/agui/runs")
     async def create_run():
         return {"ok": True}
 
@@ -211,14 +210,14 @@ def test_create_app_agent_route_remains_postable_with_frontend_mount(monkeypatch
 
     monkeypatch.setattr(app_module, "root_dir", tmp_path)
     monkeypatch.setattr(app_module, "init_agent_env", fake_init_agent_env)
-    monkeypatch.setattr(app_module, "agent_router", fake_agent_router)
+    monkeypatch.setattr(app_module, "agui_router", fake_agui_router)
     monkeypatch.setattr(app_module, "setup_observability", lambda: None)
     monkeypatch.setattr(app_module, "patch_langchain", lambda: None)
     monkeypatch.setattr(app_module, "channel_lifespan", noop_channel_lifespan)
     monkeypatch.setattr(app_module, "get_auth_service", lambda: ServiceSpy())
 
     with TestClient(app_module.create_app()) as client:
-        response = client.post("/api/agent/runs", json={"query": "你好"})
+        response = client.post("/api/agui/runs", json={"query": "你好"})
 
     assert response.status_code == 200
     assert response.json() == {"ok": True}

@@ -19,6 +19,7 @@ export type AgUiInterrupt = {
 }
 
 export type AgUiRunInput = {
+  agentId: string
   threadId: string
   runId: string
   state: Record<string, unknown>
@@ -34,6 +35,7 @@ export type AgUiSseFrame = {
 }
 
 export function createAgUiRunInput(input: {
+  agentId: string
   threadId: string
   runId: string
   messageId: string
@@ -42,6 +44,7 @@ export function createAgUiRunInput(input: {
   forwardedProps?: Record<string, unknown>
 }): AgUiRunInput {
   return {
+    agentId: input.agentId,
     threadId: input.threadId,
     runId: input.runId,
     state: input.state,

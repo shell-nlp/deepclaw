@@ -29,20 +29,20 @@ import { resolveChannelEntryPage } from './chat-interface/channelManagement'
 import { ChannelManagementView } from './chat-interface/ChannelManagementView'
 import { ChatView } from './chat-interface/ChatView'
 import {
-  AGENT_THREAD_RUNS_API_PATH,
-  AGENT_THREADS_API_PATH,
-  AGENT_THREAD_DELETE_API_PATH,
-  AGENT_THREAD_STATE_API_PATH,
+  AGUI_AGENTS_API_PATH,
+  AGUI_THREAD_RUNS_API_PATH,
+  AGUI_THREADS_API_PATH,
+  AGUI_THREAD_DELETE_API_PATH,
+  AGUI_THREAD_STATE_API_PATH,
   AUTH_USERS_CREATE_API_PATH,
   AUTH_USERS_LIST_API_PATH,
   AUTH_USERS_RESET_PASSWORD_API_PATH,
   AUTH_USERS_UPDATE_ROLE_API_PATH,
   AUTH_USERS_UPDATE_STATUS_API_PATH,
-  DEFAULT_AGENT_API_PATH,
+  DEFAULT_AGUI_API_PATH,
   DEFAULT_CHANNEL_PAGE,
   DEFAULT_KNOWLEDGE_PAGE,
   DEFAULT_MCP_CONFIG_TEMPLATE,
-  DEFAULT_RAG_API_PATH,
   RUNTIME_CONFIG_API_PATH,
   DOCUMENT_CHUNK_PAGE_SIZE,
   DOCUMENT_PAGE_SIZE,
@@ -68,6 +68,8 @@ import { McpManagementView } from './chat-interface/McpManagementView'
 import { SkillManagementView } from './chat-interface/SkillManagementView'
 import type {
   AssistantMessageItem,
+  AgentListResponse,
+  AgentSummary,
   ChannelManagementPage,
   AuthLoginResponse,
   ThreadListResponse,
@@ -114,6 +116,7 @@ type AssistantStreamKind = 'reasoning' | 'content' | 'tool' | 'interrupt' | null
 
 type ThreadRuntime = {
   threadId: string
+  agentId: string | null
   messages: Message[]
   basePath: string
   runId: string | null
@@ -141,8 +144,9 @@ type ThreadRuntime = {
 function createThreadRuntime(threadId: string): ThreadRuntime {
   return {
     threadId,
+    agentId: null,
     messages: [],
-    basePath: DEFAULT_AGENT_API_PATH,
+    basePath: DEFAULT_AGUI_API_PATH,
     runId: null,
     runInput: null,
     lastEventId: null,
@@ -493,8 +497,8 @@ export default function ChatInterface() {
   const [historyLoadingSessionId, setHistoryLoadingSessionId] = useState<string | null>(null)
   const [historyError, setHistoryError] = useState('')
   const [status, setStatus] = useState<'ready' | 'connecting' | 'error'>('ready')
-  const [agentApiPath, setAgentApiPath] = useState(DEFAULT_AGENT_API_PATH)
-  const [ragApiPath, setRagApiPath] = useState(DEFAULT_RAG_API_PATH)
+  const [aguiApiPath, setAguiApiPath] = useState(DEFAULT_AGUI_API_PATH)
+  const [availableAgents, setAvailableAgents] = useState<AgentSummary[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
   const [runningThreadIds, setRunningThreadIds] = useState<string[]>([])
   const [internetSearch, setInternetSearch] = useState(false)
@@ -920,30 +924,35 @@ export default function ChatInterface() {
       setMcpError(`本地保存的 MCP 配置无效：${parsedMcpConfig.error}`)
     }
 
-    // 按后端 runtime-config 切换 Agent/RAG AG-UI Runs 路径
+    // 按后端 runtime-config 获取统一 AG-UI 路径与可用智能体
     void fetch(getApiUrl(RUNTIME_CONFIG_API_PATH))
       .then(async (response) => {
         if (!response.ok) {
           throw new Error(`runtime-config HTTP ${response.status}`)
         }
         return (await response.json()) as {
-          agent_runs_path?: string
-          rag_runs_path?: string
+          agui_runs_path?: string
         }
       })
       .then((config) => {
-        if (config.agent_runs_path) {
-          setAgentApiPath(config.agent_runs_path)
-        }
-        if (config.rag_runs_path) {
-          setRagApiPath(config.rag_runs_path)
+        if (config.agui_runs_path) {
+          setAguiApiPath(config.agui_runs_path)
         }
       })
       .catch(() => {
-        // 拉取失败时回退默认 v1 路径，避免阻塞聊天
-        setAgentApiPath(DEFAULT_AGENT_API_PATH)
-        setRagApiPath(DEFAULT_RAG_API_PATH)
+        // 拉取失败时回退默认统一路径，避免阻塞聊天
+        setAguiApiPath(DEFAULT_AGUI_API_PATH)
       })
+
+    void fetch(getApiUrl(AGUI_AGENTS_API_PATH))
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`agents HTTP ${response.status}`)
+        }
+        return (await response.json()) as AgentListResponse
+      })
+      .then((response) => setAvailableAgents(response.items))
+      .catch(() => setAvailableAgents([]))
 
     const storedToken = getStoredAuthToken()
     if (!storedToken) return
@@ -1003,10 +1012,11 @@ export default function ChatInterface() {
     setHistoryLoading(true)
     setHistoryError('')
     try {
-      const response = await requestJson<ThreadListResponse>(AGENT_THREADS_API_PATH)
+      const response = await requestJson<ThreadListResponse>(AGUI_THREADS_API_PATH)
       setHistorySessions(
         response.items.map((thread) => ({
           session_id: thread.threadId,
+          agent_id: thread.agentId,
           updated_at: new Date(thread.updatedAt * 1000).toISOString(),
           title: thread.title,
         }))
@@ -1046,7 +1056,7 @@ export default function ChatInterface() {
       setHistoryError('')
       try {
         await requestJson<{ threadId: string; deleted: boolean }>(
-          AGENT_THREAD_DELETE_API_PATH(targetSessionId),
+          AGUI_THREAD_DELETE_API_PATH(targetSessionId),
           { method: 'DELETE' }
         )
 
@@ -2540,7 +2550,7 @@ export default function ChatInterface() {
       }
 
       const runtime = createThreadRuntime(targetThreadId)
-      runtime.basePath = agentApiPath
+      runtime.basePath = aguiApiPath
       threadRuntimesRef.current.set(targetThreadId, runtime)
       syncRuntimeToView(runtime)
       setThreadRunning(targetThreadId, false)
@@ -2548,7 +2558,7 @@ export default function ChatInterface() {
       let stateMessages: unknown = []
       try {
         const response = await requestJson<{ messages?: unknown }>(
-          AGENT_THREAD_STATE_API_PATH(targetThreadId)
+          AGUI_THREAD_STATE_API_PATH(targetThreadId)
         )
         stateMessages = response.messages
       } catch (error) {
@@ -2563,9 +2573,12 @@ export default function ChatInterface() {
       }
 
       const runsResponse = await requestJson<ThreadRunListResponse>(
-        AGENT_THREAD_RUNS_API_PATH(targetThreadId)
+        AGUI_THREAD_RUNS_API_PATH(targetThreadId)
       )
       const latestRun = runsResponse.items[0]
+      if (latestRun) {
+        runtime.agentId = latestRun.agentId
+      }
       if (!latestRun || !isActiveRunStatus(latestRun.status)) return
 
       runtime.runId = latestRun.runId
@@ -2583,7 +2596,7 @@ export default function ChatInterface() {
       void resumeThreadStream(runtime)
     },
     [
-      agentApiPath,
+      aguiApiPath,
       persistActiveRuntime,
       requestJson,
       resumeThreadStream,
@@ -2605,7 +2618,15 @@ export default function ChatInterface() {
     streamGenerationRef.current = generation
     const runtime = getThreadRuntime(threadId)
 
-    const requestMode: RequestMode = useKnowledgeBase ? 'rag' : 'agent'
+    const selectedAgentId = runtime.agentId ?? (useKnowledgeBase ? 'rag' : 'agent')
+    const requestMode: RequestMode = selectedAgentId === 'rag' ? 'rag' : 'agent'
+    if (
+      availableAgents.length > 0 &&
+      !availableAgents.some((agent) => agent.id === selectedAgentId)
+    ) {
+      setManagementError(`智能体 ${selectedAgentId} 当前不可用。`)
+      return
+    }
     const requestMcpConfig = requestMode === 'agent' && mcpEnabled ? mcpConfig : null
     if (requestMode === 'rag' && !selectedKnowledgeBase) {
       setManagementError('启用知识库问答后，必须先选择一个知识库。')
@@ -2643,7 +2664,8 @@ export default function ChatInterface() {
     setThreadRunning(threadId, true)
     runtime.processing = true
     runtime.status = 'connecting'
-    runtime.basePath = requestMode === 'rag' ? ragApiPath : agentApiPath
+    runtime.basePath = aguiApiPath
+    runtime.agentId = selectedAgentId
 
     const assistantMessageId = generateMessageId()
     currentAssistantMessageIdRef.current = assistantMessageId
@@ -2679,6 +2701,7 @@ export default function ChatInterface() {
         state.mcp_config = requestMcpConfig
       }
       const runInput = createAgUiRunInput({
+        agentId: selectedAgentId,
         threadId,
         runId: generateMessageId(),
         messageId: generateMessageId(),
@@ -2748,7 +2771,7 @@ export default function ChatInterface() {
 
   const abortRequest = () => {
     const runId = currentRunIdRef.current
-    const basePath = requestModeRef.current === 'rag' ? ragApiPath : agentApiPath
+    const basePath = aguiApiPath
     const threadId = activeThreadIdRef.current
     abortControllerRef.current?.abort()
     abortControllerRef.current = null
@@ -2843,7 +2866,7 @@ export default function ChatInterface() {
       currentRunInputRef.current = runInput
       runtime.runInput = runInput
       const streamResult = await resumeAgUiRun(
-        requestMode === 'rag' ? ragApiPath : agentApiPath,
+        aguiApiPath,
         runInput,
         threadId,
         generation,
@@ -2942,7 +2965,7 @@ export default function ChatInterface() {
       currentRunInputRef.current = runInput
       runtime.runInput = runInput
       const streamResult = await resumeAgUiRun(
-        requestMode === 'rag' ? ragApiPath : agentApiPath,
+        aguiApiPath,
         runInput,
         threadId,
         generation,

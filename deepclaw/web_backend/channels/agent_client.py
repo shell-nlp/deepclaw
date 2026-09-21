@@ -51,6 +51,7 @@ class AgentClient:
             转换后的渠道 AgentEvent。
         """
         payload = {
+            "agentId": "agent",
             "threadId": session_id,
             "runId": str(uuid.uuid4()),
             "state": {"deep_thinking": True, "user_id": user_id},

@@ -12,12 +12,14 @@ export interface Message {
 
 export interface ChatHistorySession {
   session_id: string
+  agent_id: string
   updated_at: string | null
   title: string | null
 }
 
 export interface ThreadSummary {
   threadId: string
+  agentId: string
   title: string | null
   createdAt: number
   updatedAt: number
@@ -31,6 +33,7 @@ export interface ThreadListResponse {
 export interface ThreadRunSnapshot {
   runId: string
   threadId: string
+  agentId: string
   status: string
   lastEventId: string | null
   eventCount: number
@@ -42,6 +45,19 @@ export interface ThreadRunSnapshot {
 export interface ThreadRunListResponse {
   threadId: string
   items: ThreadRunSnapshot[]
+  total: number
+}
+
+export interface AgentSummary {
+  id: string
+  name: string
+  description: string
+  default: boolean
+  capabilities: string[]
+}
+
+export interface AgentListResponse {
+  items: AgentSummary[]
   total: number
 }
 

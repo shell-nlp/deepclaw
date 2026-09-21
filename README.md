@@ -142,8 +142,8 @@ deepclaw/
 │                        ▼                                            │
 └──────────────────────────────────────────────────────────────────────┘
               ┌────────────────────────────────────┐
-              │        POST /api/agent/runs  │
-              │        POST /api/rag/runs    │
+              │        POST /api/agui/runs          │
+              │        GET  /api/agui/agents        │
               │        POST /api/auth/*             │
               │        POST /api/channels/sessions  │
               └────────────────┬───────────────────┘
@@ -151,8 +151,8 @@ deepclaw/
 ┌──────────────────────────────────────────────────────────────────────┐
 │                       API 层 / FastAPI                                │
 │  ┌──────────┐ ┌──────────────┐ ┌──────────────┐ ┌────────────────┐  │
-│  │  认证路由  │ │  Agent 路由   │ │  RAG 路由     │ │  渠道管理路由   │  │
-│  │ /api/auth │ │ /api/agent   │ │ /api/rag     │ │ /api/channels │  │
+│  │  认证路由  │ │ AG-UI 路由    │ │ 技能/知识库   │ │  渠道管理路由   │  │
+│  │ /api/auth │ │ /api/agui    │ │ /api/agent/...│ │ /api/channels │  │
 │  └────┬─────┘ └──────┬───────┘ └──────┬───────┘ └───────┬────────┘  │
 │       │              │               │                 │            │
 └───────┼──────────────┼───────────────┼─────────────────┼────────────┘
@@ -228,9 +228,8 @@ uv run python -m deepclaw.main
 服务启动后：
 
 - 前端页面：`http://localhost:7869/`
-- Agent SSE：`POST /api/agent/runs`
-- Agent AG-UI：`POST /api/agent/ag_ui`
-- RAG SSE：`POST /api/rag/runs`
+- AG-UI Runs：`POST /api/agui/runs`
+- AG-UI Agents：`GET /api/agui/agents`
 - Channels API：`/api/channels/*`
 
 ### 5. 启动依赖服务（可选，但推荐）
@@ -291,30 +290,34 @@ pnpm build
 
 ## API 接口
 
-### Agent
+### AG-UI（统一 Agent/RAG）
 
 | 方法 | 路径 | 协议 | 用途 |
 |------|------|------|------|
-| `POST` | `/api/agent/runs` | AG-UI | 创建 Agent Run |
-| `GET` | `/api/agent/runs/{run_id}/events` | AG-UI SSE | 续流或重放 Run 事件 |
-| `GET` | `/api/agent/runs/{run_id}` | REST | Run Snapshot |
-| `POST` | `/api/agent/runs/{run_id}/resume` | AG-UI | 恢复中断 Run |
-| `POST` | `/api/agent/runs/{run_id}/actions` | AG-UI | 提交卡片 Action |
-| `POST` | `/api/agent/runs/{run_id}/cancel` | REST | 取消 Run |
+| `GET` | `/api/agui/agents` | REST | 查询可用智能体 |
+| `POST` | `/api/agui/runs` | AG-UI | 创建 Run，顶层 `agentId` 选择智能体 |
+| `GET` | `/api/agui/runs/{run_id}/events` | AG-UI SSE | 续流或重放 Run 事件 |
+| `GET` | `/api/agui/runs/{run_id}` | REST | Run Snapshot |
+| `POST` | `/api/agui/runs/{run_id}/resume` | AG-UI | 恢复中断 Run |
+| `POST` | `/api/agui/runs/{run_id}/actions` | AG-UI | 提交卡片 Action |
+| `POST` | `/api/agui/runs/{run_id}/cancel` | REST | 取消 Run |
+| `GET` | `/api/agui/threads` | REST | Thread 列表 |
+| `GET` | `/api/agui/threads/{thread_id}/runs` | REST | Thread 下的 Run 列表 |
+| `GET` | `/api/agui/threads/{thread_id}/state` | REST | Thread 图状态 |
+| `DELETE` | `/api/agui/threads/{thread_id}` | REST | 删除 Thread |
+
+### Agent 管理
+
+| 方法 | 路径 | 协议 | 用途 |
+|------|------|------|------|
 | `POST` | `/api/agent/skills/list` | REST | 技能列表 |
 | `POST` | `/api/agent/skills/upload` | REST | 上传技能 zip |
 | `POST` | `/api/agent/skills/delete` | REST | 删除技能 |
 
-### RAG
+### 知识库
 
 | 方法 | 路径 | 协议 | 用途 |
 |------|------|------|------|
-| `POST` | `/api/rag/runs` | AG-UI | 创建 RAG Run |
-| `GET` | `/api/rag/runs/{run_id}/events` | AG-UI SSE | 续流或重放 RAG 事件 |
-| `GET` | `/api/rag/runs/{run_id}` | REST | RAG Run Snapshot |
-| `POST` | `/api/rag/runs/{run_id}/resume` | AG-UI | 恢复 RAG 中断 |
-| `POST` | `/api/rag/runs/{run_id}/actions` | AG-UI | 提交 RAG Action |
-| `POST` | `/api/rag/runs/{run_id}/cancel` | REST | 取消 RAG Run |
 | `POST` | `/api/rag/knowledge-bases/list` | REST | 知识库分页列表 |
 | `POST` | `/api/rag/knowledge-bases/create` | REST | 创建知识库 |
 | `POST` | `/api/rag/knowledge-bases/detail` | REST | 知识库详情 |
@@ -347,9 +350,10 @@ pnpm build
 ### 通用 Agent 问答
 
 ```bash
-curl -X POST http://localhost:7869/api/agent/runs \
+curl -X POST http://localhost:7869/api/agui/runs \
   -H "Content-Type: application/json" \
   -d '{
+    "agentId": "agent",
     "threadId": "demo-session",
     "runId": "run-demo-1",
     "state": {
@@ -365,14 +369,15 @@ curl -X POST http://localhost:7869/api/agent/runs \
   }'
 ```
 
-创建成功后使用 `GET /api/agent/runs/run-demo-1/events` 订阅 AG-UI SSE。
+创建成功后使用 `GET /api/agui/runs/run-demo-1/events` 订阅 AG-UI SSE。
 
 ### 多模态 Agent 输入
 
 ```bash
-curl -N -X POST http://localhost:7869/api/agent/runs \
+curl -N -X POST http://localhost:7869/api/agui/runs \
   -H "Content-Type: application/json" \
   -d '{
+    "agentId": "agent",
     "query": [
       { "type": "text", "text": "这张图片里有什么？" },
       {
@@ -412,9 +417,10 @@ curl -X POST http://localhost:7869/api/rag/knowledge-bases/documents/upload \
 `index_name` 和 `graph_name` 可从知识库详情返回值中的 `passage_index`、`index_prefix` 获取。
 
 ```bash
-curl -X POST http://localhost:7869/api/rag/runs \
+curl -X POST http://localhost:7869/api/agui/runs \
   -H "Content-Type: application/json" \
   -d '{
+    "agentId": "rag",
     "threadId": "rag-session",
     "runId": "rag-run-demo-1",
     "state": {
@@ -430,7 +436,7 @@ curl -X POST http://localhost:7869/api/rag/runs \
   }'
 ```
 
-创建成功后使用 `GET /api/rag/runs/rag-run-demo-1/events` 订阅 AG-UI SSE。
+创建成功后使用 `GET /api/agui/runs/rag-run-demo-1/events` 订阅 AG-UI SSE。
 
 ## 配置说明
 
