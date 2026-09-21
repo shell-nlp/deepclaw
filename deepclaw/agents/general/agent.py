@@ -208,7 +208,6 @@ class GeneralAgent(Agent):
         from langchain.agents import create_agent
         from langchain.agents.middleware import SummarizationMiddleware
 
-        from deepclaw.middleware.nl2sql import NL2SQLMiddleware
 
         middleware.extend(
             [
@@ -216,7 +215,6 @@ class GeneralAgent(Agent):
                     model=get_chat_model(),
                     # token_counter=count_message_tokens,
                 ),
-                NL2SQLMiddleware(allowed_tables=None),
             ]
         )
         return create_agent(

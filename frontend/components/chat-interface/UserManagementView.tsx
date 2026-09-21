@@ -71,7 +71,7 @@ export function UserManagementView({
               <span className={styles.accountRoleBadge}>游客</span>
             </div>
             <p className={styles.managementDescription}>
-              你现在使用的是默认游客账户。知识库管理和技能管理中的写入操作会被禁用。
+              你现在使用的是默认游客账户。技能管理已对游客开放，知识库写入仍需要登录。
             </p>
             <div className={styles.managementToolbar}>
               <button

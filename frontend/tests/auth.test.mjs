@@ -37,7 +37,7 @@ test('auth helpers normalize guest and authenticated actors', () => {
   )
 })
 
-test('auth helpers expose guest write restrictions and admin flag', () => {
+test('auth helpers expose guest capabilities and admin flag', () => {
   assert.equal(typeof authPkg.getActorCapabilities, 'function')
 
   const guest = authPkg.getActorCapabilities({
@@ -54,7 +54,7 @@ test('auth helpers expose guest write restrictions and admin flag', () => {
   })
 
   assert.equal(guest.canManageKnowledge, false)
-  assert.equal(guest.canManageSkills, false)
+  assert.equal(guest.canManageSkills, true)
   assert.equal(guest.canManageUsers, false)
   assert.equal(guest.requiresLoginMessage, '登录后可使用此功能。')
   assert.equal(admin.canManageUsers, true)
