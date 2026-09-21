@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Any, Iterable
 
-from fastapi import Request
+from fastapi import FastAPI
 
 from deepclaw.agent_registry import Agent
 from deepclaw.web_backend.agent.run_manager import AgentRunManager
@@ -42,15 +42,15 @@ class AgentRuntimeCache:
 
     async def get_graph(
         self,
-        request: Request,
+        app: FastAPI,
         agent: type[Agent],
         checkpointer: Any | None,
         store: Any | None,
     ) -> Any:
-        """懒加载并缓存指定智能体的图。
+        """获取并缓存指定智能体的图。
 
         Args:
-            request: 当前 FastAPI 请求。
+            app: 当前 FastAPI 应用。
             agent: 智能体类。
             checkpointer: LangGraph 检查点存储。
             store: LangGraph 长期存储。
@@ -58,7 +58,7 @@ class AgentRuntimeCache:
         Returns:
             已装配的 LangGraph 图。
         """
-        app_id = id(request.app)
+        app_id = id(app)
         cache_key = (
             app_id,
             agent.agent_id,
@@ -81,15 +81,15 @@ class AgentRuntimeCache:
 
     async def get_manager(
         self,
-        request: Request,
+        app: FastAPI,
         agent: type[Agent],
         graph: Any,
         run_store: RunStore,
     ) -> AgentRunManager:
-        """懒加载并缓存指定智能体的 Run 管理器。
+        """获取并缓存指定智能体的 Run 管理器。
 
         Args:
-            request: 当前 FastAPI 请求。
+            app: 当前 FastAPI 应用。
             agent: 智能体类。
             graph: 已装配的 LangGraph 图。
             run_store: AG-UI Run 存储。
@@ -97,7 +97,7 @@ class AgentRuntimeCache:
         Returns:
             指定智能体的 Run 管理器。
         """
-        app_id = id(request.app)
+        app_id = id(app)
         cache_key = (
             app_id,
             agent.agent_id,
@@ -118,3 +118,35 @@ class AgentRuntimeCache:
                 )
                 self._managers[cache_key] = cached
         return cached
+
+    async def preload(
+        self,
+        *,
+        app: FastAPI,
+        agents: Iterable[type[Agent]],
+        checkpointer: Any | None,
+        store: Any | None,
+        run_store: RunStore,
+    ) -> None:
+        """预热全部智能体的图与 Run 管理器。
+
+        Args:
+            app: 当前 FastAPI 应用。
+            agents: 待预热的智能体类。
+            checkpointer: LangGraph 检查点存储。
+            store: LangGraph 长期存储。
+            run_store: AG-UI Run 存储。
+        """
+        for agent in agents:
+            graph = await self.get_graph(
+                app,
+                agent,
+                checkpointer,
+                store,
+            )
+            await self.get_manager(
+                app,
+                agent,
+                graph,
+                run_store,
+            )

@@ -32,6 +32,21 @@ def test_app_lifespan_bootstraps_admin(monkeypatch):
     monkeypatch.setattr(web_app_module, "channel_lifespan", _noop_channel_lifespan)
     monkeypatch.setattr(web_app_module, "get_auth_service", lambda: service, raising=False)
 
+    async def noop_preload(self, **kwargs):
+        """跳过智能体预热。
+
+        Args:
+            self: 运行时缓存实例。
+            **kwargs: 预热参数。
+        """
+        return None
+
+    monkeypatch.setattr(
+        web_app_module.AgentRuntimeCache,
+        "preload",
+        noop_preload,
+    )
+
     async def run_lifespan():
         async with web_app_module.app_lifespan(web_app_module.FastAPI()):
             pass

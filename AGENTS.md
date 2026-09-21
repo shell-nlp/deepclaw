@@ -21,7 +21,7 @@
   - 创建 `FastAPI` 应用
   - 初始化 checkpointer 与 store
   - 在 `create_app()` 中挂载模块级 `auth`、`agui`、`channels`、`skills`、`knowledge_bases` 路由
-  - 在应用生命周期中初始化 `AgentRegistry`
+  - 在应用生命周期中初始化 `AgentRegistry`，并预热全部 `AgentRuntimeCache` 图与 Run 管理器
   - 提供 `/api/runtime-config` 运行时配置
   - 静态托管 `frontend/out`
 

@@ -36,19 +36,16 @@ from deepclaw.web_backend.common.agui_schemas import (
     ThreadRunListResponse,
 )
 
-_agent_runtime_cache = AgentRuntimeCache()
-
-
-def get_agent_runtime_cache() -> AgentRuntimeCache:
-    """返回进程级智能体运行时缓存。
+def get_agent_runtime_cache(request: Request) -> AgentRuntimeCache:
+    """返回当前应用的智能体运行时缓存。
 
     Args:
-        无。
+        request: 当前 FastAPI 请求。
 
     Returns:
-        当前进程使用的智能体运行时缓存。
+        当前应用使用的智能体运行时缓存。
     """
-    return _agent_runtime_cache
+    return request.app.state.agent_runtime_cache
 
 
 def get_checkpointer(request: Request) -> Any | None:
@@ -124,13 +121,13 @@ async def _resolve_run_manager(
     except KeyError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     graph = await runtime_registry.get_graph(
-        request,
+        request.app,
         agent,
         checkpointer,
         store,
     )
     manager = await runtime_registry.get_manager(
-        request,
+        request.app,
         agent,
         graph,
         run_store,
@@ -190,13 +187,13 @@ async def create_run(
     except KeyError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     graph = await runtime_registry.get_graph(
-        request,
+        request.app,
         agent,
         checkpointer,
         store,
     )
     manager = await runtime_registry.get_manager(
-        request,
+        request.app,
         agent,
         graph,
         run_store,
@@ -420,7 +417,7 @@ async def get_thread_state(
     except KeyError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     graph = await runtime_registry.get_graph(
-        request,
+        request.app,
         agent,
         checkpointer,
         store,

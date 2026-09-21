@@ -24,7 +24,19 @@ def _load_app_module(monkeypatch):
 
     from deepclaw.web_backend import app as app_module
 
-    return importlib.reload(app_module)
+    app_module = importlib.reload(app_module)
+
+    async def noop_preload(self, **kwargs):
+        """跳过启动阶段智能体预热。
+
+        Args:
+            self: 运行时缓存实例。
+            **kwargs: 预热参数。
+        """
+        return None
+
+    monkeypatch.setattr(app_module.AgentRuntimeCache, "preload", noop_preload)
+    return app_module
 
 
 def test_importing_app_module_does_not_create_app(monkeypatch):
