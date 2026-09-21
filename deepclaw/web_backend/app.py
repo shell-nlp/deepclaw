@@ -14,6 +14,7 @@ from deepclaw.constant import root_dir, workspace_path
 from deepclaw.patch.langchain import patch_langchain
 from deepclaw.settings import settings
 from deepclaw.web_backend.agent.router import router as agent_router
+from deepclaw.web_backend.agent.run_store import get_run_store
 from deepclaw.web_backend.auth.router import router as auth_router
 from deepclaw.web_backend.auth.service import get_auth_service
 from deepclaw.web_backend.channels.router import router as channels_router
@@ -145,6 +146,7 @@ async def app_lifespan(app: FastAPI):
     setup_observability()
     patch_langchain()
     await init_agent_env(app)
+    await get_run_store().initialize()
     register_frontend_routes(app)
     logger.info(
         "AG-UI runs | agent={} | rag={}",

@@ -75,9 +75,6 @@
 
 - `deepclaw/web_backend/agent/router.py`
   模块级 Agent 路由器；从 `app.state` 读取 checkpointer/store，懒加载缓存 Agent 图与 Run 管理器，并提供 Thread Run 列表、Thread state 与 Thread 删除接口。
-- `deepclaw/web_backend/agent/schemas.py`
-  Agent HTTP 请求与响应模型，包含会话列表、删除会话和状态查询模型。
-
 - `deepclaw/web_backend/rag/router.py`
   模块级 RAG 路由器；从 `app.state` 读取 checkpointer/store，并懒加载缓存 RAG 图与 Run 管理器。
 
@@ -296,6 +293,7 @@ pnpm build
 - 运行参数（`user_id`、`internet_search`、`deep_thinking`、`mcp_config`、`index_name`、`graph_name`、`header_info`）统一存放在 LangGraph state，不再依赖 `runtime.context`
 - Thread 资源现在记录 `thread_id -> owner_user_id`，创建 Run 时会自动创建或校验 Thread 归属
 - 新增 Thread 接口：`GET /api/agent/threads`、`GET /api/agent/threads/{thread_id}/runs`、`GET /api/agent/threads/{thread_id}/state`、`DELETE /api/agent/threads/{thread_id}`，RAG 提供对应 `/api/rag/threads/*` 接口
+- 旧的 `/api/agent/get_session_list`、`/api/agent/delete_session`、`/api/agent/get_state` 已移除，统一使用 Thread API。
 - 技能管理归属 `/api/agent/skills/*`
 - 知识库管理归属 `/api/rag/knowledge-bases/*`
 - 渠道管理归属 `/api/channels/*`

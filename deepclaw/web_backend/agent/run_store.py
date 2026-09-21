@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from typing import Any, AsyncIterator, Protocol
 
 from ag_ui.core import RunAgentInput
-from sqlalchemy import JSON, Column, UniqueConstraint
+from sqlalchemy import JSON, Column, Index, UniqueConstraint, text
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Field, SQLModel, select
 
@@ -337,6 +337,57 @@ class RunStore(Protocol):
             无。
         """
         ...
+
+    async def initialize(self) -> None:
+        """初始化底层存储资源。
+
+        Args:
+            无。
+
+        Returns:
+            无。
+        """
+        ...
+
+
+async def get_or_backfill_thread(
+    store: RunStore,
+    thread_id: str,
+    user_id: str | None = None,
+) -> ThreadState | None:
+    """读取 Thread，不存在时从历史 Run 回填。
+
+    Args:
+        store: Run/Thread 存储。
+        thread_id: Thread ID。
+        user_id: 可选当前用户 ID，用于归属校验。
+
+    Returns:
+        Thread 状态；不存在或不属于当前用户时返回 None。
+    """
+    thread = await store.get_thread(thread_id, user_id=user_id)
+    if thread is not None:
+        return thread
+
+    runs = await store.list_runs_by_thread(
+        thread_id,
+        user_id=user_id,
+        limit=1,
+    )
+    if not runs:
+        return None
+
+    run = runs[0]
+    thread = ThreadState(
+        thread_id=thread_id,
+        owner_user_id=run.owner_user_id,
+        title=get_thread_title(run.input),
+        created_at=run.created_at,
+        updated_at=run.updated_at,
+        expires_at=run.expires_at,
+    )
+    await store.create_thread(thread)
+    return thread
 
 
 class BaseRunStore:
@@ -838,11 +889,25 @@ class InMemoryRunStore(BaseRunStore):
         """
         return None
 
+    async def initialize(self) -> None:
+        """初始化内存存储。
+
+        Args:
+            无。
+
+        Returns:
+            无。
+        """
+        return None
+
 
 class AgUiRunRecord(SQLModel, table=True):
     """PostgreSQL/SQLite 中的 AG-UI Run 记录。"""
 
     __tablename__ = "agui_runs"
+    __table_args__ = (
+        Index("ix_agui_runs_owner_updated", "owner_user_id", "updated_at"),
+    )
 
     run_id: str = Field(primary_key=True)
     thread_id: str = Field(index=True)
@@ -876,6 +941,9 @@ class AgUiThreadRecord(SQLModel, table=True):
     """PostgreSQL/SQLite 中的 AG-UI Thread 记录。"""
 
     __tablename__ = "agui_threads"
+    __table_args__ = (
+        Index("ix_agui_threads_owner_updated", "owner_user_id", "updated_at"),
+    )
 
     thread_id: str = Field(primary_key=True)
     owner_user_id: str = Field(index=True)
@@ -917,6 +985,8 @@ class SqlRunStore(BaseRunStore):
         self.async_session = build_async_sessionmaker(self.engine)
         self._init_done = False
         self._init_lock = asyncio.Lock()
+        self._backfilled_users: set[str] = set()
+        self._backfill_lock = asyncio.Lock()
 
     async def _ensure_init(self) -> None:
         """确保 Run 表已经创建。
@@ -934,6 +1004,18 @@ class SqlRunStore(BaseRunStore):
                 return
             async with self.engine.begin() as connection:
                 await connection.run_sync(SQLModel.metadata.create_all)
+                await connection.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_agui_runs_owner_updated "
+                        "ON agui_runs (owner_user_id, updated_at)"
+                    )
+                )
+                await connection.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_agui_threads_owner_updated "
+                        "ON agui_threads (owner_user_id, updated_at)"
+                    )
+                )
             self._init_done = True
 
     async def _maybe_prune(self) -> None:
@@ -1098,36 +1180,46 @@ class SqlRunStore(BaseRunStore):
         Returns:
             无。
         """
+        if user_id in self._backfilled_users:
+            return
+
         await self._ensure_init()
-        async with self.async_session() as session:
-            run_result = await session.exec(
-                select(AgUiRunRecord)
-                .where(AgUiRunRecord.owner_user_id == user_id)
-                .order_by(AgUiRunRecord.updated_at.desc())
-            )
-            runs = list(run_result.all())
-            if not runs:
+        async with self._backfill_lock:
+            if user_id in self._backfilled_users:
                 return
-            thread_result = await session.exec(
-                select(AgUiThreadRecord).where(
-                    AgUiThreadRecord.owner_user_id == user_id
+            async with self.async_session() as session:
+                run_result = await session.exec(
+                    select(AgUiRunRecord)
+                    .where(AgUiRunRecord.owner_user_id == user_id)
+                    .order_by(AgUiRunRecord.updated_at.desc())
                 )
-            )
-            existing_ids = {record.thread_id for record in thread_result.all()}
-            for run in runs:
-                if run.thread_id in existing_ids:
-                    continue
-                thread = ThreadState(
-                    thread_id=run.thread_id,
-                    owner_user_id=run.owner_user_id,
-                    title=get_thread_title(deserialize_run_input(run.input_json)),
-                    created_at=timestamp_from_datetime(run.created_at),
-                    updated_at=timestamp_from_datetime(run.updated_at),
-                    expires_at=timestamp_from_datetime(run.expires_at),
-                )
-                session.add(self._to_thread_record(thread))
-                existing_ids.add(run.thread_id)
-            await session.commit()
+                runs = list(run_result.all())
+                if runs:
+                    thread_result = await session.exec(
+                        select(AgUiThreadRecord).where(
+                            AgUiThreadRecord.owner_user_id == user_id
+                        )
+                    )
+                    existing_ids = {
+                        record.thread_id for record in thread_result.all()
+                    }
+                    for run in runs:
+                        if run.thread_id in existing_ids:
+                            continue
+                        thread = ThreadState(
+                            thread_id=run.thread_id,
+                            owner_user_id=run.owner_user_id,
+                            title=get_thread_title(
+                                deserialize_run_input(run.input_json)
+                            ),
+                            created_at=timestamp_from_datetime(run.created_at),
+                            updated_at=timestamp_from_datetime(run.updated_at),
+                            expires_at=timestamp_from_datetime(run.expires_at),
+                        )
+                        session.add(self._to_thread_record(thread))
+                        existing_ids.add(run.thread_id)
+                    await session.commit()
+            self._backfilled_users.add(user_id)
 
     async def create_thread(self, state: ThreadState) -> bool:
         """创建 Thread。
@@ -1548,6 +1640,17 @@ class SqlRunStore(BaseRunStore):
             无。
         """
         await self.engine.dispose()
+
+    async def initialize(self) -> None:
+        """初始化 SQL 存储表与索引。
+
+        Args:
+            无。
+
+        Returns:
+            无。
+        """
+        await self._ensure_init()
 
 
 _run_store: RunStore | None = None

@@ -12,7 +12,9 @@ from deepclaw.settings import settings
 from deepclaw.web_backend.agent.run_manager import (
     AgentRunManager,
     ThreadOwnershipError,
+    run_state_to_snapshot,
 )
+from deepclaw.web_backend.agent.run_store import RunStore, get_or_backfill_thread
 from deepclaw.web_backend.auth.dependencies import CurrentActor
 from deepclaw.web_backend.common.agui_schemas import (
     RunActionRequest,
@@ -180,7 +182,7 @@ def _with_trusted_state(
 
 
 async def list_agui_threads(
-    manager: AgentRunManager,
+    store: RunStore,
     actor: CurrentActor,
     *,
     limit: int,
@@ -188,14 +190,14 @@ async def list_agui_threads(
     """查询当前用户的 Thread 列表。
 
     Args:
-        manager: 当前域使用的 Run 管理器。
+        store: 当前域使用的 Run/Thread 存储。
         actor: 当前鉴权主体。
         limit: 最大返回数量。
 
     Returns:
         当前用户的 Thread 列表。
     """
-    threads = await manager.list_threads(
+    threads = await store.list_threads(
         _actor_user_id(actor),
         limit=limit,
     )
@@ -212,7 +214,7 @@ async def list_agui_threads(
 
 
 async def list_agui_thread_runs(
-    manager: AgentRunManager,
+    store: RunStore,
     thread_id: str,
     actor: CurrentActor,
     *,
@@ -221,7 +223,7 @@ async def list_agui_thread_runs(
     """查询指定 Thread 下的 Run。
 
     Args:
-        manager: 当前域使用的 Run 管理器。
+        store: 当前域使用的 Run/Thread 存储。
         thread_id: Thread ID。
         actor: 当前鉴权主体。
         limit: 最大返回数量。
@@ -232,18 +234,25 @@ async def list_agui_thread_runs(
     Raises:
         HTTPException: Thread 不存在或无权访问时返回 404。
     """
-    runs = await manager.list_thread_runs(
+    user_id = _actor_user_id(actor)
+    thread = await get_or_backfill_thread(
+        store,
         thread_id,
-        user_id=_actor_user_id(actor),
+        user_id=user_id,
+    )
+    if thread is None:
+        raise HTTPException(status_code=404, detail="Thread 不存在")
+    runs = await store.list_runs_by_thread(
+        thread_id,
+        user_id=user_id,
         limit=limit,
     )
-    if runs is None:
-        raise HTTPException(status_code=404, detail="Thread 不存在")
-    return ThreadRunListResponse(threadId=thread_id, items=runs, total=len(runs))
+    items = [run_state_to_snapshot(run) for run in runs]
+    return ThreadRunListResponse(threadId=thread_id, items=items, total=len(items))
 
 
 async def get_agui_thread_state(
-    manager: AgentRunManager,
+    store: RunStore,
     graph: Any,
     thread_id: str,
     actor: CurrentActor,
@@ -251,7 +260,7 @@ async def get_agui_thread_state(
     """读取指定 Thread 的图状态。
 
     Args:
-        manager: 当前域使用的 Run 管理器。
+        store: 当前域使用的 Run/Thread 存储。
         graph: 当前域使用的 LangGraph 图。
         thread_id: Thread ID。
         actor: 当前鉴权主体。
@@ -262,7 +271,8 @@ async def get_agui_thread_state(
     Raises:
         HTTPException: Thread 或状态不存在时返回 404。
     """
-    thread = await manager.get_thread(
+    thread = await get_or_backfill_thread(
+        store,
         thread_id,
         user_id=_actor_user_id(actor),
     )
@@ -282,7 +292,7 @@ async def get_agui_thread_state(
 
 
 async def delete_agui_thread(
-    manager: AgentRunManager,
+    store: RunStore,
     checkpointer: Any | None,
     thread_id: str,
     actor: CurrentActor,
@@ -290,7 +300,7 @@ async def delete_agui_thread(
     """删除 Thread 的 checkpoint、Run 和事件记录。
 
     Args:
-        manager: 当前域使用的 Run 管理器。
+        store: 当前域使用的 Run/Thread 存储。
         checkpointer: LangGraph 检查点存储。
         thread_id: Thread ID。
         actor: 当前鉴权主体。
@@ -302,7 +312,7 @@ async def delete_agui_thread(
         HTTPException: Thread 不存在、无权访问或删除失败时返回错误。
     """
     user_id = _actor_user_id(actor)
-    thread = await manager.get_thread(thread_id, user_id=user_id)
+    thread = await get_or_backfill_thread(store, thread_id, user_id=user_id)
     if thread is None:
         raise HTTPException(status_code=404, detail="Thread 不存在")
 
@@ -312,7 +322,7 @@ async def delete_agui_thread(
         except Exception as exc:
             raise HTTPException(status_code=500, detail="删除 Thread 状态失败") from exc
 
-    deleted = await manager.delete_thread(thread_id, user_id=user_id)
+    deleted = await store.delete_thread(thread_id, user_id=user_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Thread 不存在")
     return ThreadDeleteResponse(threadId=thread_id, deleted=True)

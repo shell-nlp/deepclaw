@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Query, Request
 
 from deepclaw.agents.rag.agent import create_rag_agent
 from deepclaw.web_backend.agent.run_manager import AgentRunManager
-from deepclaw.web_backend.agent.run_store import get_run_store
+from deepclaw.web_backend.agent.run_store import RunStore, get_run_store
 from deepclaw.web_backend.auth.dependencies import CurrentActor, get_current_actor
 from deepclaw.web_backend.common.agui_runs import (
     cancel_agui_run,
@@ -57,6 +57,18 @@ def get_rag_store(request: Request) -> Any | None:
         当前应用的长期存储，未初始化时返回 None。
     """
     return getattr(request.app.state, "store", None)
+
+
+def get_rag_run_store() -> RunStore:
+    """返回进程级 Run/Thread 存储。
+
+    Args:
+        无。
+
+    Returns:
+        当前进程共享的 Run/Thread 存储。
+    """
+    return get_run_store()
 
 
 async def get_rag_graph(
@@ -262,10 +274,10 @@ async def cancel_rag_run(
 async def list_threads(
     limit: int = Query(default=100, ge=1, le=200),
     actor: CurrentActor = Depends(get_current_actor),
-    manager: AgentRunManager = Depends(get_rag_run_manager),
+    store: RunStore = Depends(get_rag_run_store),
 ):
     """查询当前用户的 Thread 列表。"""
-    return await list_agui_threads(manager, actor, limit=limit)
+    return await list_agui_threads(store, actor, limit=limit)
 
 
 @router.get(
@@ -279,10 +291,10 @@ async def list_rag_thread_runs(
     thread_id: str,
     limit: int = Query(default=100, ge=1, le=200),
     actor: CurrentActor = Depends(get_current_actor),
-    manager: AgentRunManager = Depends(get_rag_run_manager),
+    store: RunStore = Depends(get_rag_run_store),
 ):
     """查询 RAG Thread 下的 Run。"""
-    return await list_agui_thread_runs(manager, thread_id, actor, limit=limit)
+    return await list_agui_thread_runs(store, thread_id, actor, limit=limit)
 
 
 @router.get(
@@ -294,11 +306,11 @@ async def list_rag_thread_runs(
 async def get_rag_thread_state(
     thread_id: str,
     actor: CurrentActor = Depends(get_current_actor),
-    manager: AgentRunManager = Depends(get_rag_run_manager),
+    store: RunStore = Depends(get_rag_run_store),
     graph: Any = Depends(get_rag_graph),
 ):
     """查询 RAG Thread 状态。"""
-    return await get_agui_thread_state(manager, graph, thread_id, actor)
+    return await get_agui_thread_state(store, graph, thread_id, actor)
 
 
 @router.delete(
@@ -311,10 +323,10 @@ async def get_rag_thread_state(
 async def delete_rag_thread(
     thread_id: str,
     actor: CurrentActor = Depends(get_current_actor),
-    manager: AgentRunManager = Depends(get_rag_run_manager),
+    store: RunStore = Depends(get_rag_run_store),
     checkpointer: Any | None = Depends(get_checkpointer),
 ):
     """删除 RAG Thread。"""
-    return await delete_agui_thread(manager, checkpointer, thread_id, actor)
+    return await delete_agui_thread(store, checkpointer, thread_id, actor)
 
 
