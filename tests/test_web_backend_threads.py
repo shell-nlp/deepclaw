@@ -5,8 +5,9 @@ from ag_ui.core import RunAgentInput
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from deepclaw.agent_registry import AgentRegistry
 from deepclaw.web_backend.agui.router import (
-    get_agent_runtime_registry,
+    get_agent_runtime_cache,
     get_agui_run_store,
     get_checkpointer,
     router as agui_router,
@@ -127,12 +128,12 @@ class FakeRuntimeRegistry:
     def __init__(self, graph):
         self.graph = graph
 
-    async def get_graph(self, request, spec, checkpointer, store):
+    async def get_graph(self, request, definition, checkpointer, store):
         """返回测试图。
 
         Args:
             request: 当前请求。
-            spec: 智能体定义。
+            definition: 智能体定义。
             checkpointer: 检查点存储。
             store: 长期存储。
         """
@@ -165,8 +166,9 @@ def build_client(*, actor=None, store=None, graph=None, checkpointer=None):
     """
     app = FastAPI()
     app.include_router(agui_router)
+    app.state.agent_registry = AgentRegistry.discover()
     app.dependency_overrides[get_agui_run_store] = lambda: store or FakeThreadStore()
-    app.dependency_overrides[get_agent_runtime_registry] = lambda: FakeRuntimeRegistry(
+    app.dependency_overrides[get_agent_runtime_cache] = lambda: FakeRuntimeRegistry(
         graph or FakeGraph()
     )
     app.dependency_overrides[get_checkpointer] = lambda: checkpointer or FakeCheckpointer()
@@ -197,12 +199,12 @@ def test_thread_list_does_not_build_agent_graph():
     class FailRuntimeRegistry:
         """在调用时失败的运行时注册表。"""
 
-        async def get_graph(self, request, spec, checkpointer, store):
+        async def get_graph(self, request, definition, checkpointer, store):
             """在依赖被调用时抛出断言错误。
 
             Args:
                 request: 当前请求。
-                spec: 智能体定义。
+                definition: 智能体定义。
                 checkpointer: 检查点存储。
                 store: 长期存储。
             """
@@ -211,7 +213,7 @@ def test_thread_list_does_not_build_agent_graph():
     app = FastAPI()
     app.include_router(agui_router)
     app.dependency_overrides[get_agui_run_store] = lambda: FakeThreadStore()
-    app.dependency_overrides[get_agent_runtime_registry] = FailRuntimeRegistry
+    app.dependency_overrides[get_agent_runtime_cache] = FailRuntimeRegistry
     app.dependency_overrides[get_current_actor] = lambda: CurrentActor(
         is_guest=True,
         user_id=None,

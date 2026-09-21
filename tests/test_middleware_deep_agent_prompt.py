@@ -61,7 +61,7 @@ def test_general_agent_registers_deep_agent_prompt_middleware(monkeypatch):
     monkeypatch.setattr(agent_module.settings, "USE_TOOL_SEARCH", False)
     monkeypatch.setattr(agent_module.settings, "BACKEND_TYPE", "local_shell")
 
-    agent_module.Agent(deep_agent=True)
+    agent_module.GeneralAgent.build_agent(deep_agent=True)
 
     assert any(
         isinstance(m, DeepAgentPromptMiddleware)

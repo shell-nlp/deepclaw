@@ -3,8 +3,9 @@ import asyncio
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from deepclaw.agent_registry import AgentRegistry
 from deepclaw.web_backend.agui.router import (
-    get_agent_runtime_registry,
+    get_agent_runtime_cache,
     get_agui_run_store,
     get_checkpointer,
     get_langgraph_store,
@@ -59,23 +60,23 @@ class FakeRuntimeRegistry:
     def __init__(self, manager):
         self.manager = manager
 
-    async def get_graph(self, request, spec, checkpointer, store):
+    async def get_graph(self, request, definition, checkpointer, store):
         """返回空图占位对象。
 
         Args:
             request: 当前请求。
-            spec: 智能体定义。
+            definition: 智能体定义。
             checkpointer: 检查点存储。
             store: 长期存储。
         """
         return object()
 
-    async def get_manager(self, request, spec, graph, run_store):
+    async def get_manager(self, request, definition, graph, run_store):
         """返回测试 Run 管理器。
 
         Args:
             request: 当前请求。
-            spec: 智能体定义。
+            definition: 智能体定义。
             graph: 图对象。
             run_store: Run 存储。
         """
@@ -91,9 +92,10 @@ def build_client(*, manager=None, store=None):
     """
     app = FastAPI()
     app.include_router(agui_router)
+    app.state.agent_registry = AgentRegistry.discover()
     fake_manager = manager or FakeRunManager()
     run_store = store or InMemoryRunStore()
-    app.dependency_overrides[get_agent_runtime_registry] = lambda: FakeRuntimeRegistry(
+    app.dependency_overrides[get_agent_runtime_cache] = lambda: FakeRuntimeRegistry(
         fake_manager
     )
     app.dependency_overrides[get_agui_run_store] = lambda: run_store
