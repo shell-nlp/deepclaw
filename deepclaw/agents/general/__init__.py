@@ -1,7 +1,6 @@
-from deepclaw.agents.general.context import AgentContext
 from deepclaw.agents.general.state import StateSchema
 
-__all__ = ["GeneralAgent", "AgentContext", "StateSchema"]
+__all__ = ["GeneralAgent", "StateSchema"]
 
 
 def __getattr__(name: str):

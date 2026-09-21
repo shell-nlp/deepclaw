@@ -29,7 +29,7 @@ class MCPMiddleware(AgentMiddleware):
     """MCP 中间件，用于处理 MCP 相关相关的逻辑"""
 
     state_schema = StateSchema
-    # 发布版默认配置，来自 MCP_CONFIG；与 runtime.context.mcp_config 按 server 融合。
+    # 发布版默认配置，来自 MCP_CONFIG；与 state.mcp_config 按 server 融合。
     mcp_config: dict[str, Any] = settings.MCP_CONFIG
 
     def __init__(self) -> None:
@@ -110,10 +110,10 @@ class MCPMiddleware(AgentMiddleware):
         return header_info
 
     def _resolve_mcp_config(self, request) -> dict[str, Any] | None:
-        """解析本次请求实际使用的 MCP 配置，文件内配置与 runtime.context 配置融合。
+        """解析本次请求实际使用的 MCP 配置，文件内配置与 state 配置融合。
 
         Args:
-            request: 中间件包装请求对象，通过 runtime.context 携带上下文。
+            request: 中间件包装请求对象，通过 state 携带运行参数。
 
         融合规则：两份配置都存在时按 server 名称合并 `mcpServers`，
         同名 server 以文件内配置 `self.mcp_config` 为准。
@@ -165,7 +165,7 @@ class MCPMiddleware(AgentMiddleware):
 
         Args:
             primary: 优先配置（文件内 self.mcp_config）。
-            secondary: 补充配置（runtime.context.mcp_config）。
+            secondary: 补充配置（state.mcp_config）。
         """
         primary_normalized = self.normalize_mcp_config(primary)
         secondary_normalized = self.normalize_mcp_config(secondary)

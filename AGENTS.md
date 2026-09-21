@@ -297,7 +297,7 @@ pnpm build
   - 恢复：`POST /api/agui/runs/{run_id}/resume`
   - 取消：`POST /api/agui/runs/{run_id}/cancel`
 - 新增 Agent 时只需在 `deepclaw/agents/<name>/agent.py` 中定义 `Agent` 子类，`AgentRegistry.discover()` 会自动加载；不需要修改 Web 路由或集中式 Agent 列表。
-- 运行参数（`user_id`、`internet_search`、`deep_thinking`、`mcp_config`、`index_name`、`graph_name`、`header_info`）统一存放在 LangGraph state，不再依赖 `runtime.context`
+- 运行参数（`user_id`、`internet_search`、`deep_thinking`、`mcp_config`、`index_name`、`graph_name`、`header_info`）统一存放在 LangGraph state，不再依赖独立 context 模型
 - Thread 资源现在记录 `thread_id -> owner_user_id + agent_id`，创建 Run 时会自动创建或校验 Thread 归属
 - Thread 接口：`GET /api/agui/threads`、`GET /api/agui/threads/{thread_id}/runs`、`GET /api/agui/threads/{thread_id}/state`、`DELETE /api/agui/threads/{thread_id}`
 - 旧的 `/api/agent/get_session_list`、`/api/agent/delete_session`、`/api/agent/get_state` 已移除，统一使用 Thread API。
