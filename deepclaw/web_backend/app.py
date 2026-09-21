@@ -14,6 +14,7 @@ from deepclaw.agent_registry import AgentRegistry
 from deepclaw.constant import root_dir, workspace_path
 from deepclaw.patch.langchain import patch_langchain
 from deepclaw.settings import settings
+from deepclaw.web_backend.agui.runtime import AgentRuntimeCache
 from deepclaw.web_backend.agui.router import router as agui_router
 from deepclaw.web_backend.agent.run_store import get_run_store
 from deepclaw.web_backend.auth.router import router as auth_router
@@ -148,6 +149,17 @@ async def app_lifespan(app: FastAPI):
     await init_agent_env(app)
     app.state.agent_registry = AgentRegistry.discover()
     await get_run_store().initialize()
+    runtime_cache = getattr(app.state, "agent_runtime_cache", None)
+    if runtime_cache is None:
+        runtime_cache = AgentRuntimeCache()
+        app.state.agent_runtime_cache = runtime_cache
+    await runtime_cache.preload(
+        app=app,
+        agents=app.state.agent_registry.list_agents(),
+        checkpointer=app.state.checkpointer,
+        store=app.state.store,
+        run_store=get_run_store(),
+    )
     register_frontend_routes(app)
     logger.info(
         "AG-UI runs={} | agents={}",
@@ -196,6 +208,7 @@ def _register_exported_html_routes(app: FastAPI, frontend_dir: Path) -> None:
 
 def create_app() -> FastAPI:
     app = FastAPI(lifespan=app_lifespan)
+    app.state.agent_runtime_cache = AgentRuntimeCache()
     app.add_exception_handler(BusinessRuleError, handle_business_rule_error)
     app.add_middleware(
         CORSMiddleware,
