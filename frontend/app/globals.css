@@ -1,38 +1,51 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Sora:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700&display=swap');
 
 :root {
-  --bg-primary: #fcfcfd;
-  --bg-secondary: #f4f5f7;
-  --bg-tertiary: #e5e7eb;
+  --bg-primary: #f7f8fa;
+  --bg-secondary: #f2f4f7;
+  --bg-tertiary: #e5e8ee;
   --bg-card: #ffffff;
-  --bg-glass: rgba(255, 255, 255, 0.85);
+  --bg-glass: rgba(255, 255, 255, 0.88);
 
-  --text-primary: #111827;
-  --text-secondary: #374151;
-  --text-muted: #6b7280;
+  --ink-950: #07151d;
+  --ink-900: #0b1c25;
+  --ink-800: #122a35;
+  --text-primary: #202124;
+  --text-secondary: #4b5563;
+  --text-muted: #8b93a1;
 
-  --accent-primary: #4f46e5;
-  --accent-secondary: #7c3aed;
-  --accent-tertiary: #ec4899;
+  --accent-primary: #4d6bfe;
+  --accent-secondary: #718bff;
+  --accent-tertiary: #d68a2e;
+  --accent-soft: #edf1ff;
 
-  --border-subtle: rgba(0, 0, 0, 0.08);
-  --border-glow: rgba(79, 70, 229, 0.3);
+  --border-subtle: rgba(32, 33, 36, 0.09);
+  --border-strong: rgba(32, 33, 36, 0.14);
+  --border-glow: rgba(77, 107, 254, 0.24);
 
-  --success: #10b981;
-  --warning: #f59e0b;
-  --error: #ef4444;
+  --success: #16866f;
+  --warning: #c47b2d;
+  --error: #c95050;
 
-  --radius-sm: 8px;
-  --radius-md: 12px;
+  --radius-sm: 7px;
+  --radius-md: 11px;
   --radius-lg: 16px;
-  --radius-xl: 20px;
+  --radius-xl: 22px;
   --radius-full: 9999px;
 
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-  --shadow-glow: 0 0 40px rgba(79, 70, 229, 0.15);
+  --shadow-sm: 0 1px 2px rgba(32, 33, 36, 0.05);
+  --shadow-md: 0 8px 24px rgba(32, 33, 36, 0.07);
+  --shadow-lg: 0 20px 50px rgba(32, 33, 36, 0.12);
+  --shadow-xl: 0 30px 70px rgba(32, 33, 36, 0.14);
+  --shadow-glow: 0 0 0 1px rgba(77, 107, 254, 0.08), 0 14px 36px rgba(77, 107, 254, 0.1);
+
+  --sidebar-width: 264px;
+  --sidebar-width-collapsed: 76px;
+  --sidebar-bg: #ffffff;
+  --sidebar-bg-raised: #f5f7fb;
+  --sidebar-text: #2c2f36;
+  --sidebar-muted: #8b93a1;
+  --sidebar-line: rgba(32, 33, 36, 0.08);
 }
 
 * {
@@ -48,13 +61,13 @@ body {
 }
 
 body {
-  font-family: 'Sora', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--bg-primary);
   color: var(--text-primary);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   font-weight: 400;
-  letter-spacing: 0.02em;
+  letter-spacing: -0.005em;
 }
 
 ::selection {
@@ -88,5 +101,5 @@ button {
 
 code,
 pre {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
 }

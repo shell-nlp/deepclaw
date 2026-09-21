@@ -1,5 +1,5 @@
-/* Compatibility override: restore the original chat look and only extend it
-   with a left sidebar plus knowledge-base management panels. */
+/* DeepClaw workspace: a deep-current navigation rail around a calm,
+   instrument-like conversation surface. */
 
 .container {
   position: fixed;
@@ -10,69 +10,79 @@
   flex-direction: column;
   gap: 0;
   overflow: hidden;
-  background: var(--bg-primary);
+  background:
+    radial-gradient(circle at 88% 10%, rgba(77, 107, 254, 0.08), transparent 28%),
+    linear-gradient(145deg, #eef4f2 0%, #e8f0ee 100%);
 }
 
 .backgroundGrid {
   position: fixed;
   inset: 0;
   background-image:
-    linear-gradient(rgba(0, 123, 255, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 123, 255, 0.05) 1px, transparent 1px);
-  background-size: 48px 48px;
+    linear-gradient(rgba(16, 35, 43, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(16, 35, 43, 0.025) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), transparent 92%);
   pointer-events: none;
   z-index: 0;
 }
 
 .backgroundGlow {
   position: fixed;
-  top: -200px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 800px;
-  height: 600px;
+  top: -260px;
+  right: -140px;
+  width: 720px;
+  height: 720px;
   background: radial-gradient(
     ellipse at center,
-    rgba(0, 123, 255, 0.1) 0%,
+    rgba(77, 107, 254, 0.1) 0%,
     transparent 70%
   );
   pointer-events: none;
   z-index: 0;
-  filter: blur(60px);
+  filter: blur(32px);
 }
 
 .logoArea {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 11px;
+  min-width: 0;
 }
 
 .logoIcon {
-  width: 40px;
-  height: 40px;
-  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
-  border-radius: var(--radius-md);
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  background: linear-gradient(145deg, #f6f8ff, #e8edff);
+  border: 1px solid rgba(77, 107, 254, 0.14);
+  border-radius: 13px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
-  font-size: 20px;
-  font-weight: 700;
-  box-shadow: var(--shadow-glow);
-  animation: pulse 3s ease-in-out infinite;
+  color: var(--accent-primary);
+  box-shadow: 0 10px 24px rgba(77, 107, 254, 0.08);
+}
+
+.logoGlyph {
+  width: 29px;
+  height: 29px;
 }
 
 .title {
-  font-size: 24px;
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: -0.02em;
+  font-family: 'Bricolage Grotesque', 'Manrope', sans-serif;
+  font-size: 20px;
+  font-weight: 650;
+  color: var(--sidebar-text);
+  letter-spacing: -0.035em;
 }
 
 .subtitle {
-  color: var(--text-muted);
-  font-size: 14px;
-  font-weight: 400;
+  color: var(--sidebar-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
 }
 
 .workspaceLayout {
@@ -81,7 +91,7 @@
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: clamp(196px, 16vw, 256px) minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   gap: 0;
   padding: 0;
   max-width: none;
@@ -94,8 +104,11 @@
   display: flex;
   flex-direction: column;
   overflow: visible;
-  background: var(--bg-card);
-  border-right: 1px solid var(--border-subtle);
+  background:
+    radial-gradient(circle at 15% 0%, rgba(77, 107, 254, 0.055), transparent 30%),
+    linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+  border-right: 1px solid var(--sidebar-line);
+  box-shadow: 10px 0 30px rgba(7, 21, 29, 0.035);
 }
 
 .sidebarPanel {
@@ -103,9 +116,11 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 16px 12px;
+  gap: 7px;
+  padding: 20px 14px 14px;
   overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
 }
 
 .sidebarBrand {
@@ -113,75 +128,96 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 4px 4px 14px;
-  border-bottom: 1px solid var(--border-subtle);
+  gap: 10px;
+  min-height: 58px;
+  margin-bottom: 13px;
+  padding: 0 4px 18px;
+  border-bottom: 1px solid var(--sidebar-line);
 }
 
 .sidebarBrandDetails {
   min-width: 0;
+  overflow: hidden;
 }
 
 .sidebarBrand .title {
-  font-size: 20px;
+  font-size: 19px;
   white-space: nowrap;
 }
 
 .sidebarBrand .subtitle {
-  margin-top: 2px;
-  font-size: 12px;
+  margin-top: 1px;
   white-space: nowrap;
 }
 
 .workspaceLayoutSidebarCollapsed {
-  grid-template-columns: 84px minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-width-collapsed) minmax(0, 1fr);
 }
 
 .sidebarNavCollapsed .sidebarPanel {
   align-items: center;
-  padding: 12px 8px;
+  padding: 16px 10px 12px;
 }
 
-.sidebarNavCollapsed .sidebarButton,
 .sidebarNavCollapsed .channelSubnav,
-.sidebarNavCollapsed .sidebarBrandDetails {
+.sidebarNavCollapsed .sidebarBrandDetails,
+.sidebarNavCollapsed .sidebarButtonLabel,
+.sidebarNavCollapsed .sidebarSectionLabel {
   display: none;
 }
 
 .sidebarNavCollapsed .sidebarBrand {
   width: 100%;
-  justify-content: space-between;
-  gap: 4px;
-  padding: 4px 0 12px;
+  justify-content: center;
+  gap: 0;
+  padding: 0 0 42px;
 }
 
 .sidebarNavCollapsed .logoIcon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+}
+
+.sidebarNavCollapsed .logoGlyph {
+  width: 27px;
+  height: 27px;
+}
+
+.sidebarNavCollapsed .sidebarCollapseButton {
+  position: absolute;
+  top: 51px;
+  right: 50%;
   width: 28px;
   height: 28px;
-  border-radius: 8px;
-  font-size: 12px;
+  transform: translateX(50%);
+  border-color: rgba(16, 35, 43, 0.1);
+  background: #ffffff;
+  color: var(--accent-primary);
+  box-shadow: 0 6px 16px rgba(7, 21, 29, 0.12);
 }
 
 .sidebarCollapseButton {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(16, 35, 43, 0.1);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--sidebar-muted);
   cursor: pointer;
-  font-size: 22px;
+  font-size: 19px;
   line-height: 1;
-  transition: all 0.2s ease;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
 }
 
 .sidebarAccount {
   flex-shrink: 0;
-  padding: 12px;
-  border-top: 1px solid var(--border-subtle);
+  padding: 12px 14px 16px;
+  border-top: 1px solid var(--sidebar-line);
 }
 
 .sidebarAccount .accountPanelShell,
@@ -197,12 +233,12 @@
 }
 
 .sidebarNavCollapsed .sidebarAccount {
-  padding: 8px;
+  padding: 10px;
 }
 
 .sidebarNavCollapsed .sidebarAccount .accountEntry {
   justify-content: center;
-  padding: 4px;
+  padding: 5px;
 }
 
 .sidebarNavCollapsed .sidebarAccount .accountMeta {
@@ -210,7 +246,8 @@
 }
 
 .sidebarCollapseButton:hover {
-  border-color: var(--accent-primary);
+  border-color: rgba(77, 107, 254, 0.24);
+  background: #ffffff;
   color: var(--accent-primary);
 }
 
@@ -218,44 +255,77 @@
 .sidebarAction {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  gap: 11px;
   width: 100%;
-  padding: 12px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-card);
-  color: var(--text-secondary);
-  font-size: 14px;
-  font-weight: 600;
+  min-height: 42px;
+  padding: 10px 11px;
+  border-radius: 11px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #5d747a;
+  font-size: 13px;
+  font-weight: 550;
   cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: var(--shadow-sm);
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
 }
 
 .sidebarButton {
   position: relative;
+  text-align: left;
 }
 
 .sidebarButton:hover,
 .sidebarAction:hover {
-  transform: translateY(-1px);
-  border-color: var(--accent-primary);
-  color: var(--accent-primary);
+  border-color: var(--sidebar-line);
+  background: rgba(77, 107, 254, 0.055);
+  color: #3452c8;
 }
 
 .sidebarButtonActive {
-  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
-  border-color: transparent;
-  color: white;
-  box-shadow: 0 6px 20px rgba(79, 70, 229, 0.28);
+  border-color: rgba(77, 107, 254, 0.08);
+  background: rgba(77, 107, 254, 0.09);
+  color: #4162e8;
+  box-shadow: none;
+}
+
+.sidebarButtonActive .sidebarButtonIcon {
+  color: var(--accent-primary);
+}
+
+.sidebarButtonIcon {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 auto;
+  color: #7c9498;
+  transition: color 0.18s ease;
+}
+
+.sidebarButtonLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebarSectionLabel {
+  margin: 11px 10px 2px;
+  color: #8aa0a4;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.sidebarSectionLabel:first-of-type {
+  margin-top: 0;
 }
 
 .sidebarChevron,
 .sidebarChevronExpanded {
-  position: absolute;
-  right: 12px;
-  margin-left: 0;
+  margin-left: auto;
   font-size: 12px;
+  color: #8aa0a4;
   transition: transform 0.18s ease;
 }
 
@@ -266,50 +336,46 @@
 .channelSubnav {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 2px 0 0 10px;
+  gap: 5px;
+  padding: 1px 0 4px 30px;
 }
 
 .channelSubnavItem {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
+  gap: 2px;
   width: 100%;
-  padding: 12px 14px;
-  border-radius: 14px;
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
+  padding: 9px 10px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #6f8589;
   text-align: left;
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
 }
 
 .channelSubnavItem:hover {
-  border-color: rgba(15, 118, 110, 0.22);
-  transform: translateY(-1px);
+  border-color: var(--sidebar-line);
+  background: rgba(77, 107, 254, 0.05);
+  color: #3452c8;
 }
 
 .channelSubnavItemActive {
-  border-color: rgba(15, 118, 110, 0.22);
-  background: linear-gradient(
-    180deg,
-    rgba(15, 118, 110, 0.12),
-    rgba(15, 118, 110, 0.06)
-  );
-  color: var(--text-primary);
-  box-shadow: var(--shadow-sm);
+  border-color: rgba(77, 107, 254, 0.12);
+  background: rgba(77, 107, 254, 0.08);
+  color: #4162e8;
 }
 
 .channelSubnavLabel {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
 }
 
 .channelSubnavMeta {
-  font-size: 12px;
-  color: var(--text-muted);
+  font-size: 10px;
+  color: #9aadb0;
 }
 
 .sidebarInput,
@@ -337,7 +403,7 @@
 .interruptArgsEditor:focus,
 .input:focus {
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+  box-shadow: 0 0 0 3px rgba(77, 107, 254, 0.1);
 }
 
 .sidebarCard,
@@ -363,6 +429,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: rgba(250, 252, 251, 0.74);
 }
 
 .managementViewport {
@@ -370,8 +437,10 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-right: 4px;
-  padding-bottom: 8px;
+  padding: 26px 30px 36px;
+  background:
+    radial-gradient(circle at 92% 4%, rgba(77, 107, 254, 0.055), transparent 26%),
+    #f7f8fa;
 }
 
 .sessionBar {
@@ -381,55 +450,59 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 24px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
-  border-bottom: none;
-  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  gap: 22px;
+  min-height: 76px;
+  padding: 14px 30px;
+  background: rgba(252, 253, 252, 0.76);
+  border-bottom: 1px solid rgba(16, 35, 43, 0.08);
   width: 100%;
+  backdrop-filter: blur(18px);
 }
 
 .sessionInfo {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .sessionLabel {
   color: var(--text-muted);
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
 }
 
 .sessionId {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-  color: var(--accent-primary);
-  background: rgba(79, 70, 229, 0.1);
-  padding: 6px 12px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: #28545a;
+  background: rgba(77, 107, 254, 0.07);
+  padding: 6px 9px;
   border-radius: var(--radius-full);
-  border: 1px solid rgba(79, 70, 229, 0.2);
+  border: 1px solid rgba(77, 107, 254, 0.12);
+  white-space: nowrap;
 }
 
 .sessionDivider {
-  color: var(--text-muted);
-  font-size: 12px;
+  display: none;
 }
 
 .statusArea {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .statusDot {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--success);
-  box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+  box-shadow: 0 0 0 4px rgba(22, 134, 111, 0.1);
   transition: all 0.3s ease;
 }
 
@@ -445,30 +518,29 @@
 }
 
 .statusText {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary);
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .clearBtn {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 16px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
+  padding: 9px 13px;
+  background: transparent;
+  border: 1px solid rgba(16, 35, 43, 0.11);
+  border-radius: 10px;
   color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 650;
   cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: var(--shadow-sm);
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
 }
 
 .clearBtn:hover {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: var(--error);
+  background: rgba(201, 80, 80, 0.06);
+  border-color: rgba(201, 80, 80, 0.22);
   color: var(--error);
 }
 
@@ -680,7 +752,7 @@
 }
 
 .interruptToolName {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 14px;
   font-weight: 600;
   color: #b45309;
@@ -780,7 +852,7 @@ textarea.interruptInput {
 
 .interruptArgsEditor {
   padding: 12px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 13px;
   line-height: 1.5;
   background: rgba(251, 191, 36, 0.08);
@@ -868,7 +940,7 @@ textarea.interruptInput {
 .interruptBtn.edit {
   background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
   color: white;
-  box-shadow: 0 4px 15px rgba(79, 70, 229, 0.3);
+  box-shadow: 0 4px 15px rgba(77, 107, 254, 0.24);
 }
 
 .interruptBtn.reject {
@@ -882,14 +954,25 @@ textarea.interruptInput {
   z-index: 1;
   flex: 1;
   width: 100%;
-  background: rgba(255, 255, 255, 0.58);
-  border-left: 1px solid rgba(15, 23, 42, 0.04);
-  border-right: 1px solid rgba(15, 23, 42, 0.04);
-  padding: 32px max(24px, calc((100% - 980px) / 2));
+  background:
+    linear-gradient(180deg, rgba(252, 253, 252, 0.72), rgba(247, 250, 249, 0.92));
+  padding: 40px max(28px, calc((100% - 980px) / 2)) 32px;
   overflow-y: auto;
   min-height: 0;
   scroll-behavior: smooth;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
+.chatContainer::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: calc(var(--sidebar-width) + 50%);
+  width: min(720px, 70vw);
+  height: 340px;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse at top, rgba(77, 107, 254, 0.045), transparent 68%);
+  pointer-events: none;
 }
 
 .welcome {
@@ -898,64 +981,80 @@ textarea.interruptInput {
   align-items: center;
   justify-content: center;
   height: 100%;
-  min-height: 400px;
+  min-height: 430px;
   text-align: center;
   color: var(--text-secondary);
-  padding: 0 24px;
+  padding: 0 24px 36px;
 }
 
 .welcomeIcon {
-  width: 80px;
-  height: 80px;
-  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
-  border-radius: var(--radius-xl);
+  width: 58px;
+  height: 58px;
+  background: linear-gradient(145deg, #f4f6ff, #e6ebff);
+  border: 1px solid rgba(77, 107, 254, 0.14);
+  border-radius: 17px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
-  font-size: 32px;
+  color: var(--accent-primary);
+  font-size: 22px;
   font-weight: 700;
-  margin-bottom: 24px;
-  box-shadow: var(--shadow-glow);
-  animation: float 4s ease-in-out infinite;
+  margin-bottom: 20px;
+  box-shadow: 0 14px 32px rgba(77, 107, 254, 0.1);
+}
+
+.welcome h2 {
+  font-family: 'Bricolage Grotesque', 'Manrope', sans-serif;
+  color: var(--text-primary);
+  font-size: clamp(28px, 3vw, 42px);
+  font-weight: 600;
+  letter-spacing: -0.055em;
+  line-height: 1.08;
+}
+
+.welcome p {
+  max-width: 590px;
+  margin: 14px auto 28px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.75;
 }
 
 .exampleQueries {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  justify-content: center;
-  max-width: 600px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  width: min(100%, 720px);
 }
 
 .exampleQueries button {
-  padding: 14px 24px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  color: var(--text-secondary);
-  font-size: 14px;
-  font-weight: 500;
+  min-height: 112px;
+  padding: 17px 18px;
+  background: rgba(252, 253, 252, 0.82);
+  border: 1px solid rgba(16, 35, 43, 0.1);
+  border-radius: 14px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.45;
+  text-align: left;
   cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: var(--shadow-sm);
-  flex: 1 1 calc(33.333% - 16px);
-  min-width: 180px;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .exampleQueries button:hover {
-  background: rgba(79, 70, 229, 0.1);
-  border-color: var(--accent-primary);
+  border-color: rgba(77, 107, 254, 0.3);
   color: var(--accent-primary);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.15);
+  transform: translateY(-3px);
+  box-shadow: 0 14px 32px rgba(7, 21, 29, 0.08);
 }
 
 .message {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 28px;
+  gap: 7px;
+  margin-bottom: 32px;
   animation: messageSlide 0.3s ease-out;
 }
 
@@ -970,7 +1069,7 @@ textarea.interruptInput {
 .messageHeader {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   color: var(--text-muted);
   padding: 0 2px;
 }
@@ -980,35 +1079,35 @@ textarea.interruptInput {
 }
 
 .avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #111827;
-  color: white;
-  border: none;
-  box-shadow: none;
-  font-size: 13px;
+  background: #eef1ff;
+  color: #4d6bfe;
+  border: 1px solid rgba(77, 107, 254, 0.1);
+  box-shadow: 0 4px 12px rgba(77, 107, 254, 0.06);
+  font-size: 11px;
   font-weight: 700;
   flex-shrink: 0;
 }
 
 .avatar.ai {
-  background: #111827;
+  background: linear-gradient(145deg, #eef1ff, #e3e8ff);
 }
 
 .author {
   font-weight: 600;
-  font-size: 13px;
-  color: #111827;
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
 .time {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-muted);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
 }
 
 .messageContent {
@@ -1034,16 +1133,18 @@ textarea.interruptInput {
 .message.user .messageContent {
   width: fit-content;
   max-width: min(72%, 760px);
-  padding: 14px 18px;
-  border-radius: 22px;
-  background: rgba(243, 244, 246, 0.95);
-  border: 1px solid rgba(15, 23, 42, 0.06);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  padding: 13px 17px;
+  border-radius: 16px 16px 5px 16px;
+  background: #e7efed;
+  border: 1px solid rgba(16, 35, 43, 0.07);
+  box-shadow: 0 1px 2px rgba(7, 21, 29, 0.04);
 }
 
 .message.ai .messageContent {
   width: min(100%, 880px);
   max-width: min(100%, 880px);
+  font-size: 14px;
+  line-height: 1.78;
 }
 
 .recommendedQuestions {
@@ -1088,7 +1189,7 @@ textarea.interruptInput {
 
 .recommendedQuestionButton:hover {
   border-color: var(--accent-primary);
-  background: rgba(79, 70, 229, 0.08);
+  background: rgba(77, 107, 254, 0.08);
   color: var(--accent-primary);
   transform: translateX(2px);
 }
@@ -1119,12 +1220,12 @@ textarea.interruptInput {
 }
 
 .processSummaryHeader:hover {
-  background: rgba(15, 118, 110, 0.06);
-  color: #0f766e;
+  background: rgba(77, 107, 254, 0.055);
+  color: #4d6bfe;
 }
 
 .processSummaryHeader:focus-visible {
-  outline: 2px solid rgba(15, 118, 110, 0.45);
+  outline: 2px solid rgba(77, 107, 254, 0.42);
   outline-offset: -2px;
 }
 
@@ -1135,8 +1236,8 @@ textarea.interruptInput {
   width: 19px;
   height: 19px;
   border-radius: 6px;
-  background: rgba(15, 118, 110, 0.1);
-  color: #0f766e;
+  background: rgba(77, 107, 254, 0.1);
+  color: #4d6bfe;
   font-size: 15px;
   line-height: 1;
   flex-shrink: 0;
@@ -1151,8 +1252,8 @@ textarea.interruptInput {
 }
 
 .processSummaryStatusActive {
-  background: #0f9f83;
-  box-shadow: 0 0 0 4px rgba(15, 159, 131, 0.12);
+  background: #718bff;
+  box-shadow: 0 0 0 4px rgba(113, 139, 255, 0.12);
   animation: processStatusPulse 1.6s ease-in-out infinite;
 }
 
@@ -1164,7 +1265,7 @@ textarea.interruptInput {
 
 .processSummaryLabelActive {
   color: transparent;
-  background: linear-gradient(105deg, #334155 20%, #0f9f83 45%, #334155 70%);
+  background: linear-gradient(105deg, #334155 20%, #718bff 45%, #334155 70%);
   background-size: 220% 100%;
   -webkit-background-clip: text;
   background-clip: text;
@@ -1183,7 +1284,7 @@ textarea.interruptInput {
 .processSummaryActivity {
   min-width: 0;
   overflow: hidden;
-  color: #0f766e;
+  color: #4d6bfe;
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1191,7 +1292,7 @@ textarea.interruptInput {
 
 .processSummaryAction {
   margin-left: auto;
-  color: #0f766e;
+  color: #4d6bfe;
   font-size: 11px;
   font-weight: 600;
   flex-shrink: 0;
@@ -1243,7 +1344,7 @@ textarea.interruptInput {
   }
 
   .processSummaryLabelActive {
-    color: #0f766e;
+    color: #4d6bfe;
     background: none;
   }
 }
@@ -1265,10 +1366,10 @@ textarea.interruptInput {
   gap: 10px;
   width: 100%;
   padding: 11px 14px;
-  background: rgba(15, 118, 110, 0.05);
+  background: rgba(77, 107, 254, 0.05);
   border: 0;
   border-bottom: 1px solid rgba(15, 23, 42, 0.06);
-  color: #235d49;
+  color: #4d6bfe;
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
@@ -1283,12 +1384,12 @@ textarea.interruptInput {
 }
 
 .reasoningHeader:hover {
-  background: rgba(15, 118, 110, 0.08);
+  background: rgba(77, 107, 254, 0.08);
 }
 
 .reasoningHeader:focus-visible,
 .toolCardHeader:focus-visible {
-  outline: 2px solid rgba(79, 70, 229, 0.45);
+  outline: 2px solid rgba(77, 107, 254, 0.42);
   outline-offset: -2px;
 }
 
@@ -1299,8 +1400,8 @@ textarea.interruptInput {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  color: #235d49;
-  background: rgba(15, 118, 110, 0.1);
+  color: #4d6bfe;
+  background: rgba(77, 107, 254, 0.1);
   font-size: 14px;
   line-height: 1;
   flex-shrink: 0;
@@ -1392,7 +1493,7 @@ textarea.interruptInput {
 }
 
 .toolCardHeader:hover {
-  background: rgba(79, 70, 229, 0.04);
+  background: rgba(77, 107, 254, 0.04);
 }
 
 .toolInfo {
@@ -1405,7 +1506,7 @@ textarea.interruptInput {
 }
 
 .toolName {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
@@ -1418,7 +1519,7 @@ textarea.interruptInput {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   flex: 1;
   min-width: 0;
 }
@@ -1443,7 +1544,7 @@ textarea.interruptInput {
 .toolDetailCode {
   margin: 0;
   padding: 14px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 13px;
   line-height: 1.5;
   border-radius: var(--radius-md);
@@ -1463,9 +1564,9 @@ textarea.interruptInput {
 
 .toolDetailCode.outputCode,
 .outputCode {
-  background: rgba(15, 118, 110, 0.06);
-  color: #235d49;
-  border: 1px solid rgba(15, 118, 110, 0.14);
+  background: rgba(77, 107, 254, 0.06);
+  color: #4d6bfe;
+  border: 1px solid rgba(77, 107, 254, 0.14);
 }
 
 .inputArea {
@@ -1473,14 +1574,10 @@ textarea.interruptInput {
   z-index: 1;
   flex-shrink: 0;
   display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  padding: 20px max(24px, calc((100% - 980px) / 2));
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-top: none;
-  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05);
+  align-items: flex-end;
+  gap: 10px;
+  padding: 18px max(28px, calc((100% - 980px) / 2)) 24px;
+  background: linear-gradient(180deg, rgba(247, 250, 249, 0), rgba(247, 250, 249, 0.96) 28%);
   width: 100%;
 }
 
@@ -1489,47 +1586,54 @@ textarea.interruptInput {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(16, 35, 43, 0.12);
+  border-radius: 18px;
+  background: rgba(252, 253, 252, 0.94);
+  box-shadow: 0 18px 48px rgba(7, 21, 29, 0.1);
+  backdrop-filter: blur(16px);
 }
 
 .input {
-  padding: 16px 20px;
-  background: var(--bg-secondary);
-  border: 2px solid var(--border-subtle);
+  min-height: 48px;
+  max-height: 180px;
+  padding: 8px 8px 4px;
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
   color: var(--text-primary);
   font-size: 15px;
   resize: none;
-  min-height: 60px;
-  max-height: 180px;
-  line-height: 1.6;
-  box-shadow: var(--shadow-sm);
-  font-family: 'Sora', sans-serif;
+  line-height: 1.65;
+  box-shadow: none;
+  font-family: 'Manrope', sans-serif;
 }
 
 .input::placeholder {
   color: var(--text-muted);
-  font-style: italic;
+  font-style: normal;
 }
 
 .toggles {
   display: flex;
-  gap: 20px;
-  padding-left: 4px;
+  gap: 6px;
+  padding: 2px 3px 0;
 }
 
 .toggle {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   cursor: pointer;
   user-select: none;
-  transition: all 0.2s ease;
-  padding: 4px 8px;
-  border-radius: var(--radius-md);
+  transition: background 0.18s ease, color 0.18s ease;
+  padding: 6px 9px;
+  border-radius: 9px;
 }
 
 .toggle:hover {
-  background: var(--bg-secondary);
+  background: rgba(77, 107, 254, 0.055);
 }
 
 .toggle input {
@@ -1538,12 +1642,12 @@ textarea.interruptInput {
 
 .toggleSlider {
   position: relative;
-  width: 40px;
-  height: 22px;
-  background: var(--bg-tertiary);
-  border-radius: 11px;
-  transition: all 0.3s ease;
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+  width: 30px;
+  height: 18px;
+  background: #d6dfdc;
+  border-radius: 999px;
+  transition: all 0.24s ease;
+  box-shadow: inset 0 1px 2px rgba(7, 21, 29, 0.1);
 }
 
 .toggleSlider::before {
@@ -1551,33 +1655,33 @@ textarea.interruptInput {
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   background: white;
   border-radius: 50%;
-  transition: all 0.3s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  transition: transform 0.24s ease;
+  box-shadow: 0 1px 3px rgba(7, 21, 29, 0.2);
 }
 
 .toggle input:checked + .toggleSlider {
-  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
-  box-shadow: inset 0 2px 4px rgba(79, 70, 229, 0.3);
+  background: var(--accent-primary);
+  box-shadow: inset 0 1px 2px rgba(7, 21, 29, 0.18);
 }
 
 .toggle input:checked + .toggleSlider::before {
-  transform: translateX(18px);
+  transform: translateX(12px);
 }
 
 .toggleLabel {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary);
   transition: color 0.2s ease;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .toggle input:checked ~ .toggleLabel {
   color: var(--accent-primary);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .chatKnowledgeRow {
@@ -1586,10 +1690,10 @@ textarea.interruptInput {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  padding: 12px 14px;
-  border-radius: var(--radius-md);
-  background: rgba(79, 70, 229, 0.06);
-  border: 1px solid rgba(79, 70, 229, 0.16);
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(77, 107, 254, 0.055);
+  border: 1px solid rgba(77, 107, 254, 0.13);
 }
 
 .chatKnowledgeStatus {
@@ -1605,13 +1709,13 @@ textarea.interruptInput {
   padding: 8px 12px;
   border: none;
   border-radius: var(--radius-md);
-  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  background: var(--accent-primary);
   color: white;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 4px 16px rgba(79, 70, 229, 0.22);
+  box-shadow: 0 6px 18px rgba(77, 107, 254, 0.18);
 }
 
 .chatKnowledgeAction:hover {
@@ -1620,22 +1724,23 @@ textarea.interruptInput {
 
 .sendBtn,
 .abortBtn {
-  padding: 16px 28px;
-  font-size: 15px;
+  min-height: 48px;
+  padding: 0 20px;
+  font-size: 13px;
   flex-shrink: 0;
-  height: fit-content;
-  align-self: flex-start;
+  align-self: flex-end;
+  border-radius: 14px;
 }
 
 .sendBtn {
   background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
   color: white;
-  box-shadow: 0 4px 20px rgba(79, 70, 229, 0.3);
+  box-shadow: 0 12px 28px rgba(77, 107, 254, 0.24);
 }
 
 .abortBtn {
-  background: var(--bg-secondary);
-  border: 1.5px solid var(--border-subtle);
+  background: #f7faf9;
+  border: 1px solid var(--border-strong);
   color: var(--text-secondary);
   box-shadow: var(--shadow-sm);
 }
@@ -1649,48 +1754,54 @@ textarea.interruptInput {
 .managementPage {
   flex: 1;
   min-height: 0;
-  overflow: auto;
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-xl);
-  padding: 24px;
-  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.02);
+  overflow: visible;
+  width: 100%;
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .managementTopbar {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  margin-bottom: 24px;
-  padding-bottom: 20px;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 0 0 14px;
+  border: none;
   border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .managementRouteInfo {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 3px;
 }
 
 .managementRouteInfo h2 {
-  font-size: 28px;
-  line-height: 1.15;
+  font-family: 'Bricolage Grotesque', 'Manrope', sans-serif;
+  font-size: 20px;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
   color: var(--text-primary);
 }
 
 .managementRouteInfo p {
-  max-width: 720px;
-  color: var(--text-secondary);
-  font-size: 14px;
-  line-height: 1.7;
+  display: none;
 }
 
 .managementBreadcrumb {
   color: var(--accent-primary);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
@@ -1731,48 +1842,50 @@ textarea.interruptInput {
 .managementWorkspace {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 16px;
   min-height: 100%;
+  width: 100%;
+  max-width: 1480px;
+  margin: 0 auto;
 }
 
 .managementHero {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  padding: 24px;
-  border-radius: var(--radius-xl);
-  background:
-    linear-gradient(135deg, rgba(79, 70, 229, 0.12), rgba(124, 58, 237, 0.08)),
-    var(--bg-card);
-  border: 1px solid rgba(79, 70, 229, 0.16);
-  box-shadow: var(--shadow-sm);
+  gap: 16px;
+  padding: 0 0 14px;
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .managementHeroCopy {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 3px;
+  min-width: 0;
 }
 
 .managementHeroCopy h2 {
-  font-size: 30px;
-  line-height: 1.15;
+  font-family: 'Bricolage Grotesque', 'Manrope', sans-serif;
+  font-size: 20px;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
   color: var(--text-primary);
 }
 
 .managementHeroCopy p {
-  max-width: 700px;
-  color: var(--text-secondary);
-  font-size: 14px;
-  line-height: 1.75;
+  display: none;
 }
 
 .managementHeroEyebrow {
   color: var(--accent-primary);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.11em;
   text-transform: uppercase;
 }
 
@@ -1785,42 +1898,54 @@ textarea.interruptInput {
 }
 
 .managementSummaryGrid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  background: #ffffff;
 }
 
 .managementSummaryCard {
   display: flex;
+  flex: 1;
   flex-direction: column;
-  gap: 8px;
-  padding: 18px;
-  border-radius: var(--radius-xl);
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid var(--border-subtle);
-  box-shadow: var(--shadow-sm);
+  gap: 6px;
+  min-width: 0;
+  padding: 14px 18px;
+  border: none;
+  border-right: 1px solid var(--border-subtle);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.managementSummaryCard:last-child {
+  border-right: none;
 }
 
 .managementSummaryCardActive {
-  border-color: rgba(15, 118, 110, 0.24);
+  border-color: rgba(77, 107, 254, 0.24);
   background: linear-gradient(
     180deg,
-    rgba(15, 118, 110, 0.12),
-    rgba(15, 118, 110, 0.05)
+    rgba(77, 107, 254, 0.12),
+    rgba(77, 107, 254, 0.05)
   );
 }
 
 .managementSummaryLabel {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
 .managementSummaryValue {
+  font-family: 'IBM Plex Mono', monospace;
   color: var(--text-primary);
-  font-size: 28px;
+  font-size: 24px;
   line-height: 1.1;
   word-break: break-word;
 }
@@ -1858,15 +1983,15 @@ textarea.interruptInput {
 
 .managementQuickCard:hover {
   transform: translateY(-2px);
-  border-color: rgba(79, 70, 229, 0.24);
-  box-shadow: 0 12px 28px rgba(79, 70, 229, 0.1);
+  border-color: rgba(77, 107, 254, 0.24);
+  box-shadow: 0 12px 28px rgba(77, 107, 254, 0.1);
 }
 
 .managementLibraryGrid,
 .managementCardGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
 }
 
 .managementCreateCard,
@@ -1874,21 +1999,22 @@ textarea.interruptInput {
 .managementTileCard {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  min-height: 220px;
-  padding: 20px;
-  border-radius: var(--radius-xl);
-  background: rgba(255, 255, 255, 0.96);
+  gap: 12px;
+  min-height: 0;
+  padding: 18px;
+  border-radius: 15px;
+  background: #ffffff;
   border: 1px solid var(--border-subtle);
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.035);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
 
 .managementCreateCard {
   align-items: flex-start;
   justify-content: center;
   background:
-    linear-gradient(135deg, rgba(79, 70, 229, 0.08), rgba(124, 58, 237, 0.05)),
-    var(--bg-card);
+    linear-gradient(135deg, rgba(77, 107, 254, 0.08), rgba(77, 107, 254, 0.025)),
+    #ffffff;
   text-align: left;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1896,8 +2022,8 @@ textarea.interruptInput {
 
 .managementCreateCard:hover {
   transform: translateY(-2px);
-  border-color: rgba(79, 70, 229, 0.28);
-  box-shadow: 0 14px 30px rgba(79, 70, 229, 0.1);
+  border-color: rgba(77, 107, 254, 0.26);
+  box-shadow: 0 12px 26px rgba(77, 107, 254, 0.09);
 }
 
 .managementCreateCard strong {
@@ -1918,17 +2044,18 @@ textarea.interruptInput {
   width: 48px;
   height: 48px;
   border-radius: 14px;
-  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  background: var(--accent-primary);
   color: white !important;
   font-size: 30px !important;
   line-height: 1;
-  box-shadow: 0 10px 24px rgba(79, 70, 229, 0.22);
+  box-shadow: 0 10px 24px rgba(77, 107, 254, 0.2);
 }
 
 .managementLibraryCard:hover,
 .managementTileCard:hover {
-  border-color: rgba(79, 70, 229, 0.28);
-  box-shadow: 0 14px 30px rgba(79, 70, 229, 0.1);
+  border-color: rgba(77, 107, 254, 0.24);
+  box-shadow: 0 12px 26px rgba(32, 33, 36, 0.07);
+  transform: translateY(-1px);
 }
 
 .managementModalOverlay {
@@ -1951,7 +2078,7 @@ textarea.interruptInput {
   padding: 24px;
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.98);
-  border: 1px solid rgba(79, 70, 229, 0.12);
+  border: 1px solid rgba(77, 107, 254, 0.12);
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.2);
 }
 
@@ -1970,21 +2097,22 @@ textarea.interruptInput {
 
 .managementPageGrid {
   display: grid;
-  grid-template-columns: clamp(240px, 28vw, 420px) minmax(0, 1fr);
-  gap: clamp(16px, 2vw, 24px);
+  grid-template-columns: minmax(280px, 0.72fr) minmax(0, 1.55fr);
+  gap: 18px;
   min-height: 0;
+  align-items: start;
 }
 
 .managementCard {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 15px;
   min-height: 0;
-  background: rgba(255, 255, 255, 0.92);
+  background: #ffffff;
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-xl);
+  border-radius: 17px;
   padding: 20px;
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.035);
 }
 
 .managementHeader {
@@ -1995,7 +2123,8 @@ textarea.interruptInput {
 }
 
 .managementHeader h3 {
-  font-size: 18px;
+  font-size: 16px;
+  font-weight: 700;
   color: var(--text-primary);
 }
 
@@ -2024,8 +2153,10 @@ textarea.interruptInput {
 .managementInput {
   flex: 1;
   min-width: 0;
-  padding: 12px 14px;
-  background: var(--bg-secondary);
+  padding: 11px 12px;
+  background: #ffffff;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
   color: var(--text-primary);
   font-size: 14px;
 }
@@ -2034,21 +2165,21 @@ textarea.interruptInput {
   width: 100%;
   min-height: 280px;
   padding: 16px 18px;
-  border-radius: var(--radius-lg);
+  border-radius: 12px;
   border: 1px solid var(--border-subtle);
-  background: var(--bg-secondary);
+  background: #ffffff;
   color: var(--text-primary);
   font-size: 13px;
   line-height: 1.65;
   resize: vertical;
   outline: none;
   transition: all 0.2s ease;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
 }
 
 .managementTextarea:focus {
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+  box-shadow: 0 0 0 3px rgba(77, 107, 254, 0.1);
 }
 
 .managementHelperText {
@@ -2061,32 +2192,39 @@ textarea.interruptInput {
 .managementDangerButton,
 .managementMinorButton,
 .managementDangerMinorButton {
-  padding: 11px 16px;
-  font-size: 14px;
+  min-height: 38px;
+  padding: 9px 14px;
+  border-radius: 10px;
+  font-size: 13px;
 }
 
 .managementButton,
-.managementMinorButton,
 .sidebarAction {
-  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  background: var(--accent-primary);
   color: white;
-  box-shadow: 0 4px 16px rgba(79, 70, 229, 0.22);
+  border: 1px solid transparent;
+  box-shadow: 0 6px 16px rgba(77, 107, 254, 0.18);
 }
 
 .managementDangerButton,
 .managementDangerMinorButton {
-  background: rgba(239, 68, 68, 0.96);
+  background: #d94f4f;
   color: white;
+  border: 1px solid transparent;
 }
 
 .managementMinorButton {
-  padding: 8px 12px;
-  font-size: 13px;
+  background: #ffffff;
+  color: #4162e8;
+  border: 1px solid rgba(77, 107, 254, 0.2);
+  box-shadow: none;
 }
 
 .managementDangerMinorButton {
-  padding: 8px 12px;
-  font-size: 13px;
+  background: #ffffff;
+  color: #b54848;
+  border: 1px solid rgba(201, 80, 80, 0.22);
+  box-shadow: none;
 }
 
 .managementForm {
@@ -2097,19 +2235,144 @@ textarea.interruptInput {
 .managementList {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 9px;
   min-height: 0;
   overflow: auto;
   padding-right: 4px;
+}
+
+.managementDataList {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: 15px;
+  background: #ffffff;
+}
+
+.managementDataRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(220px, 0.9fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background 0.16s ease;
+}
+
+.managementDataRow:last-child {
+  border-bottom: none;
+}
+
+.managementDataRow:hover {
+  background: rgba(77, 107, 254, 0.035);
+}
+
+.managementDataPrimary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.managementDataTitle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.managementDataTitle strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.managementDataDescription {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.managementDataMetrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.managementDataActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.skillListRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(210px, 0.9fr) auto;
+  align-items: center;
+  gap: 18px;
+}
+
+.skillListIdentity {
+  min-width: 0;
+}
+
+.skillListTitleRow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.skillListTitleRow strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skillListTitleRow span {
+  color: var(--text-muted);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.skillListRow .managementDescription {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+
+.skillListDetails {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.skillListDetails span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .managementEmpty {
   padding: 32px 16px;
   text-align: center;
   color: var(--text-muted);
-  border: 1px dashed rgba(79, 70, 229, 0.2);
-  border-radius: var(--radius-lg);
-  background: rgba(79, 70, 229, 0.03);
+  border: 1px dashed rgba(77, 107, 254, 0.22);
+  border-radius: 13px;
+  background: #f8faff;
 }
 
 .managementEmptyState {
@@ -2125,10 +2388,10 @@ textarea.interruptInput {
   width: 100%;
   text-align: left;
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  background: var(--bg-card);
-  padding: 14px 16px;
-  box-shadow: var(--shadow-sm);
+  border-radius: 13px;
+  background: #ffffff;
+  padding: 13px 14px;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.03);
 }
 
 .managementListItem {
@@ -2137,14 +2400,14 @@ textarea.interruptInput {
 }
 
 .managementListItem:hover {
-  border-color: rgba(79, 70, 229, 0.3);
+  border-color: rgba(77, 107, 254, 0.24);
   transform: translateY(-1px);
 }
 
 .managementListItemActive {
-  border-color: rgba(79, 70, 229, 0.35);
-  background: rgba(79, 70, 229, 0.06);
-  box-shadow: 0 10px 24px rgba(79, 70, 229, 0.08);
+  border-color: rgba(77, 107, 254, 0.28);
+  background: rgba(77, 107, 254, 0.055);
+  box-shadow: 0 8px 20px rgba(77, 107, 254, 0.07);
 }
 
 .managementListClickable {
@@ -2190,9 +2453,9 @@ textarea.interruptInput {
 }
 
 .managementMetaPanel {
-  padding: 14px 16px;
-  border-radius: var(--radius-lg);
-  background: var(--bg-secondary);
+  padding: 13px 14px;
+  border-radius: 12px;
+  background: #f8f9fc;
   border: 1px solid var(--border-subtle);
 }
 
@@ -2344,7 +2607,7 @@ textarea.interruptInput {
   margin: 16px 0;
   padding: 16px 20px;
   border-left: 4px solid var(--accent-primary);
-  background: rgba(79, 70, 229, 0.08);
+  background: rgba(77, 107, 254, 0.08);
   color: var(--text-secondary);
   font-style: italic;
   border-radius: 0 var(--radius-md) var(--radius-md) 0;
@@ -2352,13 +2615,13 @@ textarea.interruptInput {
 }
 
 .messageContent code {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 0.9em;
   color: var(--accent-primary);
-  background: rgba(79, 70, 229, 0.1);
+  background: rgba(77, 107, 254, 0.1);
   padding: 3px 8px;
   border-radius: 6px;
-  border: 1px solid rgba(79, 70, 229, 0.2);
+  border: 1px solid rgba(77, 107, 254, 0.2);
 }
 
 .messageContent pre {
@@ -2411,7 +2674,7 @@ textarea.interruptInput {
 .messageContent a {
   color: var(--accent-primary);
   text-decoration: none;
-  border-bottom: 2px solid rgba(79, 70, 229, 0.2);
+  border-bottom: 2px solid rgba(77, 107, 254, 0.2);
   transition: all 0.2s ease;
   font-weight: 500;
 }
@@ -2427,10 +2690,10 @@ textarea.interruptInput {
 @keyframes pulse {
   0%,
   100% {
-    box-shadow: 0 0 20px rgba(79, 70, 229, 0.3);
+    box-shadow: 0 0 20px rgba(77, 107, 254, 0.26);
   }
   50% {
-    box-shadow: 0 0 30px rgba(79, 70, 229, 0.5);
+    box-shadow: 0 0 30px rgba(77, 107, 254, 0.42);
   }
 }
 
@@ -2461,11 +2724,11 @@ textarea.interruptInput {
   0%,
   100% {
     transform: translateY(0);
-    box-shadow: 0 0 30px rgba(79, 70, 229, 0.3);
+    box-shadow: 0 0 30px rgba(77, 107, 254, 0.26);
   }
   50% {
     transform: translateY(-12px);
-    box-shadow: 0 0 40px rgba(79, 70, 229, 0.5);
+    box-shadow: 0 0 40px rgba(77, 107, 254, 0.42);
   }
 }
 
@@ -2510,10 +2773,6 @@ textarea.interruptInput {
     grid-template-columns: 1fr;
   }
 
-  .managementSummaryGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .managementQuickGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2521,7 +2780,6 @@ textarea.interruptInput {
 
 @media (max-width: 1200px) {
   .managementGrid,
-  .managementSummaryGrid,
   .managementQuickGrid,
   .managementPageGrid,
   .managementLibraryGrid,
@@ -2533,32 +2791,90 @@ textarea.interruptInput {
 }
 
 @media (max-width: 900px) {
-  .workspaceLayout,
-  .workspaceLayoutSidebarCollapsed {
-    grid-template-columns: 1fr;
+  .managementSummaryGrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .sidebarNav {
-    order: 2;
-    border-top: 1px solid var(--border-subtle);
+  .managementSummaryCard {
+    border-right: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .managementSummaryCard:nth-child(2n) {
     border-right: none;
   }
 
-.mainContent {
+  .managementSummaryCard:nth-last-child(-n + 2) {
+    border-bottom: none;
+  }
+
+  .workspaceLayout,
+  .workspaceLayoutSidebarCollapsed {
+    grid-template-columns: var(--sidebar-width-collapsed) minmax(0, 1fr);
+  }
+
+  .sidebarNav {
     order: 1;
+  }
+
+  .mainContent {
+    order: 2;
+  }
+
+  .sidebarPanel {
+    align-items: center;
+    padding: 16px 10px 12px;
+  }
+
+  .sidebarBrand {
+    justify-content: center;
+    width: 100%;
+    padding-bottom: 16px;
+  }
+
+  .sidebarCollapseButton {
+    display: none;
+  }
+
+  .sidebarBrandDetails,
+  .sidebarSectionLabel,
+  .sidebarButtonLabel,
+  .channelSubnav,
+  .sidebarAccount .accountMeta {
+    display: none;
+  }
+
+  .sidebarButton {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .sidebarChevron,
+  .sidebarChevronExpanded {
+    display: none;
+  }
+
+  .sidebarAccount {
+    padding: 10px;
+  }
+
+  .sidebarAccount .accountEntry {
+    justify-content: center;
+    padding: 5px;
   }
 }
 
 .chatHistory {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
   min-height: 0;
-  margin: 2px 0 8px;
-  padding: 10px 8px;
-  border: 1px solid var(--border-subtle);
+  margin: 2px 0 7px;
+  padding: 9px 7px;
+  border: 1px solid var(--sidebar-line);
   border-radius: 12px;
-  background: color-mix(in srgb, var(--bg-secondary) 72%, transparent);
+  background: #fafbfc;
 }
 
 .sidebarNavCollapsed .chatHistory {
@@ -2577,17 +2893,19 @@ textarea.interruptInput {
   justify-content: space-between;
   align-items: center;
   gap: 6px;
-  padding: 2px 0;
+  padding: 3px 4px;
   border: 0;
   background: transparent;
-  color: var(--text-primary);
+  color: var(--sidebar-muted);
   cursor: pointer;
 }
 
 .chatHistoryTitle {
-  color: var(--text-primary);
-  font-size: 13px;
+  color: #6e8489;
+  font-size: 11px;
   font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .chatHistoryDeleteButton {
@@ -2599,7 +2917,7 @@ textarea.interruptInput {
 .chatHistoryList {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   max-height: min(38vh, 360px);
   overflow-y: auto;
 }
@@ -2608,22 +2926,22 @@ textarea.interruptInput {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   width: 100%;
-  padding: 8px;
+  padding: 7px 6px;
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
-  color: var(--text-secondary);
+  color: #62797e;
   text-align: left;
   cursor: pointer;
 }
 
 .chatHistoryItem:hover,
 .chatHistoryItemActive {
-  border-color: color-mix(in srgb, var(--accent-primary) 24%, transparent);
-  background: color-mix(in srgb, var(--accent-primary) 9%, transparent);
-  color: var(--text-primary);
+  border-color: rgba(77, 107, 254, 0.11);
+  background: rgba(77, 107, 254, 0.07);
+  color: #4162e8;
 }
 
 .chatHistoryItemContent {
@@ -2657,20 +2975,20 @@ textarea.interruptInput {
 }
 
 .chatHistorySessionTitle {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
 }
 
 .chatHistoryTime {
-  color: var(--text-muted);
-  font-size: 11px;
+  color: #9aadb0;
+  font-size: 10px;
 }
 
 .chatHistoryDeleteButton {
   padding: 4px 6px;
   border-radius: 6px;
-  color: var(--text-muted);
-  font-size: 12px;
+  color: #9aadb0;
+  font-size: 10px;
   line-height: 1;
   opacity: 0;
   pointer-events: none;
@@ -2684,7 +3002,7 @@ textarea.interruptInput {
 }
 
 .chatHistoryDeleteButton:hover {
-  color: #dc2626;
+  color: #c95050;
 }
 
 .chatHistoryStatus,
@@ -2695,47 +3013,68 @@ textarea.interruptInput {
 }
 
 .chatHistoryStatus {
-  background: var(--bg-secondary);
-  color: var(--text-muted);
+  background: #f5f6f8;
+  color: #7f9599;
 }
 
 .chatHistoryError {
-  background: rgba(239, 68, 68, 0.08);
-  color: #dc2626;
+  background: rgba(201, 80, 80, 0.1);
+  color: #b94d4d;
 }
 
 @media (max-width: 768px) {
 
   .logoIcon {
-    width: 36px;
-    height: 36px;
-    font-size: 18px;
-  }
-
-  .workspaceLayout {
-    padding: 12px 16px 16px;
+    width: 38px;
+    height: 38px;
   }
 
   .sessionBar {
-    flex-direction: column;
-    gap: 12px;
-    align-items: stretch;
-    padding: 16px;
+    flex-wrap: wrap;
+    gap: 10px;
+    min-height: 0;
+    padding: 12px 16px;
   }
 
   .managementTopbar,
   .managementHero {
     flex-direction: column;
+    align-items: flex-start;
   }
 
-  .sessionInfo,
+  .managementHeroActions {
+    justify-content: flex-start;
+  }
+
+  .skillListRow {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .managementDataRow {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .managementDataActions {
+    justify-content: flex-start;
+  }
+
+  .managementViewport {
+    padding: 18px 16px 28px;
+  }
+
+  .sessionInfo {
+    flex: 1 1 360px;
+    gap: 6px;
+  }
+
   .statusArea {
-    justify-content: center;
+    margin-left: auto;
   }
 
-  .chatContainer,
-  .managementPage {
-    padding: 20px 16px;
+  .chatContainer {
+    padding: 28px 16px 22px;
   }
 
   .managementRouteInfo h2,
@@ -2772,20 +3111,17 @@ textarea.interruptInput {
   }
 
   .inputArea {
-    padding: 16px;
-    flex-direction: column;
-    gap: 12px;
+    padding: 12px 16px 16px;
   }
 
   .sendBtn,
   .abortBtn {
-    align-self: stretch;
-    justify-content: center;
+    align-self: flex-end;
   }
 
   .toggles {
-    justify-content: center;
-    gap: 16px;
+    justify-content: flex-start;
+    gap: 4px;
   }
 
   .interruptPanel {
@@ -2804,7 +3140,7 @@ textarea.interruptInput {
   }
 
   .welcome h2 {
-    font-size: 24px;
+    font-size: 28px;
   }
 
   .welcome p {
@@ -2812,24 +3148,76 @@ textarea.interruptInput {
   }
 
   .exampleQueries {
-    flex-direction: column;
+    grid-template-columns: 1fr;
+    width: min(100%, 520px);
   }
 
   .exampleQueries button {
-    flex: 1 1 100%;
-    min-width: auto;
-    padding: 14px 20px;
+    min-height: 72px;
   }
 }
 
 @media (max-width: 480px) {
-  .workspaceLayout {
-    padding: 10px 12px 12px;
+  .managementSummaryGrid {
+    grid-template-columns: 1fr;
   }
 
-  .chatContainer,
-  .managementPage {
-    padding: 16px 12px;
+  .managementSummaryCard,
+  .managementSummaryCard:nth-child(2n),
+  .managementSummaryCard:nth-last-child(-n + 2) {
+    border-right: none;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .managementSummaryCard:last-child {
+    border-bottom: none;
+  }
+
+  .workspaceLayout {
+    grid-template-columns: 60px minmax(0, 1fr);
+  }
+
+  .sidebarPanel {
+    padding-inline: 7px;
+  }
+
+  .sidebarCollapseButton {
+    display: none;
+  }
+
+  .chatContainer {
+    padding: 22px 12px 16px;
+  }
+
+  .managementViewport {
+    padding: 12px 12px 24px;
+  }
+
+  .managementHero,
+  .managementTopbar {
+    padding: 0 0 12px;
+  }
+
+  .managementCard {
+    padding: 16px;
+  }
+
+  .sessionBar {
+    padding: 10px 12px;
+  }
+
+  .sessionId {
+    font-size: 10px;
+    padding: 5px 7px;
+  }
+
+  .statusText,
+  .clearBtn {
+    font-size: 11px;
+  }
+
+  .clearBtn {
+    padding: 8px 9px;
   }
 
   .messageContent {
@@ -2861,14 +3249,14 @@ textarea.interruptInput {
   }
 
   .input {
-    padding: 14px 16px;
     font-size: 14px;
   }
 
   .sendBtn,
   .abortBtn {
-    padding: 14px 20px;
-    font-size: 14px;
+    min-height: 44px;
+    padding-inline: 14px;
+    font-size: 12px;
   }
 
   .toggles {
@@ -2887,19 +3275,18 @@ textarea.interruptInput {
 .accountEntry {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  border-radius: 16px;
-  border: 1px solid var(--border-subtle);
-  background: rgba(255, 255, 255, 0.88);
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--sidebar-line);
+  background: rgba(255, 255, 255, 0.04);
   cursor: pointer;
-  box-shadow: var(--shadow-sm);
-  transition: transform 0.2s ease, border-color 0.2s ease;
+  transition: background 0.18s ease, border-color 0.18s ease;
 }
 
 .accountEntry:hover {
-  transform: translateY(-1px);
-  border-color: var(--accent-primary);
+  border-color: rgba(151, 224, 215, 0.18);
+  background: rgba(255, 255, 255, 0.075);
 }
 
 .accountPanelShell {
@@ -2908,36 +3295,46 @@ textarea.interruptInput {
 }
 
 .accountAvatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
-  color: white;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: linear-gradient(145deg, #f0f3ff, #e3e8ff);
+  color: var(--accent-primary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
+  border: 1px solid rgba(184, 235, 228, 0.12);
 }
 
 .accountMeta {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
-  color: var(--text-secondary);
+  gap: 1px;
+  min-width: 0;
+  color: var(--sidebar-muted);
 }
 
 .accountMeta strong {
-  color: var(--text-primary);
-  font-size: 14px;
+  max-width: 150px;
+  overflow: hidden;
+  color: #2c2f36;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .accountMeta span {
-  font-size: 12px;
+  max-width: 170px;
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .accountGuestMeta {
-  color: #d97706;
+  color: #e6a35d;
   font-weight: 700;
 }
 
@@ -2952,8 +3349,7 @@ textarea.interruptInput {
   padding: 20px;
   border-radius: 24px;
   border: 1px solid var(--border-subtle);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(245, 248, 244, 0.96) 100%);
+  background: rgba(252, 253, 252, 0.97);
   box-shadow: var(--shadow-lg);
   backdrop-filter: blur(16px);
 }
@@ -3032,7 +3428,7 @@ textarea.interruptInput {
   justify-content: center;
   padding: 6px 10px;
   border-radius: 999px;
-  background: rgba(79, 70, 229, 0.12);
+  background: rgba(77, 107, 254, 0.12);
   color: var(--accent-primary);
   font-size: 12px;
   font-weight: 700;

@@ -113,6 +113,13 @@ import {
 } from './chat-interface/utils'
 
 type AssistantStreamKind = 'reasoning' | 'content' | 'tool' | 'interrupt' | null
+type SidebarIconName =
+  | 'chat'
+  | 'knowledge'
+  | 'skills'
+  | 'mcp'
+  | 'channels'
+  | 'users'
 
 type ThreadRuntime = {
   threadId: string
@@ -139,6 +146,98 @@ type ThreadRuntime = {
   requestKnowledgeBase: KnowledgeBase | null
   requestMcpConfig: Record<string, unknown> | null
   abortController: AbortController | null
+}
+
+/**
+ * 渲染侧边栏导航图标。
+ *
+ * Args:
+ * - name: 图标名称。
+ */
+function SidebarIcon({ name }: { name: SidebarIconName }) {
+  const paths: Record<SidebarIconName, React.ReactNode> = {
+    chat: (
+      <>
+        <path d="M5.5 6.5h13v8.8h-8.1L7 18.8v-3.5H5.5z" />
+        <path d="M8.8 10h6.4M8.8 12.8h4.2" />
+      </>
+    ),
+    knowledge: (
+      <>
+        <path d="M5.5 5.8h5.1c1.1 0 2 .9 2 2v10.7c0-1.1-.9-2-2-2H5.5z" />
+        <path d="M18.5 5.8h-5.1c-1.1 0-2 .9-2 2v10.7c0-1.1.9-2 2-2h5.1z" />
+      </>
+    ),
+    skills: (
+      <>
+        <path d="m12 4.5 1.7 4.1 4.3 1.7-4.3 1.7-1.7 4.1-1.7-4.1-4.3-1.7 4.3-1.7z" />
+        <path d="m18.2 15.7.7 1.7 1.7.7-1.7.7-.7 1.7-.7-1.7-1.7-.7 1.7-.7z" />
+      </>
+    ),
+    mcp: (
+      <>
+        <circle cx="6.5" cy="12" r="2" />
+        <circle cx="17.5" cy="6.5" r="2" />
+        <circle cx="17.5" cy="17.5" r="2" />
+        <path d="m8.4 11.2 7.2-3.7M8.4 12.8l7.2 3.7" />
+      </>
+    ),
+    channels: (
+      <>
+        <circle cx="12" cy="6" r="2.2" />
+        <circle cx="6" cy="17" r="2.2" />
+        <circle cx="18" cy="17" r="2.2" />
+        <path d="m10.4 7.9-3 6.8M13.6 7.9l3 6.8M8.2 17h7.6" />
+      </>
+    ),
+    users: (
+      <>
+        <circle cx="12" cy="8" r="3" />
+        <path d="M5.8 19c.8-3.1 3-4.7 6.2-4.7s5.4 1.6 6.2 4.7" />
+      </>
+    ),
+  }
+
+  return (
+    <svg
+      aria-hidden="true"
+      className={styles.sidebarButtonIcon}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.7"
+    >
+      {paths[name]}
+    </svg>
+  )
+}
+
+/**
+ * 渲染 DeepClaw 品牌标记。
+ *
+ * Args:
+ * - 无。
+ */
+function DeepClawMark() {
+  return (
+    <svg
+      aria-hidden="true"
+      className={styles.logoGlyph}
+      fill="none"
+      viewBox="0 0 32 32"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.8"
+    >
+      <circle cx="16" cy="16" r="10.5" />
+      <path d="M6.8 18.4c3.1-2.9 6.2-3.8 9.2-2.7 3 1.1 5.9.4 8.7-2.1" />
+      <path d="M9.5 22c2.2-1.7 4.3-2.2 6.3-1.5 2 .7 3.9.3 5.7-1.1" />
+      <path d="M13.4 7.3c.6 1.9.3 3.5-.9 4.8" />
+    </svg>
+  )
 }
 
 function createThreadRuntime(threadId: string): ThreadRuntime {
@@ -3071,10 +3170,12 @@ export default function ChatInterface() {
           <div className={styles.sidebarPanel}>
             <div className={styles.sidebarBrand}>
               <div className={styles.logoArea}>
-                <span className={styles.logoIcon}>AI</span>
+                <span className={styles.logoIcon}>
+                  <DeepClawMark />
+                </span>
                 <div className={styles.sidebarBrandDetails}>
                   <h1 className={styles.title}>DeepClaw</h1>
-                  <p className={styles.subtitle}>智能问答与知识库</p>
+                  <p className={styles.subtitle}>Agent workspace</p>
                 </div>
               </div>
               <button
@@ -3086,13 +3187,15 @@ export default function ChatInterface() {
                 {sidebarCollapsed ? '›' : '‹'}
               </button>
             </div>
+            <p className={styles.sidebarSectionLabel}>工作台</p>
             <button
               className={`${styles.sidebarButton} ${
                 viewMode === 'chat' ? styles.sidebarButtonActive : ''
               }`}
               onClick={() => navigateTo('chat')}
             >
-              聊天
+              <SidebarIcon name="chat" />
+              <span className={styles.sidebarButtonLabel}>聊天</span>
             </button>
             {viewMode === 'chat' ? (
               <section className={styles.chatHistory} aria-label="聊天历史">
@@ -3180,15 +3283,18 @@ export default function ChatInterface() {
               }`}
               onClick={() => navigateTo('knowledge', 'libraries')}
             >
-              知识库
+              <SidebarIcon name="knowledge" />
+              <span className={styles.sidebarButtonLabel}>知识库</span>
             </button>
+            <p className={styles.sidebarSectionLabel}>能力与连接</p>
             <button
               className={`${styles.sidebarButton} ${
                 viewMode === 'skills' ? styles.sidebarButtonActive : ''
               }`}
               onClick={() => navigateTo('skills')}
             >
-              技能管理
+              <SidebarIcon name="skills" />
+              <span className={styles.sidebarButtonLabel}>技能管理</span>
             </button>
             <button
               className={`${styles.sidebarButton} ${
@@ -3196,7 +3302,8 @@ export default function ChatInterface() {
               }`}
               onClick={() => navigateTo('mcp')}
             >
-              MCP 管理
+              <SidebarIcon name="mcp" />
+              <span className={styles.sidebarButtonLabel}>MCP 管理</span>
             </button>
             <button
               className={`${styles.sidebarButton} ${
@@ -3204,7 +3311,8 @@ export default function ChatInterface() {
               }`}
               onClick={handleChannelsNavClick}
             >
-              <span>渠道管理</span>
+              <SidebarIcon name="channels" />
+              <span className={styles.sidebarButtonLabel}>渠道管理</span>
               <span
                 className={
                   channelNavExpanded
@@ -3253,7 +3361,8 @@ export default function ChatInterface() {
               }`}
               onClick={() => navigateTo('knowledge', 'users')}
             >
-              用户管理
+              <SidebarIcon name="users" />
+              <span className={styles.sidebarButtonLabel}>用户管理</span>
             </button>
           </div>
           <div className={styles.sidebarAccount}>

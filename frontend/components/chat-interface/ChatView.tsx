@@ -833,24 +833,8 @@ export function ChatView({
       >
         {messages.length === 0 ? (
           <div className={styles.welcome}>
-            <div className={styles.welcomeIcon}>KB</div>
+            <div className={styles.welcomeIcon}>DC</div>
             <h2>欢迎使用 DeepClaw</h2>
-            <p>
-              默认直接使用 Agent 对话。开启知识库后，将切到 RAG 图检索，并且必须选择一个知识库。
-            </p>
-            <div className={styles.exampleQueries}>
-              <button onClick={() => onInputChange('请帮我总结一下今天要做的事情。')}>
-                通用问答
-              </button>
-              <button
-                onClick={() =>
-                  onInputChange('请列出文档中涉及的重要实体和它们之间的关系。')
-                }
-              >
-                提取实体关系
-              </button>
-              <button onClick={onNavigateToKnowledge}>进入知识管理</button>
-            </div>
           </div>
         ) : (
           messages.map((msg) => (

@@ -104,33 +104,38 @@ export function SkillManagementView({
             {loadingSkills ? '加载中...' : `共 ${total} 个技能`}
           </span>
         </div>
-        <div className={styles.managementCardGrid}>
+        <div className={styles.managementList}>
           {skills.length === 0 ? (
             <div className={styles.managementEmpty}>当前工作区还没有已安装技能。</div>
           ) : (
             skills.map((skill) => (
-              <div key={skill.skill_name} className={styles.managementTileCard}>
-                <div className={styles.managementListHeader}>
-                  <strong>{skill.skill_name}</strong>
-                  <span>{skill.file_count} 个文件</span>
+              <div
+                key={skill.skill_name}
+                className={`${styles.managementListItemStatic} ${styles.skillListRow}`}
+              >
+                <div className={styles.skillListIdentity}>
+                  <div className={styles.skillListTitleRow}>
+                    <strong>{skill.skill_name}</strong>
+                    <span>{skill.file_count} 个文件</span>
+                  </div>
+                  <p className={styles.managementDescription}>
+                    {skill.description || '该技能没有可预览的描述。'}
+                  </p>
                 </div>
-                <p className={styles.managementDescription}>
-                  {skill.description || '该技能没有可预览的描述。'}
-                </p>
-                <div className={styles.managementMetaPanel}>
-                  <span>目录: {skill.path}</span>
-                  <span>创建时间: {formatDateTime(skill.created_at)}</span>
-                  <span>更新时间: {formatDateTime(skill.updated_at)}</span>
+
+                <div className={styles.skillListDetails}>
+                  <span title={skill.path}>目录: {skill.path}</span>
+                  <span>创建: {formatDateTime(skill.created_at)}</span>
+                  <span>更新: {formatDateTime(skill.updated_at)}</span>
                 </div>
-                <div className={styles.managementActionRow}>
-                  <button
-                    className={styles.managementDangerMinorButton}
-                    disabled={!canManageSkills}
-                    onClick={() => void onDeleteSkill(skill.skill_name)}
-                  >
-                    删除技能
-                  </button>
-                </div>
+
+                <button
+                  className={styles.managementDangerMinorButton}
+                  disabled={!canManageSkills}
+                  onClick={() => void onDeleteSkill(skill.skill_name)}
+                >
+                  删除
+                </button>
               </div>
             ))
           )}
