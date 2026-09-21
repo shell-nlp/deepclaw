@@ -21,7 +21,7 @@ function getAccountLabel(actor: ActorState): string {
 }
 
 function getAccountSubLabel(actor: ActorState): string {
-  if (actor.isGuest) return '游客功能受限，请登录账号使用'
+  if (actor.isGuest) return '游客模式，可直接体验'
   return actor.role === 'admin' ? '管理员账号' : '普通用户'
 }
 

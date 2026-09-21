@@ -82,7 +82,7 @@ export function getActorCapabilities(actor: ActorState): ActorCapabilities {
   const isSignedIn = !actor.isGuest
   return {
     canManageKnowledge: isSignedIn,
-    canManageSkills: isSignedIn,
+    canManageSkills: true,
     canManageUsers: actor.role === 'admin',
     canManageChannelBindingsGlobally: actor.role === 'admin',
     requiresLoginMessage: '登录后可使用此功能。',

@@ -834,8 +834,6 @@ export default function ChatInterface() {
   const currentUserId = actor.userId || GUEST_USER_ID
   const guestKnowledgeMessage =
     '游客可浏览知识库内容，登录后可创建、上传和管理知识库。请点击右上角头像登录。'
-  const guestSkillMessage =
-    '游客可查看技能列表，登录后可上传或删除技能。请点击右上角头像登录。'
   const mcpDraftParseResult = parseMcpConfig(mcpConfigDraft)
   const savedMcpParseResult = parseMcpConfig(savedMcpConfigText)
   const mcpConfigDirty = mcpConfigDraft !== savedMcpConfigText
@@ -3421,7 +3419,7 @@ export default function ChatInterface() {
                 skillNotice={skillNotice}
                 skillError={skillError}
                 canManageSkills={actorCapabilities.canManageSkills}
-                disabledMessage={guestSkillMessage}
+                disabledMessage=""
                 uploadInputRef={skillUploadInputRef}
                 onOpenUploadDialog={openSkillUploadDialog}
                 onUploadSkills={handleUploadSkill}
