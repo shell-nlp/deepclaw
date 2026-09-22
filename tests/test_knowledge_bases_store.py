@@ -36,13 +36,13 @@ def test_sqlmodel_metadata_store_imports_existing_home_sqlite_data(tmp_path, mon
         import deepclaw.web_backend.db as db_module
         import deepclaw.web_backend.knowledge_bases.store as kb_store_module
 
-        monkeypatch.setattr(db_module, "home_path", tmp_path)
+        monkeypatch.setattr(db_module, "HOME_PATH", tmp_path)
         monkeypatch.setattr(
             db_module,
             "settings",
             SimpleNamespace(PG_DATABASE_URL=f"sqlite:///{tmp_path / 'metadata.db'}"),
         )
-        monkeypatch.setattr(kb_store_module, "home_path", tmp_path)
+        monkeypatch.setattr(kb_store_module, "HOME_PATH", tmp_path)
 
         legacy_store = kb_store_module.SQLModelKnowledgeBaseMetadataStore(
             f"sqlite:///{tmp_path / 'knowledge_bases.db'}"

@@ -11,7 +11,7 @@ from loguru import logger
 from pydantic import BaseModel, Field
 
 from deepclaw.web_backend.common.errors import BusinessRuleError
-from deepclaw.constant import workspace_path
+from deepclaw.constant import WORKSPACE_PATH
 from deepclaw.settings import settings
 
 
@@ -40,7 +40,7 @@ class SkillDeleteResponse(BaseModel):
 
 
 class SkillManager:
-    SKILLS_ROOT = workspace_path / "skills"
+    SKILLS_ROOT = WORKSPACE_PATH / "skills"
 
     def __init__(self) -> None:
         self.SKILLS_ROOT.mkdir(parents=True, exist_ok=True)

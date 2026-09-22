@@ -18,7 +18,7 @@ from langchain_text_splitters.character import (
     RecursiveCharacterTextSplitter,
 )
 from loguru import logger
-from deepclaw.constant import workspace_path
+from deepclaw.constant import WORKSPACE_PATH
 
 
 def _require_pymupdf():
@@ -697,7 +697,7 @@ class PDFFileReader(Protocol):
 
 
 class LocalDirectoryPDFReader:
-    DEFAULT_ROOT_DIR = workspace_path / "pdf_files"
+    DEFAULT_ROOT_DIR = WORKSPACE_PATH / "pdf_files"
 
     def __init__(self, root_dir: str | Path | None = None):
         self.root_dir = Path(root_dir) if root_dir else self.DEFAULT_ROOT_DIR
@@ -836,7 +836,7 @@ class FileToPDFConverter:
         Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "simhei.ttf",
         Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "simsun.ttc",
     )
-    DEFAULT_TEMP_DIR = workspace_path / "converted_pdf"
+    DEFAULT_TEMP_DIR = WORKSPACE_PATH / "converted_pdf"
 
     def __init__(
         self,
@@ -1135,7 +1135,7 @@ class FileToPDFConverter:
 
 
 class PDFParser:
-    DEFAULT_LOCAL_ROOT = workspace_path / "pdf_files"
+    DEFAULT_LOCAL_ROOT = WORKSPACE_PATH / "pdf_files"
 
     def __init__(
         self,

@@ -1,10 +1,10 @@
 from pathlib import Path
 
-root_dir = Path(__file__).parent.parent
+ROOT_DIR = Path(__file__).parent.parent
 
 # 宿主侧路径（Windows / Linux / macOS 通用，由 pathlib.Path 自动处理分隔符）
-home_path = root_dir / ".deepclaw"
-workspace_path = home_path / "workspace"
+HOME_PATH = ROOT_DIR / ".deepclaw"
+WORKSPACE_PATH = HOME_PATH / "workspace"
 
 # 沙箱容器内路径（OpenSandbox 是 Linux 容器，路径必须保持 POSIX 风格，
 # 千万不要换成 host 路径，否则容器内部访问不到）。

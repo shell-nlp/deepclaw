@@ -6,7 +6,7 @@ import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
 from loguru import logger
 
-from deepclaw.constant import workspace_path
+from deepclaw.constant import WORKSPACE_PATH
 from deepclaw.settings import settings
 
 _CHARTS_DIR: Path | None = None
@@ -53,7 +53,7 @@ def _get_charts_dir() -> Path:
     """
     global _CHARTS_DIR
     if _CHARTS_DIR is None:
-        _CHARTS_DIR = workspace_path / "charts"
+        _CHARTS_DIR = WORKSPACE_PATH / "charts"
         _CHARTS_DIR.mkdir(parents=True, exist_ok=True)
     return _CHARTS_DIR
 

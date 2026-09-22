@@ -45,6 +45,8 @@
 
 - `deepclaw/agent_registry.py`
   统一 Agent 基类与自动发现入口。定义 `Agent` 与 `AgentRegistry`，扫描 `deepclaw.agents.*.agent` 模块并校验 `agent_id`、默认智能体和 `build_agent` 构建入口。
+- `deepclaw/agent_state.py`
+  Agent 层状态基础设施。提供 `collect_message_created_at()`，从 LangGraph checkpoint 历史推导逐条消息创建时间；属于模型/Agent 层，不放在 `web_backend/`，也不放在无领域知识的 `utils/`。
 - `deepclaw/web_backend/agui/runtime.py`
   AG-UI 智能体运行时缓存，按应用和智能体缓存图与 Run 管理器。
 - `deepclaw/web_backend/agui/router.py`
@@ -112,7 +114,7 @@
   业务开关、RAG 注入、MCP、工具搜索、计划，以及 `cron` 工具实现等中间件与运行时扩展。
   NL2SQL 相关逻辑在 `deepclaw/middleware/nl2sql/`，DDL 拉取采用可注册 fetcher 架构（`ddl/base.py` + 各数据库实现如 `ddl/pgsql.py`）。
   图表生成在 `deepclaw/middleware/chart/`，其中 `charts/` 是基于 matplotlib 的 9 种图表渲染引擎（bar/line/pie/column/scatter/area/histogram/funnel/radar）源码包，`ChartMiddleware` 负责 Agent 工具适配；核心渲染层无 langchain 依赖，可独立发布为 MCP Server。运行时图片固定输出到 `.deepclaw/workspace/charts/`，该目录仅存放生成文件并由 Git 忽略。
-  消息时间不落任何镜像表：`deepclaw/web_backend/agent/message_timestamps.py` 的 `collect_message_created_at()` 直接遍历 LangGraph checkpoint 历史（每个 super-step 的 `checkpoint["ts"]`，即 `StateSnapshot.created_at`）推导出 `message_id -> UTC ISO8601` 映射。
+  消息时间不落任何镜像表：`deepclaw/agent_state.py` 的 `collect_message_created_at()` 直接遍历 LangGraph checkpoint 历史（每个 super-step 的 `checkpoint["ts"]`，即 `StateSnapshot.created_at`）推导出 `message_id -> UTC ISO8601` 映射。
 
 - `deepclaw/tools/`
   天气、网页抓取、检索等工具导出；`cron` 相关实现已归档到 `deepclaw/middleware/cron/`。
@@ -136,9 +138,10 @@
 
 - `deepclaw/constant.py`
   定义：
-  - `root_dir`
-  - `home_path = .deepclaw`
-  - `workspace_path = .deepclaw/workspace`
+  - `ROOT_DIR`
+  - `HOME_PATH = .deepclaw`
+  - `WORKSPACE_PATH = .deepclaw/workspace`
+  模块级常量统一使用全大写命名；新增常量必须沿用该约定。
 
 ### 启动入口
 

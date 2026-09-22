@@ -4,7 +4,7 @@ from pathlib import Path
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from deepclaw.constant import home_path
+from deepclaw.constant import HOME_PATH
 from deepclaw.settings import settings
 
 
@@ -17,8 +17,8 @@ def make_async_url(db_url: str) -> str:
 
 
 def build_home_sqlite_db_url(filename: str) -> str:
-    os.makedirs(home_path, exist_ok=True)
-    return f"sqlite:///{os.path.join(home_path, filename)}"
+    os.makedirs(HOME_PATH, exist_ok=True)
+    return f"sqlite:///{os.path.join(HOME_PATH, filename)}"
 
 
 def resolve_metadata_db_url(filename: str) -> str:
@@ -34,7 +34,7 @@ def sqlite_db_path_from_url(db_url: str) -> Path | None:
 
 
 def should_import_home_sqlite(*, filename: str, target_db_url: str) -> Path | None:
-    source_path = Path(home_path).joinpath(filename).resolve()
+    source_path = Path(HOME_PATH).joinpath(filename).resolve()
     if not source_path.exists():
         return None
     target_path = sqlite_db_path_from_url(target_db_url)
