@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import type { KeyboardEvent, Ref } from 'react'
+import type { KeyboardEvent, ReactNode, Ref } from 'react'
 
 import styles from '../ChatInterface.module.css'
 import { AssistantMessageBody } from '../chat/cards/AssistantMessageBody'
@@ -26,6 +26,83 @@ function formatMessageTime(msg: Message): string {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+type ComposerToggleIconName = 'knowledge' | 'internet' | 'thinking'
+
+/**
+ * 渲染输入框能力开关的图标。
+ *
+ * Args:
+ *   name: 图标名称。
+ */
+function ComposerToggleIcon({ name }: { name: ComposerToggleIconName }) {
+  const paths: Record<ComposerToggleIconName, ReactNode> = {
+    knowledge: (
+      <>
+        <path d="M5.5 5.8h5.1c1.1 0 2 .9 2 2v10.7c0-1.1-.9-2-2-2H5.5z" />
+        <path d="M18.5 5.8h-5.1c-1.1 0-2 .9-2 2v10.7c0-1.1.9-2 2-2h5.1z" />
+      </>
+    ),
+    internet: (
+      <>
+        <circle cx="12" cy="12" r="8" />
+        <path d="M4.3 12h15.4" />
+        <path d="M12 4c2.3 2.6 2.3 13.4 0 16-2.3-2.6-2.3-13.4 0-16z" />
+      </>
+    ),
+    thinking: (
+      <>
+        <path d="m12 4.4 1.8 4.2 4.2 1.8-4.2 1.8-1.8 4.2-1.8-4.2L6 10.4l4.2-1.8z" />
+        <path d="m18.4 15.6.7 1.7 1.7.7-1.7.7-.7 1.7-.7-1.7-1.7-.7 1.7-.7z" />
+      </>
+    ),
+  }
+
+  return (
+    <svg
+      aria-hidden="true"
+      className={styles.toggleIcon}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.7"
+    >
+      {paths[name]}
+    </svg>
+  )
+}
+
+interface ComposerToggleProps {
+  label: string
+  iconName: ComposerToggleIconName
+  checked: boolean
+  onChange: (checked: boolean) => void
+}
+
+/**
+ * 渲染输入框底部的能力开关胶囊。
+ *
+ * Args:
+ *   label: 开关文案。
+ *   iconName: 开关图标名称。
+ *   checked: 开关是否开启。
+ *   onChange: 开关状态变更回调。
+ */
+function ComposerToggle({ label, iconName, checked, onChange }: ComposerToggleProps) {
+  return (
+    <label className={styles.toggle}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <ComposerToggleIcon name={iconName} />
+      <span className={styles.toggleLabel}>{label}</span>
+    </label>
+  )
 }
 
 interface ChatViewProps {
@@ -683,39 +760,10 @@ export function ChatView({
                 ? chatDisabled
                   ? '请先在知识管理中选择一个知识库...'
                   : '输入您的知识库问题...'
-                : '输入您的问题...'
+                : '给 DeepClaw 发送消息...'
             }
             rows={1}
           />
-          <div className={styles.toggles}>
-            <label className={styles.toggle}>
-              <input
-                type="checkbox"
-                checked={useKnowledgeBase}
-                onChange={(event) => onKnowledgeBaseToggle(event.target.checked)}
-              />
-              <span className={styles.toggleSlider} />
-              <span className={styles.toggleLabel}>知识库</span>
-            </label>
-            <label className={styles.toggle}>
-              <input
-                type="checkbox"
-                checked={internetSearch}
-                onChange={(event) => onInternetSearchChange(event.target.checked)}
-              />
-              <span className={styles.toggleSlider} />
-              <span className={styles.toggleLabel}>联网</span>
-            </label>
-            <label className={styles.toggle}>
-              <input
-                type="checkbox"
-                checked={deepThinking}
-                onChange={(event) => onDeepThinkingChange(event.target.checked)}
-              />
-              <span className={styles.toggleSlider} />
-              <span className={styles.toggleLabel}>思考</span>
-            </label>
-          </div>
           {useKnowledgeBase && (
             <div className={styles.chatKnowledgeRow}>
               <span className={styles.chatKnowledgeStatus}>
@@ -728,20 +776,71 @@ export function ChatView({
               </button>
             </div>
           )}
+          <div className={styles.composerFooter}>
+            <div className={styles.toggles}>
+              <ComposerToggle
+                label="知识库"
+                iconName="knowledge"
+                checked={useKnowledgeBase}
+                onChange={onKnowledgeBaseToggle}
+              />
+              <ComposerToggle
+                label="联网"
+                iconName="internet"
+                checked={internetSearch}
+                onChange={onInternetSearchChange}
+              />
+              <ComposerToggle
+                label="思考"
+                iconName="thinking"
+                checked={deepThinking}
+                onChange={onDeepThinkingChange}
+              />
+            </div>
+            {isProcessing ? (
+              <button
+                className={styles.abortBtn}
+                onClick={onAbortRequest}
+                aria-label="中断当前回答"
+                title="中断"
+              >
+                <svg
+                  aria-hidden="true"
+                  className={styles.stopIcon}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                >
+                  <rect x="8.5" y="8.5" width="7" height="7" rx="1.8" fill="currentColor" />
+                </svg>
+              </button>
+            ) : (
+              <button
+                className={styles.sendBtn}
+                onClick={() => void onSendMessage()}
+                disabled={!inputValue.trim() || chatDisabled}
+                aria-label="发送消息"
+                title="发送"
+              >
+                <svg
+                  aria-hidden="true"
+                  className={styles.sendIcon}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.9"
+                >
+                  <path d="M12 19V5" />
+                  <path d="m5.8 11.2 6.2-6.2 6.2 6.2" />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
-        {isProcessing ? (
-          <button className={styles.abortBtn} onClick={onAbortRequest}>
-            中断
-          </button>
-        ) : (
-          <button
-            className={styles.sendBtn}
-            onClick={() => void onSendMessage()}
-            disabled={!inputValue.trim() || chatDisabled}
-          >
-            发送
-          </button>
-        )}
+        <p className={styles.composerDisclaimer}>内容由 AI 生成，请仔细甄别</p>
       </div>
     </>
   )

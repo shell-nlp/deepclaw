@@ -76,28 +76,3 @@ export function SidebarIcon({ name }: { name: SidebarIconName }) {
   )
 }
 
-/**
- * 渲染 DeepClaw 品牌标记。
- *
- * Args:
- *   无。
- */
-export function DeepClawMark() {
-  return (
-    <svg
-      aria-hidden="true"
-      className={styles.logoGlyph}
-      fill="none"
-      viewBox="0 0 32 32"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="1.8"
-    >
-      <circle cx="16" cy="16" r="10.5" />
-      <path d="M6.8 18.4c3.1-2.9 6.2-3.8 9.2-2.7 3 1.1 5.9.4 8.7-2.1" />
-      <path d="M9.5 22c2.2-1.7 4.3-2.2 6.3-1.5 2 .7 3.9.3 5.7-1.1" />
-      <path d="M13.4 7.3c.6 1.9.3 3.5-.9 4.8" />
-    </svg>
-  )
-}
