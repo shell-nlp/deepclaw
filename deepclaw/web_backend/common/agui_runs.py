@@ -8,7 +8,6 @@ from ag_ui.encoder import EventEncoder
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from deepclaw.agent_state import collect_message_created_at
 from deepclaw.settings import settings
 from deepclaw.web_backend.agent.run_manager import (
     AgentRunManager,
@@ -258,6 +257,39 @@ async def list_agui_thread_runs(
     return ThreadRunListResponse(thread_id=thread_id, items=items, total=len(items))
 
 
+async def _collect_message_created_at(
+    graph: Any,
+    config: dict[str, Any],
+) -> dict[str, str]:
+    """从 checkpoint 历史推导每条消息第一次出现的创建时间。
+
+    LangGraph 会在每个 super-step 生成一个 checkpoint，并把创建时间写在
+    `checkpoint["ts"]` 上（即 `StateSnapshot.created_at`）；消息对象本身没有
+    时间字段。这里按时间从新到旧遍历历史，用同一 message_id 覆盖写入，最终
+    保留的就是该消息第一次出现的那一步时间。
+
+    只依赖 LangGraph 的图对象与运行配置，不依赖任何 Agent 抽象。
+
+    Args:
+        graph: 已编译且带 checkpointer 的 LangGraph 图。
+        config: 指向目标 Thread 的 LangGraph 运行配置。
+
+    Returns:
+        message_id 到该消息创建时间（UTC ISO8601 字符串）的映射。
+    """
+    created_at: dict[str, str] = {}
+    async for snapshot in graph.aget_state_history(config):
+        snapshot_created_at = snapshot.created_at
+        if not snapshot_created_at:
+            continue
+        values = snapshot.values if isinstance(snapshot.values, dict) else {}
+        for message in values.get("messages") or []:
+            message_id = getattr(message, "id", None)
+            if isinstance(message_id, str):
+                created_at[message_id] = snapshot_created_at
+    return created_at
+
+
 async def get_agui_thread_state(
     store: RunStore,
     graph: Any,
@@ -292,7 +324,10 @@ async def get_agui_thread_state(
     messages = final_state.get("messages")
     if not messages:
         raise HTTPException(status_code=404, detail="Thread 状态不存在")
-    final_state["message_created_at"] = await collect_message_created_at(graph, config)
+    final_state["message_created_at"] = await _collect_message_created_at(
+        graph,
+        config,
+    )
     title = getattr(messages[0], "content", None)
     if isinstance(title, str):
         final_state["title"] = title
