@@ -1,7 +1,7 @@
 'use client'
 
-import styles from '../ChatInterface.module.css'
-import type { McpServerSummary } from './types'
+import styles from '../../ChatInterface.module.css'
+import type { McpServerSummary } from '../../chat-interface/types'
 
 interface McpManagementViewProps {
   mcpEnabled: boolean

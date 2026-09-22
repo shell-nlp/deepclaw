@@ -2,17 +2,17 @@
 
 import type { ChangeEvent, MouseEvent, Ref } from 'react'
 
-import styles from '../ChatInterface.module.css'
-import { CreateKnowledgeBaseModal } from './CreateKnowledgeBaseModal'
-import { Pagination } from './Pagination'
+import styles from '../../ChatInterface.module.css'
+import { CreateKnowledgeBaseModal } from '../shared/CreateKnowledgeBaseModal'
+import { Pagination } from '../shared/Pagination'
 import type {
   KnowledgeBase,
   KnowledgeDocument,
   KnowledgeDocumentDetailResponse,
   KnowledgePage,
   ViewMode,
-} from './types'
-import { formatDateTime } from './utils'
+} from '../../chat-interface/types'
+import { formatDateTime } from '../../chat-interface/utils'
 
 interface KnowledgeManagementViewProps {
   knowledgePage: Exclude<KnowledgePage, 'users'>

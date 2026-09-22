@@ -2,9 +2,9 @@
 
 import type { ChangeEvent, Ref } from 'react'
 
-import styles from '../ChatInterface.module.css'
-import type { SkillRecord } from './types'
-import { formatDateTime } from './utils'
+import styles from '../../ChatInterface.module.css'
+import type { SkillRecord } from '../../chat-interface/types'
+import { formatDateTime } from '../../chat-interface/utils'
 
 interface SkillManagementViewProps {
   skills: SkillRecord[]

@@ -4,12 +4,24 @@ export interface Message {
   content: string
   startedAt?: number
   duration?: number
+  error?: ChatError
   reasoningContent?: string
   reasoningBlocks?: ReasoningBlock[]
   contentBlocks?: ReasoningBlock[]
   messageItems?: AssistantMessageItem[]
   toolData?: ToolData[]
   recommendedQuestions?: string[]
+}
+
+export type ChatErrorKind = 'http' | 'run' | 'stream' | 'resume' | 'unknown'
+
+export interface ChatError {
+  kind: ChatErrorKind
+  title: string
+  message: string
+  status?: number
+  detail?: string
+  retryable: boolean
 }
 
 export interface ChatHistorySession {
