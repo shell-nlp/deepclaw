@@ -26,6 +26,9 @@ from deepclaw.web_backend.db import (
 LEGACY_HOME_NAME = ".langchain_api"
 AUTH_MIGRATION_MARKER = ".auth_migrated_from_langchain_api"
 AUTH_METADATA_IMPORT_MARKER = ".auth_imported_to_metadata_db"
+# 令牌「最近使用时间」的写入节流窗口：同一令牌在窗口内重复校验不再写库，
+# 避免每个带令牌的请求都产生一次 UPDATE + commit。
+ACCESS_TOKEN_LAST_USED_THROTTLE = timedelta(seconds=60)
 
 
 def _get_auth_db_path(base_path: Path) -> Path:
@@ -419,9 +422,15 @@ class AuthStore:
             if user is None:
                 raise BusinessRuleError("登录状态已失效，请重新登录。")
 
-            record.last_used_at = utc_now()
-            session.add(record)
-            await session.commit()
-            await session.refresh(record)
+            now = utc_now()
+            if (
+                record.last_used_at is None
+                or now - record.last_used_at >= ACCESS_TOKEN_LAST_USED_THROTTLE
+            ):
+                record.last_used_at = now
+                session.add(record)
+                await session.commit()
+                await session.refresh(record)
+
             await session.refresh(user)
             return AuthenticatedActor(user=user, record=record)
