@@ -20,6 +20,14 @@ type InterruptActionRequest = InterruptData['action_requests'][number]
 type InterruptEditedAction = { name: string; args: Record<string, unknown> }
 type InterruptArgPath = Array<string | number>
 
+function formatMessageTime(msg: Message): string {
+  const timestamp = msg.createdAt ?? msg.startedAt
+  return new Date(timestamp ?? Date.now()).toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 interface ChatViewProps {
   messages: Message[]
   sessionId: string
@@ -615,10 +623,7 @@ export function ChatView({
                     <div className={styles.avatar}>U</div>
                     <span className={styles.author}>用户</span>
                     <span className={styles.time}>
-                      {new Date().toLocaleTimeString('zh-CN', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
+                      {formatMessageTime(msg)}
                     </span>
                   </div>
                   <div
@@ -632,10 +637,7 @@ export function ChatView({
                     <div className={`${styles.avatar} ${styles.ai}`}>AI</div>
                     <span className={styles.author}>AI 助手</span>
                     <span className={styles.time}>
-                      {new Date().toLocaleTimeString('zh-CN', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
+                      {formatMessageTime(msg)}
                     </span>
                   </div>
                   <AssistantMessageBody
