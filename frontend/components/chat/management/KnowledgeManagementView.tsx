@@ -1,8 +1,9 @@
 'use client'
 
-import type { ChangeEvent, MouseEvent, Ref } from 'react'
+import { useState, type ChangeEvent, type MouseEvent, type Ref } from 'react'
 
 import styles from '../../ChatInterface.module.css'
+import { SidebarIcon } from '../shared/BrandIcons'
 import { CreateKnowledgeBaseModal } from '../shared/CreateKnowledgeBaseModal'
 import { Pagination } from '../shared/Pagination'
 import type {
@@ -13,6 +14,8 @@ import type {
   ViewMode,
 } from '../../chat-interface/types'
 import { formatDateTime } from '../../chat-interface/utils'
+
+type KnowledgeBaseViewMode = 'card' | 'list'
 
 interface KnowledgeManagementViewProps {
   knowledgePage: Exclude<KnowledgePage, 'users'>
@@ -25,8 +28,6 @@ interface KnowledgeManagementViewProps {
   knowledgeBases: KnowledgeBase[]
   selectedKnowledgeBaseId: string
   selectedKnowledgeBase: KnowledgeBase | null
-  selectedKnowledgeBaseName: string
-  selectedKnowledgeBaseDescription: string
   checkedKnowledgeBaseIds: string[]
   knowledgeBaseSearchInput: string
   knowledgeBasePage: number
@@ -54,9 +55,11 @@ interface KnowledgeManagementViewProps {
     knowledgePage?: KnowledgePage,
     replace?: boolean
   ) => void
-  onSelectedKnowledgeBaseNameChange: (value: string) => void
-  onSelectedKnowledgeBaseDescriptionChange: (value: string) => void
-  onSaveKnowledgeBase: () => void | Promise<void>
+  onUpdateKnowledgeBase: (
+    knowledgeBaseId: string,
+    name: string,
+    description: string
+  ) => Promise<void>
   onDeleteKnowledgeBase: (knowledgeBaseId?: string) => void | Promise<void>
   onOpenUploadDialog: () => void
   onHandleUploadFiles: (event: ChangeEvent<HTMLInputElement>) => void | Promise<void>
@@ -98,8 +101,6 @@ export function KnowledgeManagementView({
   knowledgeBases,
   selectedKnowledgeBaseId,
   selectedKnowledgeBase,
-  selectedKnowledgeBaseName,
-  selectedKnowledgeBaseDescription,
   checkedKnowledgeBaseIds,
   knowledgeBaseSearchInput,
   knowledgeBasePage,
@@ -123,9 +124,7 @@ export function KnowledgeManagementView({
   loadingDocumentDetail,
   uploadInputRef,
   onNavigateTo,
-  onSelectedKnowledgeBaseNameChange,
-  onSelectedKnowledgeBaseDescriptionChange,
-  onSaveKnowledgeBase,
+  onUpdateKnowledgeBase,
   onDeleteKnowledgeBase,
   onOpenUploadDialog,
   onHandleUploadFiles,
@@ -149,6 +148,62 @@ export function KnowledgeManagementView({
   onKnowledgeBaseDescriptionChange,
   onCreateKnowledgeBase,
 }: KnowledgeManagementViewProps) {
+  const [knowledgeBaseViewMode, setKnowledgeBaseViewMode] =
+    useState<KnowledgeBaseViewMode>('card')
+  const [editingKnowledgeBase, setEditingKnowledgeBase] =
+    useState<KnowledgeBase | null>(null)
+  const [editingKnowledgeBaseName, setEditingKnowledgeBaseName] = useState('')
+  const [editingKnowledgeBaseDescription, setEditingKnowledgeBaseDescription] =
+    useState('')
+  const [updatingKnowledgeBase, setUpdatingKnowledgeBase] = useState(false)
+
+  /**
+   * 打开知识库编辑弹窗。
+   *
+   * Args:
+   *   knowledgeBase: 待编辑的知识库。
+   */
+  const openEditKnowledgeBaseModal = (knowledgeBase: KnowledgeBase) => {
+    setEditingKnowledgeBase(knowledgeBase)
+    setEditingKnowledgeBaseName(knowledgeBase.name)
+    setEditingKnowledgeBaseDescription(knowledgeBase.description)
+  }
+
+  /**
+   * 关闭知识库编辑弹窗。
+   *
+   * Args:
+   *   无。
+   */
+  const closeEditKnowledgeBaseModal = () => {
+    if (updatingKnowledgeBase) return
+    setEditingKnowledgeBase(null)
+  }
+
+  /**
+   * 提交知识库编辑内容。
+   *
+   * Args:
+   *   无。
+   */
+  const submitKnowledgeBaseEdit = async () => {
+    if (!editingKnowledgeBase || !editingKnowledgeBaseName.trim()) return
+
+    setUpdatingKnowledgeBase(true)
+    try {
+      await onUpdateKnowledgeBase(
+        editingKnowledgeBase.knowledge_base_id,
+        editingKnowledgeBaseName,
+        editingKnowledgeBaseDescription
+      )
+      setEditingKnowledgeBase(null)
+    } catch {
+      return
+    } finally {
+      setUpdatingKnowledgeBase(false)
+    }
+  }
+
   const renderDocumentDetailPage = () =>
     selectedDocumentDetail ? (
       <div className={styles.managementWorkspace}>
@@ -266,7 +321,14 @@ export function KnowledgeManagementView({
           <div className={styles.managementHeroCopy}>
             <span className={styles.managementHeroEyebrow}>Knowledge Base</span>
             <h2>{selectedKnowledgeBase.name}</h2>
-            <p>{selectedKnowledgeBase.description || '当前知识库暂无描述。'}</p>
+            <p className={styles.managementKnowledgeHeroDescription}>
+              {selectedKnowledgeBase.description || '当前知识库暂无描述。'}
+            </p>
+            <div className={styles.managementKnowledgeHeroMeta}>
+              <span>{selectedKnowledgeBase.document_count} 文档</span>
+              <span>{selectedKnowledgeBase.chunk_count} 切片</span>
+              <span>{formatDateTime(selectedKnowledgeBase.updated_at)} 更新</span>
+            </div>
           </div>
           <div className={styles.managementHeroActions}>
             <button
@@ -276,219 +338,148 @@ export function KnowledgeManagementView({
               返回知识库列表
             </button>
             <button
-              className={styles.managementDangerButton}
-              disabled={writeDisabled}
-              onClick={() => void onDeleteKnowledgeBase()}
+              className={styles.managementButton}
+              disabled={uploadingDocuments || writeDisabled}
+              onClick={onOpenUploadDialog}
             >
-              删除知识库
+              {uploadingDocuments ? '上传中...' : '上传知识文件'}
             </button>
+            <input
+              ref={uploadInputRef}
+              className={styles.hiddenUpload}
+              type="file"
+              multiple
+              onChange={(event) => void onHandleUploadFiles(event)}
+            />
           </div>
         </section>
 
-        <div className={styles.managementSummaryGrid}>
-          <div className={styles.managementSummaryCard}>
-            <span className={styles.managementSummaryLabel}>文档总数</span>
-            <strong className={styles.managementSummaryValue}>
-              {selectedKnowledgeBase.document_count}
-            </strong>
-            <span className={styles.managementMeta}>当前知识库文档数量</span>
-          </div>
-          <div className={styles.managementSummaryCard}>
-            <span className={styles.managementSummaryLabel}>切片总数</span>
-            <strong className={styles.managementSummaryValue}>
-              {selectedKnowledgeBase.chunk_count}
-            </strong>
-            <span className={styles.managementMeta}>切片会进入检索索引</span>
-          </div>
-          <div className={styles.managementSummaryCard}>
-            <span className={styles.managementSummaryLabel}>图前缀</span>
-            <strong className={styles.managementSummaryValue}>
-              {selectedKnowledgeBase.index_prefix}
-            </strong>
-            <span className={styles.managementMeta}>当前图检索命名空间</span>
-          </div>
-          <div className={styles.managementSummaryCard}>
-            <span className={styles.managementSummaryLabel}>更新时间</span>
-            <strong className={styles.managementSummaryValue}>
-              {formatDateTime(selectedKnowledgeBase.updated_at)}
-            </strong>
-            <span className={styles.managementMeta}>最近一次知识库变更时间</span>
-          </div>
-        </div>
-
-        <div className={styles.managementPageGrid}>
-          <section className={styles.managementCard}>
-            <div className={styles.managementHeader}>
-              <h3>知识库设置</h3>
-              <span className={styles.managementMeta}>名称与描述</span>
-            </div>
-            <div className={styles.managementForm}>
-              <input
-                className={styles.managementInput}
-                value={selectedKnowledgeBaseName}
-                disabled={writeDisabled}
-                onChange={(event) =>
-                  onSelectedKnowledgeBaseNameChange(event.target.value)
-                }
-                placeholder="知识库名称"
-              />
-              <input
-                className={styles.managementInput}
-                value={selectedKnowledgeBaseDescription}
-                disabled={writeDisabled}
-                onChange={(event) =>
-                  onSelectedKnowledgeBaseDescriptionChange(event.target.value)
-                }
-                placeholder="知识库描述"
-              />
-              <div className={styles.managementToolbar}>
-                <button
-                  className={styles.managementButton}
-                  disabled={savingKnowledgeBase || writeDisabled}
-                  onClick={() => void onSaveKnowledgeBase()}
-                >
-                  保存设置
-                </button>
-              </div>
-            </div>
-
-            <div className={styles.managementDivider} />
-
-            <div className={styles.managementHeader}>
-              <h3>添加知识</h3>
-              <span className={styles.managementMeta}>支持 PDF / DOCX 等文件</span>
-            </div>
-            <div className={styles.managementToolbar}>
-              <button
-                className={styles.managementButton}
-                disabled={uploadingDocuments || writeDisabled}
-                onClick={onOpenUploadDialog}
-              >
-                {uploadingDocuments ? '上传中...' : '上传知识文件'}
-              </button>
-              <input
-                ref={uploadInputRef}
-                className={styles.hiddenUpload}
-                type="file"
-                multiple
-                onChange={(event) => void onHandleUploadFiles(event)}
-              />
-            </div>
-
-            <div className={styles.managementMetaPanel}>
-              <span>Passage: {selectedKnowledgeBase.passage_index}</span>
-              <span>Entity: {selectedKnowledgeBase.entity_index}</span>
-              <span>Relation: {selectedKnowledgeBase.relation_index}</span>
-            </div>
-          </section>
-
-          <section className={styles.managementCard}>
-            <div className={styles.managementHeader}>
+        <section
+          className={`${styles.managementCard} ${styles.managementKnowledgeDetailSection}`}
+        >
+          <div className={styles.managementHeader}>
+            <div className={styles.managementKnowledgeSectionTitle}>
               <h3>知识列表</h3>
-              <span className={styles.managementMeta}>
-                {loadingDocuments ? '加载中...' : `共 ${documentTotal} 条`}
-              </span>
+              <p>上传并管理当前知识库中的文档</p>
             </div>
-            <div className={styles.managementToolbar}>
-              <div className={styles.managementSearchGroup}>
-                <input
-                  className={styles.managementInput}
-                  value={documentSearchInput}
-                  onChange={(event) => onDocumentSearchInputChange(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      onDocumentPageChange(1)
-                      onDocumentSearchChange(documentSearchInput.trim())
-                    }
-                  }}
-                  placeholder="搜索知识文件"
-                />
-                <button
-                  className={styles.managementButton}
-                  onClick={() => {
+            <span className={styles.managementMeta}>
+              {loadingDocuments ? '加载中...' : `共 ${documentTotal} 条`}
+            </span>
+          </div>
+          <div className={styles.managementToolbar}>
+            <div className={styles.managementSearchGroup}>
+              <input
+                className={styles.managementInput}
+                value={documentSearchInput}
+                onChange={(event) => onDocumentSearchInputChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
                     onDocumentPageChange(1)
                     onDocumentSearchChange(documentSearchInput.trim())
-                  }}
-                >
-                  搜索
-                </button>
-              </div>
+                  }
+                }}
+                placeholder="搜索知识文件"
+              />
               <button
-                className={styles.managementDangerButton}
-                disabled={
-                  checkedDocumentIds.length === 0 || deletingBulk || writeDisabled
-                }
-                onClick={() => void onBulkDeleteDocuments()}
+                className={styles.managementButton}
+                onClick={() => {
+                  onDocumentPageChange(1)
+                  onDocumentSearchChange(documentSearchInput.trim())
+                }}
               >
-                批量删除
+                搜索
               </button>
             </div>
+            <button
+              className={styles.managementDangerButton}
+              disabled={
+                checkedDocumentIds.length === 0 || deletingBulk || writeDisabled
+              }
+              onClick={() => void onBulkDeleteDocuments()}
+            >
+              批量删除
+            </button>
+          </div>
 
-            <div className={styles.managementCardGrid}>
-              {documents.length === 0 ? (
-                <div className={styles.managementEmpty}>当前知识库还没有知识文档。</div>
-              ) : (
-                documents.map((document) => (
-                  <div key={document.document_id} className={styles.managementTileCard}>
-                    <div className={styles.managementListHeader}>
-                      <label
-                        className={styles.managementCheckbox}
-                        onClick={(event) =>
-                          onToggleDocumentChecked(
-                            document.document_id,
-                            event as unknown as MouseEvent<
-                              HTMLButtonElement | HTMLInputElement
-                            >
-                          )
-                        }
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checkedDocumentIds.includes(document.document_id)}
-                          onChange={() => undefined}
-                        />
-                      </label>
-                      <strong>{document.display_name}</strong>
-                      <span>{document.chunk_count} 切片</span>
-                    </div>
-                    <p className={styles.managementDescription}>
-                      原始文件: {document.file_name}
-                    </p>
-                    <div className={styles.managementListMeta}>
-                      <span>{Math.max(1, Math.round(document.file_size / 1024))} KB</span>
-                      <span>{formatDateTime(document.updated_at)}</span>
-                    </div>
-                    <div className={styles.managementActionRow}>
-                      <button
-                        className={styles.managementButton}
-                        onClick={() => onOpenDocumentDetail(document)}
-                      >
-                        查看详情
-                      </button>
-                      <button
-                        className={styles.managementMinorButton}
-                        disabled={writeDisabled}
-                        onClick={() => void onRenameDocument(document)}
-                      >
-                        重命名
-                      </button>
-                      <button
-                        className={styles.managementDangerMinorButton}
-                        disabled={writeDisabled}
-                        onClick={() =>
-                          void onDeleteDocument(
-                            document.document_id,
-                            document.display_name
-                          )
-                        }
-                      >
-                        删除
-                      </button>
-                    </div>
+          <div className={styles.managementCardGrid}>
+            {documents.length === 0 ? (
+              <div
+                className={`${styles.managementEmpty} ${styles.managementKnowledgeEmpty}`}
+              >
+                <strong>还没有知识文档</strong>
+                <span>上传 PDF、DOCX 等文件后，系统会自动完成切片和索引。</span>
+                <button
+                  type="button"
+                  className={styles.managementButton}
+                  disabled={uploadingDocuments || writeDisabled}
+                  onClick={onOpenUploadDialog}
+                >
+                  {uploadingDocuments ? '上传中...' : '上传知识文件'}
+                </button>
+              </div>
+            ) : (
+              documents.map((document) => (
+                <div key={document.document_id} className={styles.managementTileCard}>
+                  <div className={styles.managementListHeader}>
+                    <label
+                      className={styles.managementCheckbox}
+                      onClick={(event) =>
+                        onToggleDocumentChecked(
+                          document.document_id,
+                          event as unknown as MouseEvent<
+                            HTMLButtonElement | HTMLInputElement
+                          >
+                        )
+                      }
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checkedDocumentIds.includes(document.document_id)}
+                        onChange={() => undefined}
+                      />
+                    </label>
+                    <strong>{document.display_name}</strong>
+                    <span>{document.chunk_count} 切片</span>
                   </div>
-                ))
-              )}
-            </div>
+                  <p className={styles.managementDescription}>
+                    原始文件: {document.file_name}
+                  </p>
+                  <div className={styles.managementListMeta}>
+                    <span>{Math.max(1, Math.round(document.file_size / 1024))} KB</span>
+                    <span>{formatDateTime(document.updated_at)}</span>
+                  </div>
+                  <div className={styles.managementActionRow}>
+                    <button
+                      className={styles.managementButton}
+                      onClick={() => onOpenDocumentDetail(document)}
+                    >
+                      查看详情
+                    </button>
+                    <button
+                      className={styles.managementMinorButton}
+                      disabled={writeDisabled}
+                      onClick={() => void onRenameDocument(document)}
+                    >
+                      重命名
+                    </button>
+                    <button
+                      className={styles.managementDangerMinorButton}
+                      disabled={writeDisabled}
+                      onClick={() =>
+                        void onDeleteDocument(
+                          document.document_id,
+                          document.display_name
+                        )
+                      }
+                    >
+                      删除
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          <div className={styles.managementKnowledgePagination}>
             <Pagination
               page={documentPage}
               pageTotal={documentPageTotal}
@@ -498,8 +489,8 @@ export function KnowledgeManagementView({
                 onDocumentPageChange((prev) => Math.min(documentPageTotal, prev + 1))
               }
             />
-          </section>
-        </div>
+          </div>
+        </section>
       </div>
     ) : (
       <div className={styles.managementEmptyState}>
@@ -532,20 +523,7 @@ export function KnowledgeManagementView({
         </div>
       </section>
 
-      <div className={styles.managementSummaryGrid}>
-        <div className={styles.managementSummaryCard}>
-          <span className={styles.managementSummaryLabel}>知识库数量</span>
-          <strong className={styles.managementSummaryValue}>{knowledgeBaseTotal}</strong>
-          <span className={styles.managementMeta}>当前可见的知识库总数</span>
-        </div>
-        <div className={styles.managementSummaryCard}>
-          <span className={styles.managementSummaryLabel}>切片总量</span>
-          <strong className={styles.managementSummaryValue}>{visibleChunkTotal}</strong>
-          <span className={styles.managementMeta}>当前页知识库切片汇总</span>
-        </div>
-      </div>
-
-      <div className={styles.managementToolbar}>
+      <section className={styles.managementKnowledgeToolbar}>
         <div className={styles.managementSearchGroup}>
           <input
             className={styles.managementInput}
@@ -569,30 +547,79 @@ export function KnowledgeManagementView({
             搜索
           </button>
         </div>
-        <button
-          className={styles.managementDangerButton}
-          disabled={checkedKnowledgeBaseIds.length === 0 || deletingBulk || writeDisabled}
-          onClick={() => void onBulkDeleteKnowledgeBases()}
-        >
-          批量删除
-        </button>
-      </div>
 
-      <div className={styles.managementDataList}>
-        {knowledgeBases.length === 0 ? (
-          <div className={styles.managementEmpty}>暂无知识库。</div>
-        ) : (
-          knowledgeBases.map((knowledgeBase) => (
-            <div
-              key={knowledgeBase.knowledge_base_id}
-              className={`${styles.managementDataRow} ${
-                selectedKnowledgeBaseId === knowledgeBase.knowledge_base_id
-                  ? styles.managementListItemActive
+        <div className={styles.managementKnowledgeToolbarActions}>
+          <div
+            className={styles.managementViewToggle}
+            role="group"
+            aria-label="知识库展示方式"
+          >
+            <button
+              type="button"
+              className={`${styles.managementViewToggleButton} ${
+                knowledgeBaseViewMode === 'card'
+                  ? styles.managementViewToggleButtonActive
                   : ''
               }`}
+              aria-pressed={knowledgeBaseViewMode === 'card'}
+              onClick={() => setKnowledgeBaseViewMode('card')}
             >
-              <div className={styles.managementDataPrimary}>
-                <div className={styles.managementDataTitle}>
+              卡片
+            </button>
+            <button
+              type="button"
+              className={`${styles.managementViewToggleButton} ${
+                knowledgeBaseViewMode === 'list'
+                  ? styles.managementViewToggleButtonActive
+                  : ''
+              }`}
+              aria-pressed={knowledgeBaseViewMode === 'list'}
+              onClick={() => setKnowledgeBaseViewMode('list')}
+            >
+              列表
+            </button>
+          </div>
+
+          <button
+            className={styles.managementDangerButton}
+            disabled={
+              checkedKnowledgeBaseIds.length === 0 || deletingBulk || writeDisabled
+            }
+            onClick={() => void onBulkDeleteKnowledgeBases()}
+          >
+            批量删除
+          </button>
+        </div>
+      </section>
+
+      {knowledgeBaseViewMode === 'card' ? (
+        <div className={styles.managementKnowledgeGrid}>
+          {knowledgeBases.length === 0 ? (
+            <div
+              className={`${styles.managementEmpty} ${styles.managementKnowledgeEmpty}`}
+            >
+              <strong>还没有知识库</strong>
+              <span>创建知识库后，可以集中上传和管理资料。</span>
+              <button
+                type="button"
+                className={styles.managementButton}
+                disabled={writeDisabled}
+                onClick={() => onShowCreateKnowledgeBaseModalChange(true)}
+              >
+                新建知识库
+              </button>
+            </div>
+          ) : (
+            knowledgeBases.map((knowledgeBase) => (
+              <article
+                key={knowledgeBase.knowledge_base_id}
+                className={`${styles.managementKnowledgeCard} ${
+                  selectedKnowledgeBaseId === knowledgeBase.knowledge_base_id
+                    ? styles.managementKnowledgeCardActive
+                    : ''
+                }`}
+              >
+                <div className={styles.managementKnowledgeCardHeader}>
                   <label
                     className={styles.managementCheckbox}
                     onClick={(event) =>
@@ -606,54 +633,156 @@ export function KnowledgeManagementView({
                   >
                     <input
                       type="checkbox"
+                      aria-label={`选择知识库 ${knowledgeBase.name}`}
                       checked={checkedKnowledgeBaseIds.includes(
                         knowledgeBase.knowledge_base_id
                       )}
                       onChange={() => undefined}
                     />
                   </label>
-                  <strong>{knowledgeBase.name}</strong>
+                  <div className={styles.managementKnowledgeCardIdentity}>
+                    <span className={styles.managementKnowledgeCardIcon}>
+                      <SidebarIcon name="knowledge" />
+                    </span>
+                    <div className={styles.managementKnowledgeCardTitle}>
+                      <span>Knowledge Base</span>
+                      <h3>{knowledgeBase.name}</h3>
+                    </div>
+                  </div>
+                  <div className={styles.managementKnowledgeCardActions}>
+                    <button
+                      type="button"
+                      className={styles.managementKnowledgeAction}
+                      disabled={writeDisabled || savingKnowledgeBase}
+                      onClick={() => openEditKnowledgeBaseModal(knowledgeBase)}
+                    >
+                      编辑
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.managementKnowledgeDangerAction}
+                      disabled={writeDisabled || savingKnowledgeBase}
+                      onClick={() =>
+                        void onDeleteKnowledgeBase(knowledgeBase.knowledge_base_id)
+                      }
+                    >
+                      删除
+                    </button>
+                  </div>
                 </div>
-                <span className={styles.managementDataDescription}>
+
+                <p className={styles.managementKnowledgeDescription}>
                   {knowledgeBase.description || '暂无描述'}
-                </span>
-              </div>
+                </p>
 
-              <div className={styles.managementDataMetrics}>
-                <span>{knowledgeBase.document_count} 文档</span>
-                <span>{knowledgeBase.chunk_count} 切片</span>
-                <span>{formatDateTime(knowledgeBase.updated_at)}</span>
-              </div>
+                <div className={styles.managementKnowledgeCardFooter}>
+                  <div className={styles.managementKnowledgeCardMeta}>
+                    <span>{knowledgeBase.document_count} 文档</span>
+                    <span>{formatDateTime(knowledgeBase.updated_at)} 更新</span>
+                  </div>
+                  <button
+                    type="button"
+                    className={styles.managementMinorButton}
+                    onClick={() => onOpenKnowledgeBaseLibrary(knowledgeBase)}
+                  >
+                    打开知识库
+                  </button>
+                </div>
+              </article>
+            ))
+          )}
+        </div>
+      ) : (
+        <div className={styles.managementDataList}>
+          {knowledgeBases.length === 0 ? (
+            <div className={styles.managementEmpty}>暂无知识库。</div>
+          ) : (
+            knowledgeBases.map((knowledgeBase) => (
+              <div
+                key={knowledgeBase.knowledge_base_id}
+                className={`${styles.managementDataRow} ${
+                  selectedKnowledgeBaseId === knowledgeBase.knowledge_base_id
+                    ? styles.managementListItemActive
+                    : ''
+                }`}
+              >
+                <div className={styles.managementDataPrimary}>
+                  <div className={styles.managementDataTitle}>
+                    <label
+                      className={styles.managementCheckbox}
+                      onClick={(event) =>
+                        onToggleKnowledgeBaseChecked(
+                          knowledgeBase.knowledge_base_id,
+                          event as unknown as MouseEvent<
+                            HTMLButtonElement | HTMLInputElement
+                          >
+                        )
+                      }
+                    >
+                      <input
+                        type="checkbox"
+                        aria-label={`选择知识库 ${knowledgeBase.name}`}
+                        checked={checkedKnowledgeBaseIds.includes(
+                          knowledgeBase.knowledge_base_id
+                        )}
+                        onChange={() => undefined}
+                      />
+                    </label>
+                    <strong>{knowledgeBase.name}</strong>
+                  </div>
+                  <span className={styles.managementDataDescription}>
+                    {knowledgeBase.description || '暂无描述'}
+                  </span>
+                </div>
 
-              <div className={styles.managementDataActions}>
-                <button
-                  className={styles.managementMinorButton}
-                  onClick={() => onOpenKnowledgeBaseLibrary(knowledgeBase)}
-                >
-                  打开
-                </button>
-                <button
-                  className={styles.managementDangerMinorButton}
-                  disabled={writeDisabled}
-                  onClick={() => void onDeleteKnowledgeBase(knowledgeBase.knowledge_base_id)}
-                >
-                  删除
-                </button>
+                <div className={styles.managementDataMetrics}>
+                  <span>{knowledgeBase.document_count} 文档</span>
+                  <span>{formatDateTime(knowledgeBase.updated_at)}</span>
+                </div>
+
+                <div className={styles.managementDataActions}>
+                  <button
+                    className={styles.managementMinorButton}
+                    onClick={() => onOpenKnowledgeBaseLibrary(knowledgeBase)}
+                  >
+                    打开
+                  </button>
+                  <button
+                    className={styles.managementMinorButton}
+                    disabled={writeDisabled || savingKnowledgeBase}
+                    onClick={() => openEditKnowledgeBaseModal(knowledgeBase)}
+                  >
+                    编辑
+                  </button>
+                  <button
+                    className={styles.managementDangerMinorButton}
+                    disabled={writeDisabled || savingKnowledgeBase}
+                    onClick={() =>
+                      void onDeleteKnowledgeBase(knowledgeBase.knowledge_base_id)
+                    }
+                  >
+                    删除
+                  </button>
+                </div>
               </div>
-            </div>
-          ))
-        )}
+            ))
+          )}
+        </div>
+      )}
+
+      <div className={styles.managementKnowledgePagination}>
+        <Pagination
+          page={knowledgeBasePage}
+          pageTotal={knowledgeBasePageTotal}
+          total={knowledgeBaseTotal}
+          onPrev={() => onKnowledgeBasePageChange((prev) => Math.max(1, prev - 1))}
+          onNext={() =>
+            onKnowledgeBasePageChange((prev) =>
+              Math.min(knowledgeBasePageTotal, prev + 1)
+            )
+          }
+        />
       </div>
-
-      <Pagination
-        page={knowledgeBasePage}
-        pageTotal={knowledgeBasePageTotal}
-        total={knowledgeBaseTotal}
-        onPrev={() => onKnowledgeBasePageChange((prev) => Math.max(1, prev - 1))}
-        onNext={() =>
-          onKnowledgeBasePageChange((prev) => Math.min(knowledgeBasePageTotal, prev + 1))
-        }
-      />
     </div>
   )
 
@@ -665,7 +794,9 @@ export function KnowledgeManagementView({
 
   return (
     <>
-      <div className={styles.managementPage}>
+      <div
+        className={`${styles.managementPage} ${styles.managementKnowledgePage}`}
+      >
         <div className={styles.managementNoticeRow}>
           {writeDisabled ? (
             <div className={styles.managementNotice}>{writeDisabledMessage}</div>
@@ -689,6 +820,19 @@ export function KnowledgeManagementView({
         onNameChange={onKnowledgeBaseNameChange}
         onDescriptionChange={onKnowledgeBaseDescriptionChange}
         onCreate={onCreateKnowledgeBase}
+      />
+      <CreateKnowledgeBaseModal
+        mode="edit"
+        open={editingKnowledgeBase !== null}
+        knowledgeBaseName={editingKnowledgeBaseName}
+        knowledgeBaseDescription={editingKnowledgeBaseDescription}
+        savingKnowledgeBase={updatingKnowledgeBase}
+        createDisabled={writeDisabled}
+        disabledMessage={writeDisabledMessage}
+        onClose={closeEditKnowledgeBaseModal}
+        onNameChange={setEditingKnowledgeBaseName}
+        onDescriptionChange={setEditingKnowledgeBaseDescription}
+        onCreate={submitKnowledgeBaseEdit}
       />
     </>
   )

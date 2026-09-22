@@ -671,9 +671,6 @@ export default function ChatInterface() {
   const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState('')
   const [selectedKnowledgeBase, setSelectedKnowledgeBase] =
     useState<KnowledgeBase | null>(null)
-  const [selectedKnowledgeBaseName, setSelectedKnowledgeBaseName] = useState('')
-  const [selectedKnowledgeBaseDescription, setSelectedKnowledgeBaseDescription] =
-    useState('')
   const [checkedKnowledgeBaseIds, setCheckedKnowledgeBaseIds] = useState<string[]>([])
 
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([])
@@ -944,8 +941,6 @@ export default function ChatInterface() {
     setKnowledgeBaseSearchInput('')
     setSelectedKnowledgeBaseId('')
     setSelectedKnowledgeBase(null)
-    setSelectedKnowledgeBaseName('')
-    setSelectedKnowledgeBaseDescription('')
     setCheckedKnowledgeBaseIds([])
     setKnowledgeBases([])
     setKnowledgeBaseTotal(0)
@@ -1401,8 +1396,6 @@ export default function ChatInterface() {
           )
           if (matched) {
             setSelectedKnowledgeBase(matched)
-            setSelectedKnowledgeBaseName(matched.name)
-            setSelectedKnowledgeBaseDescription(matched.description)
           } else {
             setSelectedKnowledgeBaseId('')
             setSelectedKnowledgeBase(null)
@@ -1434,8 +1427,6 @@ export default function ChatInterface() {
         })
         setSelectedKnowledgeBase(result)
         setSelectedKnowledgeBaseId(result.knowledge_base_id)
-        setSelectedKnowledgeBaseName(result.name)
-        setSelectedKnowledgeBaseDescription(result.description)
       } catch (error) {
         setManagementError(error instanceof Error ? error.message : '加载知识库详情失败。')
       }
@@ -1603,8 +1594,6 @@ export default function ChatInterface() {
       }
       setSelectedKnowledgeBaseId(knowledgeBase.knowledge_base_id)
       setSelectedKnowledgeBase(knowledgeBase)
-      setSelectedKnowledgeBaseName(knowledgeBase.name)
-      setSelectedKnowledgeBaseDescription(knowledgeBase.description)
       setDocumentPage(1)
       setDocumentSearch('')
       setDocumentSearchInput('')
@@ -1905,9 +1894,19 @@ export default function ChatInterface() {
     }
   }
 
-  const saveKnowledgeBase = async () => {
-    if (!selectedKnowledgeBase) return
-
+  /**
+   * 更新指定知识库并刷新列表。
+   *
+   * Args:
+   *   knowledgeBaseId: 知识库 ID。
+   *   name: 知识库名称。
+   *   description: 知识库描述。
+   */
+  const updateKnowledgeBase = async (
+    knowledgeBaseId: string,
+    name: string,
+    description: string
+  ) => {
     setSavingKnowledgeBase(true)
     setManagementError('')
     setManagementNotice('')
@@ -1917,9 +1916,9 @@ export default function ChatInterface() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: currentUserId,
-          knowledge_base_id: selectedKnowledgeBase.knowledge_base_id,
-          name: selectedKnowledgeBaseName.trim(),
-          description: selectedKnowledgeBaseDescription.trim(),
+          knowledge_base_id: knowledgeBaseId,
+          name: name.trim(),
+          description: description.trim(),
         }),
       })
       await loadKnowledgeBases(knowledgeBasePage, knowledgeBaseSearch)
@@ -1927,6 +1926,7 @@ export default function ChatInterface() {
       setManagementNotice(`知识库 "${updated.name}" 已更新。`)
     } catch (error) {
       setManagementError(error instanceof Error ? error.message : '更新知识库失败。')
+      throw error
     } finally {
       setSavingKnowledgeBase(false)
     }
@@ -1958,8 +1958,6 @@ export default function ChatInterface() {
       if (targetId === selectedKnowledgeBaseId) {
         setSelectedKnowledgeBaseId('')
         setSelectedKnowledgeBase(null)
-        setSelectedKnowledgeBaseName('')
-        setSelectedKnowledgeBaseDescription('')
         setSelectedDocumentId('')
         setSelectedDocumentDetail(null)
         setDocuments([])
@@ -2001,8 +1999,6 @@ export default function ChatInterface() {
       if (result.deleted_ids.includes(selectedKnowledgeBaseId)) {
         setSelectedKnowledgeBaseId('')
         setSelectedKnowledgeBase(null)
-        setSelectedKnowledgeBaseName('')
-        setSelectedKnowledgeBaseDescription('')
         setSelectedDocumentId('')
         setSelectedDocumentDetail(null)
         setDocuments([])
@@ -3560,8 +3556,6 @@ export default function ChatInterface() {
                 knowledgeBases={knowledgeBases}
                 selectedKnowledgeBaseId={selectedKnowledgeBaseId}
                 selectedKnowledgeBase={selectedKnowledgeBase}
-                selectedKnowledgeBaseName={selectedKnowledgeBaseName}
-                selectedKnowledgeBaseDescription={selectedKnowledgeBaseDescription}
                 checkedKnowledgeBaseIds={checkedKnowledgeBaseIds}
                 knowledgeBaseSearchInput={knowledgeBaseSearchInput}
                 knowledgeBasePage={knowledgeBasePage}
@@ -3585,11 +3579,7 @@ export default function ChatInterface() {
                 loadingDocumentDetail={loadingDocumentDetail}
                 uploadInputRef={uploadInputRef}
                 onNavigateTo={navigateToKnowledgeView}
-                onSelectedKnowledgeBaseNameChange={setSelectedKnowledgeBaseName}
-                onSelectedKnowledgeBaseDescriptionChange={
-                  setSelectedKnowledgeBaseDescription
-                }
-                onSaveKnowledgeBase={saveKnowledgeBase}
+                onUpdateKnowledgeBase={updateKnowledgeBase}
                 onDeleteKnowledgeBase={deleteKnowledgeBase}
                 onOpenUploadDialog={openUploadDialog}
                 onHandleUploadFiles={handleUploadFiles}

@@ -21,15 +21,23 @@ export function ToolCard({ toolData, duration }: ToolCardProps) {
     : ''
 
   const preview = getToolPreview(toolData)
+  const hasResult = (toolData.toolOutput?.length ?? 0) > 0
 
   return (
-    <div className={`${styles.toolCard} ${styles.success}`}>
+    <div className={styles.toolCard}>
       <button
         type="button"
         className={styles.toolCardHeader}
         aria-expanded={expanded}
         onClick={() => setExpanded((current) => !current)}
       >
+        <span
+          className={`${styles.toolStatus} ${
+            hasResult ? styles.toolStatusSuccess : styles.toolStatusRunning
+          }`}
+          role="img"
+          aria-label={hasResult ? '工具执行成功' : '工具执行中'}
+        />
         <span className={styles.toolName}>{toolName}</span>
         {preview && <span className={styles.toolPreview}>{preview}</span>}
         {duration !== undefined && (

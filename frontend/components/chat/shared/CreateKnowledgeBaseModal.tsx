@@ -1,6 +1,7 @@
 import styles from '../../ChatInterface.module.css'
 
 interface CreateKnowledgeBaseModalProps {
+  mode?: 'create' | 'edit'
   open: boolean
   knowledgeBaseName: string
   knowledgeBaseDescription: string
@@ -14,6 +15,7 @@ interface CreateKnowledgeBaseModalProps {
 }
 
 export function CreateKnowledgeBaseModal({
+  mode = 'create',
   open,
   knowledgeBaseName,
   knowledgeBaseDescription,
@@ -26,12 +28,13 @@ export function CreateKnowledgeBaseModal({
   onCreate,
 }: CreateKnowledgeBaseModalProps) {
   if (!open) return null
+  const isEditing = mode === 'edit'
 
   return (
     <div className={styles.managementModalOverlay} onClick={onClose}>
       <div className={styles.managementModal} onClick={(event) => event.stopPropagation()}>
         <div className={styles.managementHeader}>
-          <h3>新建知识库</h3>
+          <h3>{isEditing ? '编辑知识库' : '新建知识库'}</h3>
           <button
             type="button"
             className={styles.managementModalClose}
@@ -65,7 +68,7 @@ export function CreateKnowledgeBaseModal({
               disabled={savingKnowledgeBase || createDisabled}
               onClick={() => void onCreate()}
             >
-              创建知识库
+              {isEditing ? '保存修改' : '创建知识库'}
             </button>
             <button
               type="button"
