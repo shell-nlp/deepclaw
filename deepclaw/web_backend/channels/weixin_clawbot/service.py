@@ -6,10 +6,8 @@ from fastapi import HTTPException
 
 from deepclaw.web_backend.auth.dependencies import CurrentActor
 from deepclaw.web_backend.channels.common import (
-    accessible_binding_user_id,
     ensure_binding_access,
     ensure_binding_owner_or_manager_match,
-    ensure_runtime_state_access,
     manager_user_id_from_actor,
 )
 from deepclaw.web_backend.channels.models import ChannelBinding, ChannelMessage
@@ -26,22 +24,10 @@ from deepclaw.web_backend.channels.weixin_clawbot.client import (
 )
 from deepclaw.web_backend.channels.weixin_clawbot.lifespan import (
     start_weixin_binding_runtime,
-    start_weixin_clawbot_runtime,
     stop_weixin_binding_runtime,
-    stop_weixin_clawbot_runtime,
 )
 from deepclaw.web_backend.channels.weixin_clawbot.runtime import (
     weixin_binding_state_key,
-)
-from deepclaw.web_backend.channels.weixin_clawbot.schemas import (
-    WeixinClawBotBoundUserList,
-    WeixinClawBotBoundUserRead,
-)
-from deepclaw.web_backend.channels.weixin_clawbot.state import (
-    mask_token,
-    runtime_state_manager_user_id,
-    weixin_clawbot_user_id_from_state_key,
-    weixin_clawbot_user_state_key,
 )
 
 
@@ -186,43 +172,6 @@ class WeixinClawBotService:
         if raw is not None:
             payload["raw"] = raw
         return payload
-
-    async def create_qrcode(self, *, local_token_list: list[str]) -> dict[str, Any]:
-        """请求上游生成登录二维码。
-
-        Args:
-            local_token_list: 客户端本地已保存的 token 列表。
-
-        Returns:
-            含二维码内容与原始数据的响应字典。
-        """
-        data = await call_weixin_clawbot_api(
-            self._client().fetch_login_qrcode(local_token_list=local_token_list)
-        )
-        return {
-            "qrcode": data.get("qrcode"),
-            "qrcode_url": data.get("qrcode_img_content") or data.get("qrcode"),
-            "raw": data,
-        }
-
-    async def get_qrcode_status(
-        self,
-        *,
-        qrcode: str,
-        verify_code: str | None = None,
-    ) -> dict[str, Any]:
-        """查询上游二维码扫码与登录状态。
-
-        Args:
-            qrcode: 二维码标识。
-            verify_code: 可选的验证码。
-
-        Returns:
-            上游返回的状态字典。
-        """
-        return await call_weixin_clawbot_api(
-            self._client().get_qrcode_status(qrcode=qrcode, verify_code=verify_code)
-        )
 
     async def create_binding(
         self,
@@ -381,233 +330,6 @@ class WeixinClawBotService:
             state_key=weixin_binding_state_key(binding_id),
         )
         return await self.store.delete_binding(binding_id)
-
-    async def create_user_qrcode(self, *, actor: CurrentActor, user_id: str) -> dict[str, Any]:
-        """按用户 ID 生成登录二维码，兼容旧调用路径。
-
-        Args:
-            actor: 当前鉴权主体。
-            user_id: 绑定归属的用户 ID。
-
-        Returns:
-            含二维码内容与原始数据的响应字典。
-        """
-        ensure_binding_owner_or_manager_match(actor=actor, owner_user_id=user_id)
-        state_key = weixin_clawbot_user_state_key(user_id)
-        runtime_state = await self.store.get_runtime_state(
-            channel=WEIXIN_CLAWBOT_CHANNEL,
-            state_key=state_key,
-        )
-        if runtime_state is not None:
-            ensure_runtime_state_access(
-                actor=actor,
-                state_key=state_key,
-                state_data=runtime_state.data or {},
-            )
-        saved_bot_token = (
-            runtime_state.data.get("bot_token")
-            if runtime_state is not None and runtime_state.data
-            else None
-        )
-        data = await call_weixin_clawbot_api(
-            self._client().fetch_login_qrcode(
-                local_token_list=[str(saved_bot_token)] if saved_bot_token else []
-            )
-        )
-        qrcode = data.get("qrcode")
-        qrcode_url = data.get("qrcode_img_content") or qrcode
-        await self.store.upsert_runtime_state(
-            channel=WEIXIN_CLAWBOT_CHANNEL,
-            state_key=state_key,
-            data={
-                "owner_user_id": user_id,
-                "manager_user_id": manager_user_id_from_actor(actor),
-                "qrcode": qrcode,
-                "qrcode_url": qrcode_url,
-            },
-        )
-        await self.store.upsert_binding(
-            channel=WEIXIN_CLAWBOT_CHANNEL,
-            owner_user_id=user_id,
-            manager_user_id=manager_user_id_from_actor(actor),
-            display_name=f"Weixin ClawBot {user_id}",
-            runtime_state={
-                "qrcode": qrcode,
-                "qrcode_url": qrcode_url,
-            },
-        )
-        return {
-            "qrcode": qrcode,
-            "qrcode_url": qrcode_url,
-            "raw": data,
-        }
-
-    async def get_user_qrcode_status(
-        self,
-        *,
-        actor: CurrentActor,
-        user_id: str,
-        qrcode: str | None = None,
-        verify_code: str | None = None,
-    ) -> dict[str, Any]:
-        """按用户 ID 查询二维码状态，兼容旧调用路径。
-
-        Args:
-            actor: 当前鉴权主体。
-            user_id: 绑定归属的用户 ID。
-            qrcode: 可选的二维码标识，缺省时取运行态中保存的值。
-            verify_code: 可选的验证码。
-
-        Returns:
-            二维码状态字典。
-
-        Raises:
-            HTTPException: 没有可用二维码时抛出 404。
-        """
-        state_key = weixin_clawbot_user_state_key(user_id)
-        runtime_state = await self.store.get_runtime_state(
-            channel=WEIXIN_CLAWBOT_CHANNEL,
-            state_key=state_key,
-        )
-        state_data = runtime_state.data if runtime_state is not None else {}
-        if runtime_state is not None:
-            ensure_runtime_state_access(
-                actor=actor,
-                state_key=state_key,
-                state_data=state_data,
-            )
-        if state_data.get("bot_token"):
-            base_url = str(state_data.get("base_url") or "").rstrip("/")
-            return {
-                "status": "confirmed",
-                "bot_token": str(state_data["bot_token"]),
-                "baseurl": base_url,
-                "base_url": base_url,
-                "qrcode": state_data.get("qrcode"),
-                "qrcode_url": state_data.get("qrcode_url"),
-            }
-
-        login_qrcode = qrcode or state_data.get("qrcode")
-        if not login_qrcode:
-            raise HTTPException(status_code=404, detail="Weixin ClawBot qrcode not found")
-
-        status = await call_weixin_clawbot_api(
-            self._client().get_qrcode_status(
-                qrcode=str(login_qrcode),
-                verify_code=verify_code,
-            )
-        )
-        update_data = {
-            "owner_user_id": user_id,
-            "manager_user_id": manager_user_id_from_actor(actor),
-            "qrcode": login_qrcode,
-        }
-        if status.get("bot_token"):
-            update_data["bot_token"] = str(status["bot_token"])
-        if status.get("baseurl"):
-            update_data["base_url"] = str(status["baseurl"]).rstrip("/")
-        await self.store.upsert_runtime_state(
-            channel=WEIXIN_CLAWBOT_CHANNEL,
-            state_key=state_key,
-            data=update_data,
-        )
-        binding_runtime_state: dict[str, Any] = {"qrcode": login_qrcode}
-        credentials: dict[str, str] = {}
-        if status.get("bot_token"):
-            credentials["bot_token"] = str(status["bot_token"])
-        if status.get("baseurl"):
-            base_url = str(status["baseurl"]).rstrip("/")
-            credentials["base_url"] = base_url
-            binding_runtime_state["base_url"] = base_url
-        await self.store.upsert_binding(
-            channel=WEIXIN_CLAWBOT_CHANNEL,
-            owner_user_id=user_id,
-            manager_user_id=manager_user_id_from_actor(actor),
-            display_name=f"Weixin ClawBot {user_id}",
-            credentials=credentials,
-            runtime_state=binding_runtime_state,
-        )
-        if status.get("bot_token"):
-            await start_weixin_clawbot_runtime(
-                state_key=state_key,
-                store=self.store,
-                qrcode=str(login_qrcode),
-            )
-        return status
-
-    async def list_users(self, *, actor: CurrentActor) -> WeixinClawBotBoundUserList:
-        """返回当前用户或管理员可见范围内的微信 ClawBot 运行态。
-
-        Args:
-            actor: 当前鉴权主体。
-
-        Returns:
-            已绑定用户列表响应。
-        """
-        states = await self.store.list_runtime_states(channel=WEIXIN_CLAWBOT_CHANNEL)
-        current_manager_user_id = accessible_binding_user_id(actor)
-        items: list[WeixinClawBotBoundUserRead] = []
-        for state in states:
-            state_user_id = weixin_clawbot_user_id_from_state_key(state.state_key)
-            if state_user_id is None:
-                continue
-
-            state_data = state.data or {}
-            if (
-                current_manager_user_id is not None
-                and runtime_state_manager_user_id(state_data, state.state_key)
-                != current_manager_user_id
-            ):
-                continue
-            user_id = str(state_data.get("owner_user_id") or state_user_id)
-            bot_token = state_data.get("bot_token")
-            connected = bool(bot_token)
-            items.append(
-                WeixinClawBotBoundUserRead(
-                    user_id=user_id,
-                    state_key=state.state_key,
-                    connected=connected,
-                    status="connected" if connected else "pending",
-                    bot_token=mask_token(str(bot_token)) if bot_token else None,
-                    qrcode_url=state_data.get("qrcode_url"),
-                    base_url=state_data.get("base_url"),
-                    updated_at=state.updated_at.isoformat(),
-                )
-            )
-
-        return WeixinClawBotBoundUserList(items=items, total=len(items))
-
-    async def delete_user(self, *, actor: CurrentActor, user_id: str) -> bool:
-        """按用户 ID 删除微信 ClawBot 运行态，兼容旧调用路径。
-
-        Args:
-            actor: 当前鉴权主体。
-            user_id: 绑定归属的用户 ID。
-
-        Returns:
-            是否删除成功。
-
-        Raises:
-            HTTPException: 用户运行态不存在时抛出 404。
-        """
-        state_key = weixin_clawbot_user_state_key(user_id)
-        runtime_state = await self.store.get_runtime_state(
-            channel=WEIXIN_CLAWBOT_CHANNEL,
-            state_key=state_key,
-        )
-        if runtime_state is None:
-            raise HTTPException(status_code=404, detail="Weixin ClawBot user not found")
-        ensure_runtime_state_access(
-            actor=actor,
-            state_key=state_key,
-            state_data=runtime_state.data or {},
-        )
-
-        await stop_weixin_clawbot_runtime(state_key)
-        return await self.store.delete_runtime_state(
-            channel=WEIXIN_CLAWBOT_CHANNEL,
-            state_key=state_key,
-        )
 
     async def fetch_pending_messages(
         self,

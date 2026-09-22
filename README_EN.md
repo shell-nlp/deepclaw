@@ -298,7 +298,6 @@ pnpm build
 | `GET` | `/api/agui/runs/{run_id}/events` | AG-UI SSE | Replay or continue Run events |
 | `GET` | `/api/agui/runs/{run_id}` | REST | Run snapshot |
 | `POST` | `/api/agui/runs/{run_id}/resume` | AG-UI | Resume an interrupted Run |
-| `POST` | `/api/agui/runs/{run_id}/actions` | AG-UI | Submit a card action |
 | `POST` | `/api/agui/runs/{run_id}/cancel` | REST | Cancel a Run |
 | `GET` | `/api/agui/threads` | REST | List threads |
 | `GET` | `/api/agui/threads/{thread_id}/runs` | REST | List runs in a thread |
@@ -334,13 +333,16 @@ pnpm build
 
 | Method | Path | Protocol | Description |
 |--------|------|----------|-------------|
+| `GET` | `/api/channels/bindings` | REST | List channel bindings (`scope=my\|all`) |
 | `POST` | `/api/channels/feishu/events` | REST | Feishu event entry |
+| `POST` | `/api/channels/feishu/bindings` | REST | Create a Feishu binding |
+| `DELETE` | `/api/channels/feishu/bindings/{binding_id}` | REST | Delete a Feishu binding |
 | `POST` | `/api/channels/dingtalk/events` | REST | DingTalk event entry |
-| `POST` | `/api/channels/weixin-clawbot/qrcode` | REST | Get WeChat ClawBot login QR code |
-| `GET` | `/api/channels/weixin-clawbot/qrcode/status` | REST | Query QR code status |
-| `POST` | `/api/channels/weixin-clawbot/users/{user_id}/qrcode` | REST | Generate user binding QR code |
-| `GET` | `/api/channels/weixin-clawbot/users` | REST | List bound users |
-| `DELETE` | `/api/channels/weixin-clawbot/users/{user_id}` | REST | Delete binding |
+| `POST` | `/api/channels/weixin-clawbot/bindings` | REST | Create a WeChat ClawBot binding |
+| `POST` | `/api/channels/weixin-clawbot/bindings/{binding_id}/qrcode` | REST | Refresh binding QR code |
+| `GET` | `/api/channels/weixin-clawbot/bindings/{binding_id}/qrcode/status` | REST | Query binding QR code status |
+| `DELETE` | `/api/channels/weixin-clawbot/bindings/{binding_id}` | REST | Delete a WeChat ClawBot binding |
+| `POST` | `/api/channels/weixin-clawbot/poll` | REST | Poll pending WeChat ClawBot messages |
 | `GET` | `/api/channels/sessions` | REST | List channel sessions |
 | `PATCH` | `/api/channels/sessions/{session_id}` | REST | Update session reply mode |
 

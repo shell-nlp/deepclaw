@@ -19,7 +19,6 @@ from deepclaw.web_backend.common.agui_runs import (
     delete_agui_thread,
     get_agui_run_snapshot_from_store,
     get_agui_thread_state,
-    handle_agui_action,
     list_agui_thread_runs,
     list_agui_threads,
     resume_agui_run,
@@ -29,7 +28,6 @@ from deepclaw.web_backend.common.agui_schemas import (
     AgentListResponse,
     AgentSummaryResponse,
     AgUiRunRequest,
-    RunActionRequest,
     RunSnapshotResponse,
     ThreadDeleteResponse,
     ThreadListResponse,
@@ -279,46 +277,6 @@ async def resume_run(
     if payload.agent_id and payload.agent_id != state.agent_id:
         raise HTTPException(status_code=409, detail="agentId 与当前 Run 不一致")
     return await resume_agui_run(
-        manager,
-        run_id,
-        payload,
-        request,
-        actor,
-        agent.allowed_state_keys,
-    )
-
-
-@router.post(
-    "/runs/{run_id}/actions",
-    status_code=202,
-    response_model=RunSnapshotResponse,
-    tags=["agui-runs"],
-    summary="处理 AG-UI Action",
-    description="将前端卡片 Action 转换为 AG-UI resume 命令并继续当前 Run。",
-)
-async def handle_action(
-    run_id: str,
-    payload: RunActionRequest,
-    request: Request,
-    actor: CurrentActor = Depends(get_current_actor),
-    runtime_registry: AgentRuntimeCache = Depends(get_agent_runtime_cache),
-    checkpointer: Any | None = Depends(get_checkpointer),
-    store: Any | None = Depends(get_langgraph_store),
-    run_store: RunStore = Depends(get_agui_run_store),
-):
-    """处理统一 AG-UI Action。"""
-    registry = request.app.state.agent_registry
-    _, agent, manager = await _resolve_run_manager(
-        request=request,
-        run_id=run_id,
-        actor=actor,
-        run_store=run_store,
-        registry=registry,
-        runtime_registry=runtime_registry,
-        checkpointer=checkpointer,
-        store=store,
-    )
-    return await handle_agui_action(
         manager,
         run_id,
         payload,

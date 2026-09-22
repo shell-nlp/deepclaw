@@ -6,9 +6,7 @@ from deepclaw.web_backend.channels.feishu.schemas import FeishuBindingRequest
 from deepclaw.web_backend.channels.feishu.service import FeishuBindingService
 from deepclaw.web_backend.channels.models import (
     ChannelBindingDeleteResult,
-    ChannelBindingList,
     ChannelBindingRead,
-    ChannelBindingUserDeleteResult,
     ChannelEventAccepted,
 )
 from deepclaw.web_backend.channels.service import ChannelService, get_channel_service
@@ -51,27 +49,6 @@ async def feishu_events(
 
 
 @router.post(
-    "/feishu/users/{user_id}/binding",
-    response_model=ChannelBindingRead,
-    summary="创建或更新飞书绑定",
-    description="按用户 ID 创建或更新飞书渠道绑定。",
-)
-async def upsert_feishu_binding(
-    user_id: str,
-    request: FeishuBindingRequest,
-    actor: CurrentActor = Depends(get_current_actor),
-    binding_service: FeishuBindingService = Depends(get_feishu_binding_service),
-):
-    """按用户 ID 创建或更新飞书绑定。"""
-    binding = await binding_service.upsert_binding_for_user(
-        actor=actor,
-        user_id=user_id,
-        request=request,
-    )
-    return ChannelBindingRead.model_validate(binding)
-
-
-@router.post(
     "/feishu/bindings",
     response_model=ChannelBindingRead,
     summary="创建飞书绑定",
@@ -85,54 +62,6 @@ async def create_feishu_binding(
     """为当前用户创建飞书绑定。"""
     binding = await binding_service.create_binding(actor=actor, request=request)
     return ChannelBindingRead.model_validate(binding)
-
-
-@router.get(
-    "/feishu/users/{user_id}/binding",
-    response_model=ChannelBindingRead,
-    summary="获取飞书绑定",
-    description="返回指定用户当前使用的飞书绑定信息。",
-)
-async def get_feishu_binding(
-    user_id: str,
-    actor: CurrentActor = Depends(get_current_actor),
-    binding_service: FeishuBindingService = Depends(get_feishu_binding_service),
-):
-    """查询指定用户的飞书绑定。"""
-    binding = await binding_service.get_binding_for_user(actor=actor, user_id=user_id)
-    return ChannelBindingRead.model_validate(binding)
-
-
-@router.get(
-    "/feishu/users",
-    response_model=ChannelBindingList,
-    summary="查询飞书绑定列表",
-    description="返回当前用户或管理员范围内的飞书绑定。",
-)
-async def list_feishu_bindings(
-    actor: CurrentActor = Depends(get_current_actor),
-    binding_service: FeishuBindingService = Depends(get_feishu_binding_service),
-):
-    """查询当前可见的飞书绑定。"""
-    bindings = await binding_service.list_bindings(actor=actor)
-    items = [ChannelBindingRead.model_validate(binding) for binding in bindings]
-    return ChannelBindingList(items=items, total=len(items))
-
-
-@router.delete(
-    "/feishu/users/{user_id}/binding",
-    response_model=ChannelBindingUserDeleteResult,
-    summary="删除飞书绑定",
-    description="删除指定用户的飞书绑定及运行态信息。",
-)
-async def delete_feishu_binding(
-    user_id: str,
-    actor: CurrentActor = Depends(get_current_actor),
-    binding_service: FeishuBindingService = Depends(get_feishu_binding_service),
-):
-    """删除指定用户的飞书绑定。"""
-    deleted = await binding_service.delete_binding_for_user(actor=actor, user_id=user_id)
-    return ChannelBindingUserDeleteResult(user_id=user_id, deleted=deleted)
 
 
 @router.delete(

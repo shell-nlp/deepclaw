@@ -41,7 +41,7 @@
 - `deepclaw/web_backend/common/agui_runs.py`
   AG-UI Run 公共执行逻辑、统一 Runs 路径解析、渠道 Agent URL 与 runtime-config 路由。
 - `deepclaw/web_backend/common/agui_schemas.py`
-  AG-UI HTTP 协议模型，当前包含 `AgUiRunRequest`、`RunSnapshotResponse`、`RunActionRequest` 与 Thread/Agent 响应模型。
+  AG-UI HTTP 协议模型，当前包含 `AgUiRunRequest`、`RunSnapshotResponse` 与 Thread/Agent 响应模型。
 - `deepclaw/agent_registry.py`
   统一 Agent 基类与自动发现入口。定义 `Agent` 与 `AgentRegistry`，扫描 `deepclaw.agents.*.agent` 模块并校验 `agent_id`、默认智能体和 `build_agent` 构建入口。
 - `deepclaw/web_backend/agui/runtime.py`
@@ -386,6 +386,7 @@ pnpm build
 - 新增 Agent 时只需在 `deepclaw/agents/<name>/agent.py` 中定义 `Agent` 子类，`AgentRegistry.discover()` 会自动加载；不需要修改 Web 路由或集中式 Agent 列表。
 - 运行参数（`user_id`、`internet_search`、`deep_thinking`、`mcp_config`、`index_name`、`graph_name`、`header_info`）统一存放在 LangGraph state，不再依赖独立 context 模型
 - Human-in-the-loop 中断通过标准 `RUN_FINISHED.outcome` 暴露，恢复使用顶层 `resume[]`（`interruptId`、`status`、`payload`），不再使用 `forwardedProps.command.resume`
+- 卡片 Action 不走独立接口：`POST /api/agui/runs/{run_id}/actions` 已删除，恢复入口只有 `POST /api/agui/runs/{run_id}/resume`，客户端把决策放进顶层 `resume[].payload`（例如 `{"decisions": [...]}`）
 - Thread 资源现在记录 `thread_id -> owner_user_id + agent_id`，创建 Run 时会自动创建或校验 Thread 归属
 - Thread 接口：`GET /api/agui/threads`、`GET /api/agui/threads/{thread_id}/runs`、`GET /api/agui/threads/{thread_id}/state`、`DELETE /api/agui/threads/{thread_id}`
 - `GET /api/agui/threads/{thread_id}/state` 额外返回 `message_created_at`（`message_id -> UTC ISO8601`），由 LangGraph checkpoint 历史推导，不依赖任何消息镜像表
@@ -417,14 +418,18 @@ pnpm build
 
 - `deepclaw/web_backend/channels/store.py` 现在同时支持 `create_binding()`、`update_binding()`、`list_bindings()`、`delete_binding()`；新代码不要再把“每个用户每个渠道只能有一个绑定”写死。
 - `deepclaw/web_backend/channels/bindings_router.py` 提供统一的 `/api/channels/bindings` 列表接口；普通用户默认看自己的绑定，管理员可切 `scope=all` 查看全量绑定。
-- `deepclaw/web_backend/channels/feishu/router.py` 现在同时保留旧的 `/feishu/users/{user_id}/binding` 兼容路径，并新增 `/feishu/bindings` 与 `/feishu/bindings/{binding_id}` 多绑定接口。
-- `deepclaw/web_backend/channels/weixin_clawbot/router.py` 现在同时保留旧的 `user_id` 兼容路径，并新增：
+- `deepclaw/web_backend/channels/feishu/router.py` 只提供多绑定接口 `/feishu/bindings` 与 `/feishu/bindings/{binding_id}`；旧的 `/feishu/users/{user_id}/binding`（GET/POST/DELETE）与 `/feishu/users` 兼容路径已删除。
+- `deepclaw/web_backend/channels/weixin_clawbot/router.py` 只提供按绑定 ID 的路径：
   - `/weixin-clawbot/bindings`
   - `/weixin-clawbot/bindings/{binding_id}/qrcode`
   - `/weixin-clawbot/bindings/{binding_id}/qrcode/status`
   - `/weixin-clawbot/bindings/{binding_id}`
+  - `/weixin-clawbot/poll`
+  旧的 `/weixin-clawbot/qrcode`、`/weixin-clawbot/qrcode/status`、`/weixin-clawbot/users`、`/weixin-clawbot/users/{user_id}`、`/weixin-clawbot/users/{user_id}/qrcode` 兼容路径已删除。
+- 渠道只保留一条绑定入口：统一列表走 `GET /api/channels/bindings`（`scope=my|all`），创建/删除走各渠道的 `/bindings`。不要再新增按 `user_id` 寻址的兼容路由。
+- `deepclaw/web_backend/channels/weixin_clawbot/state.py` 仍保留 `weixin_clawbot_user_state_key()` / `weixin_clawbot_user_id_from_state_key()`：历史库里存在 `user:<user_id>` 形式的 runtime 记录，启动时仍会按它们拉起 runtime，这属于存量数据兼容层，不是可删的路由残留。
 - `deepclaw/web_backend/channels/weixin_clawbot/runtime.py` 与 `deepclaw/web_backend/channels/weixin_clawbot/lifespan.py` 现在支持按 `binding_id` 启停 runtime；同一系统用户下的多个微信绑定不能复用同一个 runtime 或同一条渠道会话。
-- 前端 [frontend/components/chat-interface/ChannelManagementView.tsx](/e:/git_dir/langchain-api/frontend/components/chat-interface/ChannelManagementView.tsx) 已从“单微信扫码管理页”升级为统一绑定中心，包含：
+- 前端 `frontend/components/chat/management/ChannelManagementView.tsx` 是统一绑定中心，包含：
   - `我的绑定`
   - `管理员总览`
   - 微信多绑定管理
