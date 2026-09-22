@@ -1,4 +1,4 @@
-import styles from '../ChatInterface.module.css'
+import styles from '../../ChatInterface.module.css'
 
 interface PaginationProps {
   page: number

@@ -2,9 +2,9 @@
 
 import { useState } from 'react'
 
-import styles from '../ChatInterface.module.css'
-import type { ReasoningBlock } from './types'
-import { formatDuration } from './utils'
+import styles from '../../ChatInterface.module.css'
+import type { ReasoningBlock } from '../../chat-interface/types'
+import { formatDuration } from '../../chat-interface/utils'
 
 interface ReasoningCardProps {
   block: ReasoningBlock

@@ -257,6 +257,93 @@ pnpm build
 - 代码更改后，必须执行 `codegraph sync` 更新索引。
 - 代码修改完成后，必须运行 pytest 测试进行验证：`uv run pytest` 使用 `-q -n auto` 并行执行测试。
 
+## 前端交互与错误处理规范
+
+### 真实耗时
+
+- 用户可见的总耗时、工具耗时和思考耗时必须以浏览器端时间为准，禁止使用后端返回的时间字段、事件时间戳或推算值。
+- 总耗时从用户提交输入、创建 assistant 占位消息时记录 `startedAt`，到收到 `RUN_FINISHED` 或 `RUN_ERROR` 时计算 `duration`；处理过程中按浏览器时间实时递增。
+- 工具耗时从浏览器收到 `TOOL_CALL_START` 开始，到收到 `TOOL_CALL_RESULT` 结束，并写回对应 `ToolData.duration`。
+- 思考耗时从浏览器收到第一段 reasoning 开始，到该段 reasoning 结束，并写回对应 `ReasoningBlock.duration`。
+- 历史消息如果没有保存前端计时数据，不得伪造总耗时或工具耗时，可以隐藏对应耗时。
+
+### 即时渲染
+
+- 用户发送请求后必须立即创建 assistant 占位消息并渲染 `ProcessSummary`，不得只显示三点等待态。
+- `ProcessSummary` 在 `isProcessing=true` 时，即使还没有 reasoning 或 tool 事件，也必须显示“正在处理中...”并从 `0ms` 开始显示总耗时。
+- 三点等待态只允许作为没有 assistant 占位消息时的兜底展示。
+
+### 错误模型
+
+- 前端必须统一使用 `ChatError` 描述错误，字段至少包含 `kind`、`title`、`message`、`status`、`detail`、`retryable`。
+- `kind` 必须区分：`http`、`run`、`stream`、`resume`、`unknown`。
+- HTTP 错误必须解析响应体中的 `detail`；`RUN_ERROR` 使用事件 `message`；事件流重试耗尽必须标记为 `stream`；恢复失败必须标记为 `resume`。
+- 错误展示不得包含堆栈、密钥、内部路径等敏感信息。
+
+### 错误展示
+
+- 错误必须挂在当前 assistant 消息上，不得新增一条普通 AI 文本消息代替错误卡片。
+- 错误必须使用可见的红色错误卡片展示，并保留已经收到的 partial content、reasoning 和 tool 数据。
+- 错误卡片必须包含错误标题、错误信息、可选 HTTP 状态码、可选后端 `detail` 和重试按钮。
+- 发生错误时，右上角状态必须切换为 `error`。
+- 4xx 错误默认不自动重试；5xx、408、429 可重试；`RUN_ERROR` 默认可重试。
+- 发送失败后的重试必须替换失败的“用户消息 + assistant 消息”消息对，不得重复追加用户消息。
+- 恢复失败后的重试必须复用同一 `interruptId`、`status` 和 `payload`。
+- 禁止只写 `console.error` 或只弹 Toast；必须有持久可见的错误卡片。
+
+### AG-UI 与 HITL
+
+- Human-in-the-loop 中断必须使用标准 `RUN_FINISHED.outcome` 暴露。
+- 恢复必须使用顶层 `resume[]`，每项包含 `interruptId`、`status`、`payload`，禁止继续使用 `forwardedProps.command.resume`。
+- 缺少 `interruptId` 时不得静默恢复，必须显示可见错误。
+
+### 前端组件化与最佳实践
+
+- 能抽成通用组件的必须抽成组件；同一个视觉结构、交互行为或状态管理出现两次以上时，不允许继续复制粘贴。
+- 优先复用仓库已有组件、已有工具函数和成熟开源组件；禁止为相同能力重复造轮子。
+- 页面级组件只负责编排和状态流，不承载大段可独立展示的 UI；可独立展示的卡片、面板、弹窗、列表项、表单块必须拆成组件。
+- 复杂状态和副作用应优先抽成自定义 Hook；纯数据转换、格式化、校验应抽成 `utils` 函数，不与 JSX 混写。
+- 新组件必须有明确职责和最小输入；能通过 props 组合的，不要直接依赖父组件内部状态。
+- 拆分后必须保持原有行为、样式和可访问性；不得以“重构”为名改变业务语义。
+- 存量代码中不符合上述要求的，必须同步整改；整改范围以当前模块和相关复用面为准，不允许只对新代码执行规范。
+- 前端重构完成后至少执行 `pnpm lint` 和 `pnpm build`；涉及共享逻辑时补充或更新前端测试。
+
+### 前端目录结构
+
+前端组件必须按业务域和职责分层，禁止继续把卡片、弹窗、管理页、工具函数堆在同一个目录或同一个大文件中。目标结构如下：
+
+```text
+frontend/components/
+  chat/
+    ChatInterface.tsx
+    ChatView.tsx
+    cards/
+      ProcessSummary.tsx
+      ErrorCard.tsx
+      ToolCard.tsx
+      ReasoningCard.tsx
+    interrupt/
+      InterruptPanel.tsx
+      InterruptArgFields.tsx
+    management/
+      ChannelManagementView.tsx
+      KnowledgeManagementView.tsx
+      McpManagementView.tsx
+      SkillManagementView.tsx
+      UserManagementView.tsx
+    shared/
+      AccountPanel.tsx
+      CreateKnowledgeBaseModal.tsx
+      Pagination.tsx
+    hooks/
+    utils/
+```
+
+- 新组件必须放入对应的 `cards/`、`interrupt/`、`management/`、`shared/`、`hooks/` 或 `utils/` 目录，禁止继续新增到旧目录根层。
+- 只有页面编排组件可以放在业务域根层；卡片、面板、弹窗、表单块、列表项必须有独立文件和明确目录。
+- 同一个组件的样式、测试和工具函数应与其所属模块就近放置；跨模块共享后再提升到 `shared/` 或通用 `ui/`。
+- 存量 `chat-interface/` 目录中的文件必须按上述结构逐步迁移；迁移时同步更新所有引用，禁止留下重复实现或兼容副本。
+
 ## 最小验证
 
 修改 Python 文件后，至少运行 Ruff：

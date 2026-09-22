@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from 'react'
 
-import styles from '../ChatInterface.module.css'
-import type { ActorState } from './auth'
-import type { AuthUserSummary } from './types'
+import styles from '../../ChatInterface.module.css'
+import type { ActorState } from '../../chat-interface/auth'
+import type { AuthUserSummary } from '../../chat-interface/types'
 
 interface UserManagementViewProps {
   actor: ActorState

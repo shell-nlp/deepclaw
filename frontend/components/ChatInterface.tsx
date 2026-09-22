@@ -11,7 +11,6 @@ import {
 } from 'react'
 
 import styles from './ChatInterface.module.css'
-import { AccountPanel } from './chat-interface/AccountPanel'
 import {
   buildAuthorizationHeaders,
   clearStoredAuthToken,
@@ -34,8 +33,9 @@ import {
   type AgUiInterrupt,
 } from './chat-interface/agui'
 import { resolveChannelEntryPage } from './chat-interface/channelManagement'
-import { ChannelManagementView } from './chat-interface/ChannelManagementView'
+import { ChannelManagementView } from './chat/management/ChannelManagementView'
 import { ChatView } from './chat-interface/ChatView'
+import { AppSidebar } from './chat/shared/AppSidebar'
 import {
   AGUI_AGENTS_API_PATH,
   AGUI_THREAD_RUNS_API_PATH,
@@ -71,9 +71,9 @@ import {
   SKILL_LIST_API_PATH,
   SKILL_UPLOAD_API_PATH,
 } from './chat-interface/constants'
-import { KnowledgeManagementView } from './chat-interface/KnowledgeManagementView'
-import { McpManagementView } from './chat-interface/McpManagementView'
-import { SkillManagementView } from './chat-interface/SkillManagementView'
+import { KnowledgeManagementView } from './chat/management/KnowledgeManagementView'
+import { McpManagementView } from './chat/management/McpManagementView'
+import { SkillManagementView } from './chat/management/SkillManagementView'
 import type {
   AssistantMessageItem,
   AgentListResponse,
@@ -86,6 +86,8 @@ import type {
   AuthUserSummary,
   BulkDeleteDocumentResponse,
   BulkDeleteKnowledgeBaseResponse,
+  ChatError,
+  ChatErrorKind,
   ChatStatus,
   InterruptData,
   KnowledgeBase,
@@ -106,10 +108,9 @@ import type {
   UploadResult,
   ViewMode,
 } from './chat-interface/types'
-import { UserManagementView } from './chat-interface/UserManagementView'
+import { UserManagementView } from './chat/management/UserManagementView'
 import {
   fetchJson,
-  formatDateTime,
   generateMessageId,
   generateSessionId,
   getApiUrl,
@@ -121,13 +122,6 @@ import {
 } from './chat-interface/utils'
 
 type AssistantStreamKind = 'reasoning' | 'content' | 'tool' | 'interrupt' | null
-type SidebarIconName =
-  | 'chat'
-  | 'knowledge'
-  | 'skills'
-  | 'mcp'
-  | 'channels'
-  | 'users'
 
 type ThreadRuntime = {
   threadId: string
@@ -154,98 +148,6 @@ type ThreadRuntime = {
   requestKnowledgeBase: KnowledgeBase | null
   requestMcpConfig: Record<string, unknown> | null
   abortController: AbortController | null
-}
-
-/**
- * 渲染侧边栏导航图标。
- *
- * Args:
- * - name: 图标名称。
- */
-function SidebarIcon({ name }: { name: SidebarIconName }) {
-  const paths: Record<SidebarIconName, React.ReactNode> = {
-    chat: (
-      <>
-        <path d="M5.5 6.5h13v8.8h-8.1L7 18.8v-3.5H5.5z" />
-        <path d="M8.8 10h6.4M8.8 12.8h4.2" />
-      </>
-    ),
-    knowledge: (
-      <>
-        <path d="M5.5 5.8h5.1c1.1 0 2 .9 2 2v10.7c0-1.1-.9-2-2-2H5.5z" />
-        <path d="M18.5 5.8h-5.1c-1.1 0-2 .9-2 2v10.7c0-1.1.9-2 2-2h5.1z" />
-      </>
-    ),
-    skills: (
-      <>
-        <path d="m12 4.5 1.7 4.1 4.3 1.7-4.3 1.7-1.7 4.1-1.7-4.1-4.3-1.7 4.3-1.7z" />
-        <path d="m18.2 15.7.7 1.7 1.7.7-1.7.7-.7 1.7-.7-1.7-1.7-.7 1.7-.7z" />
-      </>
-    ),
-    mcp: (
-      <>
-        <circle cx="6.5" cy="12" r="2" />
-        <circle cx="17.5" cy="6.5" r="2" />
-        <circle cx="17.5" cy="17.5" r="2" />
-        <path d="m8.4 11.2 7.2-3.7M8.4 12.8l7.2 3.7" />
-      </>
-    ),
-    channels: (
-      <>
-        <circle cx="12" cy="6" r="2.2" />
-        <circle cx="6" cy="17" r="2.2" />
-        <circle cx="18" cy="17" r="2.2" />
-        <path d="m10.4 7.9-3 6.8M13.6 7.9l3 6.8M8.2 17h7.6" />
-      </>
-    ),
-    users: (
-      <>
-        <circle cx="12" cy="8" r="3" />
-        <path d="M5.8 19c.8-3.1 3-4.7 6.2-4.7s5.4 1.6 6.2 4.7" />
-      </>
-    ),
-  }
-
-  return (
-    <svg
-      aria-hidden="true"
-      className={styles.sidebarButtonIcon}
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="1.7"
-    >
-      {paths[name]}
-    </svg>
-  )
-}
-
-/**
- * 渲染 DeepClaw 品牌标记。
- *
- * Args:
- * - 无。
- */
-function DeepClawMark() {
-  return (
-    <svg
-      aria-hidden="true"
-      className={styles.logoGlyph}
-      fill="none"
-      viewBox="0 0 32 32"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="1.8"
-    >
-      <circle cx="16" cy="16" r="10.5" />
-      <path d="M6.8 18.4c3.1-2.9 6.2-3.8 9.2-2.7 3 1.1 5.9.4 8.7-2.1" />
-      <path d="M9.5 22c2.2-1.7 4.3-2.2 6.3-1.5 2 .7 3.9.3 5.7-1.1" />
-      <path d="M13.4 7.3c.6 1.9.3 3.5-.9 4.8" />
-    </svg>
-  )
 }
 
 function createThreadRuntime(threadId: string): ThreadRuntime {
@@ -286,6 +188,89 @@ function isAbortError(error: unknown): boolean {
     (error instanceof DOMException && error.name === 'AbortError') ||
     (error instanceof Error && error.name === 'AbortError')
   )
+}
+
+class ChatRequestError extends Error {
+  readonly chatError: ChatError
+
+  constructor(chatError: ChatError) {
+    super(chatError.message)
+    this.name = 'ChatRequestError'
+    this.chatError = chatError
+  }
+}
+
+function getChatErrorTitle(kind: ChatErrorKind): string {
+  if (kind === 'http') return '请求失败'
+  if (kind === 'run') return 'Agent 运行失败'
+  if (kind === 'stream') return '事件流中断'
+  if (kind === 'resume') return '恢复失败'
+  return '请求失败'
+}
+
+function createChatError(
+  kind: ChatErrorKind,
+  message: string,
+  options: {
+    status?: number
+    detail?: string
+    retryable?: boolean
+  } = {}
+): ChatError {
+  return {
+    kind,
+    title: getChatErrorTitle(kind),
+    message: message || '未知错误',
+    status: options.status,
+    detail: options.detail,
+    retryable: options.retryable ?? true,
+  }
+}
+
+async function readResponseErrorDetail(response: Response): Promise<string> {
+  try {
+    const text = await response.text()
+    if (!text) return ''
+    try {
+      const parsed = JSON.parse(text) as unknown
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const detail = (parsed as Record<string, unknown>).detail
+        if (typeof detail === 'string') return detail
+      }
+    } catch {
+      return text
+    }
+    return text
+  } catch {
+    return ''
+  }
+}
+
+async function createHttpChatError(
+  response: Response,
+  kind: Extract<ChatErrorKind, 'http' | 'stream' | 'resume'>
+): Promise<ChatError> {
+  const detail = await readResponseErrorDetail(response)
+  return createChatError(
+    kind,
+    detail || `HTTP ${response.status}`,
+    {
+      status: response.status,
+      detail: detail || undefined,
+      retryable:
+        response.status >= 500 ||
+        response.status === 408 ||
+        response.status === 429,
+    }
+  )
+}
+
+function toChatError(error: unknown, fallbackKind: ChatErrorKind = 'unknown'): ChatError {
+  if (error instanceof ChatRequestError) return error.chatError
+  if (error instanceof Error) {
+    return createChatError(fallbackKind, error.message || '未知错误')
+  }
+  return createChatError(fallbackKind, '未知错误')
 }
 
 function getHistoryMessageContent(content: unknown): string {
@@ -704,6 +689,9 @@ export default function ChatInterface() {
   const requestModeRef = useRef<RequestMode>('agent')
   const requestKnowledgeBaseRef = useRef<KnowledgeBase | null>(null)
   const requestMcpConfigRef = useRef<Record<string, unknown> | null>(null)
+  const retryActionsRef = useRef<Map<string, () => void | Promise<void>>>(
+    new Map()
+  )
 
   const setMessagesAndRef = useCallback(
     (updater: Message[] | ((prev: Message[]) => Message[])) => {
@@ -1006,6 +994,52 @@ export default function ChatInterface() {
       )
     },
     [ensureAssistantMessage, setMessagesAndRef]
+  )
+
+  const applyAssistantError = useCallback(
+    (messageId: string | null, error: unknown) => {
+      const targetId = messageId ?? currentAssistantMessageIdRef.current
+      if (!targetId) return
+      const chatError = toChatError(error)
+      const finishedAt = Date.now()
+      setMessagesAndRef((prev) =>
+        prev.map((message) => {
+          if (message.id !== targetId) return message
+          return {
+            ...message,
+            error: chatError,
+            duration:
+              message.duration ??
+              (message.startedAt !== undefined
+                ? Math.max(0, finishedAt - message.startedAt)
+                : undefined),
+          }
+        })
+      )
+    },
+    [setMessagesAndRef]
+  )
+
+  const registerRetryAction = useCallback(
+    (messageId: string, action: () => void | Promise<void>) => {
+      retryActionsRef.current.set(messageId, action)
+    },
+    []
+  )
+
+  const handleRetryMessage = useCallback(
+    async (messageId: string) => {
+      const action = retryActionsRef.current.get(messageId)
+      if (!action) return
+      retryActionsRef.current.delete(messageId)
+      setMessagesAndRef((prev) =>
+        prev.map((message) =>
+          message.id === messageId ? { ...message, error: undefined } : message
+        )
+      )
+      await action()
+    },
+    [setMessagesAndRef]
   )
 
   useEffect(() => {
@@ -2410,7 +2444,12 @@ export default function ChatInterface() {
 
       if (eventType === 'RUN_ERROR') {
         finishAssistantDuration()
-        throw new Error(String(event.message || 'Agent run failed'))
+        throw new ChatRequestError(
+          createChatError(
+            'run',
+            String(event.message || 'Agent run failed')
+          )
+        )
       }
 
       if (eventType === 'RUN_FINISHED') {
@@ -2546,12 +2585,18 @@ export default function ChatInterface() {
             signal,
           }
         )
-        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        if (!response.ok) {
+          throw new ChatRequestError(
+            await createHttpChatError(response, 'stream')
+          )
+        }
         const result = await readEventStream(response, threadId, generation)
         if (result.stale || result.completed || result.interrupted) return result
         await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)))
       }
-      throw new Error('AG-UI 事件流中断，重放次数已用尽')
+      throw new ChatRequestError(
+        createChatError('stream', 'AG-UI 事件流中断，重放次数已用尽')
+      )
     },
     [isCurrentStream, readEventStream, withAuthHeaders]
   )
@@ -2574,7 +2619,9 @@ export default function ChatInterface() {
         signal,
       })
       if (!createResponse.ok) {
-        throw new Error(`HTTP ${createResponse.status}`)
+        throw new ChatRequestError(
+          await createHttpChatError(createResponse, 'http')
+        )
       }
       const snapshot = (await createResponse.json()) as { runId?: string }
       const runId = snapshot.runId
@@ -2629,7 +2676,9 @@ export default function ChatInterface() {
         }
       )
       if (!resumeResponse.ok) {
-        throw new Error(`HTTP ${resumeResponse.status}`)
+        throw new ChatRequestError(
+          await createHttpChatError(resumeResponse, 'resume')
+        )
       }
       setThreadRunning(threadId, true)
       return subscribeAgUiEvents(basePath, runId, threadId, generation, signal)
@@ -2831,8 +2880,9 @@ export default function ChatInterface() {
           : message
       )
     )
+    const userMessageId = generateMessageId()
     addMessage({
-      id: generateMessageId(),
+      id: userMessageId,
       role: 'user',
       content: query,
     })
@@ -2917,10 +2967,16 @@ export default function ChatInterface() {
         setThreadRunning(threadId, false)
         if (isCurrentStream(threadId, generation)) {
           setStatus('error')
-          addMessage({
-            id: generateMessageId(),
-            role: 'ai',
-            content: `Request failed: ${error instanceof Error ? error.message : '未知错误'}`,
+          applyAssistantError(assistantMessageId, error)
+          registerRetryAction(assistantMessageId, async () => {
+            setMessagesAndRef((prev) =>
+              prev.filter(
+                (message) =>
+                  message.id !== userMessageId &&
+                  message.id !== assistantMessageId
+              )
+            )
+            await sendMessage(query)
           })
         }
       }
@@ -2982,7 +3038,8 @@ export default function ChatInterface() {
 
   const handleInterruptAction = async (
     decision: 'approve' | 'reject' | 'edit',
-    editedActions?: Array<{ name: string; args: Record<string, unknown> }>
+    editedActions?: Array<{ name: string; args: Record<string, unknown> }>,
+    options?: { skipStatusMessage?: boolean }
   ) => {
     if (!interruptData || !('action_requests' in interruptData)) return
 
@@ -3002,16 +3059,18 @@ export default function ChatInterface() {
 
     setShowInterrupt(false)
     runtime.showInterrupt = false
-    addMessage({
-      id: generateMessageId(),
-      role: 'user',
-      content:
-        decision === 'approve'
-          ? '已批准继续执行。'
-          : decision === 'reject'
-            ? '已拒绝继续执行。'
-            : '已修改参数并继续执行。',
-    })
+    if (!options?.skipStatusMessage) {
+      addMessage({
+        id: generateMessageId(),
+        role: 'user',
+        content:
+          decision === 'approve'
+            ? '已批准继续执行。'
+            : decision === 'reject'
+              ? '已拒绝继续执行。'
+              : '已修改参数并继续执行。',
+      })
+    }
 
     setIsProcessing(true)
     setStatus('connecting')
@@ -3083,11 +3142,15 @@ export default function ChatInterface() {
         setThreadRunning(threadId, false)
         if (isCurrentStream(threadId, generation)) {
           setStatus('error')
-          addMessage({
-            id: generateMessageId(),
-            role: 'ai',
-            content: `Resume failed: ${error instanceof Error ? error.message : '未知错误'}`,
-          })
+          const assistantMessageId = currentAssistantMessageIdRef.current
+          applyAssistantError(assistantMessageId, error)
+          if (assistantMessageId) {
+            registerRetryAction(assistantMessageId, () =>
+              handleInterruptAction(decision, editedActions, {
+                skipStatusMessage: true,
+              })
+            )
+          }
         }
       }
     } finally {
@@ -3214,11 +3277,13 @@ export default function ChatInterface() {
         setThreadRunning(threadId, false)
         if (isCurrentStream(threadId, generation)) {
           setStatus('error')
-          addMessage({
-            id: generateMessageId(),
-            role: 'ai',
-            content: `恢复提问失败：${error instanceof Error ? error.message : '未知错误'}`,
-          })
+          const assistantMessageId = currentAssistantMessageIdRef.current
+          applyAssistantError(assistantMessageId, error)
+          if (assistantMessageId) {
+            registerRetryAction(assistantMessageId, () =>
+              handleAskUserResponse(answer)
+            )
+          }
         }
       }
     } finally {
@@ -3295,218 +3360,30 @@ export default function ChatInterface() {
           sidebarCollapsed ? styles.workspaceLayoutSidebarCollapsed : ''
         }`}
       >
-        <aside
-          className={`${styles.sidebarNav} ${
-            sidebarCollapsed ? styles.sidebarNavCollapsed : ''
-          }`}
-        >
-          <div className={styles.sidebarPanel}>
-            <div className={styles.sidebarBrand}>
-              <div className={styles.logoArea}>
-                <span className={styles.logoIcon}>
-                  <DeepClawMark />
-                </span>
-                <div className={styles.sidebarBrandDetails}>
-                  <h1 className={styles.title}>DeepClaw</h1>
-                  <p className={styles.subtitle}>Agent workspace</p>
-                </div>
-              </div>
-              <button
-                className={styles.sidebarCollapseButton}
-                onClick={toggleSidebar}
-                aria-label={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
-                title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
-              >
-                {sidebarCollapsed ? '›' : '‹'}
-              </button>
-            </div>
-            <p className={styles.sidebarSectionLabel}>工作台</p>
-            <button
-              className={`${styles.sidebarButton} ${
-                viewMode === 'chat' ? styles.sidebarButtonActive : ''
-              }`}
-              onClick={() => navigateTo('chat')}
-            >
-              <SidebarIcon name="chat" />
-              <span className={styles.sidebarButtonLabel}>聊天</span>
-            </button>
-            {viewMode === 'chat' ? (
-              <section className={styles.chatHistory} aria-label="聊天历史">
-                <div className={styles.chatHistoryHeader}>
-                  <button
-                    type="button"
-                    className={styles.chatHistoryToggleButton}
-                    onClick={() => setHistoryExpanded((expanded) => !expanded)}
-                    aria-expanded={historyExpanded}
-                  >
-                    <span className={styles.chatHistoryTitle}>聊天历史</span>
-                    <span aria-hidden="true">{historyExpanded ? '⌃' : '⌄'}</span>
-                  </button>
-                </div>
-                {historyExpanded && historyLoading ? (
-                  <div className={styles.chatHistoryStatus}>正在加载…</div>
-                ) : null}
-                {historyExpanded && historyError ? (
-                  <div className={styles.chatHistoryError}>{historyError}</div>
-                ) : null}
-                {historyExpanded && !historyLoading && !historyError && historySessions.length === 0 ? (
-                  <div className={styles.chatHistoryStatus}>暂无历史会话</div>
-                ) : null}
-                {historyExpanded && historySessions.length > 0 ? (
-                  <div className={styles.chatHistoryList}>
-                    {historySessions.map((historySession) => {
-                      const isActive = historySession.session_id === sessionId
-                      const isLoading =
-                        historyLoadingSessionId === historySession.session_id
-                      const isRunning = runningThreadIds.includes(
-                        historySession.session_id
-                      )
-                      return (
-                        <div
-                          key={historySession.session_id}
-                          className={`${styles.chatHistoryItem} ${
-                            isActive ? styles.chatHistoryItemActive : ''
-                          }`}
-                        >
-                          <button
-                            type="button"
-                            className={styles.chatHistoryOpenButton}
-                            onClick={() => void openHistorySession(historySession.session_id)}
-                            disabled={isLoading}
-                          >
-                            <span className={styles.chatHistoryItemContent}>
-                              <span className={styles.chatHistorySessionTitle}>
-                                {historySession.title || '未命名对话'}
-                              </span>
-                              <span className={styles.chatHistoryTime}>
-                                {isRunning
-                                  ? isActive
-                                    ? '运行中 · '
-                                    : '后台运行中 · '
-                                  : ''}
-                                {historySession.updated_at
-                                  ? formatDateTime(historySession.updated_at)
-                                  : '时间未知'}
-                              </span>
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            className={styles.chatHistoryDeleteButton}
-                            onClick={(event) =>
-                              void deleteHistorySession(historySession.session_id, event)
-                            }
-                            disabled={isLoading || isRunning}
-                            aria-label={`删除会话 ${historySession.session_id}`}
-                          >
-                            删除
-                          </button>
-                        </div>
-                      )
-                    })}
-                  </div>
-                ) : null}
-              </section>
-            ) : null}
-            <button
-              className={`${styles.sidebarButton} ${
-                viewMode === 'knowledge' && knowledgePage !== 'users'
-                  ? styles.sidebarButtonActive
-                  : ''
-              }`}
-              onClick={() => navigateTo('knowledge', 'libraries')}
-            >
-              <SidebarIcon name="knowledge" />
-              <span className={styles.sidebarButtonLabel}>知识库</span>
-            </button>
-            <p className={styles.sidebarSectionLabel}>能力与连接</p>
-            <button
-              className={`${styles.sidebarButton} ${
-                viewMode === 'skills' ? styles.sidebarButtonActive : ''
-              }`}
-              onClick={() => navigateTo('skills')}
-            >
-              <SidebarIcon name="skills" />
-              <span className={styles.sidebarButtonLabel}>技能管理</span>
-            </button>
-            <button
-              className={`${styles.sidebarButton} ${
-                viewMode === 'mcp' ? styles.sidebarButtonActive : ''
-              }`}
-              onClick={() => navigateTo('mcp')}
-            >
-              <SidebarIcon name="mcp" />
-              <span className={styles.sidebarButtonLabel}>MCP 管理</span>
-            </button>
-            <button
-              className={`${styles.sidebarButton} ${
-                viewMode === 'channels' ? styles.sidebarButtonActive : ''
-              }`}
-              onClick={handleChannelsNavClick}
-            >
-              <SidebarIcon name="channels" />
-              <span className={styles.sidebarButtonLabel}>渠道管理</span>
-              <span
-                className={
-                  channelNavExpanded
-                    ? styles.sidebarChevronExpanded
-                    : styles.sidebarChevron
-                }
-              >
-                ▾
-              </span>
-            </button>
-            {channelNavExpanded ? (
-              <div className={styles.channelSubnav}>
-                <button
-                  className={`${styles.channelSubnavItem} ${
-                    viewMode === 'channels' && channelPage === 'weixin'
-                      ? styles.channelSubnavItemActive
-                      : ''
-                  }`}
-                  onClick={() =>
-                    navigateTo('channels', DEFAULT_KNOWLEDGE_PAGE, 'weixin')
-                  }
-                >
-                  <span className={styles.channelSubnavLabel}>微信绑定</span>
-                  <span className={styles.channelSubnavMeta}>扫码与状态</span>
-                </button>
-                <button
-                  className={`${styles.channelSubnavItem} ${
-                    viewMode === 'channels' && channelPage === 'feishu'
-                      ? styles.channelSubnavItemActive
-                      : ''
-                  }`}
-                  onClick={() =>
-                    navigateTo('channels', DEFAULT_KNOWLEDGE_PAGE, 'feishu')
-                  }
-                >
-                  <span className={styles.channelSubnavLabel}>飞书绑定</span>
-                  <span className={styles.channelSubnavMeta}>配置与状态</span>
-                </button>
-              </div>
-            ) : null}
-            <button
-              className={`${styles.sidebarButton} ${
-                viewMode === 'knowledge' && knowledgePage === 'users'
-                  ? styles.sidebarButtonActive
-                  : ''
-              }`}
-              onClick={() => navigateTo('knowledge', 'users')}
-            >
-              <SidebarIcon name="users" />
-              <span className={styles.sidebarButtonLabel}>用户管理</span>
-            </button>
-          </div>
-          <div className={styles.sidebarAccount}>
-            <AccountPanel
-              actor={actor}
-              open={accountMenuOpen}
-              onOpenChange={setAccountMenuOpen}
-              onLogout={handleLogout}
-            />
-          </div>
-        </aside>
+        <AppSidebar
+          sidebarCollapsed={sidebarCollapsed}
+          onToggleSidebar={toggleSidebar}
+          viewMode={viewMode}
+          knowledgePage={knowledgePage}
+          channelPage={channelPage}
+          onNavigate={navigateTo}
+          historyExpanded={historyExpanded}
+          onToggleHistory={() => setHistoryExpanded((expanded) => !expanded)}
+          historyLoading={historyLoading}
+          historyError={historyError}
+          historySessions={historySessions}
+          sessionId={sessionId}
+          historyLoadingSessionId={historyLoadingSessionId}
+          runningThreadIds={runningThreadIds}
+          onOpenHistorySession={openHistorySession}
+          onDeleteHistorySession={deleteHistorySession}
+          channelNavExpanded={channelNavExpanded}
+          onChannelsNavClick={handleChannelsNavClick}
+          actor={actor}
+          accountMenuOpen={accountMenuOpen}
+          onAccountMenuOpenChange={setAccountMenuOpen}
+          onLogout={handleLogout}
+        />
 
         <main className={styles.mainContent}>
           {viewMode === 'chat' ? (
@@ -3543,6 +3420,7 @@ export default function ChatInterface() {
               onAbortRequest={abortRequest}
               onSendMessage={sendMessage}
               onRecommendedQuestion={askRecommendedQuestion}
+              onRetryMessage={handleRetryMessage}
             />
           ) : viewMode === 'skills' ? (
             <div className={styles.managementViewport}>

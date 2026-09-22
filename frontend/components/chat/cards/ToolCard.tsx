@@ -2,9 +2,9 @@
 
 import { useState } from 'react'
 
-import styles from '../ChatInterface.module.css'
-import type { ToolData } from './types'
-import { formatDuration, getToolPreview } from './utils'
+import styles from '../../ChatInterface.module.css'
+import type { ToolData } from '../../chat-interface/types'
+import { formatDuration, getToolPreview } from '../../chat-interface/utils'
 
 interface ToolCardProps {
   toolData: ToolData

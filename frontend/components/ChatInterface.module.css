@@ -323,7 +323,9 @@
 
 .sidebarChevron,
 .sidebarChevronExpanded {
-  margin-left: auto;
+  position: absolute;
+  right: 12px;
+  margin-left: 0;
   font-size: 12px;
   color: #8aa0a4;
   transition: transform 0.18s ease;
@@ -1313,6 +1315,97 @@ textarea.interruptInput {
   margin: 0;
   border-radius: 8px;
   box-shadow: none;
+}
+
+.errorCard {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: min(100%, 880px);
+  margin: 8px 0;
+  padding: 13px 14px;
+  background: rgba(254, 242, 242, 0.96);
+  border: 1px solid rgba(220, 38, 38, 0.22);
+  border-left: 3px solid var(--error);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.errorCardIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--error);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.errorCardBody {
+  min-width: 0;
+  flex: 1;
+}
+
+.errorCardTitle {
+  color: #991b1b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.errorCardMessage {
+  margin-top: 3px;
+  color: #7f1d1d;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.errorCardDetail {
+  max-height: 160px;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  overflow: auto;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #7f1d1d;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.errorCardMeta {
+  margin-top: 5px;
+  color: rgba(153, 27, 27, 0.72);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+}
+
+.errorCardRetry {
+  flex-shrink: 0;
+  padding: 6px 10px;
+  border: 1px solid rgba(220, 38, 38, 0.28);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #991b1b;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.errorCardRetry:hover {
+  background: #fee2e2;
+}
+
+.errorCardRetry:focus-visible {
+  outline: 2px solid rgba(220, 38, 38, 0.35);
+  outline-offset: 2px;
 }
 
 @keyframes processStatusPulse {

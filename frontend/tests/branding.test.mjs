@@ -12,14 +12,16 @@ function readFrontendFile(relativePath) {
 test('frontend metadata and shell branding use DeepClaw', () => {
   const layoutSource = readFrontendFile('app/layout.tsx')
   const chatInterfaceSource = readFrontendFile('components/ChatInterface.tsx')
+  const appSidebarSource = readFrontendFile('components/chat/shared/AppSidebar.tsx')
   const chatViewSource = readFrontendFile('components/chat-interface/ChatView.tsx')
   const loginPageSource = readFrontendFile('app/login/page.tsx')
 
   assert.match(layoutSource, /title:\s*['"]DeepClaw['"]/)
   assert.doesNotMatch(layoutSource, /AI Agent Chat/)
 
-  assert.match(chatInterfaceSource, /<h1 className=\{styles\.title\}>DeepClaw<\/h1>/)
+  assert.match(appSidebarSource, /<h1 className=\{styles\.title\}>DeepClaw<\/h1>/)
   assert.doesNotMatch(chatInterfaceSource, /AI Agent Chat/)
+  assert.doesNotMatch(appSidebarSource, /AI Agent Chat/)
 
   assert.match(chatViewSource, /欢迎使用 DeepClaw/)
   assert.doesNotMatch(chatViewSource, /欢迎使用 AI Agent Chat/)
@@ -29,12 +31,12 @@ test('frontend metadata and shell branding use DeepClaw', () => {
 })
 
 test('chat interface renders expandable channel navigation with child items', () => {
-  const chatInterfaceSource = readFrontendFile('components/ChatInterface.tsx')
+  const appSidebarSource = readFrontendFile('components/chat/shared/AppSidebar.tsx')
 
-  assert.match(chatInterfaceSource, /channelNavExpanded/)
-  assert.match(chatInterfaceSource, /微信绑定/)
-  assert.match(chatInterfaceSource, /飞书绑定/)
-  assert.match(chatInterfaceSource, /channelSubnav/)
+  assert.match(appSidebarSource, /channelNavExpanded/)
+  assert.match(appSidebarSource, /微信绑定/)
+  assert.match(appSidebarSource, /飞书绑定/)
+  assert.match(appSidebarSource, /channelSubnav/)
 })
 
 test('channel navigation chevron does not affect centered sidebar label layout', () => {
@@ -49,7 +51,7 @@ test('channel navigation chevron does not affect centered sidebar label layout',
 
 test('single channel management view does not render cross-channel summary cards', () => {
   const channelManagementSource = readFrontendFile(
-    'components/chat-interface/ChannelManagementView.tsx'
+    'components/chat/management/ChannelManagementView.tsx'
   )
 
   assert.doesNotMatch(channelManagementSource, /managementSummaryGrid/)
@@ -62,7 +64,7 @@ test('single channel management view does not render cross-channel summary cards
 
 test('single channel management view renders a bound user section before binding details', () => {
   const channelManagementSource = readFrontendFile(
-    'components/chat-interface/ChannelManagementView.tsx'
+    'components/chat/management/ChannelManagementView.tsx'
   )
 
   assert.match(channelManagementSource, /已绑定用户/)
@@ -72,7 +74,7 @@ test('single channel management view renders a bound user section before binding
 
 test('single channel management view selects one binding instance before showing details', () => {
   const channelManagementSource = readFrontendFile(
-    'components/chat-interface/ChannelManagementView.tsx'
+    'components/chat/management/ChannelManagementView.tsx'
   )
 
   assert.match(channelManagementSource, /selectedBindingId/)
