@@ -164,17 +164,19 @@ function ProcessSummary({
   ]
     .filter(Boolean)
     .join(' · ')
-  const totalDuration = processItems.reduce((total, item) => {
-    if (item.type === 'reasoning') {
-      const duration = reasoningBlocks.find(
-        (block) => block.id === item.reasoningBlockId
-      )?.duration
-      return total + (duration || 0)
-    }
-    return total + (toolCallDurations?.[item.toolCallId] || 0)
-  }, 0)
-  const durationSummary = totalDuration > 0 ? `总耗时 ${formatDuration(totalDuration)}` : ''
+  const [now, setNow] = useState(() => Date.now())
+  const totalDuration =
+    msg.duration ??
+    (msg.startedAt !== undefined ? Math.max(0, now - msg.startedAt) : 0)
+  const hasFrontendTiming =
+    msg.duration !== undefined || msg.startedAt !== undefined
+  const durationSummary = hasFrontendTiming
+    ? `总耗时 ${formatDuration(totalDuration)}`
+    : ''
   const processMeta = [summary, durationSummary].filter(Boolean).join(' · ')
+  const getToolDuration = (toolCallId: string) =>
+    msg.toolData?.find((data) => data.toolCall.id === toolCallId)?.duration ??
+    toolCallDurations?.[toolCallId]
 
   const activitySteps = processItems.map((item) => {
     if (item.type === 'reasoning') return '正在思考中...'
@@ -183,6 +185,15 @@ function ProcessSummary({
     return `执行${toolName}`
   })
   const [activityIndex, setActivityIndex] = useState(0)
+
+  useEffect(() => {
+    if (!isProcessing || msg.startedAt === undefined) return
+    setNow(Date.now())
+    const timer = window.setInterval(() => {
+      setNow(Date.now())
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [isProcessing, msg.startedAt])
 
   useEffect(() => {
     if (!isProcessing || activitySteps.length <= 1) {
@@ -199,7 +210,7 @@ function ProcessSummary({
     ? activitySteps[activityIndex % activitySteps.length] || '正在处理中...'
     : '已完成'
 
-  if (processItems.length === 0) return null
+  if (processItems.length === 0 && !isProcessing) return null
 
   return (
     <section className={styles.processSummary}>
@@ -250,7 +261,7 @@ function ProcessSummary({
               <ToolCard
                 key={item.id}
                 toolData={toolData}
-                duration={toolCallDurations?.[item.toolCallId]}
+                duration={getToolDuration(item.toolCallId)}
               />
             ) : null
           })}
@@ -881,18 +892,6 @@ export function ChatView({
                     isProcessing={isProcessing && msg.id === currentAssistantMessageId}
                     onRecommendedQuestion={onRecommendedQuestion}
                   />
-                  {isProcessing &&
-                    msg.id === currentAssistantMessageId &&
-                    !msg.content &&
-                    !msg.reasoningContent &&
-                    !msg.reasoningBlocks?.length &&
-                    !msg.toolData?.length && (
-                      <div className={styles.typingIndicator}>
-                        <span />
-                        <span />
-                        <span />
-                      </div>
-                    )}
                 </>
               )}
             </div>
