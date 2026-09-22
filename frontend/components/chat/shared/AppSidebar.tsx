@@ -11,7 +11,7 @@ import type {
 } from '../../chat-interface/types'
 import { formatDateTime } from '../../chat-interface/utils'
 import { AccountPanel } from './AccountPanel'
-import { DeepClawMark, SidebarIcon } from './BrandIcons'
+import { SidebarIcon } from './BrandIcons'
 
 interface AppSidebarProps {
   sidebarCollapsed: boolean
@@ -105,11 +105,22 @@ export function AppSidebar({
       <div className={styles.sidebarPanel}>
         <div className={styles.sidebarBrand}>
           <div className={styles.logoArea}>
-            <span className={styles.logoIcon}>
-              <DeepClawMark />
-            </span>
+            {sidebarCollapsed ? (
+              <span className={styles.logoIcon}>
+                <img
+                  className={styles.logoMark}
+                  src="/logo-mark.png"
+                  alt=""
+                  aria-hidden="true"
+                />
+              </span>
+            ) : null}
             <div className={styles.sidebarBrandDetails}>
-              <h1 className={styles.title}>DeepClaw</h1>
+              <img
+                className={styles.brandWordmark}
+                src="/logo.png"
+                alt="DeepClaw"
+              />
               <p className={styles.subtitle}>Agent workspace</p>
             </div>
           </div>
