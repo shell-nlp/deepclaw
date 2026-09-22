@@ -265,3 +265,68 @@ def test_reconcile_access_tokens_clamps_legacy_expiry_to_one_day():
         assert updated_record.expires_at == updated_record.created_at + timedelta(days=1)
 
     asyncio.run(_test())
+
+
+def test_authenticate_throttles_last_used_at_writes():
+    """验证令牌校验只在节流窗口外才刷新 last_used_at。"""
+
+    async def _test():
+        from deepclaw.web_backend.auth.store import (
+            ACCESS_TOKEN_LAST_USED_THROTTLE,
+        )
+
+        service = build_service()
+        user = await service.register(email="user@example.com", password="secret-123")
+        issued = await service.store.issue_access_token(
+            user=user,
+            raw_token="throttled-token",
+            expire_days=1,
+        )
+
+        async def backdate(seconds: int) -> None:
+            """把令牌的 last_used_at 回拨到指定秒数之前。
+
+            Args:
+                seconds: 回拨的秒数。
+            """
+            async with service.store.async_session() as session:
+                result = await session.exec(
+                    select(AccessTokenRecord).where(
+                        AccessTokenRecord.token_hash == issued.record.token_hash
+                    )
+                )
+                record = result.one()
+                record.last_used_at = utc_now() - timedelta(seconds=seconds)
+                session.add(record)
+                await session.commit()
+
+        async def read_last_used_at():
+            """读取令牌当前的 last_used_at。
+
+            Args: 无。
+            """
+            async with service.store.async_session() as session:
+                result = await session.exec(
+                    select(AccessTokenRecord).where(
+                        AccessTokenRecord.token_hash == issued.record.token_hash
+                    )
+                )
+                return result.one().last_used_at
+
+        # 窗口内：回拨 10 秒后校验，不应写库。
+        await backdate(10)
+        within_window = await read_last_used_at()
+        await service.authenticate_token(issued.token)
+        assert await read_last_used_at() == within_window
+
+        # 窗口外：回拨 120 秒后校验，应当刷新。
+        await backdate(120)
+        outside_window = await read_last_used_at()
+        await service.authenticate_token(issued.token)
+        refreshed = await read_last_used_at()
+
+        assert refreshed > outside_window
+        assert refreshed > utc_now() - timedelta(seconds=5)
+        assert ACCESS_TOKEN_LAST_USED_THROTTLE == timedelta(seconds=60)
+
+    asyncio.run(_test())
