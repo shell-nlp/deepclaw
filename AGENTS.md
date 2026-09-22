@@ -112,7 +112,7 @@
   业务开关、RAG 注入、MCP、工具搜索、计划，以及 `cron` 工具实现等中间件与运行时扩展。
   NL2SQL 相关逻辑在 `deepclaw/middleware/nl2sql/`，DDL 拉取采用可注册 fetcher 架构（`ddl/base.py` + 各数据库实现如 `ddl/pgsql.py`）。
   图表生成在 `deepclaw/middleware/chart/`，其中 `charts/` 是基于 matplotlib 的 9 种图表渲染引擎（bar/line/pie/column/scatter/area/histogram/funnel/radar）源码包，`ChartMiddleware` 负责 Agent 工具适配；核心渲染层无 langchain 依赖，可独立发布为 MCP Server。运行时图片固定输出到 `.deepclaw/workspace/charts/`，该目录仅存放生成文件并由 Git 忽略。
-  `deepclaw/middleware/message_store.py`：MessageStoreMiddleware，直接写入 `thread_messages` 表；以 `thread_id` 为主键，并在 Agent 开始、模型调用前后、工具完成后和正常结束时覆盖保存完整 messages；内容未变化时不重复写库。
+  消息时间不落任何镜像表：`deepclaw/web_backend/agent/message_timestamps.py` 的 `collect_message_created_at()` 直接遍历 LangGraph checkpoint 历史（每个 super-step 的 `checkpoint["ts"]`，即 `StateSnapshot.created_at`）推导出 `message_id -> UTC ISO8601` 映射。
 
 - `deepclaw/tools/`
   天气、网页抓取、检索等工具导出；`cron` 相关实现已归档到 `deepclaw/middleware/cron/`。
@@ -388,6 +388,7 @@ pnpm build
 - Human-in-the-loop 中断通过标准 `RUN_FINISHED.outcome` 暴露，恢复使用顶层 `resume[]`（`interruptId`、`status`、`payload`），不再使用 `forwardedProps.command.resume`
 - Thread 资源现在记录 `thread_id -> owner_user_id + agent_id`，创建 Run 时会自动创建或校验 Thread 归属
 - Thread 接口：`GET /api/agui/threads`、`GET /api/agui/threads/{thread_id}/runs`、`GET /api/agui/threads/{thread_id}/state`、`DELETE /api/agui/threads/{thread_id}`
+- `GET /api/agui/threads/{thread_id}/state` 额外返回 `message_created_at`（`message_id -> UTC ISO8601`），由 LangGraph checkpoint 历史推导，不依赖任何消息镜像表
 - 旧的 `/api/agent/get_session_list`、`/api/agent/delete_session`、`/api/agent/get_state` 已移除，统一使用 Thread API。
 - 技能管理归属 `/api/agent/skills/*`
 - 知识库管理归属 `/api/rag/knowledge-bases/*`

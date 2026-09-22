@@ -362,9 +362,39 @@ function createHistoryAssistantMessage(
   }
 }
 
+function parseCreatedAt(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value > 1_000_000_000_000 ? value : value * 1000
+  }
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value)
+    if (!Number.isNaN(parsed)) return parsed
+  }
+  return undefined
+}
+
+function resolveMessageCreatedAt(
+  messageCreatedAt: unknown,
+  messageId: string,
+  index: number
+): number | undefined {
+  // 新版后端把逐条消息时间存成 messageId -> ISO 时间 的映射；
+  // 旧数据是按下标对齐的数组，这里同时兼容两种形态。
+  if (Array.isArray(messageCreatedAt)) {
+    return parseCreatedAt(messageCreatedAt[index])
+  }
+  if (messageCreatedAt && typeof messageCreatedAt === 'object') {
+    return parseCreatedAt(
+      (messageCreatedAt as Record<string, unknown>)[messageId]
+    )
+  }
+  return undefined
+}
+
 function toHistoryMessages(
   stateMessages: unknown,
-  createdAt?: number
+  messageCreatedAt?: unknown,
+  fallbackCreatedAt?: number
 ): Message[] {
   if (!Array.isArray(stateMessages)) return []
 
@@ -378,6 +408,12 @@ function toHistoryMessages(
     const messageId =
       typeof message.id === 'string' ? message.id : `history_message_${index}`
     const content = getHistoryMessageContent(message.content)
+    const itemCreatedAt = resolveMessageCreatedAt(
+      messageCreatedAt,
+      messageId,
+      index
+    )
+    const createdAt = itemCreatedAt ?? fallbackCreatedAt
     if (message.type === 'human') {
       historyMessages.push({
         id: messageId,
@@ -2808,11 +2844,14 @@ export default function ChatInterface() {
       setThreadRunning(targetThreadId, false)
 
       let stateMessages: unknown = []
+      let messageCreatedAt: unknown = undefined
       try {
-        const response = await requestJson<{ messages?: unknown }>(
-          AGUI_THREAD_STATE_API_PATH(targetThreadId)
-        )
+        const response = await requestJson<{
+          messages?: unknown
+          message_created_at?: unknown
+        }>(AGUI_THREAD_STATE_API_PATH(targetThreadId))
         stateMessages = response.messages
+        messageCreatedAt = response.message_created_at
       } catch (error) {
         if (!(error instanceof Error) || !error.message.includes('404')) {
           throw error
@@ -2824,7 +2863,11 @@ export default function ChatInterface() {
       const latestRun = runsResponse.items[0]
       const historyCreatedAt =
         latestRun?.updatedAt != null ? latestRun.updatedAt * 1000 : undefined
-      runtime.messages = toHistoryMessages(stateMessages, historyCreatedAt)
+      runtime.messages = toHistoryMessages(
+        stateMessages,
+        messageCreatedAt,
+        historyCreatedAt
+      )
       if (activeThreadIdRef.current === targetThreadId) {
         messagesRef.current = runtime.messages
         setMessagesAndRef(runtime.messages)

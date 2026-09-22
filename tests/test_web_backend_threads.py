@@ -123,7 +123,33 @@ class FakeGraph:
         """
         assert config == {"configurable": {"thread_id": "thread-1"}}
         return SimpleNamespace(
-            values={"messages": [SimpleNamespace(content="测试标题")]}
+            values={
+                "messages": [
+                    SimpleNamespace(id="m1", content="测试标题"),
+                    SimpleNamespace(id="m2", content="回答"),
+                ]
+            }
+        )
+
+    async def aget_state_history(self, config):
+        """返回固定 checkpoint 历史，按时间从新到旧。
+
+        Args:
+            config: LangGraph 配置。
+        """
+        assert config == {"configurable": {"thread_id": "thread-1"}}
+        yield SimpleNamespace(
+            values={
+                "messages": [
+                    SimpleNamespace(id="m1", content="测试标题"),
+                    SimpleNamespace(id="m2", content="回答"),
+                ]
+            },
+            created_at="2026-09-22T00:00:02+00:00",
+        )
+        yield SimpleNamespace(
+            values={"messages": [SimpleNamespace(id="m1", content="测试标题")]},
+            created_at="2026-09-22T00:00:01+00:00",
         )
 
 
@@ -253,6 +279,10 @@ def test_thread_state_returns_graph_values():
 
     assert response.status_code == 200
     assert response.json()["title"] == "测试标题"
+    assert response.json()["message_created_at"] == {
+        "m1": "2026-09-22T00:00:01+00:00",
+        "m2": "2026-09-22T00:00:02+00:00",
+    }
 
 
 def test_thread_delete_removes_checkpoint_and_run_records():

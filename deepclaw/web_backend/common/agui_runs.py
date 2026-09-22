@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from deepclaw.settings import settings
+from deepclaw.web_backend.agent.message_timestamps import collect_message_created_at
 from deepclaw.web_backend.agent.run_manager import (
     AgentRunManager,
     ThreadOwnershipError,
@@ -291,6 +292,7 @@ async def get_agui_thread_state(
     messages = final_state.get("messages")
     if not messages:
         raise HTTPException(status_code=404, detail="Thread 状态不存在")
+    final_state["message_created_at"] = await collect_message_created_at(graph, config)
     title = getattr(messages[0], "content", None)
     if isinstance(title, str):
         final_state["title"] = title
