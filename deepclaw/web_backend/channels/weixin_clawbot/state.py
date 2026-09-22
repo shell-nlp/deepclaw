@@ -44,11 +44,3 @@ def runtime_state_manager_user_id(state_data: dict[str, Any], state_key: str) ->
         weixin_clawbot_user_id_from_state_key(state_key)
         or DEFAULT_MANAGER_USER_ID
     )
-
-
-def mask_token(value: str | None) -> str | None:
-    if not value:
-        return None
-    if len(value) <= 5:
-        return "***"
-    return f"{value[:5]}...{value[-3:]}"

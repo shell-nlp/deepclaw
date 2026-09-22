@@ -22,13 +22,6 @@ export const AUTH_USERS_RESET_PASSWORD_API_PATH = '/api/auth/users/reset-passwor
 export const SKILL_LIST_API_PATH = '/api/agent/skills/list'
 export const SKILL_UPLOAD_API_PATH = '/api/agent/skills/upload'
 export const SKILL_DELETE_API_PATH = '/api/agent/skills/delete'
-export const WEIXIN_CLAWBOT_USER_QRCODE_API_PATH = (userId: string) =>
-  `/api/channels/weixin-clawbot/users/${encodeURIComponent(userId)}/qrcode`
-export const WEIXIN_CLAWBOT_USER_QRCODE_STATUS_API_PATH = (userId: string) =>
-  `/api/channels/weixin-clawbot/users/${encodeURIComponent(userId)}/qrcode/status`
-export const WEIXIN_CLAWBOT_USERS_API_PATH = '/api/channels/weixin-clawbot/users'
-export const WEIXIN_CLAWBOT_USER_API_PATH = (userId: string) =>
-  `/api/channels/weixin-clawbot/users/${encodeURIComponent(userId)}`
 export const CHANNEL_BINDINGS_API_PATH = '/api/channels/bindings'
 export const FEISHU_BINDINGS_API_PATH = '/api/channels/feishu/bindings'
 export const FEISHU_BINDING_API_PATH = (bindingId: number) =>

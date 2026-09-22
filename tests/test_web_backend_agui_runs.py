@@ -229,30 +229,6 @@ def test_run_snapshot_events_resume_and_cancel():
     assert cancelled.json()["runId"] == "run-1"
 
 
-def test_action_uses_standard_agui_resume_entry():
-    """验证卡片 Action 使用顶层 resume[]，不再写入 forwardedProps。"""
-    store = InMemoryRunStore()
-    state = create_run_state(agent_id="rag")
-    asyncio.run(store.create_run(state))
-    manager = FakeRunManager()
-    manager.input = state.input
-    client, manager, _ = build_client(manager=manager, store=store)
-
-    response = client.post(
-        "/api/agui/runs/run-1/actions",
-        json={
-            "interruptId": "interrupt-1",
-            "decisions": [{"type": "approve"}],
-        },
-    )
-
-    assert response.status_code == 202
-    _, payload, _ = manager.resumed
-    assert payload.resume[0].interrupt_id == "interrupt-1"
-    assert payload.resume[0].payload == {"decisions": [{"type": "approve"}]}
-    assert "command" not in (payload.forwarded_props or {})
-
-
 def test_resume_accepts_standard_agui_resume_entry():
     """验证 /resume 接受顶层 resume[] 和 interruptId。"""
     store = InMemoryRunStore()

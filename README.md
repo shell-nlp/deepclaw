@@ -299,7 +299,6 @@ pnpm build
 | `GET` | `/api/agui/runs/{run_id}/events` | AG-UI SSE | 续流或重放 Run 事件 |
 | `GET` | `/api/agui/runs/{run_id}` | REST | Run Snapshot |
 | `POST` | `/api/agui/runs/{run_id}/resume` | AG-UI | 恢复中断 Run |
-| `POST` | `/api/agui/runs/{run_id}/actions` | AG-UI | 提交卡片 Action |
 | `POST` | `/api/agui/runs/{run_id}/cancel` | REST | 取消 Run |
 | `GET` | `/api/agui/threads` | REST | Thread 列表 |
 | `GET` | `/api/agui/threads/{thread_id}/runs` | REST | Thread 下的 Run 列表 |
@@ -335,13 +334,16 @@ pnpm build
 
 | 方法 | 路径 | 协议 | 用途 |
 |------|------|------|------|
+| `GET` | `/api/channels/bindings` | REST | 查询渠道绑定列表（`scope=my\|all`） |
 | `POST` | `/api/channels/feishu/events` | REST | 飞书事件入口 |
+| `POST` | `/api/channels/feishu/bindings` | REST | 创建飞书绑定 |
+| `DELETE` | `/api/channels/feishu/bindings/{binding_id}` | REST | 删除飞书绑定 |
 | `POST` | `/api/channels/dingtalk/events` | REST | 钉钉事件入口 |
-| `POST` | `/api/channels/weixin-clawbot/qrcode` | REST | 获取微信 ClawBot 登录二维码 |
-| `GET` | `/api/channels/weixin-clawbot/qrcode/status` | REST | 查询二维码状态 |
-| `POST` | `/api/channels/weixin-clawbot/users/{user_id}/qrcode` | REST | 生成用户绑定二维码 |
-| `GET` | `/api/channels/weixin-clawbot/users` | REST | 列出已绑定用户 |
-| `DELETE` | `/api/channels/weixin-clawbot/users/{user_id}` | REST | 删除绑定 |
+| `POST` | `/api/channels/weixin-clawbot/bindings` | REST | 创建微信 ClawBot 绑定 |
+| `POST` | `/api/channels/weixin-clawbot/bindings/{binding_id}/qrcode` | REST | 刷新微信 ClawBot 绑定二维码 |
+| `GET` | `/api/channels/weixin-clawbot/bindings/{binding_id}/qrcode/status` | REST | 查询微信 ClawBot 绑定二维码状态 |
+| `DELETE` | `/api/channels/weixin-clawbot/bindings/{binding_id}` | REST | 删除微信 ClawBot 绑定 |
+| `POST` | `/api/channels/weixin-clawbot/poll` | REST | 拉取微信 ClawBot 待处理消息 |
 | `GET` | `/api/channels/sessions` | REST | 列出渠道会话 |
 | `PATCH` | `/api/channels/sessions/{session_id}` | REST | 更新会话回复模式 |
 

@@ -182,13 +182,6 @@ class ChannelBindingDeleteResult(BaseModel):
     deleted: bool
 
 
-class ChannelBindingUserDeleteResult(BaseModel):
-    """按用户维度删除渠道绑定的结果。"""
-
-    user_id: str
-    deleted: bool
-
-
 class ChannelEventAccepted(BaseModel):
     """渠道事件接收确认。"""
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Iterable
 
-from ag_ui.core import ResumeEntry, RunAgentInput
+from ag_ui.core import RunAgentInput
 from ag_ui.encoder import EventEncoder
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -18,7 +18,6 @@ from deepclaw.web_backend.agent.run_store import RunStore, get_or_backfill_threa
 from deepclaw.web_backend.auth.dependencies import CurrentActor
 from deepclaw.web_backend.common.agui_schemas import (
     AgUiRunRequest,
-    RunActionRequest,
     ThreadDeleteResponse,
     ThreadListResponse,
     ThreadRunListResponse,
@@ -516,53 +515,6 @@ async def resume_agui_run(
             trusted_payload,
             user_id=_actor_user_id(actor),
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-
-async def handle_agui_action(
-    manager: AgentRunManager,
-    run_id: str,
-    payload: RunActionRequest,
-    request: Request,
-    actor: CurrentActor,
-    allowed_state_keys: Iterable[str],
-) -> dict[str, Any]:
-    """处理 AG-UI 卡片 Action。
-
-    Args:
-        manager: 当前域使用的 Run 管理器。
-        run_id: Run ID。
-        payload: Action 恢复请求。
-        request: 当前 HTTP 请求。
-        actor: 当前鉴权主体。
-        allowed_state_keys: 允许从客户端 state 传入的字段。
-
-    Returns:
-        Run Snapshot。
-    """
-    user_id = _actor_user_id(actor)
-    previous = await manager.get_input(run_id, user_id=user_id)
-    if previous is None:
-        raise HTTPException(status_code=404, detail="Run 不存在")
-    forwarded_props = dict(previous.forwarded_props or {})
-    forwarded_props.pop("command", None)
-    next_payload = previous.model_copy(
-        update={
-            "run_id": run_id,
-            "forwarded_props": forwarded_props,
-            "resume": [
-                ResumeEntry(
-                    interrupt_id=payload.interrupt_id or "",
-                    status="resolved",
-                    payload={"decisions": payload.decisions},
-                )
-            ],
-        }
-    )
-    next_payload = _with_trusted_state(next_payload, request, actor, allowed_state_keys)
-    try:
-        return await manager.continue_run(run_id, next_payload, user_id=user_id)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 

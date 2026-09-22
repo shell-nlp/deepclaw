@@ -1,5 +1,3 @@
-from typing import Any
-
 from ag_ui.core import RunAgentInput
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -28,18 +26,6 @@ class RunSnapshotResponse(BaseModel):
     created_at: float | None = Field(default=None, alias="createdAt")
     updated_at: float | None = Field(default=None, alias="updatedAt")
     error: str | None = None
-
-
-class RunActionRequest(BaseModel):
-    """AG-UI Action 恢复请求。"""
-
-    interrupt_id: str | None = Field(
-        default=None,
-        alias="interruptId",
-        description="待恢复的 AG-UI Interrupt ID",
-    )
-    decisions: list[dict[str, Any]] = Field(default_factory=list)
-    model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
 
 class ThreadRunListResponse(BaseModel):
