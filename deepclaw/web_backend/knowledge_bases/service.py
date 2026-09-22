@@ -17,7 +17,7 @@ from deepclaw.common.graph_rag import BaseGraphRAG
 from deepclaw.common.text_splitter import PDFParser
 from deepclaw.common.vector_store.base import AbstractVectorStore
 from deepclaw.common.vector_store.elasticsearch import ElasticsearchVectorStore
-from deepclaw.constant import workspace_path
+from deepclaw.constant import WORKSPACE_PATH
 from deepclaw.utils import get_embedding_model
 from deepclaw.web_backend.knowledge_bases.store import (
     KnowledgeBaseMetadataStore,
@@ -123,7 +123,7 @@ class UploadedKnowledgeFile:
 class KnowledgeBaseManager:
     KNOWLEDGE_BASE_INDEX = "rag_knowledge_bases"
     DOCUMENT_INDEX = "rag_knowledge_base_documents"
-    STORAGE_ROOT = workspace_path / "pdf_files" / "knowledge_bases"
+    STORAGE_ROOT = WORKSPACE_PATH / "pdf_files" / "knowledge_bases"
 
     def __init__(
         self,

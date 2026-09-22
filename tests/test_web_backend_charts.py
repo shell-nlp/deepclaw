@@ -26,7 +26,7 @@ def test_register_charts_static_mounts_configured_prefix(
     charts_dir = tmp_path / "charts"
     charts_dir.mkdir()
     (charts_dir / "sample.png").write_bytes(b"\x89PNG\r\n\x1a\n")
-    monkeypatch.setattr(app_module, "workspace_path", tmp_path)
+    monkeypatch.setattr(app_module, "WORKSPACE_PATH", tmp_path)
     monkeypatch.setattr(app_module.settings, "CHART_PUBLIC_URL", configured_url)
 
     app = FastAPI()

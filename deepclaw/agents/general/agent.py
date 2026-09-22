@@ -7,12 +7,12 @@ from deepclaw.agent_registry import Agent
 from deepclaw.agents.general.state import StateSchema
 from deepclaw.constant import (
     AGENT_VIRTUAL_PREFERENCES,
+    HOME_PATH,
     SANDBOX_SHARED_AGENTS,
     SANDBOX_SHARED_SKILLS,
     SANDBOX_USER_AGENTS,
     SANDBOX_USER_SKILLS,
-    home_path,
-    workspace_path,
+    WORKSPACE_PATH,
 )
 from deepclaw.settings import settings
 from deepclaw.utils import get_chat_model
@@ -136,8 +136,8 @@ class GeneralAgent(Agent):
 
         backend = None
 
-        if not workspace_path.exists():
-            workspace_path.mkdir(parents=True, exist_ok=True)
+        if not WORKSPACE_PATH.exists():
+            WORKSPACE_PATH.mkdir(parents=True, exist_ok=True)
         if settings.BACKEND_TYPE == "sandbox":
             from deepclaw.backend.open_sandbox import OpenSandbox
             from deepclaw.middleware.sandbox.opensandbox_kill import (
@@ -145,7 +145,7 @@ class GeneralAgent(Agent):
             )
 
             # 注意：以下是 Docker 容器内路径（容器 OS 永远为 Linux），
-            # 与宿主 OS 无关，不要替换为 workspace_path 等 host 路径。
+            # 与宿主 OS 无关，不要替换为 WORKSPACE_PATH 等 host 路径。
             skills = [SANDBOX_SHARED_SKILLS, SANDBOX_USER_SKILLS]
             memory = [SANDBOX_SHARED_AGENTS, SANDBOX_USER_AGENTS]
             middleware.append(OpenSandboxKillMiddleware())
@@ -155,10 +155,10 @@ class GeneralAgent(Agent):
             from deepagents.backends.local_shell import LocalShellBackend
 
             # 宿主机路径，使用 pathlib.Path 自动处理 Windows / Linux / macOS 分隔符
-            skills = [str(workspace_path / "skills")]
-            memory = [str(workspace_path / "AGENTS.md")]
+            skills = [str(WORKSPACE_PATH / "skills")]
+            memory = [str(WORKSPACE_PATH / "AGENTS.md")]
             backend = LocalShellBackend(
-                root_dir=home_path,
+                root_dir=HOME_PATH,
                 virtual_mode=False,
                 inherit_env=True,
             )
@@ -167,7 +167,7 @@ class GeneralAgent(Agent):
             from deepclaw.agents.general.utils import copy_skills_to_store
 
             copy_skills_to_store(
-                skills_dir=workspace_path / "skills",
+                skills_dir=WORKSPACE_PATH / "skills",
                 store=store,
             )
             logger.info("使用 StoreBackend 作为后端")

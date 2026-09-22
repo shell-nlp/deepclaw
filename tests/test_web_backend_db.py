@@ -41,7 +41,7 @@ def test_resolve_metadata_db_url_falls_back_to_home_sqlite(monkeypatch, tmp_path
     import deepclaw.web_backend.db as db_module
 
     monkeypatch.setattr(db_module, "settings", SimpleNamespace(PG_DATABASE_URL=None))
-    monkeypatch.setattr(db_module, "home_path", tmp_path)
+    monkeypatch.setattr(db_module, "HOME_PATH", tmp_path)
 
     resolved = db_module.resolve_metadata_db_url("channels.db")
 

@@ -8,8 +8,8 @@ from ag_ui.encoder import EventEncoder
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from deepclaw.agent_state import collect_message_created_at
 from deepclaw.settings import settings
-from deepclaw.web_backend.agent.message_timestamps import collect_message_created_at
 from deepclaw.web_backend.agent.run_manager import (
     AgentRunManager,
     ThreadOwnershipError,

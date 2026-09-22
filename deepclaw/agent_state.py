@@ -1,4 +1,4 @@
-"""从 LangGraph checkpoint 历史推导逐条消息的创建时间。"""
+"""Agent 层状态基础设施：从 LangGraph checkpoint 历史读取状态信息。"""
 
 from typing import Any
 

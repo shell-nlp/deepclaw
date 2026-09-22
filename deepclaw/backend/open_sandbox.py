@@ -21,15 +21,15 @@ from opensandbox.models.execd import (
 )
 from opensandbox.models.sandboxes import Host, Volume
 
-from deepclaw.constant import root_dir, workspace_path
+from deepclaw.constant import ROOT_DIR, WORKSPACE_PATH
 from deepclaw.settings import settings
 
-with open(root_dir / ".sandbox.toml", "rb") as f:
+with open(ROOT_DIR / ".sandbox.toml", "rb") as f:
     config = tomllib.load(f)
 
 DOMAIN = config["server"]["host"] + ":" + str(config["server"]["port"])
 
-user_workspace_path = root_dir / "user_workspace"
+user_workspace_path = ROOT_DIR / "user_workspace"
 
 _SANDBOX_NAME_MAX_LENGTH = 63
 _SANDBOX_NAME_HASH_LENGTH = 8
@@ -128,7 +128,7 @@ class OpenSandbox(BaseSandbox):
                 # 公共 skills 目录
                 Volume(
                     name=build_sandbox_volume_name("deepclaw-skills", user_id),
-                    host=Host(path=str(workspace_path)),
+                    host=Host(path=str(WORKSPACE_PATH)),
                     mount_path="/shared_workspace",
                 ),
             ],

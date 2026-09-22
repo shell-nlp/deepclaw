@@ -5,7 +5,7 @@ from typing import Optional
 from sqlmodel import select
 from sqlmodel import Field, SQLModel
 
-from deepclaw.constant import home_path
+from deepclaw.constant import HOME_PATH
 from deepclaw.web_backend.db import build_async_sessionmaker, create_async_engine_from_url
 
 
@@ -25,8 +25,8 @@ class CronJob(SQLModel, table=True):
 class CronManager:
     def __init__(self, db_url: Optional[str] = None):
         if db_url is None:
-            os.makedirs(home_path, exist_ok=True)
-            db_url = f"sqlite:///{os.path.join(home_path, 'cron.db')}"
+            os.makedirs(HOME_PATH, exist_ok=True)
+            db_url = f"sqlite:///{os.path.join(HOME_PATH, 'cron.db')}"
 
         self.engine = create_async_engine_from_url(db_url)
         self.async_session = build_async_sessionmaker(self.engine)

@@ -7,7 +7,7 @@ from pathlib import Path
 from sqlmodel import select
 
 from deepclaw.web_backend.common.errors import BusinessRuleError
-from deepclaw.constant import home_path
+from deepclaw.constant import HOME_PATH
 from deepclaw.web_backend.auth.models import (
     AccessTokenRecord,
     AuthUser,
@@ -146,7 +146,7 @@ class AuthStore:
     def __init__(self, db_url: str | None = None):
         should_import_home_db = db_url is None
         if db_url is None:
-            migrate_legacy_auth_db_if_needed(home_path)
+            migrate_legacy_auth_db_if_needed(HOME_PATH)
             db_url = resolve_metadata_db_url("auth.db")
 
         self.db_url = db_url
@@ -161,7 +161,7 @@ class AuthStore:
             if should_import_home_db
             else None
         )
-        self._sqlite_import_marker = Path(home_path) / AUTH_METADATA_IMPORT_MARKER
+        self._sqlite_import_marker = Path(HOME_PATH) / AUTH_METADATA_IMPORT_MARKER
 
     async def _ensure_init(self):
         if self._init_done:

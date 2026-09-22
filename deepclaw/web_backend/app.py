@@ -12,7 +12,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
 from deepclaw.agent_registry import AgentRegistry
-from deepclaw.constant import root_dir, workspace_path
+from deepclaw.constant import ROOT_DIR, WORKSPACE_PATH
 from deepclaw.patch.langchain import patch_langchain
 from deepclaw.settings import settings
 from deepclaw.web_backend.agui.runtime import AgentRuntimeCache
@@ -127,7 +127,7 @@ def register_frontend_routes(app: FastAPI) -> None:
     if getattr(app.state, "frontend_routes_registered", False):
         return
 
-    next_frontend_path = root_dir / "frontend" / "out"
+    next_frontend_path = ROOT_DIR / "frontend" / "out"
     if not next_frontend_path.exists():
         return
 
@@ -190,7 +190,7 @@ def register_charts_static(app: FastAPI) -> None:
     Args:
         app: 待挂载图表静态路由的 FastAPI 应用。
     """
-    charts_dir = workspace_path / "charts"
+    charts_dir = WORKSPACE_PATH / "charts"
     charts_dir.mkdir(parents=True, exist_ok=True)
     chart_routes = [("/charts", "charts")]
     configured_url = settings.CHART_PUBLIC_URL.strip()

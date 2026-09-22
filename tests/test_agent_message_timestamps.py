@@ -5,9 +5,7 @@ from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 
-from deepclaw.web_backend.agent.message_timestamps import (
-    collect_message_created_at,
-)
+from deepclaw.agent_state import collect_message_created_at
 
 
 def test_collect_message_created_at_from_checkpoint_history():

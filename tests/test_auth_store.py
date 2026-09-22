@@ -79,8 +79,8 @@ def test_auth_store_migrates_legacy_auth_db_to_deepclaw_home(tmp_path, monkeypat
         await legacy_service.bootstrap_admin_if_needed()
         await legacy_service.register(email="user@example.com", password="user-pass-123")
 
-        monkeypatch.setattr(auth_store_module, "home_path", current_home)
-        monkeypatch.setattr(db_module, "home_path", current_home)
+        monkeypatch.setattr(auth_store_module, "HOME_PATH", current_home)
+        monkeypatch.setattr(db_module, "HOME_PATH", current_home)
 
         migrated_service = build_service(store=auth_store_module.AuthStore())
         issued = await migrated_service.login(email="user@example.com", password="user-pass-123")
@@ -119,8 +119,8 @@ def test_auth_store_prefers_legacy_auth_data_when_current_db_already_exists(
         await current_service.bootstrap_admin_if_needed()
         await current_service.register(email="current-user@example.com", password="current-user-pass")
 
-        monkeypatch.setattr(auth_store_module, "home_path", current_home)
-        monkeypatch.setattr(db_module, "home_path", current_home)
+        monkeypatch.setattr(auth_store_module, "HOME_PATH", current_home)
+        monkeypatch.setattr(db_module, "HOME_PATH", current_home)
 
         migrated_service = build_service(store=auth_store_module.AuthStore())
 
