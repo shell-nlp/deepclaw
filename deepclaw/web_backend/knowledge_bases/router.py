@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 
 from deepclaw.web_backend.auth.dependencies import get_current_actor
 from deepclaw.web_backend.knowledge_bases.schemas import (
@@ -28,15 +28,12 @@ from deepclaw.web_backend.knowledge_bases.service import (
 )
 
 
-
-
-def _owned_user_id(actor, detail: str) -> str:
-    if actor.is_guest or not actor.user_id:
-        raise HTTPException(status_code=403, detail=detail)
-    return actor.user_id
-
-
 def _resolved_user_id(actor) -> str:
+    """解析知识库归属用户 ID，游客统一落到 guest 身份。
+
+    Args:
+        actor: 当前鉴权主体。
+    """
     return actor.user_id if actor.user_id and not actor.is_guest else "guest"
 
 
@@ -64,7 +61,7 @@ async def create_knowledge_base(
     request: CreateKnowledgeBaseRequest,
     actor=Depends(get_current_actor),
 ):
-    owner_id = _owned_user_id(actor, "登录后可创建知识库。")
+    owner_id = _resolved_user_id(actor)
     return await get_knowledge_base_manager().create_knowledge_base(
         user_id=owner_id,
         name=request.name,
@@ -86,7 +83,7 @@ async def update_knowledge_base(
     request: UpdateKnowledgeBaseRequest,
     actor=Depends(get_current_actor),
 ):
-    owner_id = _owned_user_id(actor, "登录后可修改知识库。")
+    owner_id = _resolved_user_id(actor)
     return await get_knowledge_base_manager().update_knowledge_base(
         user_id=owner_id,
         knowledge_base_id=request.knowledge_base_id,
@@ -99,7 +96,7 @@ async def delete_knowledge_base(
     request: KnowledgeBaseIdentityRequest,
     actor=Depends(get_current_actor),
 ):
-    owner_id = _owned_user_id(actor, "登录后可删除知识库。")
+    owner_id = _resolved_user_id(actor)
     return await get_knowledge_base_manager().delete_knowledge_base(
         user_id=owner_id,
         knowledge_base_id=request.knowledge_base_id,
@@ -115,7 +112,7 @@ async def bulk_delete_knowledge_bases(
     request: BulkDeleteKnowledgeBaseRequest,
     actor=Depends(get_current_actor),
 ):
-    owner_id = _owned_user_id(actor, "登录后可批量删除知识库。")
+    owner_id = _resolved_user_id(actor)
     return await get_knowledge_base_manager().bulk_delete_knowledge_bases(
         user_id=owner_id,
         knowledge_base_ids=request.knowledge_base_ids,
@@ -169,7 +166,7 @@ async def upload_documents(
     files: list[UploadFile] = File(..., description="Uploaded files"),
     actor=Depends(get_current_actor),
 ):
-    owner_id = _owned_user_id(actor, "登录后可上传知识文件。")
+    owner_id = _resolved_user_id(actor)
     uploaded_files: list[UploadedKnowledgeFile] = []
     for file in files:
         uploaded_files.append(
@@ -197,7 +194,7 @@ async def update_document(
     request: UpdateKnowledgeBaseDocumentRequest,
     actor=Depends(get_current_actor),
 ):
-    owner_id = _owned_user_id(actor, "登录后可重命名知识文件。")
+    owner_id = _resolved_user_id(actor)
     return await get_knowledge_base_manager().update_document(
         user_id=owner_id,
         knowledge_base_id=request.knowledge_base_id,
@@ -210,7 +207,7 @@ async def delete_document(
     request: DeleteKnowledgeBaseDocumentRequest,
     actor=Depends(get_current_actor),
 ):
-    owner_id = _owned_user_id(actor, "登录后可删除知识文件。")
+    owner_id = _resolved_user_id(actor)
     return await get_knowledge_base_manager().delete_document(
         user_id=owner_id,
         knowledge_base_id=request.knowledge_base_id,
@@ -227,7 +224,7 @@ async def bulk_delete_documents(
     request: BulkDeleteKnowledgeBaseDocumentRequest,
     actor=Depends(get_current_actor),
 ):
-    owner_id = _owned_user_id(actor, "登录后可批量删除知识文件。")
+    owner_id = _resolved_user_id(actor)
     return await get_knowledge_base_manager().bulk_delete_documents(
         user_id=owner_id,
         knowledge_base_id=request.knowledge_base_id,

@@ -53,7 +53,7 @@ test('auth helpers expose guest capabilities and admin flag', () => {
     role: 'admin',
   })
 
-  assert.equal(guest.canManageKnowledge, false)
+  assert.equal(guest.canManageKnowledge, true)
   assert.equal(guest.canManageSkills, true)
   assert.equal(guest.canManageUsers, false)
   assert.equal(guest.requiresLoginMessage, '登录后可使用此功能。')

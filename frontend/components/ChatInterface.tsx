@@ -882,8 +882,6 @@ export default function ChatInterface() {
 
   const actorCapabilities = getActorCapabilities(actor)
   const currentUserId = actor.userId || GUEST_USER_ID
-  const guestKnowledgeMessage =
-    '游客可浏览知识库内容，登录后可创建、上传和管理知识库。请点击右上角头像登录。'
   const mcpDraftParseResult = parseMcpConfig(mcpConfigDraft)
   const savedMcpParseResult = parseMcpConfig(savedMcpConfigText)
   const mcpConfigDirty = mcpConfigDraft !== savedMcpConfigText
@@ -3556,7 +3554,7 @@ export default function ChatInterface() {
                 managementNotice={managementNotice}
                 managementError={managementError}
                 writeDisabled={!actorCapabilities.canManageKnowledge}
-                writeDisabledMessage={guestKnowledgeMessage}
+                writeDisabledMessage=""
                 knowledgeBaseTotal={knowledgeBaseTotal}
                 visibleChunkTotal={visibleChunkTotal}
                 knowledgeBases={knowledgeBases}
