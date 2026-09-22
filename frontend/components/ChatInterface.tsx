@@ -987,7 +987,13 @@ export default function ChatInterface() {
     if (!assistantMessageId) {
       assistantMessageId = generateMessageId()
       currentAssistantMessageIdRef.current = assistantMessageId
-      addMessage({ id: assistantMessageId, role: 'ai', content: '', toolData: [] })
+      addMessage({
+        id: assistantMessageId,
+        role: 'ai',
+        content: '',
+        toolData: [],
+        startedAt: Date.now(),
+      })
     }
     return assistantMessageId
   }, [addMessage])
@@ -2118,6 +2124,19 @@ export default function ChatInterface() {
     reasoningStartTimeRef.current = null
   }, [updateAssistantMessage])
 
+  const finishAssistantDuration = useCallback(() => {
+    const finishedAt = Date.now()
+    updateAssistantMessage((message) => {
+      if (message.duration !== undefined || message.startedAt === undefined) {
+        return message
+      }
+      return {
+        ...message,
+        duration: Math.max(0, finishedAt - message.startedAt),
+      }
+    })
+  }, [updateAssistantMessage])
+
   const applyAgUiInterrupt = useCallback(
     (interrupt: AgUiInterrupt) => {
       if (lastAssistantStreamEventRef.current === 'reasoning') {
@@ -2309,10 +2328,11 @@ export default function ChatInterface() {
         if (!toolCallId) return null
         const now = Date.now()
         const startTime = toolCallStartTimesRef.current[toolCallId]
-        if (startTime) {
+        const toolDuration = startTime ? now - startTime : undefined
+        if (toolDuration !== undefined) {
           setToolCallDurations((prev) => ({
             ...prev,
-            [toolCallId]: now - startTime,
+            [toolCallId]: toolDuration,
           }))
           delete toolCallStartTimesRef.current[toolCallId]
         }
@@ -2338,6 +2358,7 @@ export default function ChatInterface() {
             }
             tools[existingToolIndex] = {
               ...existingTool,
+              duration: toolDuration ?? existingTool.duration,
               toolOutput: [
                 ...(existingTool.toolOutput || []),
                 normalizedOutput,
@@ -2346,6 +2367,7 @@ export default function ChatInterface() {
           } else {
             tools.push({
               toolCall: { id: toolCallId, name: 'tool', args: {} },
+              duration: toolDuration,
               toolOutput: [normalizedOutput],
             })
           }
@@ -2387,6 +2409,7 @@ export default function ChatInterface() {
       }
 
       if (eventType === 'RUN_ERROR') {
+        finishAssistantDuration()
         throw new Error(String(event.message || 'Agent run failed'))
       }
 
@@ -2396,6 +2419,7 @@ export default function ChatInterface() {
           applyAgUiInterrupt(interrupt)
           return 'interrupt'
         }
+        finishAssistantDuration()
         return 'finished'
       }
 
@@ -2404,6 +2428,7 @@ export default function ChatInterface() {
     [
       applyAgUiInterrupt,
       finishReasoningBlock,
+      finishAssistantDuration,
       setMessagesAndRef,
       updateAssistantMessage,
     ]
@@ -2838,7 +2863,13 @@ export default function ChatInterface() {
     requestModeRef.current = requestMode
     requestKnowledgeBaseRef.current = selectedKnowledgeBase
     requestMcpConfigRef.current = requestMcpConfig
-    addMessage({ id: assistantMessageId, role: 'ai', content: '', toolData: [] })
+    addMessage({
+      id: assistantMessageId,
+      role: 'ai',
+      content: '',
+      toolData: [],
+      startedAt: Date.now(),
+    })
     runtime.messages = messagesRef.current
     runtime.assistantMessageId = assistantMessageId
     runtime.requestMode = requestMode

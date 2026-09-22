@@ -2,6 +2,8 @@ export interface Message {
   id: string
   role: 'user' | 'ai'
   content: string
+  startedAt?: number
+  duration?: number
   reasoningContent?: string
   reasoningBlocks?: ReasoningBlock[]
   contentBlocks?: ReasoningBlock[]
@@ -85,6 +87,7 @@ export type AssistantMessageItem =
     }
 
 export interface ToolData {
+  duration?: number
   toolCall: {
     id: string
     name: string
