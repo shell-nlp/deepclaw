@@ -24,7 +24,15 @@ import {
   revokeAuthToken,
   type ActorState,
 } from './chat-interface/auth'
-import { createAgUiRunInput, getAgUiInterrupt, getRecommendedQuestions, parseAgUiSseFrame, type AgUiEvent } from './chat-interface/agui'
+import {
+  createAgUiRunInput,
+  getAgUiInterrupt,
+  getAgUiInterruptOutcome,
+  getRecommendedQuestions,
+  parseAgUiSseFrame,
+  type AgUiEvent,
+  type AgUiInterrupt,
+} from './chat-interface/agui'
 import { resolveChannelEntryPage } from './chat-interface/channelManagement'
 import { ChannelManagementView } from './chat-interface/ChannelManagementView'
 import { ChatView } from './chat-interface/ChatView'
@@ -2110,6 +2118,64 @@ export default function ChatInterface() {
     reasoningStartTimeRef.current = null
   }, [updateAssistantMessage])
 
+  const applyAgUiInterrupt = useCallback(
+    (interrupt: AgUiInterrupt) => {
+      if (lastAssistantStreamEventRef.current === 'reasoning') {
+        finishReasoningBlock()
+      }
+      const nextInterruptData: InterruptData = {
+        interrupt_id: interrupt.interrupt_id,
+        action_requests: interrupt.action_requests ?? [],
+        review_configs: interrupt.review_configs,
+      }
+      const interruptedToolNames = new Set(
+        nextInterruptData.action_requests
+          .map((action) => action.name)
+          .filter(
+            (name): name is string =>
+              Boolean(name) && name !== 'ask_user'
+          )
+      )
+      if (interruptedToolNames.size > 0) {
+        updateAssistantMessage((message) => {
+          const removedToolCallIds = new Set(
+            (message.toolData || [])
+              .filter((tool) => interruptedToolNames.has(tool.toolCall.name))
+              .map((tool) => tool.toolCall.id)
+          )
+          if (removedToolCallIds.size === 0) return message
+          return {
+            ...message,
+            toolData: (message.toolData || []).filter(
+              (tool) => !removedToolCallIds.has(tool.toolCall.id)
+            ),
+            messageItems: (message.messageItems || []).filter(
+              (item) =>
+                item.type !== 'tool' ||
+                !removedToolCallIds.has(item.toolCallId)
+            ),
+          }
+        })
+      }
+      setInterruptData(nextInterruptData)
+      setShowInterrupt(true)
+      const activeThreadId = activeThreadIdRef.current
+      if (activeThreadId) {
+        const runtime = getThreadRuntime(activeThreadId)
+        runtime.showInterrupt = true
+        runtime.interruptData = nextInterruptData
+      }
+      setIsProcessing(false)
+      setStatus('ready')
+      lastAssistantStreamEventRef.current = 'interrupt'
+    },
+    [
+      finishReasoningBlock,
+      getThreadRuntime,
+      updateAssistantMessage,
+    ]
+  )
+
   const handleAgUiEvent = useCallback(
     (event: AgUiEvent): 'interrupt' | 'finished' | null => {
       const eventType = event.type
@@ -2296,53 +2362,7 @@ export default function ChatInterface() {
       if (eventType === 'CUSTOM') {
         const interrupt = getAgUiInterrupt(event)
         if (interrupt) {
-          if (lastAssistantStreamEventRef.current === 'reasoning') {
-            finishReasoningBlock()
-          }
-          const nextInterruptData: InterruptData = {
-            action_requests: interrupt.action_requests ?? [],
-            review_configs: interrupt.review_configs,
-          }
-          const interruptedToolNames = new Set(
-            nextInterruptData.action_requests
-              .map((action) => action.name)
-              .filter(
-                (name): name is string =>
-                  Boolean(name) && name !== 'ask_user'
-              )
-          )
-          if (interruptedToolNames.size > 0) {
-            updateAssistantMessage((message) => {
-              const removedToolCallIds = new Set(
-                (message.toolData || [])
-                  .filter((tool) => interruptedToolNames.has(tool.toolCall.name))
-                  .map((tool) => tool.toolCall.id)
-              )
-              if (removedToolCallIds.size === 0) return message
-              return {
-                ...message,
-                toolData: (message.toolData || []).filter(
-                  (tool) => !removedToolCallIds.has(tool.toolCall.id)
-                ),
-                messageItems: (message.messageItems || []).filter(
-                  (item) =>
-                    item.type !== 'tool' ||
-                    !removedToolCallIds.has(item.toolCallId)
-                ),
-              }
-            })
-          }
-          setInterruptData(nextInterruptData)
-          setShowInterrupt(true)
-          const activeThreadId = activeThreadIdRef.current
-          if (activeThreadId) {
-            const runtime = getThreadRuntime(activeThreadId)
-            runtime.showInterrupt = true
-            runtime.interruptData = nextInterruptData
-          }
-          setIsProcessing(false)
-          setStatus('ready')
-          lastAssistantStreamEventRef.current = 'interrupt'
+          applyAgUiInterrupt(interrupt)
           return 'interrupt'
         }
 
@@ -2371,14 +2391,19 @@ export default function ChatInterface() {
       }
 
       if (eventType === 'RUN_FINISHED') {
+        const interrupt = getAgUiInterruptOutcome(event)
+        if (interrupt) {
+          applyAgUiInterrupt(interrupt)
+          return 'interrupt'
+        }
         return 'finished'
       }
 
       return null
     },
     [
+      applyAgUiInterrupt,
       finishReasoningBlock,
-      getThreadRuntime,
       setMessagesAndRef,
       updateAssistantMessage,
     ]
@@ -2990,12 +3015,22 @@ export default function ChatInterface() {
 
       const baseInput = currentRunInputRef.current
       if (!baseInput) throw new Error('当前没有可恢复的 Run')
+      const interruptId = interruptData.interrupt_id
+      if (!interruptId) throw new Error('当前中断缺少 interruptId，无法恢复')
+      const forwardedProps = {
+        ...(baseInput.forwardedProps as Record<string, unknown> | undefined),
+      }
+      delete forwardedProps.command
       const runInput = {
         ...baseInput,
-        forwardedProps: {
-          ...(baseInput.forwardedProps as Record<string, unknown> | undefined),
-          command: { resume: { decisions } },
-        },
+        forwardedProps,
+        resume: [
+          {
+            interruptId,
+            status: 'resolved',
+            payload: { decisions },
+          },
+        ],
       }
       currentRunInputRef.current = runInput
       runtime.runInput = runInput
@@ -3109,14 +3144,24 @@ export default function ChatInterface() {
     try {
       const baseInput = currentRunInputRef.current
       if (!baseInput) throw new Error('当前没有可恢复的 Run')
+      const interruptId = interruptData.interrupt_id
+      if (!interruptId) throw new Error('当前中断缺少 interruptId，无法恢复')
+      const forwardedProps = {
+        ...(baseInput.forwardedProps as Record<string, unknown> | undefined),
+      }
+      delete forwardedProps.command
       const runInput = {
         ...baseInput,
-        forwardedProps: {
-          ...(baseInput.forwardedProps as Record<string, unknown> | undefined),
-          command: {
-            resume: { decisions: [{ type: 'respond', message: answer }] },
+        forwardedProps,
+        resume: [
+          {
+            interruptId,
+            status: 'resolved',
+            payload: {
+              decisions: [{ type: 'respond', message: answer }],
+            },
           },
-        },
+        ],
       }
       currentRunInputRef.current = runInput
       runtime.runInput = runInput

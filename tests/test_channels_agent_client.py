@@ -49,8 +49,11 @@ async def fake_sender(payload, headers):
     yield 'data: {"type": "TEXT_MESSAGE_CONTENT", "delta": "hello"}\n\n'
     yield 'data: {"type": "TOOL_CALL_START", "toolCallId": "call-1", "toolCallName": "demo"}\n\n'
     yield "event: ping\n\n"
-    yield 'data: {"type": "CUSTOM", "name": "on_interrupt", "value": {}}\n\n'
-    yield 'data: {"type": "RUN_FINISHED"}\n\n'
+    yield (
+        'data: {"type": "RUN_FINISHED", "outcome": {"type": "interrupt", '
+        '"interrupts": [{"id": "interrupt-1", "reason": "langgraph:interrupt", '
+        '"metadata": {"langgraph": {"raw": {"question": "继续吗"}}}}]}}\n\n'
+    )
 
 
 def test_stream_parses_agui_sse_into_agent_events():

@@ -202,6 +202,7 @@ export type KnowledgePage =
 export type RequestMode = 'agent' | 'rag'
 export type ChatStatus = 'ready' | 'connecting' | 'error'
 export interface InterruptData {
+  interrupt_id?: string
   action_requests: Array<{
     name: string
     description?: string

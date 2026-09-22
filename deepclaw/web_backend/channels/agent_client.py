@@ -122,6 +122,28 @@ class AgentClient:
             return AgentEvent(event="tool_output", data={"tool_output": [output]})
         if event_type == "CUSTOM" and payload.get("name") == "on_interrupt":
             return AgentEvent(event="__interrupt__", data={"__interrupt__": payload.get("value")})
+        if event_type == "RUN_FINISHED":
+            outcome = payload.get("outcome")
+            if isinstance(outcome, dict) and outcome.get("type") == "interrupt":
+                interrupts = outcome.get("interrupts")
+                if isinstance(interrupts, list) and interrupts:
+                    interrupt = interrupts[0]
+                    if isinstance(interrupt, dict):
+                        metadata = interrupt.get("metadata")
+                        langgraph = (
+                            metadata.get("langgraph")
+                            if isinstance(metadata, dict)
+                            else None
+                        )
+                        raw = (
+                            langgraph.get("raw")
+                            if isinstance(langgraph, dict)
+                            else interrupt.get("message")
+                        )
+                        return AgentEvent(
+                            event="__interrupt__",
+                            data={"__interrupt__": raw},
+                        )
         if event_type == "RUN_ERROR":
             raise ValueError(str(payload.get("message") or "Agent Run failed"))
         return None
