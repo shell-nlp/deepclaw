@@ -4,6 +4,7 @@ export type AgUiEvent = {
 }
 
 export type AgUiInterrupt = {
+  interrupt_id?: string
   action_requests?: Array<{
     name: string
     description?: string
@@ -18,6 +19,12 @@ export type AgUiInterrupt = {
   [key: string]: unknown
 }
 
+export type AgUiResumeEntry = {
+  interruptId: string
+  status: 'resolved' | 'cancelled'
+  payload?: unknown
+}
+
 export type AgUiRunInput = {
   agentId: string
   threadId: string
@@ -27,6 +34,7 @@ export type AgUiRunInput = {
   tools: unknown[]
   context: unknown[]
   forwardedProps: Record<string, unknown>
+  resume?: AgUiResumeEntry[]
 }
 
 export type AgUiSseFrame = {
@@ -83,9 +91,35 @@ export function parseAgUiSseFrame(frame: string): AgUiSseFrame | null {
 
 export function getAgUiInterrupt(event: AgUiEvent): AgUiInterrupt | null {
   if (event.type !== 'CUSTOM' || event.name !== 'on_interrupt') return null
-  const value = parseAgUiValue(event.value)
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return normalizeInterruptValue(parseAgUiValue(event.value))
+}
 
+export function getAgUiInterruptOutcome(event: AgUiEvent): AgUiInterrupt | null {
+  if (event.type !== 'RUN_FINISHED') return null
+  const outcome = asRecord(event.outcome)
+  if (!outcome || outcome.type !== 'interrupt') return null
+  const interrupts = Array.isArray(outcome.interrupts) ? outcome.interrupts : []
+
+  for (const rawInterrupt of interrupts) {
+    const interrupt = asRecord(rawInterrupt)
+    if (!interrupt) continue
+    const metadata = asRecord(interrupt.metadata)
+    const langgraph = asRecord(metadata?.langgraph)
+    const rawValue = parseAgUiValue(langgraph?.raw ?? interrupt.message)
+    const normalized = normalizeInterruptValue(rawValue)
+    if (!normalized) continue
+    return {
+      ...normalized,
+      interrupt_id:
+        typeof interrupt.id === 'string' ? interrupt.id : undefined,
+    }
+  }
+
+  return null
+}
+
+function normalizeInterruptValue(value: unknown): AgUiInterrupt | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const record = value as Record<string, unknown>
   if (Array.isArray(record.action_requests)) {
     return record as AgUiInterrupt
@@ -110,6 +144,11 @@ export function getAgUiInterrupt(event: AgUiEvent): AgUiInterrupt | null {
   }
 
   return null
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as Record<string, unknown>
 }
 
 function parseAgUiValue(value: unknown): unknown {

@@ -3,7 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Iterable
 
-from ag_ui.core import RunAgentInput
+from ag_ui.core import ResumeEntry, RunAgentInput
 from ag_ui.encoder import EventEncoder
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -509,11 +509,18 @@ async def handle_agui_action(
     if previous is None:
         raise HTTPException(status_code=404, detail="Run 不存在")
     forwarded_props = dict(previous.forwarded_props or {})
-    forwarded_props["command"] = {"resume": {"decisions": payload.decisions}}
+    forwarded_props.pop("command", None)
     next_payload = previous.model_copy(
         update={
             "run_id": run_id,
             "forwarded_props": forwarded_props,
+            "resume": [
+                ResumeEntry(
+                    interrupt_id=payload.interrupt_id or "",
+                    status="resolved",
+                    payload={"decisions": payload.decisions},
+                )
+            ],
         }
     )
     next_payload = _with_trusted_state(next_payload, request, actor, allowed_state_keys)

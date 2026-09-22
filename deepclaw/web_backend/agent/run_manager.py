@@ -300,7 +300,7 @@ class AgentRunManager:
 
         Args:
             run_id: 路径中的 Run ID。
-            payload: 包含同一 thread_id 和 command.resume 的 AG-UI 输入。
+            payload: 包含同一 thread_id 和顶层 resume[] 的 AG-UI 输入。
             user_id: 可选当前用户 ID，用于归属校验。
 
         Returns:
@@ -496,6 +496,8 @@ class AgentRunManager:
             name="deepclaw-agent",
             graph=self.graph,
             config=dict(self.config),
+            enable_legacy_on_interrupt_event=False,
+            emit_interrupt_outcome=True,
             # 前端和渠道不消费原始 LangGraph 事件，关闭 RAW/raw_event 以降低流式传输体积。
             emit_raw_events=False,
         )

@@ -44,6 +44,34 @@ test('agui normalizes raw ask_user interrupt payloads', () => {
   assert.equal(interrupt?.review_configs?.[0]?.allowed_decisions[0], 'respond')
 })
 
+test('agui reads standard interrupt outcome and keeps interrupt id', () => {
+  const interrupt = aguiPkg.getAgUiInterruptOutcome({
+    type: 'RUN_FINISHED',
+    outcome: {
+      type: 'interrupt',
+      interrupts: [
+        {
+          id: 'interrupt-1',
+          reason: 'langgraph:interrupt',
+          metadata: {
+            langgraph: {
+              raw: {
+                question: '请选择颜色',
+                options: [{ label: '蓝色', description: '冷静' }],
+                custom: true,
+              },
+            },
+          },
+        },
+      ],
+    },
+  })
+
+  assert.equal(interrupt?.interrupt_id, 'interrupt-1')
+  assert.equal(interrupt?.action_requests?.[0]?.name, 'ask_user')
+  assert.equal(interrupt?.action_requests?.[0]?.args?.question, '请选择颜色')
+})
+
 test('agui ignores malformed interrupt values', () => {
   const interrupt = aguiPkg.getAgUiInterrupt({
     type: 'CUSTOM',

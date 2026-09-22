@@ -22,6 +22,7 @@ class FakeRunManager:
     def __init__(self):
         self.created = None
         self.resumed = None
+        self.input = None
 
     async def create(self, payload):
         """记录创建请求。
@@ -52,6 +53,15 @@ class FakeRunManager:
             "agentId": payload.agent_id or "agent",
             "status": "queued",
         }
+
+    async def get_input(self, run_id, user_id=None):
+        """返回测试输入。
+
+        Args:
+            run_id: Run ID。
+            user_id: 当前用户 ID。
+        """
+        return self.input
 
 
 class FakeRuntimeRegistry:
@@ -217,6 +227,55 @@ def test_run_snapshot_events_resume_and_cancel():
     cancelled = client.post("/api/agui/runs/run-1/cancel")
     assert cancelled.status_code == 200
     assert cancelled.json()["runId"] == "run-1"
+
+
+def test_action_uses_standard_agui_resume_entry():
+    """验证卡片 Action 使用顶层 resume[]，不再写入 forwardedProps。"""
+    store = InMemoryRunStore()
+    state = create_run_state(agent_id="rag")
+    asyncio.run(store.create_run(state))
+    manager = FakeRunManager()
+    manager.input = state.input
+    client, manager, _ = build_client(manager=manager, store=store)
+
+    response = client.post(
+        "/api/agui/runs/run-1/actions",
+        json={
+            "interruptId": "interrupt-1",
+            "decisions": [{"type": "approve"}],
+        },
+    )
+
+    assert response.status_code == 202
+    _, payload, _ = manager.resumed
+    assert payload.resume[0].interrupt_id == "interrupt-1"
+    assert payload.resume[0].payload == {"decisions": [{"type": "approve"}]}
+    assert "command" not in (payload.forwarded_props or {})
+
+
+def test_resume_accepts_standard_agui_resume_entry():
+    """验证 /resume 接受顶层 resume[] 和 interruptId。"""
+    store = InMemoryRunStore()
+    state = create_run_state(agent_id="rag")
+    asyncio.run(store.create_run(state))
+    client, manager, _ = build_client(store=store)
+    body = payload(agent_id="rag")
+    body["resume"] = [
+        {
+            "interruptId": "interrupt-1",
+            "status": "resolved",
+            "payload": {"decisions": [{"type": "approve"}]},
+        }
+    ]
+
+    response = client.post("/api/agui/runs/run-1/resume", json=body)
+
+    assert response.status_code == 202
+    _, payload_value, _ = manager.resumed
+    assert payload_value.resume[0].interrupt_id == "interrupt-1"
+    assert payload_value.resume[0].payload == {
+        "decisions": [{"type": "approve"}]
+    }
 
 
 def test_resume_rejects_agent_switch():
