@@ -79,9 +79,8 @@ export function normalizeUserToActor(user: AuthUserSummary): ActorState {
 }
 
 export function getActorCapabilities(actor: ActorState): ActorCapabilities {
-  const isSignedIn = !actor.isGuest
   return {
-    canManageKnowledge: isSignedIn,
+    canManageKnowledge: true,
     canManageSkills: true,
     canManageUsers: actor.role === 'admin',
     canManageChannelBindingsGlobally: actor.role === 'admin',
