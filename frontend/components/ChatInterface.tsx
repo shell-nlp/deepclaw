@@ -348,17 +348,24 @@ function getHistoryToolData(message: Record<string, unknown>): ToolData[] {
   })
 }
 
-function createHistoryAssistantMessage(id: string): Message {
+function createHistoryAssistantMessage(
+  id: string,
+  createdAt?: number
+): Message {
   return {
     id,
     role: 'ai',
     content: '',
+    createdAt,
     messageItems: [],
     toolData: [],
   }
 }
 
-function toHistoryMessages(stateMessages: unknown): Message[] {
+function toHistoryMessages(
+  stateMessages: unknown,
+  createdAt?: number
+): Message[] {
   if (!Array.isArray(stateMessages)) return []
 
   const historyMessages: Message[] = []
@@ -372,7 +379,12 @@ function toHistoryMessages(stateMessages: unknown): Message[] {
       typeof message.id === 'string' ? message.id : `history_message_${index}`
     const content = getHistoryMessageContent(message.content)
     if (message.type === 'human') {
-      historyMessages.push({ id: messageId, role: 'user', content })
+      historyMessages.push({
+        id: messageId,
+        role: 'user',
+        content,
+        createdAt,
+      })
       activeAssistant = null
       toolOwnerMessages.clear()
       return
@@ -380,7 +392,10 @@ function toHistoryMessages(stateMessages: unknown): Message[] {
 
     if (message.type === 'ai') {
       if (!activeAssistant) {
-        activeAssistant = createHistoryAssistantMessage(`${messageId}_assistant`)
+        activeAssistant = createHistoryAssistantMessage(
+          `${messageId}_assistant`,
+          createdAt
+        )
         historyMessages.push(activeAssistant)
       }
       const reasoningContent = getHistoryReasoningContent(message)
@@ -424,7 +439,10 @@ function toHistoryMessages(stateMessages: unknown): Message[] {
     const toolCallId = message.tool_call_id
     const assistant = toolOwnerMessages.get(toolCallId) || activeAssistant
     if (!assistant) {
-      const newAssistant = createHistoryAssistantMessage(`${messageId}_assistant`)
+      const newAssistant = createHistoryAssistantMessage(
+        `${messageId}_assistant`,
+        createdAt
+      )
       historyMessages.push(newAssistant)
       toolOwnerMessages.set(toolCallId, newAssistant)
       activeAssistant = newAssistant
@@ -979,6 +997,7 @@ export default function ChatInterface() {
         id: assistantMessageId,
         role: 'ai',
         content: '',
+        createdAt: Date.now(),
         toolData: [],
         startedAt: Date.now(),
       })
@@ -2799,16 +2818,17 @@ export default function ChatInterface() {
           throw error
         }
       }
-      runtime.messages = toHistoryMessages(stateMessages)
-      if (activeThreadIdRef.current === targetThreadId) {
-        messagesRef.current = runtime.messages
-        setMessagesAndRef(runtime.messages)
-      }
-
       const runsResponse = await requestJson<ThreadRunListResponse>(
         AGUI_THREAD_RUNS_API_PATH(targetThreadId)
       )
       const latestRun = runsResponse.items[0]
+      const historyCreatedAt =
+        latestRun?.updatedAt != null ? latestRun.updatedAt * 1000 : undefined
+      runtime.messages = toHistoryMessages(stateMessages, historyCreatedAt)
+      if (activeThreadIdRef.current === targetThreadId) {
+        messagesRef.current = runtime.messages
+        setMessagesAndRef(runtime.messages)
+      }
       if (latestRun) {
         runtime.agentId = latestRun.agentId
       }
@@ -2881,10 +2901,12 @@ export default function ChatInterface() {
       )
     )
     const userMessageId = generateMessageId()
+    const userMessageCreatedAt = Date.now()
     addMessage({
       id: userMessageId,
       role: 'user',
       content: query,
+      createdAt: userMessageCreatedAt,
     })
     setInputValue('')
 
@@ -2917,6 +2939,7 @@ export default function ChatInterface() {
       id: assistantMessageId,
       role: 'ai',
       content: '',
+      createdAt: Date.now(),
       toolData: [],
       startedAt: Date.now(),
     })

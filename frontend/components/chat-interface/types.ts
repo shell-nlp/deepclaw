@@ -2,6 +2,7 @@ export interface Message {
   id: string
   role: 'user' | 'ai'
   content: string
+  createdAt?: number
   startedAt?: number
   duration?: number
   error?: ChatError
