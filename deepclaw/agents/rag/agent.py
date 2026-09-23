@@ -33,26 +33,15 @@ class RagAgent(Agent):
             已装配的 RAG Agent 图。
         """
         from langchain.agents import create_agent
-        from langchain_deepseek import ChatDeepSeek
 
         from deepclaw.agents.rag.state import StateSchema
         from deepclaw.middleware.common import BusinessMiddleware
         from deepclaw.middleware.rag import RAGMiddleware
-        from deepclaw.settings import settings
         from deepclaw.tools.retriever import get_default_retriever
+        from deepclaw.utils import get_chat_model
 
-        model = ChatDeepSeek(
-            model=settings.CHAT_MODEL_NAME,
-            tags=["agent"],
-            api_base=settings.OPENAI_API_BASE,
-            api_key=settings.OPENAI_API_KEY,
-        )
-        rewrite_model = ChatDeepSeek(
-            model=settings.CHAT_MODEL_NAME,
-            tags=["rag"],
-            api_base=settings.OPENAI_API_BASE,
-            api_key=settings.OPENAI_API_KEY,
-        )
+        model = get_chat_model(tags=["agent"])
+        rewrite_model = get_chat_model(tags=["rag"])
         return create_agent(
             model=model,
             middleware=[
