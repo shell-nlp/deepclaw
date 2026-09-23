@@ -13,7 +13,6 @@ from psycopg_pool import AsyncConnectionPool
 
 from deepclaw.agent_registry import AgentRegistry
 from deepclaw.constant import ROOT_DIR, WORKSPACE_PATH
-from deepclaw.patch.langchain import patch_langchain
 from deepclaw.settings import settings
 from deepclaw.web_backend.agui.runtime import AgentRuntimeCache
 from deepclaw.web_backend.agui.router import router as agui_router
@@ -146,7 +145,6 @@ def register_frontend_routes(app: FastAPI) -> None:
 @asynccontextmanager
 async def app_lifespan(app: FastAPI):
     setup_observability()
-    patch_langchain()
     await init_agent_env(app)
     app.state.agent_registry = AgentRegistry.discover()
     await get_run_store().initialize()

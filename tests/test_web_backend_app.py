@@ -83,7 +83,6 @@ def test_create_app_defers_agent_env_init_to_lifespan(monkeypatch):
 
     monkeypatch.setattr(app_module, "init_agent_env", fake_init_agent_env)
     monkeypatch.setattr(app_module, "setup_observability", lambda: None)
-    monkeypatch.setattr(app_module, "patch_langchain", lambda: None)
     monkeypatch.setattr(app_module, "channel_lifespan", noop_channel_lifespan)
     monkeypatch.setattr(app_module, "get_auth_service", lambda: ServiceSpy())
 
@@ -224,7 +223,6 @@ def test_create_app_agent_route_remains_postable_with_frontend_mount(monkeypatch
     monkeypatch.setattr(app_module, "init_agent_env", fake_init_agent_env)
     monkeypatch.setattr(app_module, "agui_router", fake_agui_router)
     monkeypatch.setattr(app_module, "setup_observability", lambda: None)
-    monkeypatch.setattr(app_module, "patch_langchain", lambda: None)
     monkeypatch.setattr(app_module, "channel_lifespan", noop_channel_lifespan)
     monkeypatch.setattr(app_module, "get_auth_service", lambda: ServiceSpy())
 
@@ -261,7 +259,6 @@ def test_create_app_serves_exported_login_html_route(monkeypatch, tmp_path: Path
 
     monkeypatch.setattr(app_module, "init_agent_env", fake_init_agent_env)
     monkeypatch.setattr(app_module, "setup_observability", lambda: None)
-    monkeypatch.setattr(app_module, "patch_langchain", lambda: None)
     monkeypatch.setattr(app_module, "channel_lifespan", noop_channel_lifespan)
     monkeypatch.setattr(app_module, "get_auth_service", lambda: ServiceSpy())
 

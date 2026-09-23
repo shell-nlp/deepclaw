@@ -28,7 +28,6 @@
 - `deepclaw/web_backend/lifespan.py`
   应用生命周期入口。负责：
   - 可观测性初始化
-  - `patch_langchain()`
   - 管理员账号自举
   - 渠道 runtime 生命周期接入
 

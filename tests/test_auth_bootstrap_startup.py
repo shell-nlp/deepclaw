@@ -27,7 +27,6 @@ def test_app_lifespan_bootstraps_admin(monkeypatch):
         app.state.store = InMemoryStore()
 
     monkeypatch.setattr(web_app_module, "setup_observability", lambda: None)
-    monkeypatch.setattr(web_app_module, "patch_langchain", lambda: None)
     monkeypatch.setattr(web_app_module, "init_agent_env", fake_init_agent_env)
     monkeypatch.setattr(web_app_module, "channel_lifespan", _noop_channel_lifespan)
     monkeypatch.setattr(web_app_module, "get_auth_service", lambda: service, raising=False)
