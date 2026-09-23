@@ -12,6 +12,7 @@ export interface Message {
   messageItems?: AssistantMessageItem[]
   toolData?: ToolData[]
   recommendedQuestions?: string[]
+  tokenUsage?: TokenUsage
 }
 
 export type ChatErrorKind = 'http' | 'run' | 'stream' | 'resume' | 'unknown'
@@ -80,6 +81,12 @@ export interface ReasoningBlock {
   id: string
   content: string
   duration?: number
+}
+
+export interface TokenUsage {
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
 }
 
 export type AssistantMessageItem =

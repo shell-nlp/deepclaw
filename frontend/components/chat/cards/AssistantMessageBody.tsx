@@ -73,6 +73,25 @@ export function AssistantMessageBody({
           }}
         />
       ))}
+      {!isProcessing && msg.tokenUsage ? (
+        <div className={styles.tokenUsage}>
+          <span className={styles.tokenUsageLabel}>Token 用量</span>
+          <span>
+            输入{' '}
+            <strong>{msg.tokenUsage.inputTokens.toLocaleString('zh-CN')}</strong>
+          </span>
+          <span className={styles.tokenUsageDivider}>·</span>
+          <span>
+            输出{' '}
+            <strong>{msg.tokenUsage.outputTokens.toLocaleString('zh-CN')}</strong>
+          </span>
+          <span className={styles.tokenUsageDivider}>·</span>
+          <span>
+            总计{' '}
+            <strong>{msg.tokenUsage.totalTokens.toLocaleString('zh-CN')}</strong>
+          </span>
+        </div>
+      ) : null}
       {msg.recommendedQuestions?.length ? (
         <div className={styles.recommendedQuestions}>
           <span className={styles.recommendedQuestionsTitle}>你可能还想问：</span>

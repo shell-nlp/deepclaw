@@ -81,3 +81,63 @@ test('agui ignores malformed interrupt values', () => {
 
   assert.equal(interrupt, null)
 })
+
+test('agui reads token usage from LangChain message metadata', () => {
+  const usage = aguiPkg.getTokenUsageFromMessage({
+    type: 'ai',
+    usage_metadata: {
+      input_tokens: 120,
+      output_tokens: 36,
+      total_tokens: 156,
+    },
+  })
+
+  assert.deepEqual(usage, {
+    inputTokens: 120,
+    outputTokens: 36,
+    totalTokens: 156,
+  })
+})
+
+test('agui sums token usage for the latest assistant turn', () => {
+  const usage = aguiPkg.getLatestAssistantTurnTokenUsage([
+    {
+      type: 'human',
+      content: 'first',
+    },
+    {
+      type: 'ai',
+      usage_metadata: {
+        input_tokens: 10,
+        output_tokens: 2,
+        total_tokens: 12,
+      },
+    },
+    {
+      type: 'human',
+      content: 'latest',
+    },
+    {
+      type: 'ai',
+      usage_metadata: {
+        input_tokens: 20,
+        output_tokens: 4,
+        total_tokens: 24,
+      },
+    },
+    {
+      type: 'ai',
+      usage_metadata: {
+        input_tokens: 30,
+        output_tokens: 6,
+        total_tokens: 36,
+      },
+    },
+  ])
+
+  assert.deepEqual(usage, {
+    inputTokens: 50,
+    outputTokens: 10,
+    totalTokens: 60,
+  })
+})

@@ -24,11 +24,14 @@ import {
   type ActorState,
 } from './chat-interface/auth'
 import {
+  addTokenUsage,
   createAgUiRunInput,
   getAgUiInterrupt,
   getAgUiInterruptOutcome,
   getAgUiAssistantSnapshotText,
+  getLatestAssistantTurnTokenUsage,
   getRecommendedQuestions,
+  getTokenUsageFromMessage,
   parseAgUiSseFrame,
   type AgUiEvent,
   type AgUiInterrupt,
@@ -437,6 +440,7 @@ function toHistoryMessages(
       }
       const reasoningContent = getHistoryReasoningContent(message)
       const toolData = getHistoryToolData(message)
+      const tokenUsage = getTokenUsageFromMessage(message)
       const assistant = activeAssistant
 
       if (reasoningContent) {
@@ -468,6 +472,9 @@ function toHistoryMessages(
         })
         toolOwnerMessages.set(tool.toolCall.id, assistant)
       })
+      if (tokenUsage) {
+        assistant.tokenUsage = addTokenUsage(assistant.tokenUsage, tokenUsage)
+      }
       return
     }
 
@@ -2561,6 +2568,29 @@ export default function ChatInterface() {
     []
   )
 
+  const refreshAssistantTokenUsage = useCallback(
+    async (threadId: string, assistantMessageId: string) => {
+      if (!threadId || !assistantMessageId) return
+      try {
+        const response = await requestJson<{ messages?: unknown }>(
+          AGUI_THREAD_STATE_API_PATH(threadId)
+        )
+        const usage = getLatestAssistantTurnTokenUsage(response.messages)
+        if (!usage) return
+        setMessagesAndRef((prev) =>
+          prev.map((message) =>
+            message.id === assistantMessageId
+              ? { ...message, tokenUsage: usage }
+              : message
+          )
+        )
+      } catch {
+        // Token 统计失败不能影响已经完成的回答。
+      }
+    },
+    [requestJson, setMessagesAndRef]
+  )
+
   const readEventStream = useCallback(
     async (response: Response, threadId: string, generation: number) => {
       const reader = response.body?.getReader()
@@ -2571,6 +2601,7 @@ export default function ChatInterface() {
       let interrupted = false
       let completed = false
       let stale = false
+      let finishedAssistantMessageId = ''
 
       const processChunk = (chunk: string) => {
         if (!isCurrentStream(threadId, generation)) {
@@ -2604,6 +2635,8 @@ export default function ChatInterface() {
           }
           if (handledEvent === 'finished') {
             completed = true
+            finishedAssistantMessageId =
+              currentAssistantMessageIdRef.current || ''
             runtime.processing = false
             runtime.status = 'ready'
             runtime.messages = messagesRef.current
@@ -2636,9 +2669,19 @@ export default function ChatInterface() {
         }
       }
 
+      if (completed && !stale && finishedAssistantMessageId) {
+        await refreshAssistantTokenUsage(threadId, finishedAssistantMessageId)
+      }
+
       return { interrupted, completed, stale }
     },
-    [getThreadRuntime, handleAgUiEvent, isCurrentStream, setThreadRunning]
+    [
+      getThreadRuntime,
+      handleAgUiEvent,
+      isCurrentStream,
+      refreshAssistantTokenUsage,
+      setThreadRunning,
+    ]
   )
 
   const subscribeAgUiEvents = useCallback(
