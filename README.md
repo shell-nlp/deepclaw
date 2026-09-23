@@ -282,14 +282,6 @@ uv run python -m deepclaw.main
 首次启动时，如果配置了 `AUTH_ADMIN_EMAIL` / `AUTH_ADMIN_PASSWORD` 且系统中还没有管理员，
 会自动创建这个管理员账号。未登录访问会自动降级为游客身份，技能管理与知识库管理对游客开放。
 
-需要 Playwright 浏览器或沙箱镜像时，可用内置 CLI 一键安装：
-
-```bash
-uv run deepclaw install playwright   # 安装 Playwright Chromium
-uv run deepclaw install docker       # 拉取 OpenSandbox 镜像
-uv run deepclaw install              # 两者都装
-```
-
 ### 5. 启动依赖服务（可选，但推荐）
 
 如果用到 Elasticsearch 知识库或 Postgres 长期记忆，需启动对应服务：

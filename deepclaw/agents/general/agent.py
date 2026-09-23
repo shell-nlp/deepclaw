@@ -139,7 +139,7 @@ class GeneralAgent(Agent):
         if not WORKSPACE_PATH.exists():
             WORKSPACE_PATH.mkdir(parents=True, exist_ok=True)
         if settings.BACKEND_TYPE == "sandbox":
-            from deepclaw.backend.open_sandbox import OpenSandbox
+            from deepclaw.sandbox.open_sandbox import OpenSandbox
             from deepclaw.middleware.sandbox.opensandbox_kill import (
                 OpenSandboxKillMiddleware,
             )

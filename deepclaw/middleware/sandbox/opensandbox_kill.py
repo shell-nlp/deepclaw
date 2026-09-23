@@ -3,7 +3,7 @@
 from langchain.agents.middleware import AgentMiddleware
 from loguru import logger
 
-from deepclaw.backend.open_sandbox import OpenSandbox
+from deepclaw.sandbox.open_sandbox import OpenSandbox
 
 open_sandbox = OpenSandbox()
 
