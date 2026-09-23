@@ -4,6 +4,12 @@ from deepclaw.common.graph_db import (
     GraphDatabaseBase,
     Neo4jGraph,
 )
+from deepclaw.common.docling_parser import (
+    DOCLING_SUPPORTED_SUFFIXES,
+    DoclingDocumentParser,
+    create_document_parser,
+    is_docling_available,
+)
 from deepclaw.common.graph_rag import BaseGraphRAG, ElasticGraphRAG, PgGraphRAG
 from deepclaw.common.vector_store import (
     AbstractVectorStore,
@@ -48,6 +54,8 @@ def __getattr__(name: str) -> Any:
 __all__ = [
     "AbstractVectorStore",
     "BaseGraphRAG",
+    "DOCLING_SUPPORTED_SUFFIXES",
+    "DoclingDocumentParser",
     "ElasticGraphRAG",
     "PgGraphRAG",
     "ElasticsearchVectorStore",
@@ -57,7 +65,9 @@ __all__ = [
     "PgVectorStore",
     "VectorStoreBackend",
     "create_default_vector_store",
+    "create_document_parser",
     "create_graph_rag",
     "create_vector_store",
+    "is_docling_available",
 ]
 

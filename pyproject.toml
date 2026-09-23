@@ -40,6 +40,9 @@ pdf = [
     "pypdf2>=3.0.1",
     "pdfplumber>=0.11.9",
 ]
+docling = [
+    "docling>=2.129.0,<3.0.0",
+]
 feishu = [
     "lark-oapi>=1.5.0,<2.0.0",
 ]
