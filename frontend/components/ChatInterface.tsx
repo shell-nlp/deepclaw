@@ -24,12 +24,11 @@ import {
   type ActorState,
 } from './chat-interface/auth'
 import {
-  addTokenUsage,
   createAgUiRunInput,
   getAgUiInterrupt,
   getAgUiInterruptOutcome,
   getAgUiAssistantSnapshotText,
-  getLatestAssistantTurnTokenUsage,
+  getLatestAssistantTokenUsage,
   getRecommendedQuestions,
   getTokenUsageFromMessage,
   parseAgUiSseFrame,
@@ -473,7 +472,7 @@ function toHistoryMessages(
         toolOwnerMessages.set(tool.toolCall.id, assistant)
       })
       if (tokenUsage) {
-        assistant.tokenUsage = addTokenUsage(assistant.tokenUsage, tokenUsage)
+        assistant.tokenUsage = tokenUsage
       }
       return
     }
@@ -2575,7 +2574,7 @@ export default function ChatInterface() {
         const response = await requestJson<{ messages?: unknown }>(
           AGUI_THREAD_STATE_API_PATH(threadId)
         )
-        const usage = getLatestAssistantTurnTokenUsage(response.messages)
+        const usage = getLatestAssistantTokenUsage(response.messages)
         if (!usage) return
         setMessagesAndRef((prev) =>
           prev.map((message) =>
