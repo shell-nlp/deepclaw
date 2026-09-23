@@ -285,14 +285,6 @@ On first start, if `AUTH_ADMIN_EMAIL` / `AUTH_ADMIN_PASSWORD` are set and no adm
 account is created automatically. Unauthenticated requests fall back to a guest identity, and guests may
 manage skills and knowledge bases.
 
-Use the built-in CLI when you need a Playwright browser or sandbox images:
-
-```bash
-uv run deepclaw install playwright   # install Playwright Chromium
-uv run deepclaw install docker       # pull OpenSandbox images
-uv run deepclaw install              # both
-```
-
 ### 5. Start dependencies (optional but recommended)
 
 Elasticsearch knowledge bases or Postgres long-term memory need their services:

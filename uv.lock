@@ -989,7 +989,6 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "python-multipart" },
     { name = "sqlmodel" },
-    { name = "typer" },
     { name = "tzdata" },
     { name = "uvicorn" },
 ]
@@ -1073,7 +1072,6 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "python-multipart", specifier = ">=0.0.20" },
     { name = "sqlmodel", specifier = ">=0.0.22" },
-    { name = "typer", specifier = ">=0.15.0" },
     { name = "tzdata", specifier = ">=2025.3" },
     { name = "uvicorn", specifier = ">=0.40.0" },
 ]
