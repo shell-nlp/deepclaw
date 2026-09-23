@@ -18,9 +18,9 @@ def get_chat_model() -> ChatDeepSeek:
         api_base=settings.OPENAI_API_BASE,
         api_key=settings.OPENAI_API_KEY,
         extra_body={
-            "chat_template_kwargs": {"enable_thinking": True},
+            "chat_template_kwargs": {"enable_thinking": False},
             "tool_choice": "auto",
-            "thinking": {"type": "enabled"},  # enabled  disabled
+            "thinking": {"type": "disabled"},  # enabled  disabled
         },
     )
 
