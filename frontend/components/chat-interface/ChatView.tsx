@@ -649,6 +649,12 @@ export function ChatView({
       </div>
     ) : null
 
+  const latestAssistantMessageId = messages.reduce<string | null>(
+    (latestId, message) =>
+      message.role === 'ai' ? message.id : latestId,
+    null
+  )
+
   return (
     <>
       <div className={styles.sessionBar}>
@@ -721,6 +727,7 @@ export function ChatView({
                     msg={msg}
                     toolCallDurations={toolCallDurations}
                     isProcessing={isProcessing && msg.id === currentAssistantMessageId}
+                    showTokenUsage={msg.id === latestAssistantMessageId}
                     onRecommendedQuestion={onRecommendedQuestion}
                     onRetryMessage={onRetryMessage}
                   />

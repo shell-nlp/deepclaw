@@ -231,17 +231,6 @@ function tokenUsageFromRecord(record: Record<string, unknown>): TokenUsage | nul
   return { inputTokens, outputTokens, totalTokens }
 }
 
-export function addTokenUsage(
-  current: TokenUsage | undefined,
-  next: TokenUsage
-): TokenUsage {
-  return {
-    inputTokens: (current?.inputTokens || 0) + next.inputTokens,
-    outputTokens: (current?.outputTokens || 0) + next.outputTokens,
-    totalTokens: (current?.totalTokens || 0) + next.totalTokens,
-  }
-}
-
 export function getTokenUsageFromMessage(
   message: Record<string, unknown>
 ): TokenUsage | null {
@@ -267,11 +256,10 @@ export function getTokenUsageFromMessage(
   return null
 }
 
-export function getLatestAssistantTurnTokenUsage(
+export function getLatestAssistantTokenUsage(
   messages: unknown
 ): TokenUsage | null {
   if (!Array.isArray(messages)) return null
-  let usage: TokenUsage | null = null
 
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]
@@ -280,11 +268,8 @@ export function getLatestAssistantTurnTokenUsage(
     const type = String(record.type || record.role || '').toLowerCase()
     if (type === 'human' || type === 'user') break
     if (type !== 'ai' && type !== 'assistant') continue
-    const messageUsage = getTokenUsageFromMessage(record)
-    if (messageUsage) {
-      usage = addTokenUsage(usage || undefined, messageUsage)
-    }
+    return getTokenUsageFromMessage(record)
   }
 
-  return usage
+  return null
 }

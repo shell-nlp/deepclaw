@@ -99,8 +99,8 @@ test('agui reads token usage from LangChain message metadata', () => {
   })
 })
 
-test('agui sums token usage for the latest assistant turn', () => {
-  const usage = aguiPkg.getLatestAssistantTurnTokenUsage([
+test('agui reads token usage from the latest assistant message', () => {
+  const usage = aguiPkg.getLatestAssistantTokenUsage([
     {
       type: 'human',
       content: 'first',
@@ -136,8 +136,8 @@ test('agui sums token usage for the latest assistant turn', () => {
   ])
 
   assert.deepEqual(usage, {
-    inputTokens: 50,
-    outputTokens: 10,
-    totalTokens: 60,
+    inputTokens: 30,
+    outputTokens: 6,
+    totalTokens: 36,
   })
 })

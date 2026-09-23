@@ -9,6 +9,7 @@ interface AssistantMessageBodyProps {
   msg: Message
   toolCallDurations?: Record<string, number>
   isProcessing: boolean
+  showTokenUsage: boolean
   onRecommendedQuestion: (question: string) => void | Promise<void>
   onRetryMessage: (messageId: string) => void | Promise<void>
 }
@@ -20,6 +21,7 @@ interface AssistantMessageBodyProps {
  *   msg: 当前 assistant 消息。
  *   toolCallDurations: 基于浏览器时间计算的工具调用耗时。
  *   isProcessing: 当前消息是否仍在处理中。
+ *   showTokenUsage: 是否展示 Token 用量，仅最新一条 assistant 消息为 true。
  *   onRecommendedQuestion: 推荐问题点击回调。
  *   onRetryMessage: 错误重试回调。
  */
@@ -27,6 +29,7 @@ export function AssistantMessageBody({
   msg,
   toolCallDurations,
   isProcessing,
+  showTokenUsage,
   onRecommendedQuestion,
   onRetryMessage,
 }: AssistantMessageBodyProps) {
@@ -55,6 +58,7 @@ export function AssistantMessageBody({
   const visibleContentBlocks = contentBlocks.filter((block) =>
     visibleContentIds.has(block.id)
   )
+  const tokenUsage = msg.tokenUsage
 
   return (
     <>
@@ -73,22 +77,23 @@ export function AssistantMessageBody({
           }}
         />
       ))}
-      {!isProcessing && msg.tokenUsage ? (
-        <div className={styles.tokenUsage}>
-          <span className={styles.tokenUsageLabel}>Token 用量</span>
-          <span>
-            输入{' '}
-            <strong>{msg.tokenUsage.inputTokens.toLocaleString('zh-CN')}</strong>
+      {!isProcessing && showTokenUsage && tokenUsage ? (
+        <div
+          className={styles.tokenUsage}
+          aria-label="最新一次模型调用的 Token 用量"
+          title="最新一次模型调用的 Token 用量；输入包含本次请求发送的全部上下文。"
+        >
+          <span className={styles.tokenUsageLabel}>本次 Token</span>
+          <span className={styles.tokenUsageMetric}>
+            <span>输入</span>
+            <strong>{tokenUsage.inputTokens.toLocaleString('zh-CN')}</strong>
           </span>
-          <span className={styles.tokenUsageDivider}>·</span>
-          <span>
-            输出{' '}
-            <strong>{msg.tokenUsage.outputTokens.toLocaleString('zh-CN')}</strong>
+          <span className={styles.tokenUsageDivider} aria-hidden="true">
+            ·
           </span>
-          <span className={styles.tokenUsageDivider}>·</span>
-          <span>
-            总计{' '}
-            <strong>{msg.tokenUsage.totalTokens.toLocaleString('zh-CN')}</strong>
+          <span className={styles.tokenUsageMetric}>
+            <span>输出</span>
+            <strong>{tokenUsage.outputTokens.toLocaleString('zh-CN')}</strong>
           </span>
         </div>
       ) : null}
