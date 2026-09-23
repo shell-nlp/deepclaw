@@ -40,17 +40,21 @@ class ResponseDispatcher:
         events: AsyncIterator[AgentEvent],
     ) -> None:
         parts: list[str] = []
+        snapshot_text = ""
         async for event in events:
             if event.event == "__interrupt__":
                 await adapter.send_message(message, INTERRUPT_FALLBACK)
                 return
+            if event.event == "messages_snapshot":
+                snapshot_text = self._snapshot_text(event) or snapshot_text
+                continue
             if event.event != "token" or not event.data:
                 continue
             token = event.data.get("token")
             if token:
                 parts.append(str(token))
 
-        await adapter.send_message(message, "".join(parts) or EMPTY_REPLY)
+        await adapter.send_message(message, "".join(parts) or snapshot_text or EMPTY_REPLY)
 
     async def _dispatch_streaming(
         self,
@@ -68,6 +72,7 @@ class ResponseDispatcher:
         else:
             reply_message_id = await adapter.send_message(message, STREAMING_PLACEHOLDER)
         parts: list[str] = []
+        snapshot_text = ""
         last_text = ""
         last_edit_at = time.monotonic()
 
@@ -75,6 +80,9 @@ class ResponseDispatcher:
             if event.event == "__interrupt__":
                 await adapter.edit_message(reply_message_id, INTERRUPT_FALLBACK)
                 return
+            if event.event == "messages_snapshot":
+                snapshot_text = self._snapshot_text(event) or snapshot_text
+                continue
             process_status = self._process_status(event)
             if process_status is not None:
                 status_text = "".join(parts) + ("\n\n" if parts else "") + process_status
@@ -95,7 +103,7 @@ class ResponseDispatcher:
                 last_text = text
                 last_edit_at = time.monotonic()
 
-        final_text = "".join(parts) or EMPTY_REPLY
+        final_text = "".join(parts) or snapshot_text or EMPTY_REPLY
         if final_text != last_text:
             await adapter.edit_message(reply_message_id, final_text)
         finish_message = getattr(adapter, "finish_message", None)
@@ -114,18 +122,25 @@ class ResponseDispatcher:
             await start_typing(message)
 
         parts: list[str] = []
+        snapshot_text = ""
         try:
             async for event in events:
                 if event.event == "__interrupt__":
                     await adapter.send_message(message, INTERRUPT_FALLBACK)
                     return
+                if event.event == "messages_snapshot":
+                    snapshot_text = self._snapshot_text(event) or snapshot_text
+                    continue
                 if event.event != "token" or not event.data:
                     continue
                 token = event.data.get("token")
                 if token:
                     parts.append(str(token))
 
-            await adapter.send_message(message, "".join(parts) or EMPTY_REPLY)
+            await adapter.send_message(
+                message,
+                "".join(parts) or snapshot_text or EMPTY_REPLY,
+            )
         finally:
             if stop_typing is not None:
                 await stop_typing(message)
@@ -135,6 +150,29 @@ class ResponseDispatcher:
         interval_elapsed = time.monotonic() - last_edit_at >= self.min_interval_seconds
         boundary = text.endswith(("\n", "。", "！", "？", ".", "!", "?"))
         return new_chars >= self.min_chars or interval_elapsed or boundary
+
+    @staticmethod
+    def _snapshot_text(event: AgentEvent) -> str | None:
+        """从消息快照事件中提取最后一条助手文本。
+
+        Args:
+            event: 渠道 Agent 的消息快照事件。
+
+        Returns:
+            助手文本；快照中没有助手文本时返回 None。
+        """
+        if not isinstance(event.data, dict):
+            return None
+        messages = event.data.get("messages")
+        if not isinstance(messages, list):
+            return None
+        for item in reversed(messages):
+            if not isinstance(item, dict) or item.get("role") != "assistant":
+                continue
+            content = item.get("content")
+            if isinstance(content, str) and content:
+                return content
+        return None
 
     def _process_status(self, event: AgentEvent) -> str | None:
         """将工具调用和工具输出事件转换为用户可见的过程提示。

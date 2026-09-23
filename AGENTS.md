@@ -122,6 +122,10 @@
 
 - `deepclaw/patch/`
   第三方库补丁与适配。
+  `deepclaw/patch/ag_ui_langgraph.py` 为 `ag_ui_langgraph` 的流式事件补丁：Python 适配层
+  在 `on_chat_model_stream` 分片同时携带推理与正文时只发推理事件并提前返回，会静默丢掉正文
+  （官方 issue #2008 / PR #2009，Python 侧尚未跟进）。补丁在图的 `astream_events` 上把这类
+  分片拆成「纯推理」与「纯正文」两个事件，由 `AgentRunManager` 初始化时安装。
 
 - `deepclaw/settings.py`
   主服务环境变量入口。
@@ -390,6 +394,7 @@ pnpm build
 - Thread 资源现在记录 `thread_id -> owner_user_id + agent_id`，创建 Run 时会自动创建或校验 Thread 归属
 - Thread 接口：`GET /api/agui/threads`、`GET /api/agui/threads/{thread_id}/runs`、`GET /api/agui/threads/{thread_id}/state`、`DELETE /api/agui/threads/{thread_id}`
 - `GET /api/agui/threads/{thread_id}/state` 额外返回 `message_created_at`（`message_id -> UTC ISO8601`），由 LangGraph checkpoint 历史推导，不依赖任何消息镜像表
+- AG-UI 流式事件可能缺失正文：模型分片把推理与正文放在同一个 chunk 时，`ag_ui_langgraph` 只发推理事件。浏览器与渠道都必须用 `MESSAGES_SNAPSHOT` 兜底：前端在 `handleAgUiEvent` 里用快照补齐 assistant 正文，渠道侧 `AgentClient` 把 `MESSAGES_SNAPSHOT` 转成 `messages_snapshot` 事件、由 `ResponseDispatcher` 在没有任何文本增量时作为回复文本，避免微信收到「没有可发送的回复。」
 - 旧的 `/api/agent/get_session_list`、`/api/agent/delete_session`、`/api/agent/get_state` 已移除，统一使用 Thread API。
 - 技能管理归属 `/api/agent/skills/*`
 - 知识库管理归属 `/api/rag/knowledge-bases/*`

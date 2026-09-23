@@ -72,6 +72,36 @@ def test_final_mode_sends_one_complete_reply(message):
     assert adapter.edits == []
 
 
+def test_final_mode_falls_back_to_messages_snapshot(message):
+    """没有文本增量时用消息快照兜底发送助手文本。"""
+    from deepclaw.web_backend.channels.dispatcher import ResponseDispatcher
+
+    adapter = FakeAdapter()
+    dispatcher = ResponseDispatcher()
+
+    async def run():
+        await dispatcher.dispatch(
+            adapter=adapter,
+            message=message,
+            reply_mode="final",
+            events=events(
+                AgentEvent(
+                    event="messages_snapshot",
+                    data={
+                        "messages": [
+                            {"id": "m1", "role": "user", "content": "hello"},
+                            {"id": "m2", "role": "assistant", "content": "快照回复"},
+                        ]
+                    },
+                ),
+            ),
+        )
+
+    asyncio.run(run())
+
+    assert adapter.sent[-1][1] == "快照回复"
+
+
 def test_streaming_mode_edits_a_single_channel_message(message):
     from deepclaw.web_backend.channels.dispatcher import ResponseDispatcher
 

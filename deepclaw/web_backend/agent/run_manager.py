@@ -10,6 +10,7 @@ from ag_ui_langgraph import LangGraphAgent
 from langgraph.graph.state import CompiledStateGraph
 from loguru import logger
 
+from deepclaw.patch.ag_ui_langgraph import install_reasoning_text_split
 from deepclaw.web_backend.agent.run_store import (
     RunState,
     RunStore,
@@ -70,7 +71,7 @@ class AgentRunManager:
             store: 可选 Run 存储。
             agent_id: 当前 Run 管理器绑定的智能体 ID。
         """
-        self.graph = graph
+        self.graph = install_reasoning_text_split(graph)
         self.config = config or {}
         self.store = store or get_run_store()
         self.agent_id = agent_id

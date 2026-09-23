@@ -122,6 +122,10 @@ class AgentClient:
             return AgentEvent(event="tool_output", data={"tool_output": [output]})
         if event_type == "CUSTOM" and payload.get("name") == "on_interrupt":
             return AgentEvent(event="__interrupt__", data={"__interrupt__": payload.get("value")})
+        if event_type == "MESSAGES_SNAPSHOT":
+            messages = payload.get("messages")
+            if isinstance(messages, list):
+                return AgentEvent(event="messages_snapshot", data={"messages": messages})
         if event_type == "RUN_FINISHED":
             outcome = payload.get("outcome")
             if isinstance(outcome, dict) and outcome.get("type") == "interrupt":

@@ -174,3 +174,28 @@ export function getRecommendedQuestions(event: AgUiEvent): string[] {
     .filter((question): question is string => typeof question === 'string' && question.trim().length > 0)
     .map((question) => question.trim())
 }
+
+export function getAgUiAssistantSnapshotText(event: AgUiEvent): string | null {
+  if (event.type !== 'MESSAGES_SNAPSHOT') return null
+  const messages = event.messages
+  if (!Array.isArray(messages)) return null
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (!message || typeof message !== 'object') continue
+    const record = message as Record<string, unknown>
+    if (record.role !== 'assistant') continue
+    const content = record.content
+    if (typeof content === 'string' && content.length > 0) return content
+    if (Array.isArray(content)) {
+      const text = content
+        .map((block) =>
+          block && typeof block === 'object' && typeof (block as Record<string, unknown>).text === 'string'
+            ? String((block as Record<string, unknown>).text)
+            : ''
+        )
+        .join('')
+      if (text.length > 0) return text
+    }
+  }
+  return null
+}

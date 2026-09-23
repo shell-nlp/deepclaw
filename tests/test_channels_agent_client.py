@@ -109,3 +109,46 @@ def test_stream_keeps_text_after_unknown_custom_event():
 
     assert ["token"] == [item.event for item in result]
     assert result[0].data["token"] == "answer"
+
+
+def test_stream_maps_messages_snapshot_to_channel_event():
+    """验证消息快照事件被转换为渠道可消费的事件。"""
+    auth_service = FakeAuthService()
+
+    async def sender(payload, headers):
+        """模拟只输出消息快照的事件流。
+
+        Args:
+            payload: AG-UI RunAgentInput。
+            headers: 请求头。
+        """
+        yield (
+            'data: {"type": "MESSAGES_SNAPSHOT", "messages": ['
+            '{"id": "m1", "role": "user", "content": "hello"}, '
+            '{"id": "m2", "role": "assistant", "content": "快照回复"}]}\n\n'
+        )
+
+    client = AgentClient(sender=sender, auth_service=auth_service)
+
+    async def collect():
+        """收集渠道事件。
+
+        Args:
+            无。
+
+        Returns:
+            渠道事件列表。
+        """
+        return [
+            event
+            async for event in client.stream(
+                query="hello",
+                user_id="user_1",
+                session_id="session_1",
+            )
+        ]
+
+    result = asyncio.run(collect())
+
+    assert [item.event for item in result] == ["messages_snapshot"]
+    assert result[0].data["messages"][-1]["content"] == "快照回复"

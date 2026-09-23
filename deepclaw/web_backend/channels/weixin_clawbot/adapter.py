@@ -1,6 +1,8 @@
 import uuid
 from typing import Any
 
+from loguru import logger
+
 from deepclaw.web_backend.channels.models import ChannelMessage
 from deepclaw.web_backend.channels.weixin_clawbot.client import (
     MESSAGE_STATE_FINISH,
@@ -43,6 +45,12 @@ class WeixinClawBotAdapter:
 
         normalized_raw = dict(raw)
         normalized_raw["context_token"] = context_token
+        logger.info(
+            "微信 ClawBot 收到消息：message_id={} len={} head={!r}",
+            message_id,
+            len(text),
+            text[:40],
+        )
         return ChannelMessage(
             channel=self.channel,
             message_id=message_id,
@@ -137,6 +145,13 @@ class WeixinClawBotAdapter:
         message_state: int = MESSAGE_STATE_FINISH,
     ) -> str:
         context_token = self._context_token(message)
+        logger.info(
+            "微信 ClawBot 发送消息：state={} len={} head={!r} tail={!r}",
+            message_state,
+            len(text),
+            text[:40],
+            text[-20:],
+        )
         result = await self.client.send_message(
             token=self.token,
             to_user_id=message.channel_user_id,
@@ -163,11 +178,29 @@ class WeixinClawBotAdapter:
         return str(context_token)
 
     def _extract_text(self, raw: dict[str, Any]) -> str:
+        """提取微信文本消息内容。
+
+        Args:
+            raw: 单条微信 ClawBot 更新消息。
+
+        Returns:
+            合并后的文本内容；非文本项会被忽略。
+        """
         container = raw.get("message_item") or raw
-        item_list = container.get("item_list") or []
-        if not item_list:
-            return ""
-        return str(item_list[0].get("text_item", {}).get("text", ""))
+        item_list = container.get("item_list") or raw.get("item_list") or []
+        parts: list[str] = []
+        for item in item_list:
+            if not isinstance(item, dict):
+                continue
+            if item.get("type") not in (None, 1):
+                continue
+            text_item = item.get("text_item")
+            if not isinstance(text_item, dict):
+                continue
+            text = text_item.get("text")
+            if text:
+                parts.append(str(text))
+        return "".join(parts)
 
     def _string_field(self, value: Any) -> str:
         if isinstance(value, dict):

@@ -13,6 +13,7 @@ AgentEventType = Literal[
     "tool_output",
     "__interrupt__",
     "custom",
+    "messages_snapshot",
 ]
 MessageStatus = Literal["received", "processing", "done", "failed"]
 
