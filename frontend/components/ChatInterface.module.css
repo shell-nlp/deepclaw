@@ -1204,6 +1204,33 @@ textarea.interruptInput {
   margin-top: 16px;
 }
 
+.tokenUsage {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  width: min(100%, 880px);
+  margin-top: 10px;
+  color: var(--text-muted);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.tokenUsageLabel {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.tokenUsage strong {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.tokenUsageDivider {
+  color: rgba(122, 132, 144, 0.55);
+}
+
 .recommendedQuestionsTitle {
   color: var(--text-secondary);
   font-size: 14px;

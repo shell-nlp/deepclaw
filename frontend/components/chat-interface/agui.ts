@@ -1,3 +1,5 @@
+import type { TokenUsage } from './types'
+
 export type AgUiEvent = {
   type: string
   [key: string]: unknown
@@ -198,4 +200,91 @@ export function getAgUiAssistantSnapshotText(event: AgUiEvent): string | null {
     }
   }
   return null
+}
+
+function readTokenCount(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return 0
+}
+
+function tokenUsageFromRecord(record: Record<string, unknown>): TokenUsage | null {
+  const inputTokens =
+    readTokenCount(record.input_tokens) ||
+    readTokenCount(record.inputTokens) ||
+    readTokenCount(record.prompt_tokens) ||
+    readTokenCount(record.promptTokens)
+  const outputTokens =
+    readTokenCount(record.output_tokens) ||
+    readTokenCount(record.outputTokens) ||
+    readTokenCount(record.completion_tokens) ||
+    readTokenCount(record.completionTokens)
+  const totalTokens =
+    readTokenCount(record.total_tokens) ||
+    readTokenCount(record.totalTokens) ||
+    inputTokens + outputTokens
+
+  if (inputTokens <= 0 && outputTokens <= 0 && totalTokens <= 0) return null
+  return { inputTokens, outputTokens, totalTokens }
+}
+
+export function addTokenUsage(
+  current: TokenUsage | undefined,
+  next: TokenUsage
+): TokenUsage {
+  return {
+    inputTokens: (current?.inputTokens || 0) + next.inputTokens,
+    outputTokens: (current?.outputTokens || 0) + next.outputTokens,
+    totalTokens: (current?.totalTokens || 0) + next.totalTokens,
+  }
+}
+
+export function getTokenUsageFromMessage(
+  message: Record<string, unknown>
+): TokenUsage | null {
+  const directUsage = message.usage_metadata || message.usageMetadata
+  if (directUsage && typeof directUsage === 'object' && !Array.isArray(directUsage)) {
+    const usage = tokenUsageFromRecord(directUsage as Record<string, unknown>)
+    if (usage) return usage
+  }
+
+  const responseMetadata = message.response_metadata
+  if (
+    responseMetadata &&
+    typeof responseMetadata === 'object' &&
+    !Array.isArray(responseMetadata)
+  ) {
+    const tokenUsage = (responseMetadata as Record<string, unknown>).token_usage
+    if (tokenUsage && typeof tokenUsage === 'object' && !Array.isArray(tokenUsage)) {
+      const usage = tokenUsageFromRecord(tokenUsage as Record<string, unknown>)
+      if (usage) return usage
+    }
+  }
+
+  return null
+}
+
+export function getLatestAssistantTurnTokenUsage(
+  messages: unknown
+): TokenUsage | null {
+  if (!Array.isArray(messages)) return null
+  let usage: TokenUsage | null = null
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (!message || typeof message !== 'object' || Array.isArray(message)) continue
+    const record = message as Record<string, unknown>
+    const type = String(record.type || record.role || '').toLowerCase()
+    if (type === 'human' || type === 'user') break
+    if (type !== 'ai' && type !== 'assistant') continue
+    const messageUsage = getTokenUsageFromMessage(record)
+    if (messageUsage) {
+      usage = addTokenUsage(usage || undefined, messageUsage)
+    }
+  }
+
+  return usage
 }
