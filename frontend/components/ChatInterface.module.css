@@ -1833,6 +1833,11 @@ textarea.interruptInput {
   font-style: normal;
 }
 
+.input:focus {
+  border-color: transparent;
+  box-shadow: none;
+}
+
 .toggles {
   display: flex;
   flex-wrap: wrap;
