@@ -27,6 +27,7 @@ import {
   createAgUiRunInput,
   getAgUiInterrupt,
   getAgUiInterruptOutcome,
+  getAgUiAssistantSnapshotText,
   getRecommendedQuestions,
   parseAgUiSseFrame,
   type AgUiEvent,
@@ -2349,6 +2350,37 @@ export default function ChatInterface() {
           }
         })
         lastAssistantStreamEventRef.current = 'reasoning'
+        return null
+      }
+
+      if (eventType === 'MESSAGES_SNAPSHOT') {
+        const snapshotText = getAgUiAssistantSnapshotText(event)
+        if (!snapshotText) return null
+        updateAssistantMessage((message) => {
+          if (message.content === snapshotText) return message
+          if (message.content && !snapshotText.startsWith(message.content)) {
+            return message
+          }
+          const missing = snapshotText.slice(message.content.length)
+          if (!missing) return message
+          const { contentBlocks, messageItems } = appendContentToken(
+            message.contentBlocks,
+            message.messageItems,
+            missing,
+            message.content.length > 0,
+            () => {
+              contentBlockCounterRef.current += 1
+              return `${message.id}_content_${contentBlockCounterRef.current}`
+            }
+          )
+          return {
+            ...message,
+            content: snapshotText,
+            contentBlocks,
+            messageItems,
+          }
+        })
+        lastAssistantStreamEventRef.current = 'content'
         return null
       }
 
