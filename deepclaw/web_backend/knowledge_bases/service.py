@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from deepclaw.web_backend.common.errors import BusinessRuleError
 from deepclaw.common import create_default_vector_store, create_graph_rag
+from deepclaw.common.docling_parser import create_document_parser
 from deepclaw.common.graph_rag import BaseGraphRAG
 from deepclaw.common.text_splitter import PDFParser
 from deepclaw.common.vector_store.base import AbstractVectorStore
@@ -510,13 +511,15 @@ class KnowledgeBaseManager:
         storage_path = storage_dir / storage_name
         storage_path.write_bytes(uploaded_file.data)
 
-        parser = PDFParser(
+        parser = create_document_parser(
             bucket_name=self._storage_bucket_name(
                 user_id=user_id,
                 knowledge_base_id=knowledge_base.knowledge_base_id,
             ),
             file_path=storage_name,
             file_id=document_id,
+            original_file_name=original_file_name,
+            fallback_parser_cls=PDFParser,
         )
         chunks = parser.get_chunk()
         prepared_documents = self._prepare_documents(

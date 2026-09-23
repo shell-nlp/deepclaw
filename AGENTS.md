@@ -91,6 +91,9 @@
 - `deepclaw/common/`
   Elasticsearch、向量数据库抽象、Graph RAG（`BaseGraphRAG` + `ElasticGraphRAG` + `PgGraphRAG`）、PDF 切分等通用算法实现。
 
+- `deepclaw/common/docling_parser.py`
+  Docling 统一文档解析适配器。按文件后缀选择 Docling 或回退解析器，将 PDF、DOCX、PPTX、XLSX、HTML、Markdown、TXT 转换为现有知识库兼容的 LangChain Document 切片，并保留标题路径、页码和 Docling 元数据。
+
 - `deepclaw/common/vector_store/`
   向量数据库抽象层，包含通用 `AbstractVectorStore`、统一创建入口 `create_vector_store()`、Elasticsearch 实现，以及基于 PostgreSQL + pgvector + pg_search 的实现。
 
