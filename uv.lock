@@ -974,8 +974,8 @@ dependencies = [
     { name = "deepagents", extra = ["quickjs"] },
     { name = "fastapi" },
     { name = "langchain" },
-    { name = "langchain-deepseek" },
     { name = "langchain-mcp-adapters" },
+    { name = "langchain-openai" },
     { name = "langchain-tavily" },
     { name = "langchain-text-splitters" },
     { name = "langgraph-checkpoint-postgres" },
@@ -1048,8 +1048,8 @@ requires-dist = [
     { name = "elasticsearch", marker = "extra == 'elasticsearch'", specifier = "==8.19.3" },
     { name = "fastapi", specifier = ">=0.115.0,<0.116.0" },
     { name = "langchain", specifier = ">=1.3.14" },
-    { name = "langchain-deepseek", specifier = ">=1.1.1" },
     { name = "langchain-mcp-adapters", specifier = ">=0.3.2" },
+    { name = "langchain-openai", specifier = ">=1.6.2" },
     { name = "langchain-tavily", specifier = ">=0.2.17" },
     { name = "langchain-text-splitters", specifier = ">=1.1.2" },
     { name = "langgraph-checkpoint-postgres", specifier = ">=3.0.4" },
@@ -2319,19 +2319,6 @@ dependencies = [
 sdist = { url = "https://mirrors.cloud.tencent.com/pypi/packages/06/d7/1482670ccebc863166852516a08a1956fc50da40fbe2fe7dd218abfef4a1/langchain_core-1.6.3.tar.gz", hash = "sha256:88b430944fbd4d40fa98135d6c873581d497b6f33515d01962337548e918df2f" }
 wheels = [
     { url = "https://mirrors.cloud.tencent.com/pypi/packages/e6/18/cf18cfec118b02e003f35300b54d6a1173dc6e4905cffdf5ea49e390a7f9/langchain_core-1.6.3-py3-none-any.whl", hash = "sha256:114fe1868c9ed60606662b9dd0074bf3152cc6b0b1522ba37cbd6b04f55ca77d" },
-]
-
-[[package]]
-name = "langchain-deepseek"
-version = "1.1.1"
-source = { registry = "https://mirrors.cloud.tencent.com/pypi/simple" }
-dependencies = [
-    { name = "langchain-core" },
-    { name = "langchain-openai" },
-]
-sdist = { url = "https://mirrors.cloud.tencent.com/pypi/packages/1b/6d/469f03fc140d7e8974246b41d65e71a3c7a6bc9ceba2f31bd5d8b0892c6a/langchain_deepseek-1.1.1.tar.gz", hash = "sha256:94267fb5500813fa41ea4bbc8b523551cfbf58f8966ed3b91dbb8991f8bd70e5" }
-wheels = [
-    { url = "https://mirrors.cloud.tencent.com/pypi/packages/5d/1b/da9b7fcdb205acf5405dc961d8edaf779eab18326938811530b3032d6803/langchain_deepseek-1.1.1-py3-none-any.whl", hash = "sha256:aec298233606b1289898543e56f90373f71e919b586f580f5e161c018ab21dcb" },
 ]
 
 [[package]]

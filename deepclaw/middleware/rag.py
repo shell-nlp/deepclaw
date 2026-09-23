@@ -10,7 +10,6 @@ from langchain_core.documents import Document
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage, SystemMessage
 from langgraph.runtime import Runtime
-from langchain_deepseek import ChatDeepSeek
 from loguru import logger
 
 from deepclaw.agents.rag.state import StateSchema
@@ -229,7 +228,7 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
         """
         self.vector_store = vector_store
         self.rewrite_query = rewrite_query
-        self.model: ChatDeepSeek = model
+        self.model: BaseChatModel = model
         self.retrieve_router = retrieve_router
         if rewrite_query and not self.model:
             raise AssertionError("当 rewrite_query 为 True 时，model 不能为空")

@@ -39,7 +39,6 @@ class BusinessMiddleware(AgentMiddleware):
             self.tools.append(TavilySearch())
 
     def _override_system_message(self, request):
-
         current_time = get_current_time()
         prompt_suffix = f"## 系统时间{current_time}"
         if request.system_message is not None:
@@ -62,7 +61,6 @@ class BusinessMiddleware(AgentMiddleware):
             filtered_tools = [tool for tool in request.tools if tool.name != "tavily_search"]
             request = request.override(tools=filtered_tools)
 
-        # 处理深度思考
         if hasattr(request, "model_settings"):
             model_settings = request.model_settings.copy()
         else:
