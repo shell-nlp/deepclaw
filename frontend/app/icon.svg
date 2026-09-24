@@ -1,12 +1,19 @@
 <svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="256" height="256" rx="64" fill="url(#bg)"/>
-  <path d="M128 35L145.267 79.7333L190 97L145.267 114.267L128 159L110.733 114.267L66 97L110.733 79.7333L128 35Z" fill="#F8FAFC"/>
-  <path d="M79 134H145C184.765 134 217 166.235 217 206C217 214.837 209.837 222 201 222H103C63.2355 222 31 189.765 31 150C31 141.163 38.1634 134 47 134H79Z" fill="#F8FAFC" fill-opacity="0.94"/>
-  <path d="M98 170H156M98 192H134" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
   <defs>
-    <linearGradient id="bg" x1="28" y1="24" x2="224" y2="228" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#235D49"/>
-      <stop offset="1" stop-color="#0F766E"/>
+    <linearGradient id="dc-bg" x1="36" y1="28" x2="224" y2="232" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F4F6FF"/>
+      <stop offset="1" stop-color="#E6EBFF"/>
     </linearGradient>
   </defs>
+  <rect x="8" y="8" width="240" height="240" rx="72" fill="url(#dc-bg)" stroke="#4D6BFE" stroke-opacity="0.14" stroke-width="2"/>
+  <text
+    x="128"
+    y="180"
+    text-anchor="middle"
+    font-family="Manrope, Arial, Helvetica, sans-serif"
+    font-size="144"
+    font-weight="700"
+    letter-spacing="-8"
+    fill="#4D6BFE"
+  >DC</text>
 </svg>
