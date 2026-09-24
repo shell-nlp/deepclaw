@@ -60,10 +60,10 @@ It fits these situations:
 | Skill management | List, upload and delete skill packages stored in the workspace skills directory |
 | Channels | Feishu, DingTalk and WeChat ClawBot built in, with "binding" as the multi-user boundary |
 | Chart tool | Nine matplotlib chart renderers with an optional public URL prefix, served directly by the service |
-| Scheduled tasks | `CronMiddleware` exposes add / list / remove cron jobs as agent tools |
+| Scheduled tasks (optional) | `CronMiddleware` exposes add / list / remove cron jobs as agent tools, but it is not enabled by default |
 | Auth and guest mode | Opaque access tokens (SHA-256 at rest, revocable immediately) with admin/user roles; unauthenticated requests fall back to a guest identity |
 | Execution backends | `local_shell`, `store` and `sandbox` |
-| Multi-user sandbox isolation | In `sandbox` mode each user gets a dedicated OpenSandbox container with isolated workspace, skills and history |
+| Multi-user sandbox isolation | In `sandbox` mode each user gets a dedicated OpenSandbox container; workspaces and history are isolated while shared skills/memory can be configured |
 | Frontend | Next.js + React chat UI, built and served by FastAPI at `/` |
 | Observability | Optional Phoenix tracing, Postgres long-term memory and Tavily search |
 
@@ -124,8 +124,8 @@ immediately revokes every token of that user.
 | Web framework | FastAPI + Uvicorn |
 | Agents | LangGraph, LangChain, DeepAgents, ag-ui-langgraph |
 | Protocol | AG-UI (HTTP + SSE) |
-| RAG | PostgreSQL + pgvector + pg_search, or Elasticsearch (dense vector + BM25), Graph RAG |
-| State | LangGraph checkpoints (PostgreSQL / in-memory), run & thread event tables, PostgresStore |
+| RAG | PostgreSQL + pgvector + pg_search, or Elasticsearch (dense vector + BM25); Graph RAG supports Elasticsearch / PostgreSQL and graph DB supports Neo4j / NetworkX |
+| State | LangGraph checkpoints (PostgreSQL / in-memory), run & thread event tables (PostgreSQL / SQLite / in-memory), AsyncPostgresStore / InMemoryStore |
 | Frontend | Next.js 15, React 19, TypeScript, CSS Modules |
 | Execution backends | Local Shell, Store Backend, OpenSandbox (Docker sandbox) |
 | Auth | Opaque access tokens (`hashlib.scrypt` password hashing + SHA-256 token hashing) |
@@ -139,28 +139,35 @@ deepclaw/
 ├── deepclaw/
 │   ├── agent_registry.py    # Agent base class and auto-discovery registry
 │   ├── agents/              # Agent implementations: general/, rag/
-│   ├── backend/             # Execution backends (including OpenSandbox isolation)
-│   ├── cli/                 # Typer CLI: install Playwright / Docker images
-│   ├── common/              # Vector store abstraction, Graph RAG, PDF splitting
-│   ├── middleware/          # Business toggles, MCP, charts, NL2SQL, cron, recommended questions
+│   ├── common/              # Vector stores, Graph DB / Graph RAG, Docling parsing and text splitting
+│   ├── middleware/          # Business toggles, MCP, charts, NL2SQL, memory, Python execution, sandbox
 │   ├── patch/               # Third-party patches and adapters
+│   ├── sandbox/             # OpenSandbox execution backend
 │   ├── tools/               # Weather, web fetch, search, ask_user
 │   ├── utils/               # Model factory, time helpers, token counting
-│   ├── web_backend/         # FastAPI app layer: agui / auth / channels / skills / knowledge_bases
+│   ├── web_backend/         # FastAPI app layer: agui / agent / auth / channels / common / skills / knowledge_bases
 │   ├── constant.py          # Module-level constants such as paths
 │   ├── main.py              # Main entry point
 │   └── settings.py          # Environment configuration
-├── frontend/                # Next.js frontend (out/ is served statically by the backend)
+├── frontend/                # Next.js frontend (app/ source, out/ served statically by the backend)
+├── mcp2tool/                # FastMCP to LangChain tool adapter
+├── docker/                  # Middleware image build files such as PostgreSQL
 ├── assets/                  # README logo and screenshots
 ├── docs/                    # Design docs and historical archive
 ├── tests/                   # pytest suite
 ├── .deepclaw/               # Runtime workspace: skills, charts, uploads, SQLite fallbacks
 ├── user_workspace/          # Per-user workspace dirs (sandbox mode)
+├── .env.example             # Environment variable template (do not commit .env)
 ├── .sandbox.toml            # OpenSandbox Server config (required in sandbox mode)
 ├── docker-compose.middleware.yml  # Middleware: PostgreSQL / Elasticsearch / Phoenix / Neo4j
 ├── docker-compose.app.yml         # Application: the deepclaw service
+├── Dockerfile                     # Main service image
+├── Dockerfile.code-interpreter-rebuild  # OpenSandbox code interpreter image rebuild
 └── pyproject.toml                 # Dependencies and optional extras
 ```
+
+> Frontend components are being organized under `frontend/components/chat/`; the legacy
+> `frontend/components/chat-interface/` directory is still being migrated.
 
 ## System Architecture
 
@@ -229,6 +236,11 @@ Add optional capabilities as needed:
 
 ```bash
 uv sync --dev --extra pdf           # Knowledge base ingestion (text to PDF and parsing)
+uv sync --dev --extra docling       # Docling document parsing
+uv sync --dev --extra elasticsearch # Elasticsearch vector store
+uv sync --dev --extra web-fetch     # Crawl4AI web fetch
+uv sync --dev --extra mem0          # Mem0 long-term memory
+uv sync --dev --extra oracle        # Oracle DDL fetcher
 uv sync --dev --extra opensandbox   # sandbox execution backend
 uv sync --dev --extra feishu        # Feishu long connection
 uv sync --dev --extra phoenix       # Phoenix observability
@@ -248,17 +260,17 @@ CHAT_MODEL_NAME=qwen3
 EMBEDDING_MODEL_NAME=qwen3-embedding
 ```
 
-Pick a storage and retrieval setup:
+Configure storage and retrieval for your deployment:
 
 ```dotenv
-# Option A: single-node quick trial - no PostgreSQL, metadata in SQLite, checkpoints in memory
-VECTOR_STORE_BACKEND=pgsql
+# General agent only: PostgreSQL is optional; runs/threads/checkpoints live in memory and are lost on restart.
+# Knowledge bases / RAG need a vector store. Pick one:
 
-# Option B: recommended for production - state, metadata and vectors all in PostgreSQL
+# Option A: PostgreSQL + pgvector
 PG_DATABASE_URL=postgresql://admin:admin@localhost:5432/deepclaw
 VECTOR_STORE_BACKEND=pgsql
 
-# Or use Elasticsearch as the vector store
+# Option B: Elasticsearch
 # VECTOR_STORE_BACKEND=elasticsearch
 # ES_URL=http://localhost:9200
 # ES_URSR=elastic
@@ -343,8 +355,9 @@ pnpm build
 
 ## API Endpoints
 
-Every endpoint accepts anonymous access; without `Authorization: Bearer <token>` the request is handled as
-a guest.
+Business endpoints accept guest access; without `Authorization: Bearer <token>` the request is handled as a
+guest. User-management endpoints and admin-only scopes such as the full channel binding list require an admin
+role and cannot be called as a guest.
 
 ### Auth
 
@@ -429,8 +442,8 @@ user's tokens immediately.
 
 ## Usage Examples
 
-Examples assume the service runs at `http://localhost:7869`. Except for login, every request may omit the
-`Authorization` header (treated as a guest).
+Examples assume the service runs at `http://localhost:7869`. Except for admin-only endpoints, business
+requests may omit the `Authorization` header (treated as a guest).
 
 ### Obtain an access token
 
@@ -576,7 +589,7 @@ curl http://localhost:7869/api/agui/threads/demo-thread/state -H "Authorization:
 | Variable | Description |
 |----------|-------------|
 | `PG_DATABASE_URL` | PostgreSQL connection string. When set, runs/threads, checkpoints, long-term memory, auth, channels and knowledge base metadata all share one database and multiple instances can share state |
-| `VECTOR_STORE_BACKEND` | Vector store backend: `pgsql` (PostgreSQL + pgvector) or `elasticsearch` |
+| `VECTOR_STORE_BACKEND` | Vector store backend: `pgsql` (PostgreSQL + pgvector) or `elasticsearch`; defaults to `elasticsearch` |
 | `ES_URL` | Elasticsearch URL when `VECTOR_STORE_BACKEND=elasticsearch` |
 | `ES_URSR` / `ES_PWD` | Elasticsearch username and password |
 
@@ -600,7 +613,7 @@ curl http://localhost:7869/api/agui/threads/demo-thread/state -H "Authorization:
 | `AGUI_RUN_POLL_INTERVAL_SECONDS` | Event stream poll interval, default `0.5` |
 | `CHART_PUBLIC_URL` | Public URL prefix for charts; empty returns a relative `/charts/xxx.png` |
 | `CHART_RETENTION_HOURS` / `CHART_MAX_FILES` | Chart file retention and count limits |
-| `CHANNEL_AGENT_API_URL` | URL channels use to reach the agent |
+| `CHANNEL_AGENT_API_URL` | Full URL channels use to reach the agent; when empty the current service's `/api/agui/runs` is used |
 | `WEIXIN_CLAWBOT_*` | WeChat ClawBot settings |
 
 ## Sandbox Mode (Multi-User Work Isolation)
@@ -645,10 +658,10 @@ type = "docker"
 execd_image = "docker.1ms.run/opensandbox/execd:v1.0.16"
 
 [storage]
-allowed_host_paths = ["/home/dev/liuyu/project/langchain-api"]
+allowed_host_paths = ["/path/to/deepclaw"]
 ```
 
-`allowed_host_paths` must include the project root, otherwise the bind mount is rejected.
+`allowed_host_paths` must contain the absolute path to the project root, otherwise the bind mount is rejected.
 
 ## Notes
 
@@ -667,6 +680,9 @@ allowed_host_paths = ["/home/dev/liuyu/project/langchain-api"]
 - Adding an agent needs no web routing changes: define an `Agent` subclass in
   `deepclaw/agents/<name>/agent.py` and it is discovered automatically. The frontend reads
   `GET /api/agui/agents` and calls it with the top-level `agentId`.
+- `CronMiddleware` provides cron tools, but it is not enabled by default; add it explicitly to the agent's
+  middleware list when needed.
+- `.env` contains secrets and must not be committed to Git; the repository only keeps `.env.example`.
 
 ## License
 

@@ -59,10 +59,10 @@ checkpoint 统一持久化，前端构建产物由同一个进程静态托管。
 | 技能管理 | 技能列表、上传与删除，技能包以 zip 形式落到工作区技能目录 |
 | 渠道接入 | 内置飞书、钉钉、微信 ClawBot 接入，统一以「绑定（binding）」为多用户边界 |
 | 图表工具 | 内置 9 种 matplotlib 图表渲染，可配置公网前缀，生成结果由服务直接对外提供 |
-| 定时任务 | `CronMiddleware` 提供 Agent 可调用的定时任务增删查能力 |
+| 定时任务（可选） | `CronMiddleware` 提供 Agent 可调用的定时任务增删查能力，默认 Agent 未启用，需要时显式接入 |
 | 认证与游客模式 | 不透明访问令牌（`sha256` 入库、可即时撤销）与管理员/普通用户角色；未登录自动降级为游客身份 |
 | 多执行后端 | 支持 `local_shell`、`store`、`sandbox` 三种执行模式 |
-| 多用户沙箱隔离 | `sandbox` 模式下每个用户拥有独立的 OpenSandbox 容器，工作区、技能目录和会话历史完全隔离 |
+| 多用户沙箱隔离 | `sandbox` 模式下每个用户拥有独立的 OpenSandbox 容器，工作区与会话历史隔离，公共技能/记忆可按配置共享 |
 | 前端界面 | Next.js + React 聊天 UI，构建后由 FastAPI 的 `/` 统一托管 |
 | 可观测性 | 可选接入 Phoenix tracing、Postgres 长期记忆和 Tavily 搜索 |
 
@@ -120,8 +120,8 @@ checkpoint 统一持久化，前端构建产物由同一个进程静态托管。
 | Web 框架 | FastAPI + Uvicorn |
 | 智能体 | LangGraph, LangChain, DeepAgents, ag-ui-langgraph |
 | 协议 | AG-UI（HTTP + SSE） |
-| RAG | PostgreSQL + pgvector + pg_search，或 Elasticsearch（Dense Vector + BM25），Graph RAG |
-| 状态存储 | LangGraph checkpoint（PostgreSQL / 内存）、Run/Thread 事件表、PostgresStore |
+| RAG | PostgreSQL + pgvector + pg_search，或 Elasticsearch（Dense Vector + BM25）；Graph RAG 支持 Elasticsearch / PostgreSQL，Graph DB 支持 Neo4j / NetworkX |
+| 状态存储 | LangGraph checkpoint（PostgreSQL / 内存）、Run/Thread 事件表（PostgreSQL / SQLite / 内存）、AsyncPostgresStore / InMemoryStore |
 | 前端 | Next.js 15, React 19, TypeScript, CSS Modules |
 | 执行后端 | Local Shell, Store Backend, OpenSandbox（Docker 容器沙箱） |
 | 认证 | 不透明访问令牌（`hashlib.scrypt` 密码哈希 + SHA-256 令牌哈希） |
@@ -135,28 +135,34 @@ deepclaw/
 ├── deepclaw/
 │   ├── agent_registry.py    # Agent 基类与自动发现注册表
 │   ├── agents/              # 智能体实现：general/ 通用智能体、rag/ 知识库智能体
-│   ├── backend/             # 执行后端（含 OpenSandbox 沙箱隔离实现）
-│   ├── cli/                 # Typer CLI：一键安装 Playwright / Docker 镜像
-│   ├── common/              # 向量库抽象、Graph RAG、PDF 切分等通用实现
-│   ├── middleware/          # 业务开关、MCP、图表、NL2SQL、Cron、推荐问题等中间件
+│   ├── common/              # 向量库、Graph DB / Graph RAG、Docling 解析与文本切分
+│   ├── middleware/          # 业务开关、MCP、图表、NL2SQL、记忆、Python 执行、沙箱等
 │   ├── patch/               # 第三方库补丁与适配
+│   ├── sandbox/             # OpenSandbox 执行后端
 │   ├── tools/               # 天气、网页抓取、检索、ask_user 等工具
 │   ├── utils/               # 模型工厂、时间工具、token 计数
-│   ├── web_backend/         # FastAPI 应用层：agui / auth / channels / skills / knowledge_bases
+│   ├── web_backend/         # FastAPI 应用层：agui / agent / auth / channels / common / skills / knowledge_bases
 │   ├── constant.py          # 路径等模块级常量
 │   ├── main.py              # 主启动入口
 │   └── settings.py          # 环境变量配置
-├── frontend/                # Next.js 前端（out/ 为构建产物，由后端静态托管）
+├── frontend/                # Next.js 前端（app/ 源码，out/ 为构建产物，由后端静态托管）
+├── mcp2tool/                # FastMCP 转 LangChain 工具适配
+├── docker/                  # PostgreSQL 等中间件镜像构建文件
 ├── assets/                  # README 图标与界面截图
 ├── docs/                    # 设计文档与历史归档
 ├── tests/                   # pytest 测试
 ├── .deepclaw/               # 运行时工作区：技能、图表、上传文件、SQLite 回退库
 ├── user_workspace/          # 用户工作区目录（sandbox 模式每用户独立子目录）
+├── .env.example             # 环境变量示例（不要提交 .env）
 ├── .sandbox.toml            # OpenSandbox Server 配置（sandbox 模式必需）
 ├── docker-compose.middleware.yml  # 中间件：PostgreSQL / Elasticsearch / Phoenix / Neo4j
 ├── docker-compose.app.yml         # 应用：deepclaw 主服务
+├── Dockerfile                     # 主服务镜像
+├── Dockerfile.code-interpreter-rebuild  # OpenSandbox 代码解释器镜像重建
 └── pyproject.toml                 # 依赖与可选 extras 定义
 ```
+
+> 前端组件已按业务域拆到 `frontend/components/chat/`；旧的 `frontend/components/chat-interface/` 仍在逐步迁移。
 
 ## 系统架构
 
@@ -225,6 +231,11 @@ uv sync --dev
 
 ```bash
 uv sync --dev --extra pdf           # 知识库文档入库（文本转 PDF 与解析）
+uv sync --dev --extra docling       # Docling 文档解析
+uv sync --dev --extra elasticsearch # Elasticsearch 向量库
+uv sync --dev --extra web-fetch     # Crawl4AI 网页抓取
+uv sync --dev --extra mem0          # Mem0 长期记忆
+uv sync --dev --extra oracle        # Oracle DDL fetcher
 uv sync --dev --extra opensandbox   # sandbox 执行后端
 uv sync --dev --extra feishu        # 飞书长连接
 uv sync --dev --extra phoenix       # Phoenix 可观测性
@@ -244,17 +255,17 @@ CHAT_MODEL_NAME=qwen3
 EMBEDDING_MODEL_NAME=qwen3-embedding
 ```
 
-存储与检索按部署形态二选一：
+存储与检索按部署形态配置：
 
 ```dotenv
-# 方案 A：单机快速体验 —— 不配 PostgreSQL，元数据落 SQLite，检查点放内存
-VECTOR_STORE_BACKEND=pgsql
+# 只跑通用 Agent：可以不配 PostgreSQL，Run/Thread/检查点使用内存，重启即丢失
+# 知识库/RAG 需要向量库，二选一：
 
-# 方案 B：推荐用于正式部署 —— 状态、元数据、向量统一落 PostgreSQL
+# 方案 A：PostgreSQL + pgvector
 PG_DATABASE_URL=postgresql://admin:admin@localhost:5432/deepclaw
 VECTOR_STORE_BACKEND=pgsql
 
-# 也可以改用 Elasticsearch 作为向量库
+# 方案 B：Elasticsearch
 # VECTOR_STORE_BACKEND=elasticsearch
 # ES_URL=http://localhost:9200
 # ES_URSR=elastic
@@ -340,7 +351,8 @@ pnpm build
 
 ## API 接口
 
-所有接口都支持匿名访问，未携带 `Authorization: Bearer <token>` 时按游客身份处理。
+业务接口支持游客访问；未携带 `Authorization: Bearer <token>` 时按游客身份处理。
+用户管理接口以及渠道全量范围等管理能力需要管理员角色，不能以游客身份调用。
 
 ### 认证
 
@@ -424,8 +436,8 @@ pnpm build
 
 ## 使用示例
 
-以下示例假设服务运行在 `http://localhost:7869`。除登录外，所有请求都可以省略 `Authorization`
-头（此时按游客身份处理）。
+以下示例假设服务运行在 `http://localhost:7869`。除需要管理员权限的接口外，业务请求都可以省略
+`Authorization` 头（此时按游客身份处理）。
 
 ### 获取访问令牌
 
@@ -570,7 +582,7 @@ curl http://localhost:7869/api/agui/threads/demo-thread/state -H "Authorization:
 | 变量 | 说明 |
 |------|------|
 | `PG_DATABASE_URL` | PostgreSQL 连接串。配置后 Run/Thread、检查点、长期记忆、认证、渠道与知识库元数据统一落库，多实例可共享 |
-| `VECTOR_STORE_BACKEND` | 向量库后端：`pgsql`（PostgreSQL + pgvector）或 `elasticsearch` |
+| `VECTOR_STORE_BACKEND` | 向量库后端：`pgsql`（PostgreSQL + pgvector）或 `elasticsearch`，默认 `elasticsearch` |
 | `ES_URL` | `VECTOR_STORE_BACKEND=elasticsearch` 时的 Elasticsearch 地址 |
 | `ES_URSR` / `ES_PWD` | Elasticsearch 用户名与密码 |
 
@@ -594,7 +606,7 @@ curl http://localhost:7869/api/agui/threads/demo-thread/state -H "Authorization:
 | `AGUI_RUN_POLL_INTERVAL_SECONDS` | 事件流轮询间隔，默认 `0.5` |
 | `CHART_PUBLIC_URL` | 图表对外访问前缀，留空则返回相对路径 `/charts/xxx.png` |
 | `CHART_RETENTION_HOURS` / `CHART_MAX_FILES` | 图表文件保留时长与数量上限 |
-| `CHANNEL_AGENT_API_URL` | 渠道网关调用 Agent 的地址 |
+| `CHANNEL_AGENT_API_URL` | 渠道网关调用 Agent 的完整地址；留空时自动使用当前服务的 `/api/agui/runs` |
 | `WEIXIN_CLAWBOT_*` | 微信 ClawBot 相关配置 |
 
 ## 沙箱模式（多用户工作隔离）
@@ -640,10 +652,10 @@ type = "docker"
 execd_image = "docker.1ms.run/opensandbox/execd:v1.0.16"
 
 [storage]
-allowed_host_paths = ["/home/dev/liuyu/project/langchain-api"]
+allowed_host_paths = ["/path/to/deepclaw"]
 ```
 
-`allowed_host_paths` 必须包含项目根目录，否则 bind mount 会被拒绝。
+`allowed_host_paths` 必须填写项目根目录的绝对路径，否则 bind mount 会被拒绝。
 
 ## 常见说明
 
@@ -658,6 +670,8 @@ allowed_host_paths = ["/home/dev/liuyu/project/langchain-api"]
 - 沙箱模式（`BACKEND_TYPE=sandbox`）需要先启动 OpenSandbox Server 并正确配置 `.sandbox.toml`，详见上方的「沙箱模式」章节。
 - 新增智能体不需要改动 Web 路由：在 `deepclaw/agents/<name>/agent.py` 定义 `Agent` 子类即可被自动发现，
   前端通过 `GET /api/agui/agents` 拿到列表，用顶层 `agentId` 调用。
+- `CronMiddleware` 已提供 cron 工具，但默认 Agent 未启用；需要时在 Agent 的 middleware 列表中显式加入。
+- `.env` 含密钥，不要提交到 Git；仓库只维护 `.env.example`。
 
 ## License
 
