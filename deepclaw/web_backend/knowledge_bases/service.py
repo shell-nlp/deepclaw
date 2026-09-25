@@ -390,14 +390,8 @@ class KnowledgeBaseManager:
         if source["knowledge_base_id"] != knowledge_base_id:
             raise BusinessRuleError("Document does not belong to this knowledge base.")
 
-        passage_ids = self._search_ids_by_term(
-            index_name=knowledge_base.passage_index,
-            field="metadata.file_id",
-            value=document_id,
-            size=10000,
-        )
         rag = create_graph_rag(self._vector_store, knowledge_base.index_prefix)
-        delete_result = rag.delete_documents(passage_ids)
+        delete_result = rag.delete_documents_by_source(document_id)
 
         await self.metadata_store.delete_document(document_id=document_id)
         knowledge_base = await self._refresh_knowledge_base_stats(knowledge_base)
@@ -533,7 +527,11 @@ class KnowledgeBaseManager:
             chunks=chunks,
         )
 
-        rag.add_documents(prepared_documents, extract_triplets=True)
+        rag.upsert_documents_by_source(
+            prepared_documents,
+            source=document_id,
+            extract_triplets=True,
+        )
 
         now = self._now()
         source = {
@@ -669,28 +667,6 @@ class KnowledgeBaseManager:
         normalized_page = max(1, int(page))
         normalized_page_size = max(1, min(100, int(page_size)))
         return normalized_page, normalized_page_size
-
-    def _search_ids_by_term(
-        self, *, index_name: str, field: str, value: str, size: int
-    ) -> list[str]:
-        if isinstance(self._vector_store, ElasticsearchVectorStore):
-            es = self._vector_store
-            if not es.es_client.indices.exists(index=index_name):
-                return []
-            results = es.es_client.search(
-                index=index_name,
-                body={"query": {"term": {field: value}}, "_source": False},
-                size=size,
-            )
-            return [hit["_id"] for hit in results["hits"]["hits"]]
-
-        pg = self._vector_store
-        results = pg.search(
-            index_name=index_name,
-            filter_conditions={field: value},
-            k=size,
-        )
-        return [r["id"] for r in results]
 
     def _count_index(self, index_name: str) -> int:
         if isinstance(self._vector_store, ElasticsearchVectorStore):

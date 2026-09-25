@@ -11,31 +11,6 @@ class ElasticGraphRAG(BaseGraphRAG):
         super().__init__(vector_store=es, graph_name=graph_name, chat_model=chat_model)
         self.es = es
 
-    def retrieve(
-        self,
-        query: str,
-        k: int = 6,
-        entity_top_k: int = 5,
-        relation_top_k: int = 8,
-        expansion_degree: int = 1,
-        relation_limit: int = 30,
-        return_debug: bool = False,
-    ) -> List[Dict[str, Any]] | Dict[str, Any]:
-        query_entities = self._extract_query_entities(query)
-        return self.es.vector_graph_retrieve(
-            query=query,
-            k=k,
-            index_name=self.indexes["passage"],
-            entity_index_name=self.indexes["entity"],
-            relation_index_name=self.indexes["relation"],
-            entity_top_k=entity_top_k,
-            relation_top_k=relation_top_k,
-            expansion_degree=expansion_degree,
-            relation_limit=relation_limit,
-            query_entities=query_entities,
-            return_debug=return_debug,
-        )
-
     def _bulk_index(self, index_name: str, docs: List[Dict[str, Any]]) -> None:
         if not docs:
             return

@@ -97,7 +97,14 @@ class BaseGraphRAG(ABC):
                 "relation_count": 0,
             }
         graph = self.build_graph(documents, extract_triplets=extract_triplets)
+        return self._write_graph(graph)
 
+    def _write_graph(self, graph: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Any]:
+        """合并并写入已构建的图谱记录。
+
+        Args:
+            graph: 包含篇章、实体和关系记录的图谱。
+        """
         # 先收集旧 passage 关联；重新写入时只移除本批不再引用的边。
         passage_ids = [str(doc["id"]) for doc in graph["passages"]]
         existing_passages = self.vector_store.batch_get(
@@ -205,6 +212,76 @@ class BaseGraphRAG(ABC):
             "relation_count": len(graph["relations"]),
         }
         logger.info("向量图索引完成: {}", result)
+        return result
+
+    def upsert_documents_by_source(
+        self,
+        documents: List[Document],
+        *,
+        source: str,
+        source_field: str = "document_id",
+        extract_triplets: bool = True,
+    ) -> Dict[str, Any]:
+        """以来源为单位替换全部篇章和图谱关联。
+
+        Args:
+            documents: 此来源的完整篇章集合，空列表表示删除来源。
+            source: 稳定的来源标识。
+            source_field: 篇章元数据中保存来源的字段。
+            extract_triplets: 是否提取三元组。
+        """
+        source = source.strip()
+        if not source or not source_field.isidentifier():
+            raise ValueError("source 或 source_field 不合法")
+        for document in documents:
+            metadata = dict(document.metadata or {})
+            if source_field in metadata and str(metadata[source_field]) != source:
+                raise ValueError("篇章元数据中的来源与 source 不一致")
+            metadata[source_field] = source
+            document.metadata = metadata
+        # 先构建新图，抽取失败时旧数据仍可用；删除阶段只针对这一来源。
+        graph = self.build_graph(documents, extract_triplets=extract_triplets)
+        old_ids = self.vector_store.list_ids_by_filter(
+            self.indexes["passage"], {f"metadata.{source_field}": source}
+        )
+        for offset in range(0, len(old_ids), 500):
+            self.delete_documents(old_ids[offset:offset + 500])
+        # add_documents 保持原有返回格式与邻接合并行为。
+        if not documents:
+            return {
+                "graph_name": self.graph_name,
+                "indexes": self.indexes,
+                "passage_count": 0,
+                "entity_count": 0,
+                "relation_count": 0,
+            }
+        return self._write_graph(graph)
+
+    def delete_documents_by_source(
+        self, source: str, *, source_field: str = "document_id"
+    ) -> Dict[str, Any]:
+        """删除一个来源的所有篇章及失效图谱关联。
+
+        Args:
+            source: 稳定的来源标识。
+            source_field: 篇章元数据中的来源字段。
+        """
+        source = source.strip()
+        if not source or not source_field.isidentifier():
+            raise ValueError("source 或 source_field 不合法")
+        ids = self.vector_store.list_ids_by_filter(
+            self.indexes["passage"], {f"metadata.{source_field}": source}
+        )
+        result = {
+            "deleted_passages": 0,
+            "deleted_relations": 0,
+            "deleted_entities": 0,
+            "detached_relations": 0,
+        }
+        for offset in range(0, len(ids), 500):
+            batch = self.delete_documents(ids[offset:offset + 500])
+            for key, count in batch.items():
+                result[key] += count
         return result
 
     def delete_graph(self, ignore_missing: bool = True) -> Dict[str, Any]:
@@ -503,8 +580,6 @@ class BaseGraphRAG(ABC):
                 words.append(word)
         return list(dict.fromkeys(words))[:8]
 
-    # ---- 抽象方法 ----
-    @abstractmethod
     def retrieve(
         self,
         query: str,
@@ -514,8 +589,170 @@ class BaseGraphRAG(ABC):
         expansion_degree: int = 1,
         relation_limit: int = 30,
         return_debug: bool = False,
+        min_similarity: float | None = None,
+        filter_conditions: Dict[str, Any] | None = None,
     ) -> List[Dict[str, Any]] | Dict[str, Any]:
-        ...
+        """跨存储后端检索实体、关系与关联篇章。
+
+        Args:
+            query: 检索问题。
+            k: 最多返回篇章数量。
+            entity_top_k: 每个实体查询的召回数量。
+            relation_top_k: 关系召回数量。
+            expansion_degree: 邻接扩展轮数。
+            relation_limit: 图中最多保留的候选关系数。
+            return_debug: 是否返回中间检索信息。
+            min_similarity: 实体、关系和篇章的最低向量分数。
+            filter_conditions: 篇章元数据精确过滤条件。
+        """
+        if k <= 0:
+            return [] if not return_debug else {"query": query, "passages": []}
+        if min(entity_top_k, relation_top_k, relation_limit) < 0 or expansion_degree < 0:
+            raise ValueError("召回数量和扩展轮数不能为负数")
+        store = self.vector_store
+        entity_index = self.indexes["entity"]
+        relation_index = self.indexes["relation"]
+        passage_index = self.indexes["passage"]
+        query_entities = self._extract_query_entities(query)
+        seed_entities = []
+        for text in query_entities or [query]:
+            if entity_top_k == 0:
+                break
+            seed_entities.extend(store.vector_search(
+                query=text, k=entity_top_k, index_names=[entity_index],
+                min_similarity=min_similarity,
+            ))
+        seed_relations = store.vector_search(
+            query=query, k=relation_top_k, index_names=[relation_index],
+            min_similarity=min_similarity,
+        ) if relation_top_k else []
+        entity_ids = set(str(item["id"]) for item in seed_entities if item.get("id"))
+        relation_ids = set(str(item["id"]) for item in seed_relations if item.get("id"))
+        allowed_passages = (
+            set(store.list_ids_by_filter(passage_index, filter_conditions))
+            if filter_conditions else None
+        )
+        expanded_entities = set(entity_ids)
+        expanded_relations = set(relation_ids)
+        steps: list[dict[str, Any]] = []
+        frontier_entities = set(entity_ids)
+        frontier_relations = set(relation_ids)
+        for degree in range(expansion_degree + 1):
+            new_relations = set()
+            for entity in store.batch_get(sorted(frontier_entities), index_name=entity_index):
+                if entity:
+                    new_relations.update(
+                        (entity.get("metadata") or {}).get("relation_ids") or []
+                    )
+            new_relations -= expanded_relations
+            expanded_relations.update(new_relations)
+            if degree == expansion_degree:
+                steps.append({
+                    "degree": degree,
+                    "entity_count": len(expanded_entities),
+                    "relation_count": len(expanded_relations),
+                })
+                break
+            new_entities = set()
+            for relation in store.batch_get(
+                sorted(frontier_relations | new_relations), index_name=relation_index
+            ):
+                if relation:
+                    new_entities.update(
+                        (relation.get("metadata") or {}).get("entity_ids") or []
+                    )
+            new_entities -= expanded_entities
+            expanded_entities.update(new_entities)
+            frontier_entities = new_entities
+            frontier_relations = new_relations
+            steps.append({
+                "degree": degree,
+                "entity_count": len(expanded_entities),
+                "relation_count": len(expanded_relations),
+            })
+        if allowed_passages is not None:
+            expanded_relations = {
+                str(relation["id"])
+                for relation in store.batch_get(
+                    sorted(expanded_relations), index_name=relation_index
+                )
+                if relation and allowed_passages.intersection(
+                    (relation.get("metadata") or {}).get("passage_ids") or []
+                )
+            }
+        kept_relations = sorted(expanded_relations)
+        if relation_limit == 0:
+            kept_relations = []
+        eviction = {
+            "occurred": len(kept_relations) > relation_limit,
+            "before_count": len(kept_relations),
+        }
+        if len(kept_relations) > relation_limit:
+            kept_relations = [
+                str(item["id"])
+                for item in store.vector_search_by_ids(
+                    query=query, doc_ids=kept_relations,
+                    index_name=relation_index, k=relation_limit,
+                )
+            ]
+        eviction["after_count"] = len(kept_relations)
+
+        candidate_ids: set[str] = set()
+        for relation in store.batch_get(kept_relations, index_name=relation_index):
+            if relation:
+                candidate_ids.update(
+                    (relation.get("metadata") or {}).get("passage_ids") or []
+                )
+        if not candidate_ids:
+            for entity in store.batch_get(sorted(expanded_entities), index_name=entity_index):
+                if entity:
+                    candidate_ids.update(
+                        (entity.get("metadata") or {}).get("passage_ids") or []
+                    )
+        if allowed_passages is not None:
+            candidate_ids &= allowed_passages
+        passages = store.vector_search_by_ids(
+            query=query, doc_ids=sorted(candidate_ids), index_name=passage_index, k=k
+        ) if candidate_ids else []
+        if min_similarity is not None:
+            passages = [
+                item for item in passages
+                if item.get("score") is None or item["score"] >= min_similarity
+            ]
+        if len(passages) < k:
+            fallback = store.vector_search(
+                query=query, k=k, index_names=[passage_index],
+                min_similarity=min_similarity, filter_conditions=filter_conditions,
+            )
+            seen = {item["id"] for item in passages}
+            for item in fallback:
+                if allowed_passages is not None and item["id"] not in allowed_passages:
+                    continue
+                if (
+                    min_similarity is not None
+                    and item.get("score") is not None
+                    and item["score"] < min_similarity
+                ):
+                    continue
+                if item["id"] not in seen:
+                    passages.append(item)
+                    seen.add(item["id"])
+                if len(passages) >= k:
+                    break
+        if not return_debug:
+            return passages[:k]
+        return {
+            "query": query,
+            "query_entities": query_entities,
+            "passages": passages[:k],
+            "seed_entity_ids": sorted(entity_ids),
+            "seed_relation_ids": sorted(relation_ids),
+            "expanded_entity_ids": sorted(expanded_entities),
+            "expanded_relation_ids": sorted(expanded_relations),
+            "kept_relation_ids": kept_relations,
+            "expansion_steps": steps,
+            "eviction": eviction,
+        }
 
     @abstractmethod
     def _bulk_index(self, index_name: str, docs: List[Dict[str, Any]]) -> None:
