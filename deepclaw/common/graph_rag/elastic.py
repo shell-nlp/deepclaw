@@ -46,6 +46,8 @@ class ElasticGraphRAG(BaseGraphRAG):
                             "file_id": {"type": "keyword"},
                             "file_name": {"type": "keyword"},
                             "display_name": {"type": "keyword"},
+                            "bucket_name": {"type": "keyword"},
+                            "file_path": {"type": "keyword"},
                             "storage_name": {"type": "keyword"},
                             "storage_path": {"type": "keyword"},
                             "content_type": {"type": "keyword"},

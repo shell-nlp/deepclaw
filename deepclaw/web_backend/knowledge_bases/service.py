@@ -15,10 +15,15 @@ from deepclaw.web_backend.common.errors import BusinessRuleError
 from deepclaw.common import create_default_vector_store, create_graph_rag
 from deepclaw.common.docling_parser import create_document_parser
 from deepclaw.common.graph_rag import BaseGraphRAG
+from deepclaw.common.object_storage import (
+    ObjectStorage,
+    ObjectStoragePDFReader,
+    create_object_storage,
+)
 from deepclaw.common.text_splitter import PDFParser
 from deepclaw.common.vector_store.base import AbstractVectorStore
 from deepclaw.common.vector_store.elasticsearch import ElasticsearchVectorStore
-from deepclaw.constant import WORKSPACE_PATH
+from deepclaw.settings import settings
 from deepclaw.utils import get_embedding_model
 from deepclaw.web_backend.knowledge_bases.store import (
     KnowledgeBaseMetadataStore,
@@ -124,15 +129,24 @@ class UploadedKnowledgeFile:
 class KnowledgeBaseManager:
     KNOWLEDGE_BASE_INDEX = "rag_knowledge_bases"
     DOCUMENT_INDEX = "rag_knowledge_base_documents"
-    STORAGE_ROOT = WORKSPACE_PATH / "pdf_files" / "knowledge_bases"
+    KNOWLEDGE_BASE_BUCKET = "knowledge-bases"
 
     def __init__(
         self,
         vector_store: AbstractVectorStore,
         metadata_store: KnowledgeBaseMetadataStore | None = None,
+        object_storage: ObjectStorage | None = None,
     ):
+        """初始化知识库管理器。
+
+        Args:
+            vector_store: 向量存储。
+            metadata_store: 知识库元数据存储。
+            object_storage: 对象存储，未传时按配置创建。
+        """
         self._vector_store = vector_store
         self.metadata_store = metadata_store or SQLModelKnowledgeBaseMetadataStore()
+        self.object_storage = object_storage or create_object_storage(settings)
 
     async def list_knowledge_bases(self, user_id: str) -> list[KnowledgeBaseRecord]:
         return [
@@ -236,10 +250,15 @@ class KnowledgeBaseManager:
         rag = create_graph_rag(self._vector_store, knowledge_base.index_prefix)
         graph_result = rag.delete_graph(ignore_missing=True)
 
-        document_ids = [
-            item.document_id
-            for item in await self.list_documents(user_id, knowledge_base_id)
-        ]
+        documents = await self.list_documents(user_id, knowledge_base_id)
+        document_ids = [item.document_id for item in documents]
+        for document in documents:
+            bucket_name, file_path = self._storage_location_from_record(
+                user_id=user_id,
+                knowledge_base_id=knowledge_base_id,
+                document=document,
+            )
+            self.object_storage.delete_object(bucket_name, file_path)
         if document_ids:
             await self.metadata_store.delete_documents(document_ids=document_ids)
 
@@ -393,6 +412,13 @@ class KnowledgeBaseManager:
         rag = create_graph_rag(self._vector_store, knowledge_base.index_prefix)
         delete_result = rag.delete_documents_by_source(document_id)
 
+        bucket_name, file_path = self._storage_location_from_source(
+            user_id=user_id,
+            knowledge_base_id=knowledge_base_id,
+            document_id=document_id,
+            source=source,
+        )
+        self.object_storage.delete_object(bucket_name, file_path)
         await self.metadata_store.delete_document(document_id=document_id)
         knowledge_base = await self._refresh_knowledge_base_stats(knowledge_base)
 
@@ -455,8 +481,6 @@ class KnowledgeBaseManager:
     ) -> KnowledgeBaseUploadResponse:
         knowledge_base = await self.get_knowledge_base(user_id, knowledge_base_id)
         rag = create_graph_rag(self._vector_store, knowledge_base.index_prefix)
-        storage_dir = self._storage_dir(user_id, knowledge_base_id)
-        storage_dir.mkdir(parents=True, exist_ok=True)
 
         documents: list[KnowledgeBaseDocumentRecord] = []
         errors: list[KnowledgeBaseUploadError] = []
@@ -467,7 +491,6 @@ class KnowledgeBaseManager:
                     user_id=user_id,
                     knowledge_base=knowledge_base,
                     rag=rag,
-                    storage_dir=storage_dir,
                     uploaded_file=uploaded_file,
                 )
                 documents.append(document_record)
@@ -493,72 +516,101 @@ class KnowledgeBaseManager:
         user_id: str,
         knowledge_base: KnowledgeBaseRecord,
         rag: BaseGraphRAG,
-        storage_dir: Path,
         uploaded_file: UploadedKnowledgeFile,
     ) -> KnowledgeBaseDocumentRecord:
+        """写入对象存储并完成解析、索引和元数据保存。
+
+        Args:
+            user_id: 用户 ID。
+            knowledge_base: 知识库记录。
+            rag: 图谱检索实例。
+            uploaded_file: 上传文件。
+        """
         original_file_name = Path(uploaded_file.file_name or "unnamed").name
         if not original_file_name:
             raise BusinessRuleError("Uploaded file name is required.")
 
         document_id = uuid.uuid4().hex
         storage_name = f"{document_id}_{self._safe_file_name(original_file_name)}"
-        storage_path = storage_dir / storage_name
-        storage_path.write_bytes(uploaded_file.data)
-
-        parser_options = {
-            "bucket_name": self._storage_bucket_name(
-                user_id=user_id,
-                knowledge_base_id=knowledge_base.knowledge_base_id,
-            ),
-            "file_path": storage_name,
-            "file_id": document_id,
-        }
-        parser = (
-            PDFParser(**parser_options)
-            if Path(original_file_name).suffix.lower() == ".pdf"
-            else create_document_parser(
-                **parser_options,
-                original_file_name=original_file_name,
-                fallback_parser_cls=PDFParser,
-            )
-        )
-        chunks = parser.get_chunk()
-        prepared_documents = self._prepare_documents(
-            knowledge_base=knowledge_base,
+        bucket_name = self._storage_bucket_name(
             user_id=user_id,
-            document_id=document_id,
+            knowledge_base_id=knowledge_base.knowledge_base_id,
+        )
+        file_path = self._storage_file_path(
+            user_id=user_id,
+            knowledge_base_id=knowledge_base.knowledge_base_id,
             storage_name=storage_name,
-            storage_path=storage_path,
-            original_file_name=original_file_name,
+        )
+        storage_locator = f"{bucket_name}/{file_path}"
+        self.object_storage.put_bytes(
+            bucket_name,
+            file_path,
+            uploaded_file.data,
             content_type=uploaded_file.content_type,
-            chunks=chunks,
         )
 
-        rag.upsert_documents_by_source(
-            prepared_documents,
-            source=document_id,
-            extract_triplets=True,
-        )
+        try:
+            parser_options = {
+                "bucket_name": bucket_name,
+                "file_path": file_path,
+                "file_id": document_id,
+                "reader": ObjectStoragePDFReader(self.object_storage),
+            }
+            parser = (
+                PDFParser(**parser_options)
+                if Path(original_file_name).suffix.lower() == ".pdf"
+                else create_document_parser(
+                    **parser_options,
+                    original_file_name=original_file_name,
+                    fallback_parser_cls=PDFParser,
+                )
+            )
+            chunks = parser.get_chunk()
+            prepared_documents = self._prepare_documents(
+                knowledge_base=knowledge_base,
+                user_id=user_id,
+                document_id=document_id,
+                bucket_name=bucket_name,
+                file_path=file_path,
+                storage_name=storage_name,
+                storage_path=storage_locator,
+                original_file_name=original_file_name,
+                content_type=uploaded_file.content_type,
+                chunks=chunks,
+            )
 
-        now = self._now()
-        source = {
-            "document_id": document_id,
-            "knowledge_base_id": knowledge_base.knowledge_base_id,
-            "user_id": user_id,
-            "file_name": original_file_name,
-            "display_name": original_file_name,
-            "content_type": uploaded_file.content_type or "",
-            "file_size": len(uploaded_file.data),
-            "chunk_count": len(prepared_documents),
-            "storage_path": str(storage_path),
-            "created_at": now,
-            "updated_at": now,
-        }
-        saved = await self.metadata_store.save_document(
-            document_id=document_id,
-            source=source,
-        )
-        return KnowledgeBaseDocumentRecord(**saved)
+            rag.upsert_documents_by_source(
+                prepared_documents,
+                source=document_id,
+                extract_triplets=True,
+            )
+
+            now = self._now()
+            source = {
+                "document_id": document_id,
+                "knowledge_base_id": knowledge_base.knowledge_base_id,
+                "user_id": user_id,
+                "file_name": original_file_name,
+                "display_name": original_file_name,
+                "content_type": uploaded_file.content_type or "",
+                "file_size": len(uploaded_file.data),
+                "chunk_count": len(prepared_documents),
+                "storage_path": storage_locator,
+                "created_at": now,
+                "updated_at": now,
+            }
+            saved = await self.metadata_store.save_document(
+                document_id=document_id,
+                source=source,
+            )
+            return KnowledgeBaseDocumentRecord(**saved)
+        except Exception:
+            self.object_storage.delete_object(bucket_name, file_path)
+            try:
+                rag.delete_documents_by_source(document_id)
+            except Exception:
+                logger.exception("知识库上传回滚图谱失败: document_id={}", document_id)
+            raise
 
     def _prepare_documents(
         self,
@@ -566,8 +618,10 @@ class KnowledgeBaseManager:
         knowledge_base: KnowledgeBaseRecord,
         user_id: str,
         document_id: str,
+        bucket_name: str,
+        file_path: str,
         storage_name: str,
-        storage_path: Path,
+        storage_path: str,
         original_file_name: str,
         content_type: str,
         chunks: list[Document],
@@ -585,8 +639,10 @@ class KnowledgeBaseManager:
                     "document_id": document_id,
                     "file_name": original_file_name,
                     "display_name": original_file_name,
+                    "bucket_name": bucket_name,
+                    "file_path": file_path,
                     "storage_name": storage_name,
-                    "storage_path": str(storage_path),
+                    "storage_path": storage_path,
                     "content_type": content_type or "",
                 }
             )
@@ -688,13 +744,89 @@ class KnowledgeBaseManager:
 
         return self._vector_store.count(index_names=[index_name])
 
-    def _storage_dir(self, user_id: str, knowledge_base_id: str) -> Path:
-        return self.STORAGE_ROOT / self._safe_path_part(user_id) / knowledge_base_id
-
     def _storage_bucket_name(self, user_id: str, knowledge_base_id: str) -> str:
+        """返回知识库对象存储桶名称。
+
+        Args:
+            user_id: 用户 ID。
+            knowledge_base_id: 知识库 ID。
+        """
+        del user_id, knowledge_base_id
+        return self.KNOWLEDGE_BASE_BUCKET
+
+    def _storage_file_path(
+        self,
+        *,
+        user_id: str,
+        knowledge_base_id: str,
+        storage_name: str,
+    ) -> str:
+        """构造知识库对象的桶内路径。
+
+        Args:
+            user_id: 用户 ID。
+            knowledge_base_id: 知识库 ID。
+            storage_name: 对象文件名。
+        """
         return (
-            Path("knowledge_bases") / self._safe_path_part(user_id) / knowledge_base_id
-        ).as_posix()
+            f"{self._safe_path_part(user_id)}/"
+            f"{self._safe_path_part(knowledge_base_id)}/{storage_name}"
+        )
+
+    def _storage_location_from_record(
+        self,
+        *,
+        user_id: str,
+        knowledge_base_id: str,
+        document: KnowledgeBaseDocumentRecord,
+    ) -> tuple[str, str]:
+        """从文档记录推导对象地址。
+
+        Args:
+            user_id: 用户 ID。
+            knowledge_base_id: 知识库 ID。
+            document: 文档记录。
+        """
+        return self._storage_location_from_source(
+            user_id=user_id,
+            knowledge_base_id=knowledge_base_id,
+            document_id=document.document_id,
+            source={
+                "file_name": document.file_name,
+                "storage_path": document.storage_path,
+            },
+        )
+
+    def _storage_location_from_source(
+        self,
+        *,
+        user_id: str,
+        knowledge_base_id: str,
+        document_id: str,
+        source: dict[str, Any],
+    ) -> tuple[str, str]:
+        """从元数据推导对象地址，兼容旧的绝对路径记录。
+
+        Args:
+            user_id: 用户 ID。
+            knowledge_base_id: 知识库 ID。
+            document_id: 文档 ID。
+            source: 文档元数据。
+        """
+        bucket_name = self._storage_bucket_name(
+            user_id=user_id,
+            knowledge_base_id=knowledge_base_id,
+        )
+        storage_path = str(source.get("storage_path") or "")
+        prefix = f"{bucket_name}/"
+        if storage_path.startswith(prefix):
+            return bucket_name, storage_path.removeprefix(prefix)
+        storage_name = f"{document_id}_{self._safe_file_name(str(source.get('file_name') or 'unnamed'))}"
+        return bucket_name, self._storage_file_path(
+            user_id=user_id,
+            knowledge_base_id=knowledge_base_id,
+            storage_name=storage_name,
+        )
 
     @staticmethod
     def _safe_path_part(value: str) -> str:
@@ -757,7 +889,8 @@ def get_knowledge_base_manager() -> KnowledgeBaseManager:
     if knowledge_base_manager is None:
         embeddings = get_embedding_model()
         knowledge_base_manager = KnowledgeBaseManager(
-            create_default_vector_store(embedding_model=embeddings)
+            create_default_vector_store(embedding_model=embeddings),
+            object_storage=create_object_storage(settings),
         )
     return knowledge_base_manager
 

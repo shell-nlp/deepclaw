@@ -244,6 +244,7 @@ uv sync --dev --extra oracle        # Oracle DDL fetcher
 uv sync --dev --extra opensandbox   # sandbox execution backend
 uv sync --dev --extra feishu        # Feishu long connection
 uv sync --dev --extra phoenix       # Phoenix observability
+uv sync --dev --extra object-storage # MinIO / S3 object storage
 ```
 
 > Knowledge base uploads require the `pdf` extra. Without it the API returns
@@ -275,6 +276,14 @@ VECTOR_STORE_BACKEND=pgsql
 # ES_URL=http://localhost:9200
 # ES_URSR=elastic
 # ES_PWD=elastic@2024
+
+# Knowledge base object storage: local by default, optionally MinIO
+OBJECT_STORAGE_PROVIDER=local
+# LOCAL_STORAGE_ROOT=.deepclaw/workspace/pdf_files
+# OBJECT_STORAGE_PROVIDER=minio
+# MINIO_ENDPOINT_URL=http://localhost:9000
+# MINIO_ACCESS_KEY=minioadmin
+# MINIO_SECRET_KEY=minioadmin
 ```
 
 > Only with `PG_DATABASE_URL` set do runs, threads and checkpoints land in a shared database, which is what
@@ -592,6 +601,9 @@ curl http://localhost:7869/api/agui/threads/demo-thread/state -H "Authorization:
 | `VECTOR_STORE_BACKEND` | Vector store backend: `pgsql` (PostgreSQL + pgvector) or `elasticsearch`; defaults to `elasticsearch` |
 | `ES_URL` | Elasticsearch URL when `VECTOR_STORE_BACKEND=elasticsearch` |
 | `ES_URSR` / `ES_PWD` | Elasticsearch username and password |
+| `OBJECT_STORAGE_PROVIDER` | Knowledge-base file storage: `local` (default) or `minio` |
+| `LOCAL_STORAGE_ROOT` | Local object-storage root, default `.deepclaw/workspace/pdf_files`; paths are `root/bucket_name/file_path` |
+| `MINIO_ENDPOINT_URL` / `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | Required when `OBJECT_STORAGE_PROVIDER=minio` |
 
 ### Common optional environment variables
 

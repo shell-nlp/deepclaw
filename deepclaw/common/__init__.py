@@ -11,6 +11,12 @@ from deepclaw.common.docling_parser import (
     is_docling_available,
 )
 from deepclaw.common.graph_rag import BaseGraphRAG, ElasticGraphRAG, PgGraphRAG
+from deepclaw.common.object_storage import (
+    LocalObjectStorage,
+    ObjectStorage,
+    ObjectStoragePDFReader,
+    create_object_storage,
+)
 from deepclaw.common.vector_store import (
     AbstractVectorStore,
     ElasticsearchVectorStore,
@@ -68,7 +74,11 @@ __all__ = [
     "GraphDatabaseBase",
     "Neo4jGraph",
     "NetworkXGraph",
+    "LocalObjectStorage",
+    "ObjectStorage",
+    "ObjectStoragePDFReader",
     "PgVectorStore",
+    "create_object_storage",
     "VectorStoreBackend",
     "create_default_vector_store",
     "create_document_parser",

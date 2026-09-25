@@ -386,6 +386,34 @@ wheels = [
 ]
 
 [[package]]
+name = "boto3"
+version = "1.43.102"
+source = { registry = "https://mirrors.cloud.tencent.com/pypi/simple" }
+dependencies = [
+    { name = "botocore" },
+    { name = "jmespath" },
+    { name = "s3transfer" },
+]
+sdist = { url = "https://mirrors.cloud.tencent.com/pypi/packages/9a/e6/2a24a2013beecdd9a381bcf7a11981478a1f5f78e37908c0fddba3cd915f/boto3-1.43.102.tar.gz", hash = "sha256:440bdd9fbf88d57809b68839fb690f19e4db65fa5539e60cc803ebd7b9e5e8fc" }
+wheels = [
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/46/ea/5bb0e8a8a4b04221b054365a5904fd63b6bcc22edcf4aa75a253f946b86e/boto3-1.43.102-py3-none-any.whl", hash = "sha256:b2a06cbbcb2cb0484f126172eab0881252f01007e8f7e0607ecac131cff9f744" },
+]
+
+[[package]]
+name = "botocore"
+version = "1.43.102"
+source = { registry = "https://mirrors.cloud.tencent.com/pypi/simple" }
+dependencies = [
+    { name = "jmespath" },
+    { name = "python-dateutil" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://mirrors.cloud.tencent.com/pypi/packages/7d/12/97d043f9bfdd54984f8d562169a9ac800c7b94a5b5fdb9b7d7b46659ebd2/botocore-1.43.102.tar.gz", hash = "sha256:3239f3c8611f0fbfb1a3fda77fb70e18f87bec102edf38f67e40902c56639c10" }
+wheels = [
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/5a/95/e2791a9dfc989e3580ce087085a45a67987e693f364e2461904d962e3951/botocore-1.43.102-py3-none-any.whl", hash = "sha256:78d9dcee19950444b4ff0250125aff735da4f7d6db46eb1e9aca82dc8f101a66" },
+]
+
+[[package]]
 name = "bracex"
 version = "3.0.1"
 source = { registry = "https://mirrors.cloud.tencent.com/pypi/simple" }
@@ -1006,6 +1034,9 @@ feishu = [
 mem0 = [
     { name = "mem0ai" },
 ]
+object-storage = [
+    { name = "boto3" },
+]
 opensandbox = [
     { name = "opensandbox-code-interpreter" },
     { name = "opensandbox-server" },
@@ -1042,6 +1073,7 @@ requires-dist = [
     { name = "apscheduler", specifier = ">=3.11.0" },
     { name = "arize-phoenix-otel", marker = "extra == 'phoenix'", specifier = ">=0.16.1" },
     { name = "asyncpg", specifier = ">=0.30.0" },
+    { name = "boto3", marker = "extra == 'object-storage'", specifier = ">=1.35.0" },
     { name = "crawl4ai", marker = "extra == 'web-fetch'", specifier = ">=0.8.0" },
     { name = "deepagents", extras = ["quickjs"], specifier = ">=0.7.15" },
     { name = "docling", marker = "extra == 'docling'", specifier = ">=2.129.0,<3.0.0" },
@@ -1075,7 +1107,7 @@ requires-dist = [
     { name = "tzdata", specifier = ">=2025.3" },
     { name = "uvicorn", specifier = ">=0.40.0" },
 ]
-provides-extras = ["pdf", "docling", "feishu", "elasticsearch", "web-fetch", "mem0", "oracle", "opensandbox", "phoenix"]
+provides-extras = ["pdf", "docling", "feishu", "elasticsearch", "web-fetch", "mem0", "oracle", "opensandbox", "phoenix", "object-storage"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2097,6 +2129,15 @@ wheels = [
     { url = "https://mirrors.cloud.tencent.com/pypi/packages/28/30/879570ecf82574eaea77c5eb10309f4b630dece5f2a556e9814a90ba3f2d/jiter-0.17.0-graalpy312-graalpy250_312_native-macosx_11_0_arm64.whl", hash = "sha256:40d2c240f8f80b5b0f201b29f0ae129c81448c60c772227a41747b5e0026f6a2" },
     { url = "https://mirrors.cloud.tencent.com/pypi/packages/77/7a/1f0b8a35fbd079a4f1752c31a15dc99cf277f863747c459be0af39e900e5/jiter-0.17.0-graalpy312-graalpy250_312_native-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:3e05f5adbf68c4bd11e1610f394034d984152988e84be6f8314235ce6f2139e5" },
     { url = "https://mirrors.cloud.tencent.com/pypi/packages/e1/8b/d76219ebdbcf3d4209d9d21a0810db4c8d0a6f88e3ee87d30bdea4e90d30/jiter-0.17.0-graalpy312-graalpy250_312_native-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:d2c0bf24c72fd0491405dce5d40194f2070e9021ce648c1a1d46234b93d848ff" },
+]
+
+[[package]]
+name = "jmespath"
+version = "1.1.0"
+source = { registry = "https://mirrors.cloud.tencent.com/pypi/simple" }
+sdist = { url = "https://mirrors.cloud.tencent.com/pypi/packages/d3/59/322338183ecda247fb5d1763a6cbe46eff7222eaeebafd9fa65d4bf5cb11/jmespath-1.1.0.tar.gz", hash = "sha256:472c87d80f36026ae83c6ddd0f1d05d4e510134ed462851fd5f754c8c3cbb88d" }
+wheels = [
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/14/2f/967ba146e6d58cf6a652da73885f52fc68001525b4197effc174321d70b4/jmespath-1.1.0-py3-none-any.whl", hash = "sha256:a5663118de4908c91729bea0acadca56526eb2698e83de10cd116ae0f4e97c64" },
 ]
 
 [[package]]
@@ -4970,6 +5011,18 @@ wheels = [
     { url = "https://mirrors.cloud.tencent.com/pypi/packages/3a/3c/37d0ecb729a7cc2d393ea7dce316fc585680f35d93b8d62139d7d0a3700c/ruff-0.15.21-py3-none-win32.whl", hash = "sha256:01f8d5be84823c172b389e123174f781f9daf86d6c58719d603f941932195cdd" },
     { url = "https://mirrors.cloud.tencent.com/pypi/packages/c0/b8/e43466b2a6067ce91e669068f6e28d6c719a920f014b070d5c8731725de3/ruff-0.15.21-py3-none-win_amd64.whl", hash = "sha256:d4b8d9a2f0f12b816b50447f6eccb9f4bb01a6b82c86b50fb3b5354b458dc6d3" },
     { url = "https://mirrors.cloud.tencent.com/pypi/packages/dd/75/e90ab9aeece218a9fc5a5bc3ec97d0ee6bb3c4ff95869463c1de58e29a1c/ruff-0.15.21-py3-none-win_arm64.whl", hash = "sha256:6e83115d4b9377c1cbc13abf0e051f069fab0ef815ea0504a8a008cee24dd0a8" },
+]
+
+[[package]]
+name = "s3transfer"
+version = "0.19.2"
+source = { registry = "https://mirrors.cloud.tencent.com/pypi/simple" }
+dependencies = [
+    { name = "botocore" },
+]
+sdist = { url = "https://mirrors.cloud.tencent.com/pypi/packages/76/43/35e4d8aa320bffe8287fe8f65f578fa2d2db0a64212f0e710dce58267854/s3transfer-0.19.2.tar.gz", hash = "sha256:ba0309fd86be3c27dbf78cdd813c13c5e1df16e5874b99d2535ebbdfb9892993" }
+wheels = [
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/bc/e7/5c595c75e9f41a44f30e526eda465ea0b4eec93470e074e4a111b253f13a/s3transfer-0.19.2-py3-none-any.whl", hash = "sha256:d8168eccca828cbb2cd573675333f3bddd254313a9c42494b84c76b539e8ba25" },
 ]
 
 [[package]]

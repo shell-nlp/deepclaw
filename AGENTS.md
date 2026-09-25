@@ -90,6 +90,9 @@
 - `deepclaw/common/`
   Elasticsearch、向量数据库抽象、Graph RAG（`BaseGraphRAG` + `ElasticGraphRAG` + `PgGraphRAG`）、PDF 切分等通用算法实现。
 
+- `deepclaw/common/object_storage/`
+  对象存储抽象与实现。`ObjectStorage` 是 ABC 端口，`LocalObjectStorage` 用 `root/bucket_name/file_path` 模拟对象存储，`MinioObjectStorage` 使用 S3 兼容协议；`ObjectStoragePDFReader` 把对象存储适配给 PDF/Docling 解析器。知识库上传默认走本地实现，配置 `OBJECT_STORAGE_PROVIDER=minio` 后切换远端。
+
 - `deepclaw/common/docling_parser.py`
   Docling 统一文档解析适配器。按文件后缀选择 Docling 或回退解析器，将 PDF、DOCX、PPTX、XLSX、HTML、Markdown、TXT 转换为现有知识库兼容的 LangChain Document 切片，并保留标题路径、页码和 Docling 元数据。
 
@@ -193,6 +196,12 @@ pnpm build
 - `ES_URL`
 - `ES_URSR`
 - `ES_PWD`
+- `OBJECT_STORAGE_PROVIDER`
+- `LOCAL_STORAGE_ROOT`
+- `MINIO_ENDPOINT_URL`
+- `MINIO_ACCESS_KEY`
+- `MINIO_SECRET_KEY`
+- `MINIO_SERVICE_ADDRESSES`
 - `TAVILY_API_KEY`
 - `BACKEND_TYPE`
 - `PG_DATABASE_URL`

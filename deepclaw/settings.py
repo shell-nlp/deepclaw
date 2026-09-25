@@ -44,6 +44,14 @@ class Settings(BaseSettings):
     VECTOR_STORE_BACKEND: Literal["elasticsearch", "pgsql"] = "elasticsearch"
     LANGSMITH_API_KEY: str | None = None
 
+    # 对象存储配置：默认本地，显式选择 minio 时才连接远端
+    OBJECT_STORAGE_PROVIDER: Literal["local", "minio"] = "local"
+    LOCAL_STORAGE_ROOT: str | None = None
+    MINIO_ENDPOINT_URL: str | None = None
+    MINIO_ACCESS_KEY: str | None = None
+    MINIO_SECRET_KEY: str | None = None
+    MINIO_SERVICE_ADDRESSES: str | None = None
+
     # 是否使用copilotkit 的ag-ui 组件供前端使用
     USE_COPILOTKIT: bool = False
 
