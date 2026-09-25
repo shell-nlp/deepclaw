@@ -1048,6 +1048,37 @@ class PgVectorStore(AbstractVectorStore):
             rows = cur.fetchall()
         return [self._row_to_result(row) for row in rows]
 
+    def list_ids_by_filter(
+        self, index_name: str, filter_conditions: dict[str, Any]
+    ) -> list[str]:
+        """按元数据精确条件读取 PG 索引中的全部 ID。
+
+        Args:
+            index_name: 目标索引名称。
+            filter_conditions: 精确匹配的元数据条件。
+        """
+        if not filter_conditions:
+            raise ValueError("filter_conditions 不能为空")
+        self._ensure_base_schema()
+        clauses = ["index_name = %(index_name)s"]
+        params: dict[str, Any] = {"index_name": index_name}
+        for position, (field, value) in enumerate(filter_conditions.items()):
+            if not field.startswith("metadata."):
+                raise ValueError("只支持 metadata 字段过滤")
+            key = field.removeprefix("metadata.")
+            if not key.isidentifier():
+                raise ValueError("元数据字段名不合法")
+            parameter = f"value_{position}"
+            clauses.append(f"metadata ->> '{key}' = %({parameter})s")
+            params[parameter] = str(value)
+        statement = f"""
+        SELECT id FROM {self._qualified_table_name()}
+        WHERE {" AND ".join(clauses)}
+        """
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(statement, params)
+            return [str(row["id"]) for row in cur.fetchall()]
+
     def vector_search_existing_embeddings(
         self,
         query: str,

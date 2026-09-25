@@ -445,6 +445,43 @@ class ElasticsearchVectorStore(AbstractVectorStore):
             query=query, k=k, index_name=index_name, ids=doc_ids
         )
 
+    def list_ids_by_filter(
+        self, index_name: str, filter_conditions: dict[str, Any]
+    ) -> list[str]:
+        """用 ES scroll 分页列出所有精确匹配的文档 ID。
+
+        Args:
+            index_name: 目标索引名称。
+            filter_conditions: 精确匹配的过滤条件。
+        """
+        if not filter_conditions:
+            raise ValueError("filter_conditions 不能为空")
+        if not self.es_client.indices.exists(index=index_name):
+            return []
+        clauses = [
+            {"terms" if isinstance(value, list) else "term": {field: value}}
+            for field, value in filter_conditions.items()
+        ]
+        response = self.es_client.search(
+            index=index_name,
+            body={"query": {"bool": {"filter": clauses}}, "_source": False},
+            size=500,
+            scroll="1m",
+        )
+        ids: list[str] = []
+        scroll_id = response.get("_scroll_id")
+        try:
+            while response["hits"]["hits"]:
+                ids.extend(str(hit["_id"]) for hit in response["hits"]["hits"])
+                if not scroll_id:
+                    break
+                response = self.es_client.scroll(scroll_id=scroll_id, scroll="1m")
+                scroll_id = response.get("_scroll_id", scroll_id)
+        finally:
+            if scroll_id:
+                self.es_client.clear_scroll(scroll_id=scroll_id)
+        return ids
+
     def _expand_es_graph(
         self,
         entity_ids: List[str],

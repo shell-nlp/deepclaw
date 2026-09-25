@@ -210,6 +210,19 @@ class AbstractVectorStore(ABC):
             f"{type(self).__name__} does not support vector_search_by_ids"
         )
 
+    def list_ids_by_filter(
+        self, index_name: str, filter_conditions: dict[str, Any]
+    ) -> list[str]:
+        """获取指定索引内符合过滤条件的全部文档 ID。
+
+        Args:
+            index_name: 目标索引名称。
+            filter_conditions: 精确匹配的过滤条件。
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support list_ids_by_filter"
+        )
+
     def clear_index(self, index_name: str) -> None:
         """清除指定索引的所有记录。
 
