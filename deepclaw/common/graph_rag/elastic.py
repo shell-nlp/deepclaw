@@ -42,24 +42,7 @@ class ElasticGraphRAG(BaseGraphRAG):
 
         first_embedding = self.es.embedding_model.embed_query(docs[0]["content"])
         self._ensure_index(index_name, len(first_embedding))
-
-        operations = []
-        for index, doc in enumerate(docs):
-            embedding = (
-                first_embedding
-                if index == 0
-                else self.es.embedding_model.embed_query(doc["content"])
-            )
-            operations.append({"index": {"_index": index_name, "_id": doc["id"]}})
-            operations.append(
-                {
-                    "content": doc["content"],
-                    "embedding": embedding,
-                    "metadata": doc.get("metadata", {}),
-                }
-            )
-
-        self.es.es_client.bulk(operations=operations, refresh=True)
+        self.vector_store.add_batch(documents=docs, index_name=index_name)
 
     def _ensure_index(self, index_name: str, dims: int) -> None:
         if self.es.es_client.indices.exists(index=index_name):
@@ -104,8 +87,7 @@ class ElasticGraphRAG(BaseGraphRAG):
         )
 
     def _delete_indexes_internal(self, index_name: str) -> None:
-        if self.es.es_client.indices.exists(index=index_name):
-            self.es.es_client.indices.delete(index=index_name)
+        self.vector_store.clear_index(index_name)
 
     def _delete_docs_internal(self, index_name: str, doc_ids: List[str]) -> int:
         if not doc_ids or not self.es.es_client.indices.exists(index=index_name):

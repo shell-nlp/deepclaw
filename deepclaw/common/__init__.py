@@ -29,7 +29,13 @@ def create_graph_rag(
     graph_name: str,
     chat_model: Any = None,
 ) -> BaseGraphRAG:
-    """根据向量库类型自动创建对应的 GraphRAG 实例。"""
+    """根据向量库类型创建 GraphRAG 实例。
+
+    Args:
+        vector_store: 向量存储实例。
+        graph_name: 图谱名称。
+        chat_model: 用于实体与关系抽取的模型。
+    """
     if isinstance(vector_store, ElasticsearchVectorStore):
         return ElasticGraphRAG(vector_store, graph_name, chat_model)
     if isinstance(vector_store, PgVectorStore):

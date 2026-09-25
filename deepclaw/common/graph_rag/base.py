@@ -82,7 +82,116 @@ class BaseGraphRAG(ABC):
     def add_documents(
         self, documents: List[Document], extract_triplets: bool = True
     ) -> Dict[str, Any]:
+        """增量写入篇章，并保留已有实体与关系的邻接信息。
+
+        Args:
+            documents: 待写入的篇章列表。
+            extract_triplets: 是否从正文提取三元组。
+        """
+        if not documents:
+            return {
+                "graph_name": self.graph_name,
+                "indexes": self.indexes,
+                "passage_count": 0,
+                "entity_count": 0,
+                "relation_count": 0,
+            }
         graph = self.build_graph(documents, extract_triplets=extract_triplets)
+
+        # 先收集旧 passage 关联；重新写入时只移除本批不再引用的边。
+        passage_ids = [str(doc["id"]) for doc in graph["passages"]]
+        existing_passages = self.vector_store.batch_get(
+            passage_ids, index_name=self.indexes["passage"]
+        )
+        new_passage_relations = {
+            str(doc["id"]): set(doc["metadata"]["relation_ids"])
+            for doc in graph["passages"]
+        }
+        new_passage_entities = {
+            str(doc["id"]): set(doc["metadata"]["entity_ids"])
+            for doc in graph["passages"]
+        }
+        old_passage_relations = {
+            str(passage["id"]): set((passage.get("metadata") or {}).get("relation_ids", []))
+            for passage in existing_passages
+            if passage
+        }
+        old_passage_entities = {
+            str(passage["id"]): set((passage.get("metadata") or {}).get("entity_ids", []))
+            for passage in existing_passages
+            if passage
+        }
+        old_relation_ids = set().union(*old_passage_relations.values())
+        old_entity_ids = set().union(*old_passage_entities.values())
+        deleted_relation_ids: set[str] = set()
+        for kind, old_links, new_links, linked_ids in (
+            ("relation", old_passage_relations, new_passage_relations, old_relation_ids),
+            ("entity", old_passage_entities, new_passage_entities, old_entity_ids),
+        ):
+            removed_by_id = {
+                item_id: {
+                    passage_id
+                    for passage_id, ids in old_links.items()
+                    if item_id in ids and item_id not in new_links[passage_id]
+                }
+                for item_id in linked_ids
+            }
+            removed_ids = {item_id for item_id, ids in removed_by_id.items() if ids}
+            if not removed_ids:
+                continue
+            existing = self.vector_store.batch_get(
+                sorted(removed_ids), index_name=self.indexes[kind]
+            )
+            for previous in existing:
+                if not previous:
+                    continue
+                metadata = dict(previous.get("metadata") or {})
+                remaining = sorted(
+                    set(metadata.get("passage_ids") or [])
+                    - removed_by_id[str(previous["id"])]
+                )
+                if remaining:
+                    metadata["passage_ids"] = remaining
+                    self.vector_store.update(
+                        doc_id=str(previous["id"]),
+                        metadata=metadata,
+                        index_name=self.indexes[kind],
+                    )
+                else:
+                    self.vector_store.delete(
+                        doc_id=str(previous["id"]), index_name=self.indexes[kind]
+                    )
+                    if kind == "relation":
+                        deleted_relation_ids.add(str(previous["id"]))
+        if deleted_relation_ids:
+            self._detach_relation_ids_from_entities(sorted(deleted_relation_ids))
+
+        for kind, old_links, new_links in (
+            ("entity", old_passage_entities, new_passage_entities),
+            ("relation", old_passage_relations, new_passage_relations),
+        ):
+            index_name = self.indexes[kind]
+            docs = graph["entities" if kind == "entity" else "relations"]
+            existing = self.vector_store.batch_get(
+                [str(doc["id"]) for doc in docs], index_name=index_name
+            )
+            for doc, previous in zip(docs, existing):
+                if previous:
+                    metadata = dict(doc["metadata"])
+                    old_metadata = previous.get("metadata") or {}
+                    for field in ("passage_ids", "relation_ids", "entity_ids"):
+                        if field in metadata:
+                            previous_values = set(old_metadata.get(field) or [])
+                            if field == "passage_ids":
+                                previous_values -= {
+                                    passage_id for passage_id, ids in old_links.items()
+                                    if str(doc["id"]) in ids
+                                    and str(doc["id"]) not in new_links[passage_id]
+                                }
+                            if field == "relation_ids" and kind == "entity":
+                                previous_values -= deleted_relation_ids
+                            metadata[field] = sorted(set(metadata[field]) | previous_values)
+                    doc["metadata"] = metadata
 
         self._bulk_index(self.indexes["entity"], graph["entities"])
         self._bulk_index(self.indexes["relation"], graph["relations"])
@@ -116,6 +225,11 @@ class BaseGraphRAG(ABC):
         }
 
     def delete_documents(self, doc_ids: List[str]) -> Dict[str, Any]:
+        """删除篇章及不再被引用的实体和关系。
+
+        Args:
+            doc_ids: 待删除的篇章 ID。
+        """
         doc_ids = [str(doc_id) for doc_id in doc_ids if doc_id]
         if not doc_ids:
             return {
@@ -124,12 +238,29 @@ class BaseGraphRAG(ABC):
                 "deleted_entities": 0,
             }
 
-        relations = self._search_by_terms(
-            self.indexes["relation"], "metadata.passage_ids", doc_ids, size=10000
+        passages = self.vector_store.batch_get(
+            doc_ids, index_name=self.indexes["passage"]
         )
-        entities = self._search_by_terms(
-            self.indexes["entity"], "metadata.passage_ids", doc_ids, size=10000
-        )
+        relation_ids = sorted({
+            str(relation_id)
+            for passage in passages if passage
+            for relation_id in (passage.get("metadata") or {}).get("relation_ids", [])
+        })
+        entity_ids = sorted({
+            str(entity_id)
+            for passage in passages if passage
+            for entity_id in (passage.get("metadata") or {}).get("entity_ids", [])
+        })
+        relations = [
+            doc for doc in self.vector_store.batch_get(
+                relation_ids, index_name=self.indexes["relation"]
+            ) if doc
+        ]
+        entities = [
+            doc for doc in self.vector_store.batch_get(
+                entity_ids, index_name=self.indexes["entity"]
+            ) if doc
+        ]
 
         deleted_passages = self._delete_docs_internal(self.indexes["passage"], doc_ids)
         deleted_relations, kept_relation_ids = self._delete_or_detach_by_passage_ids(
