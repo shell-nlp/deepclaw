@@ -505,15 +505,22 @@ class KnowledgeBaseManager:
         storage_path = storage_dir / storage_name
         storage_path.write_bytes(uploaded_file.data)
 
-        parser = create_document_parser(
-            bucket_name=self._storage_bucket_name(
+        parser_options = {
+            "bucket_name": self._storage_bucket_name(
                 user_id=user_id,
                 knowledge_base_id=knowledge_base.knowledge_base_id,
             ),
-            file_path=storage_name,
-            file_id=document_id,
-            original_file_name=original_file_name,
-            fallback_parser_cls=PDFParser,
+            "file_path": storage_name,
+            "file_id": document_id,
+        }
+        parser = (
+            PDFParser(**parser_options)
+            if Path(original_file_name).suffix.lower() == ".pdf"
+            else create_document_parser(
+                **parser_options,
+                original_file_name=original_file_name,
+                fallback_parser_cls=PDFParser,
+            )
         )
         chunks = parser.get_chunk()
         prepared_documents = self._prepare_documents(

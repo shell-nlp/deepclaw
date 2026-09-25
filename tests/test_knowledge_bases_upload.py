@@ -107,6 +107,24 @@ class FakePgVectorStore(PgVectorStore):
     def search(self, *, index_name=None, index_names=None, filter_conditions=None, k=3):
         return []
 
+    def list_ids_by_filter(self, index_name, filter_conditions):
+        """模拟空索引中的来源查询。
+
+        Args:
+            index_name: 索引名称。
+            filter_conditions: 来源过滤条件。
+        """
+        return []
+
+    def batch_get(self, doc_ids, index_name=None):
+        """模拟空索引中的批量读取。
+
+        Args:
+            doc_ids: 文档 ID 列表。
+            index_name: 索引名称。
+        """
+        return [None for _ in doc_ids]
+
 
 class FakeESVectorStore(ElasticsearchVectorStore):
     """不连接真实 ES 的 ElasticsearchVectorStore 替身。"""
@@ -124,8 +142,28 @@ class FakeESVectorStore(ElasticsearchVectorStore):
 
     @property
     def embedding_model(self):
-        from deepclaw.utils import get_embedding_model
-        return get_embedding_model()
+        """返回不会请求外部服务的固定嵌入模型。"""
+        model = MagicMock()
+        model.embed_query.return_value = [0.1, 0.2, 0.3, 0.4]
+        return model
+
+    def list_ids_by_filter(self, index_name, filter_conditions):
+        """模拟空索引中的来源查询。
+
+        Args:
+            index_name: 索引名称。
+            filter_conditions: 来源过滤条件。
+        """
+        return []
+
+    def batch_get(self, doc_ids, index_name=None):
+        """模拟空索引中的批量读取。
+
+        Args:
+            doc_ids: 文档 ID 列表。
+            index_name: 索引名称。
+        """
+        return [None for _ in doc_ids]
 
 
 # ---------------------------------------------------------------------------
