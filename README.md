@@ -239,6 +239,7 @@ uv sync --dev --extra oracle        # Oracle DDL fetcher
 uv sync --dev --extra opensandbox   # sandbox 执行后端
 uv sync --dev --extra feishu        # 飞书长连接
 uv sync --dev --extra phoenix       # Phoenix 可观测性
+uv sync --dev --extra object-storage # MinIO / S3 对象存储
 ```
 
 > 知识库上传文档依赖 `pdf` extra。缺少时上传会返回
@@ -270,6 +271,14 @@ VECTOR_STORE_BACKEND=pgsql
 # ES_URL=http://localhost:9200
 # ES_URSR=elastic
 # ES_PWD=elastic@2024
+
+# 知识库文件对象存储：默认本地，也可切换 MinIO
+OBJECT_STORAGE_PROVIDER=local
+# LOCAL_STORAGE_ROOT=.deepclaw/workspace/pdf_files
+# OBJECT_STORAGE_PROVIDER=minio
+# MINIO_ENDPOINT_URL=http://localhost:9000
+# MINIO_ACCESS_KEY=minioadmin
+# MINIO_SECRET_KEY=minioadmin
 ```
 
 > 只有配置了 `PG_DATABASE_URL`，Run / Thread / 检查点才会落到共享库，多实例部署才能共享会话状态；
@@ -585,6 +594,9 @@ curl http://localhost:7869/api/agui/threads/demo-thread/state -H "Authorization:
 | `VECTOR_STORE_BACKEND` | 向量库后端：`pgsql`（PostgreSQL + pgvector）或 `elasticsearch`，默认 `elasticsearch` |
 | `ES_URL` | `VECTOR_STORE_BACKEND=elasticsearch` 时的 Elasticsearch 地址 |
 | `ES_URSR` / `ES_PWD` | Elasticsearch 用户名与密码 |
+| `OBJECT_STORAGE_PROVIDER` | 知识库文件对象存储：`local`（默认）或 `minio` |
+| `LOCAL_STORAGE_ROOT` | 本地对象存储根目录，默认 `.deepclaw/workspace/pdf_files`；实际路径为 `root/bucket_name/file_path` |
+| `MINIO_ENDPOINT_URL` / `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | `OBJECT_STORAGE_PROVIDER=minio` 时必填 |
 
 ### 常用可选环境变量
 

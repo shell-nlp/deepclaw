@@ -63,6 +63,9 @@ phoenix = [
     "arize-phoenix-otel>=0.16.1",
     "openinference-instrumentation-langchain>=0.1.66",
 ]
+object-storage = [
+    "boto3>=1.35.0",
+]
 ## uv add pytest --group dev
 # uv sync --no-dev  dev 组默认安装，可排除  
 # uv sync --group lint   安装特定组 

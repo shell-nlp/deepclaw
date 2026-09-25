@@ -8,8 +8,6 @@
 from __future__ import annotations
 
 import asyncio
-import tempfile
-from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -17,6 +15,7 @@ from langchain_core.documents import Document
 
 from deepclaw.common.graph_rag.base import BaseGraphRAG
 from deepclaw.common.graph_rag.pg import PgGraphRAG
+from deepclaw.common.object_storage import LocalObjectStorage
 from deepclaw.common.vector_store.elasticsearch import ElasticsearchVectorStore
 from deepclaw.common.vector_store.pgsql import PgVectorStore
 from deepclaw.web_backend.knowledge_bases.service import (
@@ -166,6 +165,55 @@ class FakeESVectorStore(ElasticsearchVectorStore):
         return [None for _ in doc_ids]
 
 
+class FakeObjectStorage:
+    """用内存保存对象字节的测试替身。"""
+
+    def __init__(self):
+        """初始化空对象集合。"""
+        self.objects: dict[tuple[str, str], bytes] = {}
+        self.deleted: list[tuple[str, str]] = []
+
+    def get_bytes(self, bucket_name, file_path):
+        """读取对象字节。
+
+        Args:
+            bucket_name: 存储桶名称。
+            file_path: 桶内文件路径。
+        """
+        return self.objects[(bucket_name, file_path)]
+
+    def put_bytes(self, bucket_name, file_path, data, content_type=None):
+        """写入对象字节。
+
+        Args:
+            bucket_name: 存储桶名称。
+            file_path: 桶内文件路径。
+            data: 文件字节。
+            content_type: 文件类型。
+        """
+        del content_type
+        self.objects[(bucket_name, file_path)] = data
+
+    def exists(self, bucket_name, file_path):
+        """判断对象是否存在。
+
+        Args:
+            bucket_name: 存储桶名称。
+            file_path: 桶内文件路径。
+        """
+        return (bucket_name, file_path) in self.objects
+
+    def delete_object(self, bucket_name, file_path):
+        """删除对象。
+
+        Args:
+            bucket_name: 存储桶名称。
+            file_path: 桶内文件路径。
+        """
+        self.deleted.append((bucket_name, file_path))
+        self.objects.pop((bucket_name, file_path), None)
+
+
 # ---------------------------------------------------------------------------
 # Helper
 # ---------------------------------------------------------------------------
@@ -204,6 +252,7 @@ def test_pg_upload_single_file_success(monkeypatch):
         manager = KnowledgeBaseManager(
             vector_store=FakePgVectorStore(),
             metadata_store=FakeMetadataStore(),
+            object_storage=FakeObjectStorage(),
         )
         result = await manager.upload_documents(
             user_id="user_test",
@@ -233,6 +282,7 @@ def test_pg_upload_multiple_files(monkeypatch):
         manager = KnowledgeBaseManager(
             vector_store=FakePgVectorStore(),
             metadata_store=FakeMetadataStore(),
+            object_storage=FakeObjectStorage(),
         )
         result = await manager.upload_documents(
             user_id="user_test",
@@ -269,6 +319,7 @@ def test_pg_upload_calls_add_batch_for_each_index(monkeypatch):
         manager = KnowledgeBaseManager(
             vector_store=vector_store,
             metadata_store=FakeMetadataStore(),
+            object_storage=FakeObjectStorage(),
         )
         await manager.upload_documents(
             user_id="user_test",
@@ -299,6 +350,7 @@ def test_pg_upload_file_error_does_not_block_others(monkeypatch):
         manager = KnowledgeBaseManager(
             vector_store=FakePgVectorStore(),
             metadata_store=FakeMetadataStore(),
+            object_storage=FakeObjectStorage(),
         )
         original_ingest = manager._ingest_file
 
@@ -337,11 +389,12 @@ def test_pg_upload_storage_dir_created(monkeypatch, tmp_path):
             BaseGraphRAG, "_extract_triplets", lambda self, text: []
         )
 
+        object_storage = LocalObjectStorage(tmp_path / "objects")
         manager = KnowledgeBaseManager(
             vector_store=FakePgVectorStore(),
             metadata_store=FakeMetadataStore(),
+            object_storage=object_storage,
         )
-        monkeypatch.setattr(manager, "STORAGE_ROOT", tmp_path / "kb_storage")
 
         await manager.upload_documents(
             user_id="user_test",
@@ -349,7 +402,7 @@ def test_pg_upload_storage_dir_created(monkeypatch, tmp_path):
             files=[_UPLOAD_FILE],
         )
 
-        expected_dir = tmp_path / "kb_storage" / "user_test" / "kb_dir"
+        expected_dir = tmp_path / "objects" / "knowledge-bases" / "user_test" / "kb_dir"
         assert expected_dir.is_dir()
         stored_files = list(expected_dir.iterdir())
         assert len(stored_files) == 1
@@ -375,6 +428,7 @@ def test_es_upload_single_file_success(monkeypatch):
         manager = KnowledgeBaseManager(
             vector_store=FakeESVectorStore(),
             metadata_store=FakeMetadataStore(),
+            object_storage=FakeObjectStorage(),
         )
         result = await manager.upload_documents(
             user_id="user_test",
@@ -397,6 +451,7 @@ def test_prepare_documents_adds_metadata():
     manager = KnowledgeBaseManager(
         vector_store=FakePgVectorStore(),
         metadata_store=FakeMetadataStore(),
+        object_storage=FakeObjectStorage(),
     )
     chunks = _make_fake_chunks(2)
 
@@ -405,8 +460,10 @@ def test_prepare_documents_adds_metadata():
         knowledge_base=kb,
         user_id="user_1",
         document_id="doc_001",
+        bucket_name="knowledge-bases",
+        file_path="user_1/kb_001/doc_001_test.pdf",
         storage_name="doc_001_test.pdf",
-        storage_path=Path("/fake/doc_001_test.pdf"),
+        storage_path="knowledge-bases/user_1/kb_001/doc_001_test.pdf",
         original_file_name="测试文档.pdf",
         content_type="application/pdf",
         chunks=chunks,
@@ -418,6 +475,8 @@ def test_prepare_documents_adds_metadata():
         assert meta["user_id"] == "user_1"
         assert meta["knowledge_base_id"] == "kb_001"
         assert meta["document_id"] == "doc_001"
+        assert meta["bucket_name"] == "knowledge-bases"
+        assert meta["file_path"] == "user_1/kb_001/doc_001_test.pdf"
         assert "segment_id" in meta
         assert doc.id is not None
 
@@ -435,9 +494,11 @@ def test_ingest_saves_document_metadata(monkeypatch):
 
         vector_store = FakePgVectorStore()
         metadata_store = FakeMetadataStore()
+        object_storage = FakeObjectStorage()
         manager = KnowledgeBaseManager(
             vector_store=vector_store,
             metadata_store=metadata_store,
+            object_storage=object_storage,
         )
         rag = PgGraphRAG(vector_store, "kb_test_ingest")
 
@@ -454,18 +515,20 @@ def test_ingest_saves_document_metadata(monkeypatch):
             updated_at="2026-01-01T00:00:00+08:00",
         )
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            record = await manager._ingest_file(
-                user_id="user_test",
-                knowledge_base=kb,
-                rag=rag,
-                storage_dir=Path(tmpdir),
-                uploaded_file=_UPLOAD_FILE,
-            )
+        record = await manager._ingest_file(
+            user_id="user_test",
+            knowledge_base=kb,
+            rag=rag,
+            uploaded_file=_UPLOAD_FILE,
+        )
 
         assert record.document_id
         assert record.file_name == "测试文档.pdf"
         assert record.chunk_count == 2
         assert metadata_store.saved_document is not None
+        assert len(object_storage.objects) == 1
+        bucket_name, file_path = next(iter(object_storage.objects))
+        assert bucket_name == "knowledge-bases"
+        assert file_path.startswith("user_test/kb_test_ingest/")
 
     asyncio.run(_run())

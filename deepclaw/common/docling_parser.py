@@ -50,6 +50,7 @@ def create_document_parser(
     file_id: str | None = None,
     original_file_name: str | None = None,
     fallback_parser_cls: type[Any] = PDFParser,
+    reader: Any | None = None,
 ) -> Any:
     """按文件格式和依赖情况创建统一文档解析器。
 
@@ -59,6 +60,7 @@ def create_document_parser(
         file_id: 文档 ID，未传时由解析器生成。
         original_file_name: 原始文件名，用于判断文件格式。
         fallback_parser_cls: Docling 不可用或不支持格式时使用的解析器类。
+        reader: 可选的文件读取器，用于对象存储或测试替身。
 
     Returns:
         可调用 get_chunk() 的文档解析器。
@@ -70,11 +72,13 @@ def create_document_parser(
             bucket_name=bucket_name,
             file_path=file_path,
             file_id=file_id,
+            reader=reader,
         )
     return fallback_parser_cls(
         bucket_name=bucket_name,
         file_path=file_path,
         file_id=file_id,
+        reader=reader,
     )
 
 

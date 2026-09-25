@@ -42,8 +42,15 @@ def test_knowledge_base_manager_is_created_on_first_use(monkeypatch) -> None:
     class FakeManager:
         """记录知识库管理器构造参数的替身。"""
 
-        def __init__(self, vector_store) -> None:
+        def __init__(self, vector_store, object_storage=None) -> None:
+            """保存构造参数。
+
+            Args:
+                vector_store: 向量存储。
+                object_storage: 对象存储。
+            """
             self.vector_store = vector_store
+            self.object_storage = object_storage
 
     fake_store = object()
     monkeypatch.setattr(service, "knowledge_base_manager", None)
