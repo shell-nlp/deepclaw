@@ -302,6 +302,47 @@ def test_pg_upload_multiple_files(monkeypatch):
     asyncio.run(_run())
 
 
+def test_upload_non_pdf_uses_pdf_parser(monkeypatch):
+    """TXT/DOCX 等非 PDF 上传也必须经过 PDFParser 转换入口。"""
+    async def _run():
+        calls = []
+
+        def fake_get_chunk(self):
+            """记录解析器类型并返回测试切片。
+
+            Args:
+                self: PDFParser 实例。
+            """
+            calls.append(type(self).__name__)
+            return _make_fake_chunks(1)
+
+        monkeypatch.setattr(
+            "deepclaw.web_backend.knowledge_bases.service.PDFParser.get_chunk",
+            fake_get_chunk,
+        )
+        manager = KnowledgeBaseManager(
+            vector_store=FakePgVectorStore(),
+            metadata_store=FakeMetadataStore(),
+            object_storage=FakeObjectStorage(),
+        )
+        result = await manager.upload_documents(
+            user_id="user_test",
+            knowledge_base_id="kb_non_pdf",
+            files=[
+                UploadedKnowledgeFile("demo.txt", "text/plain", b"hello"),
+                UploadedKnowledgeFile(
+                    "demo.docx",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    b"fake-docx",
+                ),
+            ],
+        )
+        assert len(result.errors) == 0
+        assert calls == ["PDFParser", "PDFParser"]
+
+    asyncio.run(_run())
+
+
 def test_pg_upload_calls_add_batch_for_each_index(monkeypatch):
     """上传应调用 add_batch: 每个索引（entity/relation/passage）至少一次。"""
     async def _run():

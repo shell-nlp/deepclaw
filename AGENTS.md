@@ -77,7 +77,7 @@
   技能管理路由、请求模型与服务实现。
 
 - `deepclaw/web_backend/knowledge_bases/`
- 知识库管理路由、请求模型、元数据存储与服务实现。上传 PDF 时由 `service.py` 默认选择 `PDFParser`，其他受支持格式继续使用 `create_document_parser()`；通用解析器工厂本身不为 PDF 增加特判。
+ 知识库管理路由、请求模型、元数据存储与服务实现。知识库上传统一选择 `PDFParser`；PDF 直接解析，TXT/MD 等文本格式先生成 PDF，DOCX/PPTX/XLSX 等由 LibreOffice 转换为 PDF 后再解析。`create_document_parser()` 保留给非知识库上传场景，不参与该上传路由。
 
 ### 核心能力层
 
