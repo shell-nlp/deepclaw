@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field
 
 from deepclaw.web_backend.common.errors import BusinessRuleError
 from deepclaw.common import create_default_vector_store, create_graph_rag
-from deepclaw.common.docling_parser import create_document_parser
 from deepclaw.common.graph_rag import BaseGraphRAG
 from deepclaw.common.object_storage import (
     ObjectStorage,
@@ -556,15 +555,8 @@ class KnowledgeBaseManager:
                 "file_id": document_id,
                 "reader": ObjectStoragePDFReader(self.object_storage),
             }
-            parser = (
-                PDFParser(**parser_options)
-                if Path(original_file_name).suffix.lower() == ".pdf"
-                else create_document_parser(
-                    **parser_options,
-                    original_file_name=original_file_name,
-                    fallback_parser_cls=PDFParser,
-                )
-            )
+            # 所有知识库文件统一交给 PDFParser；非 PDF 由转换器先生成 PDF。
+            parser = PDFParser(**parser_options)
             chunks = parser.get_chunk()
             prepared_documents = self._prepare_documents(
                 knowledge_base=knowledge_base,

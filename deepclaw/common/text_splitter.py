@@ -4,7 +4,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 import unicodedata
 import uuid
@@ -1113,25 +1112,18 @@ class FileToPDFConverter:
         return str(temp_pdf_path)
 
     def _get_soffice_install_hint(self) -> str:
-        if sys.platform.startswith("win"):
-            return (
-                "Windows 安装方法：访问 "
-                "https://www.libreoffice.org/download/download-libreoffice/ "
-                "下载并安装 LibreOffice。安装完成后，请确认 "
-                r"'C:\Program Files\LibreOffice\program\soffice.exe' "
-                "存在，或将 LibreOffice 的 program 目录加入 PATH。"
-            )
-
-        if sys.platform.startswith("linux"):
-            return (
-                "Linux 安装方法：使用包管理器安装 LibreOffice，例如 "
-                "`sudo apt-get update && sudo apt-get install -y libreoffice`、"
-                "`sudo dnf install -y libreoffice`，或 "
-                "`sudo yum install -y libreoffice`。安装完成后，请确认 "
-                "`soffice` 命令可在 PATH 中直接使用。"
-            )
-
-        return "请安装 LibreOffice，并确认 `soffice` 命令已加入 PATH。"
+        """返回 LibreOffice 的官方下载地址和 Windows/Linux 安装命令。"""
+        return (
+            "请先安装 LibreOffice，并确认 `soffice` 命令可在 PATH 中使用。\n"
+            "官方下载地址：https://www.libreoffice.org/download/download-libreoffice/\n"
+            "Windows 安装：访问上述页面下载 MSI 安装包，或在 PowerShell 执行 "
+            "`winget install --id TheDocumentFoundation.LibreOffice -e`；"
+            "安装后确认 `C:\\Program Files\\LibreOffice\\program\\soffice.exe` 存在。\n"
+            "Linux 安装：Debian/Ubuntu 执行 "
+            "`sudo apt-get update && sudo apt-get install -y libreoffice`；"
+            "RHEL/Fedora 执行 `sudo dnf install -y libreoffice`；"
+            "openSUSE 执行 `sudo zypper install -y libreoffice`。"
+        )
 
 
 class PDFParser:
