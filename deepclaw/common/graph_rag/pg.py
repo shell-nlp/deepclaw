@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Tuple
 from loguru import logger
 
 from deepclaw.common.graph_rag.base import BaseGraphRAG
-from deepclaw.common.vector_store.pgsql import PgVectorStore
+from deepclaw.common.vector_store.base import AbstractVectorStore
 
 
 class PgGraphRAG(BaseGraphRAG):
@@ -11,12 +11,11 @@ class PgGraphRAG(BaseGraphRAG):
 
     def __init__(
         self,
-        vector_store: PgVectorStore,
+        vector_store: AbstractVectorStore,
         graph_name: str,
         chat_model=None,
     ):
         super().__init__(vector_store=vector_store, graph_name=graph_name, chat_model=chat_model)
-        self.pg = vector_store
 
     def retrieve(
         self,
@@ -90,20 +89,25 @@ class PgGraphRAG(BaseGraphRAG):
 
         kept_relation_ids = list(expanded_relation_ids)
         if len(kept_relation_ids) > relation_limit:
-            reranked = self.vector_store.vector_search(
-                query=query,
-                k=relation_limit,
-                index_names=[self.indexes["relation"]],
-            )
-            kept_relation_ids = [d["id"] for d in reranked if d.get("id")]
+            kept_relation_ids = [
+                d["id"]
+                for d in self.vector_store.vector_search_by_ids(
+                    query=query,
+                    doc_ids=kept_relation_ids,
+                    index_name=self.indexes["relation"],
+                    k=relation_limit,
+                )
+            ]
 
-        passages = self.vector_store.vector_search(
-            query=query,
-            k=k,
-            index_names=[self.indexes["passage"]],
-            filter_conditions={
-                "metadata.relation_ids": kept_relation_ids,
-            },
+        passages = (
+            self.vector_store.vector_search(
+                query=query,
+                k=k,
+                index_names=[self.indexes["passage"]],
+                filter_conditions={"metadata.relation_ids": kept_relation_ids},
+            )
+            if kept_relation_ids
+            else []
         )
 
         if len(passages) < k and expanded_entity_ids:
@@ -151,18 +155,15 @@ class PgGraphRAG(BaseGraphRAG):
     def _bulk_index(self, index_name: str, docs: List[Dict[str, Any]]) -> None:
         if not docs:
             return
-        self.pg.add_batch(documents=docs, index_name=index_name)
+        self.vector_store.add_batch(documents=docs, index_name=index_name)
 
     def _delete_indexes_internal(self, index_name: str) -> None:
-        rows = self.pg.search(index_names=[index_name])
-        if rows:
-            ids = [r["id"] for r in rows]
-            self.pg.delete_batch(doc_ids=ids, index_name=index_name)
+        self.vector_store.clear_index(index_name)
 
     def _delete_docs_internal(self, index_name: str, doc_ids: List[str]) -> int:
         if not doc_ids:
             return 0
-        results = self.pg.delete_batch(doc_ids=doc_ids, index_name=index_name)
+        results = self.vector_store.delete_batch(doc_ids=doc_ids, index_name=index_name)
         return sum(1 for r in results if r)
 
     def _search_by_terms(
@@ -174,20 +175,11 @@ class PgGraphRAG(BaseGraphRAG):
     ) -> List[Dict[str, Any]]:
         if not values:
             return []
-        results: List[Dict[str, Any]] = []
-        for value in values:
-            batch = self.pg.search(
-                index_names=[index_name],
-                filter_conditions={field: value},
-            )
-            for item in batch:
-                if item not in results:
-                    results.append(item)
-                if len(results) >= size:
-                    break
-            if len(results) >= size:
-                break
-        return results[:size]
+        return self.vector_store.search(
+            index_names=[index_name],
+            filter_conditions={field: values},
+            k=size,
+        )
 
     def _delete_or_detach_by_passage_ids(
         self,
@@ -207,14 +199,14 @@ class PgGraphRAG(BaseGraphRAG):
             ]
             if remaining:
                 metadata["passage_ids"] = remaining
-                self.pg.update(
+                self.vector_store.update(
                     doc_id=doc["id"],
                     metadata=metadata,
                     index_name=index_name,
                 )
                 kept_ids.append(doc["id"])
             else:
-                self.pg.delete(doc_id=doc["id"], index_name=index_name)
+                self.vector_store.delete(doc_id=doc["id"], index_name=index_name)
                 deleted_ids.append(doc["id"])
 
         return deleted_ids, kept_ids
@@ -235,8 +227,8 @@ class PgGraphRAG(BaseGraphRAG):
                 rid for rid in metadata.get("relation_ids", [])
                 if rid not in relation_set
             ]
-            self.pg.update(
+            self.vector_store.update(
                 doc_id=entity["id"],
                 metadata=metadata,
-                index_names=[self.indexes["entity"]],
+                index_name=self.indexes["entity"],
             )

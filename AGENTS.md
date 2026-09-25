@@ -94,11 +94,11 @@
   Docling 统一文档解析适配器。按文件后缀选择 Docling 或回退解析器，将 PDF、DOCX、PPTX、XLSX、HTML、Markdown、TXT 转换为现有知识库兼容的 LangChain Document 切片，并保留标题路径、页码和 Docling 元数据。
 
 - `deepclaw/common/vector_store/`
-  向量数据库抽象层，包含通用 `AbstractVectorStore`、统一创建入口 `create_vector_store()`、Elasticsearch 实现，以及基于 PostgreSQL + pgvector + pg_search 的实现。
+  向量数据库抽象层，包含通用 `AbstractVectorStore`、统一创建入口 `create_vector_store()`、Elasticsearch 实现，以及基于 PostgreSQL + pgvector + pg_search 的实现。图谱使用的按 ID 限定向量检索 `vector_search_by_ids()` 与索引清理 `clear_index()` 统一由此层提供；ES 批量写入保留外部传入的图谱 ID，PG 元数据数组列表过滤表示任一匹配。
 
 - `deepclaw/common/graph_rag/`
   Graph RAG 统一包，包含：
-  - `base.py` — `BaseGraphRAG` 抽象基类，承载图构建、三元组抽取与 CRUD 编排的共享逻辑
+  - `base.py` — `BaseGraphRAG` 抽象基类，承载图构建、三元组抽取与 CRUD 编排的共享逻辑；增量上传合并跨批次共享实体/关系，重传相同 passage ID 时只移除失效邻接
   - `elastic.py` — `ElasticGraphRAG(BaseGraphRAG)`，Elasticsearch 专属的检索与写入
   - `pg.py` — `PgGraphRAG(BaseGraphRAG)`，PostgreSQL pgvector 版本，基于 `AbstractVectorStore` 接口实现应用层图遍历
   - `__init__.py` — 统一导出入口

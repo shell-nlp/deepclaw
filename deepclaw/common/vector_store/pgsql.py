@@ -526,9 +526,9 @@ class PgVectorStore(AbstractVectorStore):
                     metadata_key = field.split(".", 1)[1]
                     if isinstance(value, list):
                         where_clauses.append(
-                            f"(metadata -> '{metadata_key}') @> %({param_name})s::jsonb"
+                            f"(metadata -> '{metadata_key}') ?| %({param_name})s"
                         )
-                        params[param_name] = str(value)
+                        params[param_name] = [str(item) for item in value]
                     else:
                         where_clauses.append(
                             f"metadata ->> '{metadata_key}' = %({param_name})s"
@@ -856,6 +856,12 @@ class PgVectorStore(AbstractVectorStore):
                 param_name = f"value_{idx}"
                 if field.startswith("metadata."):
                     metadata_key = field.split(".", 1)[1]
+                    if isinstance(value, list):
+                        where_clauses.append(
+                            f"(metadata -> '{metadata_key}') ?| %({param_name})s"
+                        )
+                        params[param_name] = [str(item) for item in value]
+                        continue
                     where_clauses.append(f"metadata ->> '{metadata_key}' = %({param_name})s")
                 else:
                     where_clauses.append(f"{field} = %({param_name})s")
@@ -950,6 +956,12 @@ class PgVectorStore(AbstractVectorStore):
                 param_name = f"value_{idx}"
                 if field.startswith("metadata."):
                     metadata_key = field.split(".", 1)[1]
+                    if isinstance(value, list):
+                        where_clauses.append(
+                            f"(metadata -> '{metadata_key}') ?| %({param_name})s"
+                        )
+                        params[param_name] = [str(item) for item in value]
+                        continue
                     where_clauses.append(f"metadata ->> '{metadata_key}' = %({param_name})s")
                 else:
                     where_clauses.append(f"{field} = %({param_name})s")
@@ -1005,6 +1017,36 @@ class PgVectorStore(AbstractVectorStore):
         candidates = self._apply_min_similarity(candidates, min_similarity)
         candidates.sort(key=lambda item: item.get("score", 0.0), reverse=True)
         return candidates[:k]
+
+    def vector_search_by_ids(
+        self, query: str, doc_ids: list[str], index_name: str, k: int
+    ) -> list[dict[str, Any]]:
+        """限定文档 ID 集合执行向量检索。
+
+        Args:
+            query: 查询文本。
+            doc_ids: 允许的文档 ID。
+            index_name: 目标索引名称。
+            k: 返回数量上限。
+        """
+        if not doc_ids or k <= 0:
+            return []
+        query_vector = Vector(self.embedding_model.embed_query(query))
+        self._ensure_base_schema()
+        self._ensure_partition(index_name)
+        statement = sql.SQL(
+            "SELECT id, index_name, content, metadata, "
+            "1 - (embedding <=> %(query_vector)s) AS score "
+            "FROM {} WHERE id = ANY(%(doc_ids)s) "
+            "ORDER BY embedding <=> %(query_vector)s LIMIT %(limit)s"
+        ).format(sql.Identifier(self.schema_name, self._partition_table_name(index_name)))
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                statement,
+                {"query_vector": query_vector, "doc_ids": doc_ids, "limit": k},
+            )
+            rows = cur.fetchall()
+        return [self._row_to_result(row) for row in rows]
 
     def vector_search_existing_embeddings(
         self,

@@ -428,6 +428,23 @@ class ElasticsearchVectorStore(AbstractVectorStore):
             )
         return hits
 
+    def vector_search_by_ids(
+        self, query: str, doc_ids: list[str], index_name: str, k: int
+    ) -> list[dict[str, Any]]:
+        """限定候选 ID 执行 ES 向量检索。
+
+        Args:
+            query: 查询文本。
+            doc_ids: 候选文档 ID。
+            index_name: 索引名称。
+            k: 返回数量上限。
+        """
+        if not doc_ids or k <= 0:
+            return []
+        return self._vector_search_raw(
+            query=query, k=k, index_name=index_name, ids=doc_ids
+        )
+
     def _expand_es_graph(
         self,
         entity_ids: List[str],
@@ -855,7 +872,11 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         for doc in documents:
             content = doc.get("content", "")
             embedding = self.embedding_model.embed_query(content)
-            operations.append({"index": {"_index": index_name}})
+            document_id = doc.get("id") or (doc.get("metadata") or {}).get("id")
+            action = {"_index": index_name}
+            if document_id:
+                action["_id"] = str(document_id)
+            operations.append({"index": action})
             operations.append(
                 {
                     "content": content,
@@ -1274,6 +1295,14 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         self.es_client.indices.delete(index=index_name)
         logger.info(f"索引删除成功: {index_name}")
         return True
+
+    def clear_index(self, index_name: str) -> None:
+        """清空指定 ES 索引。
+
+        Args:
+            index_name: 索引名称。
+        """
+        self.delete_index(index_name)
 
     def index_exists(self, index_name: str) -> bool:
         """检查 ES 索引是否存在。

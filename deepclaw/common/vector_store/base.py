@@ -195,6 +195,32 @@ class AbstractVectorStore(ABC):
         """
         ...
 
+    def vector_search_by_ids(
+        self, query: str, doc_ids: list[str], index_name: str, k: int
+    ) -> list[dict[str, Any]]:
+        """限定候选 ID 进行向量检索。
+
+        Args:
+            query: 查询文本。
+            doc_ids: 候选文档 ID。
+            index_name: 索引名称。
+            k: 返回数量上限。
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support vector_search_by_ids"
+        )
+
+    def clear_index(self, index_name: str) -> None:
+        """清除指定索引的所有记录。
+
+        Args:
+            index_name: 待清空的索引名称。
+        """
+        while rows := self.search(k=500, index_names=[index_name]):
+            self.delete_batch(
+                doc_ids=[str(row["id"]) for row in rows], index_name=index_name
+            )
+
     @abstractmethod
     def keyword_search(
         self,
