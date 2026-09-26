@@ -31,51 +31,52 @@ export function CreateKnowledgeBaseModal({
   const isEditing = mode === 'edit'
 
   return (
-    <div className={styles.managementModalOverlay} onClick={onClose}>
-      <div className={styles.managementModal} onClick={(event) => event.stopPropagation()}>
-        <div className={styles.managementHeader}>
-          <h3>{isEditing ? '编辑知识库' : '新建知识库'}</h3>
+    <div className={styles.extensionDialogOverlay} onClick={onClose}>
+      <div className={`${styles.extensionDialog} ${styles.knowledgeModal}`} role="dialog" aria-modal="true" aria-labelledby="knowledge-modal-title" onClick={(event) => event.stopPropagation()}>
+        <div className={styles.extensionDialogHeader}>
+          <div><span className={styles.extensionEyebrow}>KNOWLEDGE / {isEditing ? 'EDIT' : 'NEW'}</span><h3 id="knowledge-modal-title">{isEditing ? '编辑知识库' : '新建知识库'}</h3></div>
           <button
             type="button"
-            className={styles.managementModalClose}
+            className={styles.extensionIconButton}
             onClick={onClose}
+            aria-label="关闭弹窗"
           >
-            关闭
+            ×
           </button>
         </div>
         <div className={styles.managementForm}>
           {createDisabled ? (
             <div className={styles.managementNotice}>{disabledMessage}</div>
           ) : null}
-          <input
+          <label className={styles.knowledgeModalLabel}>知识库名称<input
             className={styles.managementInput}
             value={knowledgeBaseName}
             onChange={(event) => onNameChange(event.target.value)}
             placeholder="知识库名称"
             autoFocus
             disabled={createDisabled}
-          />
-          <input
+          /></label>
+          <label className={styles.knowledgeModalLabel}>描述<input
             className={styles.managementInput}
             value={knowledgeBaseDescription}
             onChange={(event) => onDescriptionChange(event.target.value)}
             placeholder="知识库描述"
             disabled={createDisabled}
-          />
-          <div className={styles.managementToolbar}>
-            <button
-              className={styles.managementButton}
-              disabled={savingKnowledgeBase || createDisabled}
-              onClick={() => void onCreate()}
-            >
-              {isEditing ? '保存修改' : '创建知识库'}
-            </button>
+          /></label>
+          <div className={styles.extensionDialogActions}>
             <button
               type="button"
-              className={styles.managementMinorButton}
+              className={styles.extensionSecondaryButton}
               onClick={onClose}
             >
               取消
+            </button>
+            <button
+              className={styles.extensionPrimaryButton}
+              disabled={savingKnowledgeBase || createDisabled || !knowledgeBaseName.trim()}
+              onClick={() => void onCreate()}
+            >
+              {isEditing ? '保存修改' : '创建知识库'}
             </button>
           </div>
         </div>

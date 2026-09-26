@@ -246,6 +246,7 @@ pnpm build
 
 ## 必须要遵守的开发约束
 
+- 实现过程中不要逐项播报进度；只在关键节点、遇到阻塞或需要用户决策时简短更新，完成后集中报告结果与验证情况。
 - 所有新写的函数/方法都必须带中文 docstring（功能说明 + Args 每行）。禁止 `"""...""" ...` 同行。
 - 所有 schema 类名必须通过后缀区分请求与响应：请求模型以 `Request` 结尾，响应模型以 `Response` 结尾；嵌套响应模型也必须遵守该规则。
 - Python 字段、变量、参数和函数名统一使用 `snake_case`；对外 JSON 需要 `camelCase` 时通过 Pydantic alias 映射，不直接把 Python 字段命名为 camelCase。
