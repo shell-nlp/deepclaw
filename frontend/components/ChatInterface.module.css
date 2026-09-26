@@ -3905,6 +3905,280 @@ textarea.interruptInput {
   }
 }
 
+.extensionWorkspace {
+  --extension-ink: #212b38;
+  --extension-muted: #66748a;
+  --extension-line: #e3e9f0;
+  --extension-green: #189b79;
+  gap: 0;
+  max-width: 1320px;
+  color: var(--extension-ink);
+}
+
+.extensionHeading,
+.extensionSectionHeading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.extensionHeading {
+  padding: 10px 0 32px;
+}
+
+.extensionHeading h2 {
+  margin: 6px 0 6px;
+  color: var(--extension-ink);
+  font-size: 27px;
+  line-height: 1.22;
+  font-weight: 730;
+}
+
+.extensionHeading p,
+.extensionSectionHeading p {
+  margin: 0;
+  color: var(--extension-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.extensionEyebrow {
+  color: #73849b;
+  font: 700 10px/1.3 'IBM Plex Mono', monospace;
+  letter-spacing: 0.1em;
+}
+
+.extensionHeadingActions,
+.extensionDialogActions,
+.extensionDialogUtilities {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.extensionCount {
+  color: var(--extension-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.extensionPrimaryButton,
+.extensionSecondaryButton {
+  min-height: 37px;
+  padding: 0 15px;
+  border: 1px solid #28313d;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.extensionPrimaryButton {
+  background: #28313d;
+  color: #fff;
+}
+
+.extensionPrimaryButton:hover { background: #131b25; }
+.extensionPrimaryButton:disabled { opacity: 0.45; cursor: not-allowed; }
+.extensionSecondaryButton { background: #fff; color: var(--extension-ink); border-color: var(--extension-line); }
+.extensionSecondaryButton:hover { background: #f3f6f9; }
+
+.extensionSectionLabel {
+  color: #394659;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.extensionSectionLabel span {
+  display: inline-flex;
+  min-width: 21px;
+  height: 19px;
+  align-items: center;
+  justify-content: center;
+  margin-left: 5px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: #edf1f5;
+  color: #5c6a7c;
+  font: 600 11px 'IBM Plex Mono', monospace;
+}
+
+.extensionSettingRow {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  min-height: 76px;
+  padding: 15px 18px;
+  margin: 12px 0 34px;
+  border: 1px solid var(--extension-line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.extensionSettingIcon,
+.extensionServerIcon,
+.extensionSkillIcon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 6px;
+  font: 700 15px/1 'IBM Plex Mono', monospace;
+}
+
+.extensionSettingIcon { background: #e6f5f0; color: #147d65; }
+.extensionServerIcon { background: #e9efff; color: #4565aa; }
+.extensionSkillIcon { background: #eef0f9; color: #414d81; }
+
+.extensionSettingText {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  flex: 1;
+}
+
+.extensionSettingText strong { font-size: 13px; font-weight: 650; }
+.extensionSettingText span { color: var(--extension-muted); font-size: 12px; line-height: 1.45; }
+
+.extensionSwitch {
+  flex: none;
+  width: 39px;
+  height: 23px;
+  padding: 3px;
+  border: 0;
+  border-radius: 20px;
+  background: #ccd3dc;
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+
+.extensionSwitch span {
+  display: block;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px #1724342e;
+  transition: transform 0.18s ease;
+}
+
+.extensionSwitchOn { background: var(--extension-green); }
+.extensionSwitchOn span { transform: translateX(16px); }
+
+.extensionSectionHeading { margin-bottom: 13px; }
+.extensionSectionHeading > div { display: grid; gap: 5px; }
+
+.extensionSearch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(310px, 100%);
+  height: 38px;
+  padding: 0 11px;
+  border: 1px solid var(--extension-line);
+  border-radius: 6px;
+  background: #fff;
+  color: #7c8998;
+}
+
+.extensionSearch:focus-within { border-color: #657d9f; box-shadow: 0 0 0 3px #657d9f1a; }
+.extensionSearch svg { width: 16px; height: 16px; flex: none; }
+.extensionSearch input { width: 100%; min-width: 0; border: 0; outline: none; background: transparent; color: var(--extension-ink); font-size: 13px; }
+.extensionSearch input::placeholder { color: #8793a3; }
+
+.extensionList {
+  overflow: hidden;
+  border: 1px solid var(--extension-line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.extensionListEntry + .extensionListEntry { border-top: 1px solid #edf1f5; }
+
+.extensionListRow {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  width: 100%;
+  min-height: 72px;
+  padding: 12px 19px;
+  border: 0;
+  background: #fff;
+  color: var(--extension-ink);
+  text-align: left;
+}
+
+button.extensionListRow { cursor: pointer; }
+.extensionListRow:hover { background: #f9fbfc; }
+.extensionChevron { display: inline-block; flex: none; color: #9aa6b4; font-size: 21px; line-height: 1; transform: rotate(-90deg); transition: transform 0.18s ease; }
+.extensionChevronOpen { transform: rotate(0); }
+.extensionRowMain { display: grid; flex: 1; min-width: 0; gap: 4px; }
+.extensionRowMain strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 670; }
+.extensionRowMain small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--extension-muted); font-size: 12px; }
+.extensionTransport { flex: none; padding: 4px 8px; border-radius: 4px; background: #f2f5f8; color: #607086; font: 600 11px 'IBM Plex Mono', monospace; white-space: nowrap; }
+.extensionRowEnd { color: #8793a3; font-size: 11px; white-space: nowrap; }
+
+.extensionSkillExpand { display: flex; align-items: center; gap: 15px; flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.extensionDeleteButton { flex: none; padding: 5px 8px; border: 0; border-radius: 4px; background: transparent; color: #956060; font-size: 12px; cursor: pointer; }
+.extensionDeleteButton:hover { background: #fff0ef; color: #b43d39; }
+.extensionDeleteButton:disabled { opacity: 0.4; cursor: not-allowed; }
+.extensionRowDetail { display: grid; gap: 9px; padding: 15px 20px 19px 87px; border-top: 1px solid #edf1f5; background: #fafbfd; }
+.extensionRowDetail > div { display: flex; align-items: baseline; gap: 16px; min-width: 0; font-size: 12px; }
+.extensionRowDetail > div > span { flex: 0 0 100px; color: var(--extension-muted); }
+.extensionRowDetail strong { font-weight: 550; }
+.extensionRowDetail code { overflow-wrap: anywhere; font: 12px/1.6 'IBM Plex Mono', monospace; }
+.extensionTextButton { justify-self: start; padding: 2px 0; border: 0; background: transparent; color: #365f9d; font-size: 12px; font-weight: 650; cursor: pointer; }
+.extensionTextButton:hover { text-decoration: underline; }
+.extensionEmpty { display: grid; justify-items: center; gap: 7px; padding: 50px 20px; text-align: center; }
+.extensionEmpty strong { font-size: 14px; }
+.extensionEmpty span { color: var(--extension-muted); font-size: 12px; }
+
+.extensionDialogOverlay { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 18px; background: #18233170; backdrop-filter: blur(3px); }
+.extensionDialog { display: flex; flex-direction: column; gap: 14px; width: min(760px, 100%); max-height: min(760px, calc(100vh - 36px)); padding: 24px; border: 1px solid #dce3eb; border-radius: 8px; background: #fff; box-shadow: 0 30px 75px #16233330; }
+.extensionDialogHeader { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.extensionDialogHeader h3 { margin: 6px 0 0; font-size: 19px; color: var(--extension-ink); }
+.extensionIconButton { width: 28px; height: 28px; border: 0; border-radius: 4px; background: transparent; color: #66748a; font-size: 23px; cursor: pointer; }
+.extensionIconButton:hover { background: #f1f4f7; }
+.extensionDialogHint { margin: 0; color: var(--extension-muted); font-size: 12px; line-height: 1.5; }
+.extensionCodeEditor { width: 100%; min-height: 280px; flex: 1; resize: vertical; padding: 17px; border: 1px solid #dce3eb; border-radius: 6px; outline: 0; background: #f5f7f9; color: #2c3a4b; font: 12px/1.7 'IBM Plex Mono', monospace; tab-size: 2; }
+.extensionCodeEditor:focus { border-color: #647c9f; box-shadow: 0 0 0 3px #647c9f1a; }
+.extensionDialogFooter { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.extensionDialogUtilities button { padding: 5px 0; border: 0; background: transparent; color: #556780; font-size: 12px; cursor: pointer; }
+.extensionDialogUtilities button:hover { color: #1c2939; text-decoration: underline; }
+.extensionDialogUtilities .extensionDeleteButton { color: #ac5753; }
+
+.extensionWorkspace button:focus-visible,
+.extensionWorkspace input:focus-visible,
+.extensionDialog button:focus-visible,
+.extensionDialog textarea:focus-visible { outline: 2px solid #5479a9; outline-offset: 2px; }
+
+@media (max-width: 700px) {
+  .extensionHeading, .extensionSectionHeading { align-items: stretch; flex-direction: column; gap: 14px; }
+  .extensionHeading { padding-bottom: 24px; }
+  .extensionHeadingActions { justify-content: space-between; }
+  .extensionSearch { width: 100%; }
+  .extensionListRow { gap: 9px; padding: 12px; }
+  .extensionRowEnd { display: none; }
+  .extensionRowDetail { padding-left: 20px; }
+  .extensionDialogFooter { flex-direction: column; align-items: stretch; }
+  .extensionDialogUtilities { flex-wrap: wrap; }
+  .extensionDialogActions { justify-content: flex-end; }
+}
+
+@media (max-width: 420px) {
+  .extensionTransport { display: none; }
+  .extensionSettingRow { gap: 10px; padding: 12px; }
+  .extensionSettingIcon { display: none; }
+  .extensionDialog { padding: 16px; }
+  .extensionCodeEditor { min-height: 220px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .extensionSwitch, .extensionSwitch span, .extensionChevron { transition: none; }
+}
+
 .accountEntry {
   display: inline-flex;
   align-items: center;

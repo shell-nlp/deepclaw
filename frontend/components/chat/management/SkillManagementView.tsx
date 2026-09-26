@@ -1,6 +1,6 @@
 'use client'
 
-import type { ChangeEvent, Ref } from 'react'
+import { useState, type ChangeEvent, type Ref } from 'react'
 
 import styles from '../../ChatInterface.module.css'
 import type { SkillRecord } from '../../chat-interface/types'
@@ -35,24 +35,28 @@ export function SkillManagementView({
   onUploadSkills,
   onDeleteSkill,
 }: SkillManagementViewProps) {
+  const [search, setSearch] = useState('')
+  const [expandedSkill, setExpandedSkill] = useState<string | null>(null)
+  const visibleSkills = skills.filter((skill) =>
+    `${skill.skill_name} ${skill.description}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())
+  )
+
   return (
-    <div className={styles.managementWorkspace}>
-      <section className={styles.managementHero}>
-        <div className={styles.managementHeroCopy}>
-          <span className={styles.managementHeroEyebrow}>Skill Management</span>
-          <h2>上传、查看和删除工作区技能</h2>
-          <p>
-            上传的 zip 包会自动解压到工作区 `skills` 目录。压缩包根目录必须包含
-            `SKILL.md`，每个压缩包对应一个技能目录。
-          </p>
+    <div className={`${styles.managementWorkspace} ${styles.extensionWorkspace}`}>
+      <header className={styles.extensionHeading}>
+        <div>
+          <span className={styles.extensionEyebrow}>EXTENSIONS / SKILLS</span>
+          <h2>技能管理</h2>
+          <p>查看和管理当前工作区的技能。</p>
         </div>
-        <div className={styles.managementHeroActions}>
+        <div className={styles.extensionHeadingActions}>
+          <span className={styles.extensionCount}>{total} 个技能</span>
           <button
-            className={styles.managementButton}
+            className={styles.extensionPrimaryButton}
             disabled={!canManageSkills || uploadingSkills}
             onClick={onOpenUploadDialog}
           >
-            {uploadingSkills ? '上传中...' : '上传技能 zip'}
+            <span aria-hidden="true">＋</span> {uploadingSkills ? '上传中…' : '上传技能'}
           </button>
           <input
             ref={uploadInputRef}
@@ -62,86 +66,65 @@ export function SkillManagementView({
             onChange={(event) => void onUploadSkills(event)}
           />
         </div>
-      </section>
+      </header>
 
-      <div className={styles.managementNoticeRow}>
-        {!canManageSkills ? (
-          <div className={styles.managementNotice}>{disabledMessage}</div>
-        ) : null}
-        {skillNotice ? <div className={styles.managementNotice}>{skillNotice}</div> : null}
-        {skillError ? <div className={styles.managementError}>{skillError}</div> : null}
+      {(!canManageSkills || skillNotice || skillError) && (
+        <div role={skillError ? 'alert' : 'status'} className={skillError ? styles.managementError : styles.managementNotice}>
+          {skillError || (!canManageSkills ? disabledMessage : skillNotice)}
+        </div>
+      )}
+
+      <div className={styles.extensionSectionHeading}>
+        <div>
+          <div className={styles.extensionSectionLabel}>已安装的技能 <span>{total}</span></div>
+          <p>技能包为 ZIP 格式，根目录需包含 SKILL.md。</p>
+        </div>
+        <label className={styles.extensionSearch}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索技能" aria-label="搜索技能" />
+        </label>
       </div>
 
-      <div className={styles.managementSummaryGrid}>
-        <div className={styles.managementSummaryCard}>
-          <span className={styles.managementSummaryLabel}>技能总数</span>
-          <strong className={styles.managementSummaryValue}>{total}</strong>
-          <span className={styles.managementMeta}>当前工作区已安装的技能目录数量</span>
-        </div>
-        <div className={styles.managementSummaryCard}>
-          <span className={styles.managementSummaryLabel}>存放位置</span>
-          <strong className={styles.managementSummaryValue}>skills</strong>
-          <span className={styles.managementMeta}>位于 `.deepclaw/workspace/skills`</span>
-        </div>
-        <div className={styles.managementSummaryCard}>
-          <span className={styles.managementSummaryLabel}>上传格式</span>
-          <strong className={styles.managementSummaryValue}>zip</strong>
-          <span className={styles.managementMeta}>根目录必须包含 `SKILL.md`</span>
-        </div>
-        <div className={styles.managementSummaryCard}>
-          <span className={styles.managementSummaryLabel}>加载状态</span>
-          <strong className={styles.managementSummaryValue}>
-            {loadingSkills ? '刷新中' : '已就绪'}
-          </strong>
-          <span className={styles.managementMeta}>技能目录变化后会自动刷新列表</span>
-        </div>
-      </div>
-
-      <section className={styles.managementCard}>
-        <div className={styles.managementHeader}>
-          <h3>技能列表</h3>
-          <span className={styles.managementMeta}>
-            {loadingSkills ? '加载中...' : `共 ${total} 个技能`}
-          </span>
-        </div>
-        <div className={styles.managementList}>
-          {skills.length === 0 ? (
-            <div className={styles.managementEmpty}>当前工作区还没有已安装技能。</div>
-          ) : (
-            skills.map((skill) => (
-              <div
-                key={skill.skill_name}
-                className={`${styles.managementListItemStatic} ${styles.skillListRow}`}
+      <div className={styles.extensionList} aria-busy={loadingSkills}>
+        {visibleSkills.length === 0 ? (
+          <div className={styles.extensionEmpty}>
+            <strong>{loadingSkills ? '正在加载技能…' : search ? '没有匹配的技能' : '还没有安装技能'}</strong>
+            <span>{search ? '试试其他名称或描述。' : '上传包含 SKILL.md 的 ZIP 包即可安装。'}</span>
+          </div>
+        ) : visibleSkills.map((skill) => (
+          <div className={styles.extensionListEntry} key={skill.skill_name}>
+            <div className={styles.extensionListRow}>
+              <button
+                className={styles.extensionSkillExpand}
+                onClick={() => setExpandedSkill(expandedSkill === skill.skill_name ? null : skill.skill_name)}
+                aria-expanded={expandedSkill === skill.skill_name}
+                aria-label={`${expandedSkill === skill.skill_name ? '收起' : '展开'} ${skill.skill_name} 详情`}
               >
-                <div className={styles.skillListIdentity}>
-                  <div className={styles.skillListTitleRow}>
-                    <strong>{skill.skill_name}</strong>
-                    <span>{skill.file_count} 个文件</span>
-                  </div>
-                  <p className={styles.managementDescription}>
-                    {skill.description || '该技能没有可预览的描述。'}
-                  </p>
-                </div>
-
-                <div className={styles.skillListDetails}>
-                  <span title={skill.path}>目录: {skill.path}</span>
-                  <span>创建: {formatDateTime(skill.created_at)}</span>
-                  <span>更新: {formatDateTime(skill.updated_at)}</span>
-                </div>
-
-                <button
-                  className={styles.managementDangerMinorButton}
-                  disabled={!canManageSkills}
-                  onClick={() => void onDeleteSkill(skill.skill_name)}
-                >
-                  删除
-                </button>
+                <span className={`${styles.extensionChevron} ${expandedSkill === skill.skill_name ? styles.extensionChevronOpen : ''}`} aria-hidden="true">⌄</span>
+                <span className={styles.extensionSkillIcon} aria-hidden="true">{skill.skill_name.slice(0, 1).toUpperCase()}</span>
+                <span className={styles.extensionRowMain}>
+                  <strong>{skill.skill_name}</strong>
+                  <small>{skill.description || '暂无技能描述'}</small>
+                </span>
+              </button>
+              <span className={styles.extensionTransport}>{skill.file_count} 个文件</span>
+              <button
+                className={styles.extensionDeleteButton}
+                disabled={!canManageSkills}
+                title={`删除 ${skill.skill_name}`}
+                onClick={() => void onDeleteSkill(skill.skill_name)}
+              >删除</button>
+            </div>
+            {expandedSkill === skill.skill_name && (
+              <div className={styles.extensionRowDetail}>
+                <div><span>存放目录</span><code title={skill.path}>{skill.path}</code></div>
+                <div><span>创建时间</span><strong>{formatDateTime(skill.created_at)}</strong></div>
+                <div><span>最近更新</span><strong>{formatDateTime(skill.updated_at)}</strong></div>
               </div>
-            ))
-          )}
-        </div>
-      </section>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
-
