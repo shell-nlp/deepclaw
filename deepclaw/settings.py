@@ -63,6 +63,8 @@ class Settings(BaseSettings):
 
     # AG-UI Run 存储与过期清理配置
     AGUI_RUN_RETENTION_SECONDS: int = Field(default=3600, ge=60)
+    # Thread 元数据保留秒数；0 表示只允许用户显式删除，不自动过期。
+    AGUI_THREAD_RETENTION_SECONDS: int = Field(default=0, ge=0)
     AGUI_RUN_MAX_EVENTS: int = Field(default=2000, ge=100)
     AGUI_RUN_CLEANUP_INTERVAL_SECONDS: int = Field(default=60, ge=10)
     AGUI_RUN_POLL_INTERVAL_SECONDS: float = Field(default=0.5, ge=0.1)

@@ -18,10 +18,13 @@ from deepclaw.web_backend.agui.router import (
 )
 from deepclaw.web_backend.agent.run_manager import AgentRunManager
 from deepclaw.web_backend.agent.run_store import (
+    AgUiCheckpointRecord,
     InMemoryRunStore,
+    PERSISTENT_THREAD_EXPIRES_AT,
     RunState,
     SqlRunStore,
     ThreadState,
+    restore_threads_from_checkpoints,
 )
 from deepclaw.web_backend.auth.dependencies import CurrentActor, get_current_actor
 from deepclaw.web_backend.common.agui_runs import _collect_message_created_at
@@ -483,3 +486,96 @@ def test_list_thread_runs_backfills_legacy_thread():
             await manager.close()
 
     asyncio.run(scenario())
+
+
+def test_sql_thread_survives_run_retention(tmp_path):
+    """Run 和事件过期后 Thread 索引必须继续保留。"""
+
+    async def scenario():
+        store = SqlRunStore(
+            f"sqlite:///{tmp_path / 'thread-retention.db'}",
+            retention_seconds=60,
+            thread_retention_seconds=0,
+        )
+        await store.initialize()
+        assert await store.create_thread(
+            ThreadState(
+                thread_id="thread-persistent",
+                owner_user_id="user-1",
+                agent_id="agent",
+                title="长期会话",
+            )
+        )
+
+        await store.prune_expired()
+
+        thread = await store.get_thread("thread-persistent", user_id="user-1")
+        assert thread is not None
+        assert thread.title == "长期会话"
+        await store.close()
+
+    asyncio.run(scenario())
+
+
+def test_restore_threads_from_checkpoints(tmp_path):
+    """缺失 Thread 索引时应从 checkpoint 恢复标题和归属。"""
+
+    class FakeCheckpointer:
+        """返回固定 checkpoint 状态的测试替身。"""
+
+        async def aget_tuple(self, config):
+            """返回指定 Thread 的状态快照。
+
+            Args:
+                config: LangGraph 运行配置。
+            """
+            assert config["configurable"]["thread_id"] == "thread-restored"
+            return SimpleNamespace(
+                checkpoint={
+                    "ts": "2026-09-23T13:40:52.656327+00:00",
+                    "channel_values": {
+                        "user_id": "user-1",
+                        "messages": [HumanMessage(content="恢复的历史问题")],
+                    },
+                }
+            )
+
+    async def scenario():
+        store = SqlRunStore(
+            f"sqlite:///{tmp_path / 'thread-backfill.db'}",
+            thread_retention_seconds=0,
+        )
+        await store.initialize()
+        async with store.async_session() as session:
+            session.add(
+                AgUiCheckpointRecord(
+                    thread_id="thread-restored",
+                    checkpoint_ns="",
+                    checkpoint_id="checkpoint-1",
+                    checkpoint={"channel_values": {"user_id": "user-1"}},
+                )
+            )
+            await session.commit()
+
+        restored = await restore_threads_from_checkpoints(
+            store,
+            FakeCheckpointer(),
+            default_agent_id="agent",
+        )
+
+        assert restored == 1
+        threads = await store.list_threads("user-1")
+        assert len(threads) == 1
+        assert threads[0].thread_id == "thread-restored"
+        assert threads[0].title == "恢复的历史问题"
+        assert threads[0].expires_at == 0
+        await store.close()
+
+    asyncio.run(scenario())
+
+
+def test_persistent_thread_sentinel_is_database_safe():
+    """永久 Thread 哨兵不能落入 PostgreSQL infinity 区间。"""
+    assert PERSISTENT_THREAD_EXPIRES_AT.year == 9999
+    assert PERSISTENT_THREAD_EXPIRES_AT.month == 12
+    assert PERSISTENT_THREAD_EXPIRES_AT.day <= 30

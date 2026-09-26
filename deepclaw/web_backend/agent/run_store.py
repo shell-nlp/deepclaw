@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Any, AsyncIterator, Protocol
 
 from ag_ui.core import RunAgentInput
+from loguru import logger
 from sqlalchemy import JSON, Column, Index, UniqueConstraint, inspect, text
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Field, SQLModel, delete, select
@@ -17,6 +18,9 @@ from deepclaw.web_backend.db import (
     build_async_sessionmaker,
     create_async_engine_from_url,
 )
+
+
+PERSISTENT_THREAD_EXPIRES_AT = datetime(9999, 12, 30)
 
 
 def utc_now() -> datetime:
@@ -55,6 +59,20 @@ def datetime_from_timestamp(value: float) -> datetime:
         不带时区信息的 UTC 时间。
     """
     return datetime.fromtimestamp(value, tz=UTC).replace(tzinfo=None)
+
+
+def thread_expires_datetime(value: float) -> datetime:
+    """将 Thread 过期时间转换为数据库值。
+
+    Args:
+        value: Thread 过期 Unix 时间戳；0 表示永不过期。
+
+    Returns:
+        数据库中的过期时间。
+    """
+    if value <= 0:
+        return PERSISTENT_THREAD_EXPIRES_AT
+    return datetime_from_timestamp(value)
 
 
 def serialize_run_input(payload: RunAgentInput) -> dict[str, Any]:
@@ -99,6 +117,50 @@ def get_thread_title(payload: RunAgentInput) -> str | None:
         if isinstance(content, str) and content.strip():
             return content.strip()[:240]
     return None
+
+
+def get_message_title(messages: list[Any]) -> str | None:
+    """从 checkpoint 消息中提取 Thread 标题。
+
+    Args:
+        messages: LangGraph checkpoint 中的消息列表。
+
+    Returns:
+        首条用户消息文本；没有时返回 None。
+    """
+    for message in messages:
+        role = getattr(message, "type", None) or getattr(message, "role", None)
+        if role not in {"user", "human"}:
+            continue
+        content = getattr(message, "content", None)
+        if isinstance(content, str) and content.strip():
+            return content.strip()[:240]
+        if isinstance(content, list):
+            text = "".join(
+                str(item.get("text", ""))
+                for item in content
+                if isinstance(item, dict) and item.get("type") == "text"
+            ).strip()
+            if text:
+                return text[:240]
+    return None
+
+
+def checkpoint_timestamp(value: Any) -> float:
+    """解析 checkpoint 时间。
+
+    Args:
+        value: checkpoint 中的 ISO8601 时间值。
+
+    Returns:
+        Unix 时间戳；无法解析时返回当前时间。
+    """
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            pass
+    return time.time()
 
 
 @dataclass(slots=True)
@@ -404,6 +466,7 @@ class BaseRunStore:
         self,
         *,
         retention_seconds: int,
+        thread_retention_seconds: int,
         max_events_per_run: int,
         cleanup_interval_seconds: int,
     ) -> None:
@@ -411,10 +474,12 @@ class BaseRunStore:
 
         Args:
             retention_seconds: Run 和事件保留秒数。
+            thread_retention_seconds: Thread 保留秒数；0 表示不自动过期。
             max_events_per_run: 单个 Run 最多保留的事件数。
             cleanup_interval_seconds: 过期清理最小间隔秒数。
         """
         self.retention_seconds = retention_seconds
+        self.thread_retention_seconds = thread_retention_seconds
         self.max_events_per_run = max_events_per_run
         self.cleanup_interval_seconds = cleanup_interval_seconds
         self._last_prune_at = 0.0
@@ -429,6 +494,19 @@ class BaseRunStore:
             过期 Unix 时间戳。
         """
         return (now if now is not None else time.time()) + self.retention_seconds
+
+    def _thread_expires_at(self, now: float | None = None) -> float:
+        """计算 Thread 过期时间。
+
+        Args:
+            now: 可选当前时间。
+
+        Returns:
+            过期 Unix 时间戳；0 表示不自动过期。
+        """
+        if self.thread_retention_seconds <= 0:
+            return 0.0
+        return (now if now is not None else time.time()) + self.thread_retention_seconds
 
     def _should_prune(self) -> bool:
         """判断是否应该执行过期清理。
@@ -449,6 +527,7 @@ class InMemoryRunStore(BaseRunStore):
         self,
         *,
         retention_seconds: int = 3600,
+        thread_retention_seconds: int = 0,
         max_events_per_run: int = 2000,
         cleanup_interval_seconds: int = 60,
     ) -> None:
@@ -456,11 +535,13 @@ class InMemoryRunStore(BaseRunStore):
 
         Args:
             retention_seconds: Run 和事件保留秒数。
+            thread_retention_seconds: Thread 保留秒数；0 表示不自动过期。
             max_events_per_run: 单个 Run 最多保留的事件数。
             cleanup_interval_seconds: 过期清理最小间隔秒数。
         """
         super().__init__(
             retention_seconds=retention_seconds,
+            thread_retention_seconds=thread_retention_seconds,
             max_events_per_run=max_events_per_run,
             cleanup_interval_seconds=cleanup_interval_seconds,
         )
@@ -490,11 +571,13 @@ class InMemoryRunStore(BaseRunStore):
             self._events.pop(run_id, None)
             for queue in self._subscribers.pop(run_id, set()):
                 queue.put_nowait(None)
-        expired_threads = [
-            thread_id
-            for thread_id, state in self._threads.items()
-            if state.expires_at > 0 and state.expires_at <= now
-        ]
+        expired_threads = []
+        if self.thread_retention_seconds > 0:
+            expired_threads = [
+                thread_id
+                for thread_id, state in self._threads.items()
+                if state.expires_at > 0 and state.expires_at <= now
+            ]
         for thread_id in expired_threads:
             self._threads.pop(thread_id, None)
         self._last_prune_at = now
@@ -525,7 +608,7 @@ class InMemoryRunStore(BaseRunStore):
         if thread is None:
             return
         thread.updated_at = time.time()
-        thread.expires_at = self._expires_at(thread.updated_at)
+        thread.expires_at = self._thread_expires_at(thread.updated_at)
 
     def _backfill_threads_locked(self) -> None:
         """从已有 Run 回填缺失的 Thread 记录。
@@ -546,7 +629,7 @@ class InMemoryRunStore(BaseRunStore):
                 title=get_thread_title(run.input),
                 created_at=run.created_at,
                 updated_at=run.updated_at,
-                expires_at=run.expires_at,
+                expires_at=self._thread_expires_at(run.updated_at),
             )
 
     async def create_thread(self, state: ThreadState) -> bool:
@@ -568,7 +651,7 @@ class InMemoryRunStore(BaseRunStore):
             if state.updated_at <= 0:
                 state.updated_at = state.created_at
             if state.expires_at <= 0:
-                state.expires_at = self._expires_at(state.updated_at)
+                state.expires_at = self._thread_expires_at(state.updated_at)
             self._threads[state.thread_id] = copy.deepcopy(state)
             return True
 
@@ -605,7 +688,7 @@ class InMemoryRunStore(BaseRunStore):
         async with self._lock:
             await self._maybe_prune()
             state.updated_at = time.time()
-            state.expires_at = self._expires_at(state.updated_at)
+            state.expires_at = self._thread_expires_at(state.updated_at)
             self._threads[state.thread_id] = copy.deepcopy(state)
 
     async def list_threads(
@@ -971,6 +1054,18 @@ class AgUiThreadRecord(SQLModel, table=True):
     expires_at: datetime = Field(default_factory=utc_now, index=True)
 
 
+class AgUiCheckpointRecord(SQLModel, table=True):
+    """LangGraph checkpoint 的只读映射，用于恢复 Thread 索引。"""
+
+    __tablename__ = "checkpoints"
+    __table_args__ = {"extend_existing": True}
+
+    thread_id: str = Field(primary_key=True)
+    checkpoint_ns: str = Field(primary_key=True, default="")
+    checkpoint_id: str = Field(primary_key=True)
+    checkpoint: dict[str, Any] = Field(sa_column=Column(JSON))
+
+
 class SqlRunStore(BaseRunStore):
     """基于 SQLModel 的 Run 存储，当前用于 PostgreSQL。"""
 
@@ -979,6 +1074,7 @@ class SqlRunStore(BaseRunStore):
         db_url: str,
         *,
         retention_seconds: int = 3600,
+        thread_retention_seconds: int = 0,
         max_events_per_run: int = 2000,
         cleanup_interval_seconds: int = 60,
         poll_interval_seconds: float = 0.5,
@@ -988,12 +1084,14 @@ class SqlRunStore(BaseRunStore):
         Args:
             db_url: 数据库 URL。
             retention_seconds: Run 和事件保留秒数。
+            thread_retention_seconds: Thread 保留秒数；0 表示不自动过期。
             max_events_per_run: 单个 Run 最多保留的事件数。
             cleanup_interval_seconds: 过期清理最小间隔秒数。
             poll_interval_seconds: 跨进程事件订阅轮询间隔秒数。
         """
         super().__init__(
             retention_seconds=retention_seconds,
+            thread_retention_seconds=thread_retention_seconds,
             max_events_per_run=max_events_per_run,
             cleanup_interval_seconds=cleanup_interval_seconds,
         )
@@ -1102,6 +1200,14 @@ class SqlRunStore(BaseRunStore):
                         ")"
                     )
                 )
+                if self.thread_retention_seconds <= 0:
+                    await connection.execute(
+                        text(
+                            "UPDATE agui_threads SET expires_at = :expires_at "
+                            "WHERE expires_at <> :expires_at"
+                        ),
+                        {"expires_at": PERSISTENT_THREAD_EXPIRES_AT},
+                    )
             self._init_done = True
 
     async def _maybe_prune(self) -> None:
@@ -1126,6 +1232,9 @@ class SqlRunStore(BaseRunStore):
         Returns:
             Thread 状态。
         """
+        expires_at = record.expires_at
+        if expires_at.tzinfo is not None:
+            expires_at = expires_at.astimezone(UTC).replace(tzinfo=None)
         return ThreadState(
             thread_id=record.thread_id,
             owner_user_id=record.owner_user_id,
@@ -1133,7 +1242,11 @@ class SqlRunStore(BaseRunStore):
             title=record.title,
             created_at=timestamp_from_datetime(record.created_at),
             updated_at=timestamp_from_datetime(record.updated_at),
-            expires_at=timestamp_from_datetime(record.expires_at),
+            expires_at=(
+                0.0
+                if expires_at >= PERSISTENT_THREAD_EXPIRES_AT
+                else timestamp_from_datetime(expires_at)
+            ),
         )
 
     @staticmethod
@@ -1153,7 +1266,7 @@ class SqlRunStore(BaseRunStore):
             title=state.title,
             created_at=datetime_from_timestamp(state.created_at),
             updated_at=datetime_from_timestamp(state.updated_at),
-            expires_at=datetime_from_timestamp(state.expires_at),
+            expires_at=thread_expires_datetime(state.expires_at),
         )
 
     @staticmethod
@@ -1172,7 +1285,7 @@ class SqlRunStore(BaseRunStore):
         record.title = state.title
         record.created_at = datetime_from_timestamp(state.created_at)
         record.updated_at = datetime_from_timestamp(state.updated_at)
-        record.expires_at = datetime_from_timestamp(state.expires_at)
+        record.expires_at = thread_expires_datetime(state.expires_at)
 
     async def _touch_thread(self, thread_id: str) -> None:
         """更新 Thread 最近活跃时间。
@@ -1189,7 +1302,7 @@ class SqlRunStore(BaseRunStore):
             if record is None:
                 return
             record.updated_at = utc_now()
-            record.expires_at = datetime_from_timestamp(self._expires_at())
+            record.expires_at = datetime_from_timestamp(self._thread_expires_at())
             session.add(record)
             await session.commit()
 
@@ -1307,12 +1420,78 @@ class SqlRunStore(BaseRunStore):
                             ),
                             created_at=timestamp_from_datetime(run.created_at),
                             updated_at=timestamp_from_datetime(run.updated_at),
-                            expires_at=timestamp_from_datetime(run.expires_at),
+                            expires_at=self._thread_expires_at(
+                                timestamp_from_datetime(run.updated_at)
+                            ),
                         )
                         session.add(self._to_thread_record(thread))
                         existing_ids.add(run.thread_id)
                     await session.commit()
             self._backfilled_users.add(user_id)
+
+    async def backfill_threads_from_checkpoints(
+        self,
+        checkpointer: Any | None,
+        *,
+        default_agent_id: str = "agent",
+    ) -> int:
+        """从 LangGraph checkpoint 回填缺失的 Thread 索引。
+
+        Args:
+            checkpointer: 已初始化的 LangGraph checkpointer。
+            default_agent_id: 无法从状态判断时使用的智能体 ID。
+
+        Returns:
+            新增的 Thread 数量。
+        """
+        if checkpointer is None:
+            return 0
+        await self._ensure_init()
+        async with self.async_session() as session:
+            checkpoint_result = await session.exec(
+                select(AgUiCheckpointRecord.thread_id)
+                .where(AgUiCheckpointRecord.checkpoint_ns == "")
+                .distinct()
+            )
+            thread_ids = list(checkpoint_result.all())
+            thread_result = await session.exec(select(AgUiThreadRecord.thread_id))
+            existing_ids = set(thread_result.all())
+
+        restored = 0
+        for thread_id in thread_ids:
+            if thread_id in existing_ids:
+                continue
+            config = {"configurable": {"thread_id": thread_id, "checkpoint_ns": ""}}
+            try:
+                snapshot = await checkpointer.aget_tuple(config)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("回填 Thread 时读取 checkpoint 失败: {}", exc)
+                continue
+            if snapshot is None:
+                continue
+            checkpoint = snapshot.checkpoint or {}
+            values = checkpoint.get("channel_values", {})
+            messages = values.get("messages") or []
+            timestamp = checkpoint_timestamp(checkpoint.get("ts"))
+            agent_id = (
+                "rag"
+                if values.get("index_name") or values.get("graph_name")
+                else default_agent_id
+            )
+            state = ThreadState(
+                thread_id=thread_id,
+                owner_user_id=str(values.get("user_id") or "guest"),
+                agent_id=agent_id,
+                title=get_message_title(messages),
+                created_at=timestamp,
+                updated_at=timestamp,
+                expires_at=self._thread_expires_at(),
+            )
+            if await self.create_thread(state):
+                restored += 1
+        if restored:
+            logger.info("已从 checkpoint 回填 {} 个 Thread 索引", restored)
+        return restored
 
     async def create_thread(self, state: ThreadState) -> bool:
         """创建 Thread。
@@ -1335,7 +1514,7 @@ class SqlRunStore(BaseRunStore):
             if state.updated_at <= 0:
                 state.updated_at = state.created_at
             if state.expires_at <= 0:
-                state.expires_at = self._expires_at(state.updated_at)
+                state.expires_at = self._thread_expires_at(state.updated_at)
             session.add(self._to_thread_record(state))
             try:
                 await session.commit()
@@ -1382,7 +1561,7 @@ class SqlRunStore(BaseRunStore):
             if record is None:
                 return
             state.updated_at = time.time()
-            state.expires_at = self._expires_at(state.updated_at)
+            state.expires_at = self._thread_expires_at(state.updated_at)
             self._copy_thread_values(record, state)
             session.add(record)
             await session.commit()
@@ -1742,11 +1921,12 @@ class SqlRunStore(BaseRunStore):
                 .where(AgUiRunRecord.expires_at <= now)
                 .execution_options(synchronize_session=False)
             )
-            await session.exec(
-                delete(AgUiThreadRecord)
-                .where(AgUiThreadRecord.expires_at <= now)
-                .execution_options(synchronize_session=False)
-            )
+            if self.thread_retention_seconds > 0:
+                await session.exec(
+                    delete(AgUiThreadRecord)
+                    .where(AgUiThreadRecord.expires_at <= now)
+                    .execution_options(synchronize_session=False)
+                )
             await session.commit()
         self._last_prune_at = time.time()
         return len(expired_run_ids)
@@ -1790,14 +1970,40 @@ def create_run_store() -> RunStore:
         return SqlRunStore(
             settings.PG_DATABASE_URL,
             retention_seconds=settings.AGUI_RUN_RETENTION_SECONDS,
+            thread_retention_seconds=settings.AGUI_THREAD_RETENTION_SECONDS,
             max_events_per_run=settings.AGUI_RUN_MAX_EVENTS,
             cleanup_interval_seconds=settings.AGUI_RUN_CLEANUP_INTERVAL_SECONDS,
             poll_interval_seconds=settings.AGUI_RUN_POLL_INTERVAL_SECONDS,
         )
     return InMemoryRunStore(
         retention_seconds=settings.AGUI_RUN_RETENTION_SECONDS,
+        thread_retention_seconds=settings.AGUI_THREAD_RETENTION_SECONDS,
         max_events_per_run=settings.AGUI_RUN_MAX_EVENTS,
         cleanup_interval_seconds=settings.AGUI_RUN_CLEANUP_INTERVAL_SECONDS,
+    )
+
+
+async def restore_threads_from_checkpoints(
+    run_store: RunStore,
+    checkpointer: Any | None,
+    *,
+    default_agent_id: str = "agent",
+) -> int:
+    """从 checkpoint 恢复 SQL RunStore 中缺失的 Thread 索引。
+
+    Args:
+        run_store: 当前 Run/Thread 存储。
+        checkpointer: LangGraph checkpointer。
+        default_agent_id: 无法判断时使用的智能体 ID。
+
+    Returns:
+        恢复的 Thread 数量。
+    """
+    if not isinstance(run_store, SqlRunStore):
+        return 0
+    return await run_store.backfill_threads_from_checkpoints(
+        checkpointer,
+        default_agent_id=default_agent_id,
     )
 
 

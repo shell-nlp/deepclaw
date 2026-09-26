@@ -16,7 +16,10 @@ from deepclaw.constant import ROOT_DIR, WORKSPACE_PATH
 from deepclaw.settings import settings
 from deepclaw.web_backend.agui.runtime import AgentRuntimeCache
 from deepclaw.web_backend.agui.router import router as agui_router
-from deepclaw.web_backend.agent.run_store import get_run_store
+from deepclaw.web_backend.agent.run_store import (
+    get_run_store,
+    restore_threads_from_checkpoints,
+)
 from deepclaw.web_backend.auth.router import router as auth_router
 from deepclaw.web_backend.auth.service import get_auth_service
 from deepclaw.web_backend.channels.router import router as channels_router
@@ -147,7 +150,14 @@ async def app_lifespan(app: FastAPI):
     setup_observability()
     await init_agent_env(app)
     app.state.agent_registry = AgentRegistry.discover()
-    await get_run_store().initialize()
+    run_store = get_run_store()
+    await run_store.initialize()
+    default_agent = app.state.agent_registry.resolve(None)
+    await restore_threads_from_checkpoints(
+        run_store,
+        app.state.checkpointer,
+        default_agent_id=default_agent.agent_id,
+    )
     runtime_cache = getattr(app.state, "agent_runtime_cache", None)
     if runtime_cache is None:
         runtime_cache = AgentRuntimeCache()
@@ -157,7 +167,7 @@ async def app_lifespan(app: FastAPI):
         agents=app.state.agent_registry.list_agents(),
         checkpointer=app.state.checkpointer,
         store=app.state.store,
-        run_store=get_run_store(),
+        run_store=run_store,
     )
     register_frontend_routes(app)
     logger.info(

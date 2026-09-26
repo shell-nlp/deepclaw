@@ -51,7 +51,7 @@
 - `deepclaw/web_backend/agent/run_manager.py`
   基于 `RunStore` 的 Run 管理器，负责 Run 执行、`Last-Event-ID` 重放、恢复、取消与事件流编排。
 - `deepclaw/web_backend/agent/run_store.py`
-  Run/Thread 存储抽象层，定义 Thread owner、按 Thread 查询 Run、Run 状态、事件追加/重放、过期清理和订阅接口；当前提供 `InMemoryRunStore` 与 PostgreSQL/SQLite `SqlRunStore`，后续可新增 Redis 实现。
+  Run/Thread 存储抽象层，定义 Thread owner、按 Thread 查询 Run、Run 状态、事件追加/重放、过期清理和订阅接口；Run/事件按 `AGUI_RUN_RETENTION_SECONDS` 清理，Thread 索引默认不自动过期。启动时会从 LangGraph checkpoint 回填缺失的 Thread 索引；当前提供 `InMemoryRunStore` 与 PostgreSQL/SQLite `SqlRunStore`，后续可新增 Redis 实现。
 
 - `deepclaw/web_backend/common/errors.py`
   统一业务规则异常 `BusinessRuleError`，由 `create_app()` 注册的全局异常处理器转换为 `{"detail": ...}` 响应。
@@ -211,6 +211,7 @@ pnpm build
 - `USE_TOOL_SEARCH`
 - `MCP_CONFIG`
 - `AGUI_RUN_RETENTION_SECONDS`
+- `AGUI_THREAD_RETENTION_SECONDS`
 - `AGUI_RUN_MAX_EVENTS`
 - `AGUI_RUN_CLEANUP_INTERVAL_SECONDS`
 - `AGUI_RUN_POLL_INTERVAL_SECONDS`
@@ -395,6 +396,7 @@ pnpm build
 - Human-in-the-loop 中断通过标准 `RUN_FINISHED.outcome` 暴露，恢复使用顶层 `resume[]`（`interruptId`、`status`、`payload`），不再使用 `forwardedProps.command.resume`
 - 卡片 Action 不走独立接口：`POST /api/agui/runs/{run_id}/actions` 已删除，恢复入口只有 `POST /api/agui/runs/{run_id}/resume`，客户端把决策放进顶层 `resume[].payload`（例如 `{"decisions": [...]}`）
 - Thread 资源现在记录 `thread_id -> owner_user_id + agent_id`，创建 Run 时会自动创建或校验 Thread 归属
+- Thread 索引与 Run/SSE 事件使用独立保留策略；默认 `AGUI_THREAD_RETENTION_SECONDS=0`，聊天历史不会随 Run 的 1 小时保留期被删除
 - Thread 接口：`GET /api/agui/threads`、`GET /api/agui/threads/{thread_id}/runs`、`GET /api/agui/threads/{thread_id}/state`、`DELETE /api/agui/threads/{thread_id}`
 - `GET /api/agui/threads/{thread_id}/state` 额外返回 `message_created_at`（`message_id -> UTC ISO8601`），由 LangGraph checkpoint 历史推导，不依赖任何消息镜像表
 - AG-UI 流式事件可能缺失正文：模型分片把推理与正文放在同一个 chunk 时，`ag_ui_langgraph` 只发推理事件。浏览器与渠道都必须用 `MESSAGES_SNAPSHOT` 兜底：前端在 `handleAgUiEvent` 里用快照补齐 assistant 正文，渠道侧 `AgentClient` 把 `MESSAGES_SNAPSHOT` 转成 `messages_snapshot` 事件、由 `ResponseDispatcher` 在没有任何文本增量时作为回复文本，避免微信收到「没有可发送的回复。」

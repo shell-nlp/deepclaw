@@ -620,6 +620,7 @@ curl http://localhost:7869/api/agui/threads/demo-thread/state -H "Authorization:
 | `AUTH_ADMIN_EMAIL` / `AUTH_ADMIN_PASSWORD` | Admin account bootstrapped on first start |
 | `AUTH_TOKEN_EXPIRE_DAYS` | Access token lifetime in days, default `1` |
 | `AGUI_RUN_RETENTION_SECONDS` | Run and event retention, default `3600` |
+| `AGUI_THREAD_RETENTION_SECONDS` | Thread index retention; `0` means no automatic expiry |
 | `AGUI_RUN_MAX_EVENTS` | Max events per run, default `2000` |
 | `AGUI_RUN_CLEANUP_INTERVAL_SECONDS` | Expired-record cleanup interval, default `60` |
 | `AGUI_RUN_POLL_INTERVAL_SECONDS` | Event stream poll interval, default `0.5` |
