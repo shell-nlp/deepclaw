@@ -1193,124 +1193,139 @@ class PDFParser:
             image_module, unidentified_image_error = _require_pillow()
         pd = _require_pandas() if use_table else None
 
-        with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-            pdf_lens = len(pdf.pages)
-            logger.debug(f"{self.file_path} 的 PDF 页数：{pdf_lens}")
+        fallback_pdf = None
+        try:
+            with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+                pdf_lens = len(pdf.pages)
+                logger.debug(f"{self.file_path} 的 PDF 页数：{pdf_lens}")
 
-            for page_number, page in enumerate(pdf.pages, start=1):
-                try:
-                    text = page.extract_text() or ""
-                except Exception as exc:
-                    logger.warning(
-                        f"提取 {self.file_path} 第 {page_number} 页文本失败：{exc}"
-                    )
-                    continue
-
-                page_image_list: list[str] = []
-                if use_image:
-                    for image_number, image in enumerate(page.images):
+                for page_number, page in enumerate(pdf.pages, start=1):
+                    try:
+                        text = page.extract_text() or ""
+                    except Exception as exc:
+                        logger.warning(
+                            f"提取 {self.file_path} 第 {page_number} 页文本失败，"
+                            f"尝试 PyMuPDF：{exc}"
+                        )
                         try:
-                            image_data_bin = image["stream"].get_data()
-                            image_data = io.BytesIO(image_data_bin)
+                            if fallback_pdf is None:
+                                fallback_pdf = _require_pymupdf().open(
+                                    stream=file_bytes, filetype="pdf"
+                                )
+                            text = fallback_pdf[page_number - 1].get_text() or ""
+                        except Exception as fallback_exc:
+                            raise RuntimeError(
+                                f"PDF 第 {page_number} 页文本提取失败：{self.file_path}"
+                            ) from fallback_exc
+
+                    page_image_list: list[str] = []
+                    if use_image:
+                        for image_number, image in enumerate(page.images):
                             try:
-                                image_data_ = copy.deepcopy(image_data)
-                                pil_image = image_module.open(image_data_)
-                                pil_image.verify()
-                            except unidentified_image_error:
-                                logger.warning("图片校验失败，跳过当前图片。")
-                                continue
+                                image_data_bin = image["stream"].get_data()
+                                image_data = io.BytesIO(image_data_bin)
+                                try:
+                                    image_data_ = copy.deepcopy(image_data)
+                                    pil_image = image_module.open(image_data_)
+                                    pil_image.verify()
+                                except unidentified_image_error:
+                                    logger.warning("图片校验失败，跳过当前图片。")
+                                    continue
 
-                            text_lines = text.split("\n")
-                            bbox = (
-                                image["x0"],
-                                image["top"],
-                                image["x1"],
-                                image["bottom"],
-                            )
-                            image_name = (
-                                f"image_{self.bucket_name}_{file_id}_"
-                                f"{page_number}_{image_number}.png"
-                            )
-                            page_image_list.append(f"{self.bucket_name}/{image_name}")
-                            text = insert_mark_near_position(
-                                text_lines, page.chars, bbox, image_name
-                            )
-
-                            upload_file_to_mino(
-                                s3_client=s3_client,
-                                bucket_name=self.bucket_name,
-                                object_name=image_name,
-                                file_data=image_data,
-                                length=len(image_data_bin),
-                            )
-                        except IndexError:
-                            logger.warning("图片上传失败，跳过当前图片。")
-                            continue
-
-                page_md_list: list[str] = []
-                if use_table:
-                    tables_list = page.extract_tables()
-                    tables = page.find_tables()
-                    page_table_idx = []
-                    if tables:
-                        table_id = 0
-                        for index, table in enumerate(tables):
-                            try:
-                                table_area = page.within_bbox(table.bbox)
-                                table_inner_text = table_area.extract_text()
-                                idx = text.find(table_inner_text)
-                                if idx != -1:
-                                    if len(table_inner_text.split("\n")) < 2:
-                                        continue
-                                    text = text.replace(
-                                        table_inner_text,
-                                        f"**[TABLE_{table_id}]**",
-                                    )
-                                    table_id += 1
-                                    page_table_idx.append(index)
-                            except ValueError:
-                                logger.warning(
-                                    "表格解析出现 ValueError，已跳过当前表格。"
+                                text_lines = text.split("\n")
+                                bbox = (
+                                    image["x0"],
+                                    image["top"],
+                                    image["x1"],
+                                    image["bottom"],
+                                )
+                                image_name = (
+                                    f"image_{self.bucket_name}_{file_id}_"
+                                    f"{page_number}_{image_number}.png"
+                                )
+                                page_image_list.append(f"{self.bucket_name}/{image_name}")
+                                text = insert_mark_near_position(
+                                    text_lines, page.chars, bbox, image_name
                                 )
 
-                    for index in page_table_idx:
-                        md_list = []
-                        for row_index, row_list in enumerate(tables_list[index]):
-                            if row_index == 0:
-                                header = [item for item in row_list if item]
-                                header_len = len(header)
-                                md_list.append(header)
+                                upload_file_to_mino(
+                                    s3_client=s3_client,
+                                    bucket_name=self.bucket_name,
+                                    object_name=image_name,
+                                    file_data=image_data,
+                                    length=len(image_data_bin),
+                                )
+                            except IndexError:
+                                logger.warning("图片上传失败，跳过当前图片。")
                                 continue
 
-                            sub_row = [item for item in row_list if item]
-                            first_is_none = row_list[0] is None
-                            if len(sub_row) == header_len:
-                                md_list.append(sub_row)
-                            elif (
-                                len(sub_row) < header_len
-                                and row_index != len(tables_list[index]) - 1
-                            ):
-                                md_list[-1][-1] += "".join(sub_row)
-                            elif len(sub_row) < header_len and first_is_none:
-                                md_list[-1][-1] += "".join(sub_row)
-                            else:
-                                sub_row.extend([""] * (header_len - len(sub_row)))
-                                md_list.append(sub_row)
+                    page_md_list: list[str] = []
+                    if use_table:
+                        tables_list = page.extract_tables()
+                        tables = page.find_tables()
+                        page_table_idx = []
+                        if tables:
+                            table_id = 0
+                            for index, table in enumerate(tables):
+                                try:
+                                    table_area = page.within_bbox(table.bbox)
+                                    table_inner_text = table_area.extract_text()
+                                    idx = text.find(table_inner_text)
+                                    if idx != -1:
+                                        if len(table_inner_text.split("\n")) < 2:
+                                            continue
+                                        text = text.replace(
+                                            table_inner_text,
+                                            f"**[TABLE_{table_id}]**",
+                                        )
+                                        table_id += 1
+                                        page_table_idx.append(index)
+                                except ValueError:
+                                    logger.warning(
+                                        "表格解析出现 ValueError，已跳过当前表格。"
+                                    )
 
-                        columns = [item.replace("\n", "") for item in md_list[0]]
-                        df = pd.DataFrame(md_list[1:], columns=columns).map(
-                            lambda value: value.replace("\n", "")
-                        )
-                        page_md_list.append(df.to_markdown(index=False))
+                        for index in page_table_idx:
+                            md_list = []
+                            for row_index, row_list in enumerate(tables_list[index]):
+                                if row_index == 0:
+                                    header = [item for item in row_list if item]
+                                    header_len = len(header)
+                                    md_list.append(header)
+                                    continue
 
-                page_data.append(
-                    {
-                        "text": text,
-                        "pages_number": page_number,
-                        "content_table": page_md_list,
-                        "content_image": page_image_list,
-                    }
-                )
+                                sub_row = [item for item in row_list if item]
+                                first_is_none = row_list[0] is None
+                                if len(sub_row) == header_len:
+                                    md_list.append(sub_row)
+                                elif (
+                                    len(sub_row) < header_len
+                                    and row_index != len(tables_list[index]) - 1
+                                ):
+                                    md_list[-1][-1] += "".join(sub_row)
+                                elif len(sub_row) < header_len and first_is_none:
+                                    md_list[-1][-1] += "".join(sub_row)
+                                else:
+                                    sub_row.extend([""] * (header_len - len(sub_row)))
+                                    md_list.append(sub_row)
+
+                            columns = [item.replace("\n", "") for item in md_list[0]]
+                            df = pd.DataFrame(md_list[1:], columns=columns).map(
+                                lambda value: value.replace("\n", "")
+                            )
+                            page_md_list.append(df.to_markdown(index=False))
+
+                    page_data.append(
+                        {
+                            "text": text,
+                            "pages_number": page_number,
+                            "content_table": page_md_list,
+                            "content_image": page_image_list,
+                        }
+                    )
+        finally:
+            if fallback_pdf is not None:
+                fallback_pdf.close()
 
         return page_data, pdf_lens
 
@@ -1327,10 +1342,9 @@ class PDFParser:
         split_strategy = structure_info["split_strategy"]
         logger.info(f"分块策略：{split_strategy}")
 
-        if split_strategy == "chunksplit":
-            return text_splitter.split_documents3(docs)
-
         chunksplit_docs = text_splitter.split_documents3(docs)
+        if split_strategy == "chunksplit":
+            return chunksplit_docs
         title_level = structure_info["max_title_level"]
         logger.info(f"标题层级：{title_level}")
 
@@ -1341,108 +1355,73 @@ class PDFParser:
             pdf_doc.close()
 
         toc = list(extract_toc_from_fitz(title_info, level=title_level))
-        toc.insert(0, ("$#", 1, 1))
+        if not toc:
+            return chunksplit_docs
         logger.info(f"目录项数量：{len(toc)}")
 
-        title_docs: list[Document] = []
-        for idx, (title, page, level) in enumerate(toc):
-            next_page = toc[idx + 1][1] if idx < len(toc) - 1 else pdf_lens
-            section_docs = (
-                docs[page - 1 : next_page] if idx < len(toc) - 1 else docs[page - 1 :]
-            )
-            if not section_docs:
+        # 目录项定位到页内行，按位置而不是页码分段，同页多标题也不会重叠。
+        page_lines = [doc.page_content.splitlines(keepends=True) for doc in docs]
+        offsets = [0]
+        for lines in page_lines:
+            offsets.append(offsets[-1] + len(lines))
+        lines = [line for page in page_lines for line in page]
+        boundaries: list[tuple[int, str]] = [(0, "")]
+        cursor = 0
+        for title, page, _level in toc:
+            if not 1 <= page <= pdf_lens:
                 continue
-
-            text = "".join(doc.page_content for doc in section_docs)
-            content_table = []
-            content_image = []
-            for section_doc in section_docs:
-                content_table.extend(section_doc.metadata["content_table"])
-                content_image.extend(section_doc.metadata["content_image"])
-
-            if use_table:
-                pattern_table = r"\*\*\[TABLE_\d+\]\*\*"
-                table_matchers = re.findall(pattern_table, text)
-                logger.debug(f"标题 {title} 命中的表格标记数量：{len(table_matchers)}")
-                if len(table_matchers) >= 50:
-                    for table_mark in table_matchers:
-                        text = text.replace(table_mark, "")
-                else:
-                    for table_index, table_mark in enumerate(table_matchers):
-                        text = text.replace(table_mark, f"**[TABLE_{table_index}]**")
-
-            text_splits = text.split("\n")
-            ori_text_splits = copy.deepcopy(text_splits)
-            title_start_idx = 0
-            title_start_flag = False
-            title_end_idx = 100000
-            title_end_flag = False
-
-            for text_idx, line in enumerate(text_splits):
-                if title_start_flag and title_end_flag:
+            page_start = offsets[page - 1]
+            page_end = offsets[page]
+            for position in range(max(cursor, page_start), page_end):
+                if levenshtein_distance(lines[position].strip(), title) <= 2:
+                    if position > boundaries[-1][0]:
+                        boundaries.append((position, title))
+                    cursor = position + 1
                     break
 
-                if not title_start_flag:
-                    distance_start = levenshtein_distance(s1=line, s2=title)
-                    if distance_start <= 2 or title == "$#":
-                        parent_title_list = extract_parent_title(
-                            title_info=title_info,
-                            sub_title=title,
-                            cur_level=level,
-                        )
-                        parent_title_str = "".join(
-                            "#" * int(parent_level) + " " + parent_title + "\n"
-                            for parent_level, parent_title in parent_title_list
-                        )
-                        text_splits[text_idx] = (
-                            parent_title_str
-                            + "#" * int(level)
-                            + " "
-                            + text_splits[text_idx]
-                            + "\n"
-                        )
-                        title_start_idx = text_idx
-                        title_start_flag = True
-                        continue
-
-                if not title_end_flag and idx + 1 < len(toc):
-                    distance_end = levenshtein_distance(s1=line, s2=toc[idx + 1][0])
-                    if distance_end <= 2:
-                        title_end_idx = text_idx
-                        title_end_flag = True
-
-            text = "".join(text_splits[title_start_idx:title_end_idx])
-            ori_text = "".join(ori_text_splits[title_start_idx:title_end_idx])
-            ori_text = convert_title_with_paragraph_breaks(ori_text)
-
-            new_content_image = []
-            if use_image:
-                pattern_image = r"image_[\w-]+_\d+_\d+\.png"
-                images_anchor = re.findall(pattern_image, text)
-                new_content_image = [
-                    f"{self.bucket_name}/{image_name}" for image_name in images_anchor
-                ]
-
-            new_content_table = []
-            if use_table:
-                pattern_table_id = r"\*\*\[TABLE_(\d+)\]\*\*"
-                table_id_matchers = re.findall(pattern_table_id, text)
-                for table_id in table_id_matchers:
-                    new_content_table.append(content_table[int(table_id)])
-
-            title_doc = Document(
-                page_content=text,
-                metadata={
-                    "pages_number": section_docs[0].metadata["pages_number"],
-                    "content_table": new_content_table,
-                    "content_image": new_content_image,
-                    "ori_text": ori_text,
-                },
-            )
-            if len(title_doc.page_content) > 30:
-                title_docs.append(title_doc)
+        title_docs: list[Document] = []
+        for index, (start, title) in enumerate(boundaries):
+            end = boundaries[index + 1][0] if index + 1 < len(boundaries) else len(lines)
+            if start >= end:
+                continue
+            original = "".join(lines[start:end])
+            if not original.strip():
+                continue
+            page_index = next(i for i in range(len(docs)) if offsets[i + 1] > start)
+            metadata = dict(docs[page_index].metadata)
+            metadata["ori_text"] = original
+            if title:
+                metadata["title"] = title
+            metadata["content_table"] = []
+            metadata["content_image"] = []
+            title_docs.append(Document(page_content=original, metadata=metadata))
 
         return title_docs or chunksplit_docs
+
+    def _limit_chunk_size(self, docs: list[Document]) -> list[Document]:
+        """按配置长度拆分过长的分块，保留来源元数据。
+
+        Args:
+            docs: 按目录或标题生成的初始分块。
+        """
+        limit = text_splitter._chunk_size
+        limited: list[Document] = []
+        for doc in docs:
+            content = doc.page_content
+            consumed = 0
+            while content:
+                if len(content) <= limit:
+                    piece, content = content, ""
+                else:
+                    boundary = limit
+                    piece, content = content[:boundary], content[boundary:]
+                if piece.strip():
+                    metadata = dict(doc.metadata)
+                    original = doc.metadata.get("ori_text", "")
+                    metadata["ori_text"] = original[consumed:consumed + len(piece)]
+                    limited.append(Document(page_content=piece, metadata=metadata))
+                consumed += len(piece)
+        return limited
 
     def _finalize_docs(
         self,
@@ -1505,6 +1484,8 @@ class PDFParser:
             use_table=use_table,
             use_image=use_image,
         )
+        if structure_info["split_strategy"] == "chunksplit":
+            docs = self._limit_chunk_size(docs)
         logger.info(f"最终分块数量：{len(docs)}")
 
         return self._finalize_docs(
@@ -1516,7 +1497,12 @@ class PDFParser:
 
 
 if __name__ == "__main__":
-    pdf_parser = PDFParser(bucket_name="法律", file_path="Quick Start.txt")
+    pdf_parser = PDFParser(bucket_name="", file_path=r"C:\Users\n0378\Downloads\document.pdf")
     docs = pdf_parser.get_chunk()
-    print(docs[0])
+    print(f"分块数量: {len(docs)}")
+    for index, doc in enumerate(docs, start=1):
+        print(
+            f"[{index}] 页码={doc.metadata.get('pages_number')} "
+            f"长度={len(doc.page_content)}\n{doc.page_content}\n"
+        )
 
