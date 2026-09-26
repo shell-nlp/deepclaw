@@ -704,6 +704,16 @@ export default function ChatInterface() {
   const [mcpNotice, setMcpNotice] = useState('')
   const [mcpError, setMcpError] = useState('')
 
+  useEffect(() => {
+    if (!mcpNotice) return
+    const timeout = window.setTimeout(() => setMcpNotice(''), 4000)
+    return () => window.clearTimeout(timeout)
+  }, [mcpNotice])
+
+  useEffect(() => {
+    if (viewMode !== 'mcp') setMcpNotice('')
+  }, [viewMode])
+
   const [skills, setSkills] = useState<SkillRecord[]>([])
   const [loadingSkills, setLoadingSkills] = useState(false)
   const [uploadingSkills, setUploadingSkills] = useState(false)
@@ -1398,9 +1408,6 @@ export default function ChatInterface() {
           )
           if (matched) {
             setSelectedKnowledgeBase(matched)
-          } else {
-            setSelectedKnowledgeBaseId('')
-            setSelectedKnowledgeBase(null)
           }
         }
       } catch (error) {
@@ -1838,7 +1845,11 @@ export default function ChatInterface() {
 
   const openKnowledgeBaseLibrary = (knowledgeBase: KnowledgeBase) => {
     selectKnowledgeBase(knowledgeBase)
-    navigateTo('knowledge', 'library-detail')
+    setViewMode('knowledge')
+    setKnowledgePage('library-detail')
+    if (typeof window !== 'undefined') {
+      window.history.pushState(null, '', getRouteHash('knowledge', 'library-detail', channelPage))
+    }
   }
 
   const openDocumentDetail = (document: KnowledgeDocument) => {

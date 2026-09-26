@@ -4134,6 +4134,8 @@ button.extensionListRow { cursor: pointer; }
 .extensionEmpty { display: grid; justify-items: center; gap: 7px; padding: 50px 20px; text-align: center; }
 .extensionEmpty strong { font-size: 14px; }
 .extensionEmpty span { color: var(--extension-muted); font-size: 12px; }
+.knowledgeWorkspace .extensionEmpty { align-content: center; }
+.knowledgeWorkspace .extensionEmpty .extensionTextButton { margin-top: 4px; }
 
 .extensionDialogOverlay { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 18px; background: #18233170; backdrop-filter: blur(3px); }
 .extensionDialog { display: flex; flex-direction: column; gap: 14px; width: min(760px, 100%); max-height: min(760px, calc(100vh - 36px)); padding: 24px; border: 1px solid #dce3eb; border-radius: 8px; background: #fff; box-shadow: 0 30px 75px #16233330; }
@@ -4178,6 +4180,154 @@ button.extensionListRow { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   .extensionSwitch, .extensionSwitch span, .extensionChevron { transition: none; }
 }
+
+.channelWorkspace { gap: 0; }
+.channelWorkspace .extensionHeading { padding-bottom: 22px; }
+.channelToolbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 18px; }
+.channelScope { display: flex; align-items: center; gap: 20px; border-bottom: 1px solid #e2e9f0; }
+.channelScope button { min-height: 42px; padding: 0 3px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #68768a; font-size: 13px; font-weight: 600; cursor: pointer; }
+.channelScope .channelScopeActive { color: #233244; border-bottom-color: #273647; }
+.channelFilters { display: flex; align-items: center; justify-content: flex-end; gap: 9px; flex-wrap: wrap; }
+.channelFilterInput { width: 150px; height: 38px; min-width: 0; padding: 0 10px; border: 1px solid #e3e9f0; border-radius: 6px; background: white; color: #29384b; font-size: 12px; }
+.channelFilters .extensionSearch { width: 220px; }
+.channelWorkspaceGrid { display: grid; grid-template-columns: minmax(250px, 0.82fr) minmax(0, 1.5fr); align-items: start; gap: 18px; min-height: 0; }
+.channelListPanel, .channelDetailPanel { min-width: 0; overflow: hidden; border: 1px solid #e3e9f0; border-radius: 8px; background: #fff; }
+.channelPanelHeading { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 16px 18px; border-bottom: 1px solid #edf1f5; font-size: 13px; }
+.channelPanelHeading span { color: #7c8998; font-size: 11px; white-space: nowrap; }
+.channelOwnerGroup + .channelOwnerGroup { border-top: 1px solid #e3e9f0; }
+.channelOwnerHeading { display: flex; justify-content: space-between; gap: 8px; padding: 13px 18px 8px; background: #fafbfd; color: #556477; font-size: 11px; }
+.channelOwnerHeading strong { min-width: 0; overflow-wrap: anywhere; font-weight: 700; }
+.channelOwnerHeading span { flex: none; color: #8290a0; }
+.channelBindingRow { display: flex; align-items: center; gap: 11px; width: 100%; min-height: 67px; padding: 10px 16px; border: 0; border-left: 3px solid transparent; background: #fff; text-align: left; color: #273647; cursor: pointer; }
+.channelBindingRow + .channelBindingRow { border-top: 1px solid #f0f3f6; }
+.channelBindingRow:hover { background: #f8fafc; }
+.channelBindingRowActive { border-left-color: #237966; background: #f0f7f5; }
+.channelBindingIcon { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 6px; background: #e7f3ee; color: #237966; font-size: 13px; font-weight: 700; }
+.channelBindingIdentity { display: grid; gap: 4px; min-width: 0; flex: 1; }
+.channelBindingIdentity strong, .channelBindingIdentity small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.channelBindingIdentity strong { font-size: 12px; }
+.channelBindingIdentity small { font-size: 11px; color: #8190a0; }
+.channelStatus { flex: none; padding: 4px 8px; border-radius: 4px; background: #f2f4f7; color: #748193; font: 600 11px 'IBM Plex Mono', monospace; }
+.channelStatusConnected { background: #e4f5ec; color: #12805c; }
+.channelStatusError { background: #fceceb; color: #be5650; }
+.channelDetailPanel { padding: 0 24px; }
+.channelDetailPanel > .extensionEmpty { min-height: 250px; }
+.channelDetailHeading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 23px 0 21px; }
+.channelDetailHeading > div { min-width: 0; }
+.channelDetailHeading h3 { margin: 8px 0 5px; overflow-wrap: anywhere; font-size: 20px; color: #263444; }
+.channelDetailSubtitle { color: #718095; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.channelSection { padding: 19px 0; border-top: 1px solid #edf1f5; }
+.channelSection h4 { margin: 0 0 16px; font-size: 13px; color: #354456; }
+.channelQrContent { display: flex; align-items: center; gap: 24px; min-width: 0; }
+.channelQrContent .channelQrImage, .channelQrContent .channelQrPlaceholder { width: 174px; height: 174px; flex: none; border-radius: 6px; }
+.channelQrContent .channelQrPlaceholder { font-size: 12px; }
+.channelQrCopy { min-width: 0; flex: 1; }
+.channelQrCopy strong { font-size: 13px; }
+.channelQrCopy p { margin: 8px 0 18px; color: #758398; font-size: 12px; line-height: 1.5; }
+.channelDetailActions { display: flex; gap: 8px; flex-wrap: wrap; }
+.channelExternalLink { display: inline-block; margin-top: 15px; color: #426b95; font-size: 11px; text-decoration: none; }
+.channelExternalLink:hover { text-decoration: underline; }
+.channelDetailTable { display: grid; gap: 0; margin: 0; }
+.channelDetailTable > div { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 12px; padding: 9px 0; font-size: 12px; }
+.channelDetailTable dt { color: #8491a2; }
+.channelDetailTable dd { margin: 0; color: #344253; overflow-wrap: anywhere; }
+.channelDangerZone { display: flex; justify-content: flex-end; padding: 18px 0 20px; border-top: 1px solid #edf1f5; }
+.channelCreateDialog { width: min(520px, 100%); overflow-y: auto; }
+.channelCreateFields { display: grid; gap: 13px; }
+.channelCreateFields label { display: grid; gap: 6px; color: #536176; font-size: 12px; font-weight: 600; }
+.channelCreateFields .managementInput { width: 100%; border-radius: 6px; }
+.channelCreateFields .channelCreateSwitch { display: flex; justify-content: space-between; align-items: center; }
+.channelCreateDialog .extensionDialogActions { justify-content: flex-end; }
+.channelWorkspace button:focus-visible, .channelWorkspace input:focus-visible, .channelWorkspace select:focus-visible { outline: 2px solid #5479a9; outline-offset: 2px; }
+
+@media (max-width: 1080px) { .channelWorkspaceGrid { grid-template-columns: 1fr; } }
+@media (max-width: 700px) {
+  .channelToolbar { align-items: stretch; flex-direction: column; }
+  .channelFilters { justify-content: stretch; }
+  .channelFilters .extensionSearch { flex: 1 1 100%; width: 100%; }
+  .channelFilterInput { flex: 1 1 120px; }
+  .channelDetailPanel { padding: 0 16px; }
+  .channelQrContent { align-items: flex-start; flex-direction: column; }
+  .channelQrContent .channelQrImage, .channelQrContent .channelQrPlaceholder { width: 180px; height: 180px; }
+  .channelDetailTable > div { grid-template-columns: 86px minmax(0, 1fr); }
+}
+
+.knowledgeWorkspace { gap: 0; }
+.knowledgeWorkspace .extensionHeading { padding-bottom: 24px; }
+.knowledgeBreadcrumb { display: inline-block; padding: 0; border: 0; background: transparent; color: #57728e; font-size: 12px; font-weight: 650; cursor: pointer; }
+.knowledgeBreadcrumb:hover { text-decoration: underline; }
+.knowledgeWorkspace .managementKnowledgeHeroDescription { display: block; max-width: 680px; margin: 0; color: #708096; font-size: 13px; }
+.knowledgeToolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.knowledgeToolbar .managementSearchGroup { max-width: 420px; min-height: 38px; }
+.knowledgeSearchInput { flex: 1; width: min(300px, 100%); min-width: 0; height: 38px; padding: 0 12px; border: 1px solid #e3e9f0; border-radius: 6px; background: #fff; color: #263444; font-size: 13px; }
+.knowledgeSearchInput:focus { border-color: #627b9e; outline: 2px solid #627b9e20; }
+.knowledgeList { overflow: hidden; border: 1px solid #e3e9f0; border-radius: 8px; background: #fff; }
+.knowledgeRow { display: flex; align-items: center; gap: 14px; min-height: 79px; padding: 12px 18px; }
+.knowledgeRow + .knowledgeRow { border-top: 1px solid #edf1f5; }
+.knowledgeRow:hover { background: #fafbfd; }
+.knowledgeCheckbox { display: flex; align-items: center; flex: none; cursor: pointer; }
+.knowledgeCheckbox input { width: 15px; height: 15px; accent-color: #278268; }
+.knowledgeRowPrimary { display: flex; align-items: center; flex: 1; gap: 12px; min-width: 0; padding: 0; border: 0; background: transparent; color: #273647; text-align: left; cursor: pointer; }
+.knowledgeIdentityMark, .knowledgeDocumentMark { display: grid; place-items: center; flex: none; width: 38px; height: 38px; border-radius: 6px; background: #e8f2ed; color: #28765e; font-size: 14px; font-weight: 700; }
+.knowledgeDocumentMark { background: #edf1f9; color: #506c95; font: 700 10px 'IBM Plex Mono', monospace; }
+.knowledgeRowText { display: grid; gap: 5px; min-width: 0; }
+.knowledgeRowText strong, .knowledgeRowText small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.knowledgeRowText strong { font-size: 13px; }
+.knowledgeRowText small { max-width: 430px; color: #8290a1; font-size: 12px; }
+.knowledgeRowMetric, .knowledgeRowDate { flex: 0 0 auto; color: #67788a; font-size: 12px; white-space: nowrap; }
+.knowledgeRowDate { width: 86px; text-align: right; }
+.knowledgeRowActions { display: flex; align-items: center; gap: 9px; flex: none; }
+.knowledgeDetailSection { display: flex; flex-direction: column; gap: 15px; }
+.knowledgeDetailSection > .managementHeader { padding: 0 0 12px; }
+.knowledgeDocumentLayout { display: grid; grid-template-columns: minmax(260px, 0.48fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+.knowledgeFilePanel, .knowledgeChunksPanel { min-width: 0; padding: 20px; border: 1px solid #e3e9f0; border-radius: 8px; background: #fff; }
+.knowledgeFilePanel .managementHeader { align-items: flex-start; }
+.knowledgeFilePanel .managementHeader h3 { overflow-wrap: anywhere; font-size: 15px; }
+.knowledgeFilePanel .managementMetaPanel { display: grid; gap: 9px; margin-top: 15px; padding: 0; border: 0; background: transparent; }
+.knowledgeChunksPanel { display: grid; gap: 16px; }
+.knowledgeChunksList { display: grid; gap: 0; }
+.knowledgeChunk { padding: 17px 0; border-top: 1px solid #edf1f5; }
+.knowledgeChunk .managementListHeader { min-width: 0; }
+.knowledgeChunk .managementListHeader span { max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.knowledgeChunkContent { margin: 12px 0; color: #344355; font-size: 13px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
+.knowledgeModal { width: min(500px, 100%); }
+.knowledgeModal .managementForm { gap: 15px; }
+.knowledgeModalLabel { display: grid; gap: 7px; color: #59697e; font-size: 12px; font-weight: 600; }
+.knowledgeModal .extensionDialogActions { justify-content: flex-end; }
+.knowledgeWorkspace button:focus-visible, .knowledgeWorkspace input:focus-visible { outline: 2px solid #5479a9; outline-offset: 2px; }
+
+@media (max-width: 1100px) { .knowledgeDocumentLayout { grid-template-columns: 1fr; } }
+@media (max-width: 740px) {
+  .knowledgeToolbar { flex-wrap: wrap; }
+  .knowledgeToolbar .managementSearchGroup { flex: 1 1 100%; max-width: none; flex-wrap: nowrap; }
+  .knowledgeToolbar .managementSearchGroup .knowledgeSearchInput { width: 0; flex: 1 1 auto; }
+  .knowledgeToolbar .managementSearchGroup .extensionSecondaryButton { flex: none; }
+  .knowledgeWorkspace .knowledgeToolbar .managementSearchGroup { display: flex; flex-direction: row; align-items: center; min-width: 0; }
+  .knowledgeWorkspace .knowledgeToolbar .managementSearchGroup .knowledgeSearchInput { height: 38px; min-height: 38px; }
+  .knowledgeRow { gap: 9px; padding: 12px; flex-wrap: wrap; }
+  .knowledgeRowPrimary { flex: 1 1 calc(100% - 45px); }
+  .knowledgeRowMetric { margin-left: 25px; }
+  .knowledgeRowDate { width: auto; }
+  .knowledgeRowActions { margin-left: auto; }
+}
+@media (max-width: 480px) {
+  .knowledgeRowDate { display: none; }
+  .knowledgeRowActions { gap: 2px; }
+  .knowledgeRowMetric { font-size: 11px; }
+  .knowledgeFilePanel, .knowledgeChunksPanel { padding: 15px; }
+}
+
+.knowledgeWorkspace .knowledgeToolbar .managementSearchGroup {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: nowrap;
+}
+.knowledgeWorkspace .knowledgeToolbar .knowledgeSearchInput {
+  width: 0;
+  height: 38px;
+  flex: 1 1 auto;
+}
+.knowledgeWorkspace .knowledgeToolbar .extensionSecondaryButton { flex: none; }
 
 .accountEntry {
   display: inline-flex;

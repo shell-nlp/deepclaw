@@ -97,10 +97,11 @@ export function ChannelManagementView({
   const [submittingWeixin, setSubmittingWeixin] = useState(false)
   const [submittingFeishu, setSubmittingFeishu] = useState(false)
   const [pendingBindingId, setPendingBindingId] = useState<number | null>(null)
-  const [selectedOwnerUserId, setSelectedOwnerUserId] = useState('')
   const [selectedBindingId, setSelectedBindingId] = useState<number | null>(null)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
+  const [createOpen, setCreateOpen] = useState(false)
+  const [bindingSearch, setBindingSearch] = useState('')
 
   const [weixinDisplayName, setWeixinDisplayName] = useState('')
   const [weixinOwnerUserId, setWeixinOwnerUserId] = useState(userId)
@@ -121,6 +122,15 @@ export function ChannelManagementView({
   const [generatedQrcodes, setGeneratedQrcodes] = useState<Record<number, string>>({})
 
   const canViewAdminScope = actor.role === 'admin'
+
+  useEffect(() => {
+    if (!createOpen) return
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setCreateOpen(false)
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [createOpen])
 
   const loadBindings = useCallback(
     async (nextScope: ChannelScope = scope) => {
@@ -207,47 +217,28 @@ export function ChannelManagementView({
   ])
 
   const channelBindings = visibleBindings
-  const ownerRows = useMemo(
-    () => buildBindingOwnerRows(channelBindings),
-    [channelBindings]
-  )
-  const selectedOwnerBindings = useMemo(() => {
-    if (!selectedOwnerUserId) return channelBindings
-    return channelBindings.filter(
-      (binding) => binding.owner_user_id === selectedOwnerUserId
+  const filteredBindings = useMemo(() => {
+    const query = bindingSearch.trim().toLocaleLowerCase()
+    if (!query) return channelBindings
+    return channelBindings.filter((binding) =>
+      [binding.display_name, binding.owner_user_id, binding.manager_user_id]
+        .some((value) => String(value || '').toLocaleLowerCase().includes(query))
     )
-  }, [channelBindings, selectedOwnerUserId])
+  }, [bindingSearch, channelBindings])
+  const ownerRows = useMemo(
+    () => buildBindingOwnerRows(filteredBindings),
+    [filteredBindings]
+  )
   const selectedBinding = useMemo(
-    () =>
-      selectedOwnerBindings.find((binding) => binding.id === selectedBindingId) ||
-      selectedOwnerBindings[0] ||
-      null,
-    [selectedBindingId, selectedOwnerBindings]
+    () => filteredBindings.find((binding) => binding.id === selectedBindingId) || filteredBindings[0] || null,
+    [filteredBindings, selectedBindingId]
   )
 
   useEffect(() => {
-    if (ownerRows.length === 0) {
-      if (selectedOwnerUserId) {
-        setSelectedOwnerUserId('')
-      }
-      return
+    if (!filteredBindings.some((binding) => binding.id === selectedBindingId)) {
+      setSelectedBindingId(filteredBindings[0]?.id ?? null)
     }
-    if (!ownerRows.some((row) => row.ownerUserId === selectedOwnerUserId)) {
-      setSelectedOwnerUserId(ownerRows[0].ownerUserId)
-    }
-  }, [ownerRows, selectedOwnerUserId])
-
-  useEffect(() => {
-    if (selectedOwnerBindings.length === 0) {
-      if (selectedBindingId !== null) {
-        setSelectedBindingId(null)
-      }
-      return
-    }
-    if (!selectedOwnerBindings.some((binding) => binding.id === selectedBindingId)) {
-      setSelectedBindingId(selectedOwnerBindings[0].id)
-    }
-  }, [selectedBindingId, selectedOwnerBindings])
+  }, [filteredBindings, selectedBindingId])
 
   const createWeixinBinding = useCallback(async () => {
     const displayName = weixinDisplayName.trim()
@@ -273,6 +264,7 @@ export function ChannelManagementView({
         }
       )
       setWeixinDisplayName('')
+      setCreateOpen(false)
       setNotice(`微信绑定 ${response.display_name || displayName} 已创建，请扫码登录。`)
       await loadBindings(scope)
     } catch (nextError) {
@@ -310,6 +302,7 @@ export function ChannelManagementView({
       setFeishuDisplayName('')
       setFeishuAppId('')
       setFeishuAppSecret('')
+      setCreateOpen(false)
       setNotice(`飞书绑定 ${response.display_name || displayName} 已创建。`)
       await loadBindings(scope)
     } catch (nextError) {
@@ -412,50 +405,37 @@ export function ChannelManagementView({
     channelPage === 'feishu'
       ? '集中管理飞书绑定的配置、状态、归属用户和删除。'
       : '集中管理微信绑定的扫码、状态检查、归属用户和删除。'
-  const selectedOwnerRow = ownerRows.find(
-    (row) => row.ownerUserId === selectedOwnerUserId
-  )
+  const selectedStatus = selectedBinding
+    ? statusOverrides[selectedBinding.id]?.status || getBindingRuntimeStatus(selectedBinding)
+    : ''
+  const selectedQr = selectedBinding && channelPage === 'weixin'
+    ? getChannelManagementQrRenderState({
+        qrcode: getBindingQrcodePayload(selectedBinding),
+        qrcodeUrl: getBindingQrcodeUrl(selectedBinding),
+        generatedDataUrl: generatedQrcodes[selectedBinding.id] || '',
+      })
+    : null
   const ownerListSection = (
-    <section className={styles.managementCard}>
-      <div className={styles.managementHeader}>
-        <h3>已绑定用户</h3>
-        <span className={styles.managementMeta}>{ownerRows.length} 个用户</span>
-      </div>
-      <p className={styles.managementHelperText}>
-        这里按所属系统用户聚合展示。同一用户新增多个绑定时，不会新增用户行，只会累加绑定数量和绑定备注。
-      </p>
-      <div className={styles.managementList}>
+    <section className={styles.channelListPanel} aria-label="绑定列表" aria-busy={loadingBindings}>
+      <div className={styles.channelPanelHeading}><strong>绑定列表</strong><span>{filteredBindings.length} 条 · {ownerRows.length} 个用户</span></div>
+      <div>
         {ownerRows.length === 0 ? (
-          <div className={styles.managementEmpty}>当前渠道下还没有已绑定用户。</div>
+          <div className={styles.extensionEmpty}><strong>没有匹配的绑定</strong><span>可调整筛选条件，或新增一个{currentChannelLabel}绑定。</span></div>
         ) : (
           ownerRows.map((row) => (
-            <button
-              key={row.ownerUserId}
-              className={`${styles.managementListItem} ${
-                selectedOwnerUserId === row.ownerUserId
-                  ? styles.managementListItemActive
-                  : ''
-              }`}
-              onClick={() => setSelectedOwnerUserId(row.ownerUserId)}
-              type="button"
-            >
-              <div className={styles.managementListHeader}>
-                <strong>{row.ownerUserId}</strong>
-                <span>{row.total} 条绑定</span>
-              </div>
-              <div className={styles.managementListMeta}>
-                <span>在线: {row.summary.connected}</span>
-                <span>待处理: {row.summary.pending}</span>
-                <span>异常: {row.summary.error}</span>
-                <span>管理人: {row.managerUserIds.join(', ') || '未记录'}</span>
-                <span>最近更新: {formatDateTime(row.latestUpdatedAt)}</span>
-              </div>
-              {row.displayNames.length > 0 ? (
-                <p className={styles.managementDescription}>
-                  绑定备注: {row.displayNames.join(' / ')}
-                </p>
-              ) : null}
-            </button>
+            <div key={row.ownerUserId} className={styles.channelOwnerGroup}>
+              <div className={styles.channelOwnerHeading}><strong>{row.ownerUserId}</strong><span>{row.total} 条 · {row.summary.connected} 在线</span></div>
+              {filteredBindings.filter((binding) => binding.owner_user_id === row.ownerUserId).map((binding) => {
+                const status = statusOverrides[binding.id]?.status || getBindingRuntimeStatus(binding)
+                return (
+                  <button type="button" key={binding.id} className={`${styles.channelBindingRow} ${selectedBinding?.id === binding.id ? styles.channelBindingRowActive : ''}`} onClick={() => setSelectedBindingId(binding.id)} aria-current={selectedBinding?.id === binding.id ? 'true' : undefined}>
+                    <span className={styles.channelBindingIcon} aria-hidden="true">{currentChannelLabel.slice(0, 1)}</span>
+                    <span className={styles.channelBindingIdentity}><strong>{binding.display_name || `绑定 ${binding.id}`}</strong><small>#{binding.id} · {formatDateTime(binding.updated_at)}</small></span>
+                    <span className={`${styles.channelStatus} ${status === 'connected' ? styles.channelStatusConnected : status === 'error' ? styles.channelStatusError : ''}`}>{status}</span>
+                  </button>
+                )
+              })}
+            </div>
           ))
         )}
       </div>
@@ -463,17 +443,27 @@ export function ChannelManagementView({
   )
 
   return (
-    <div className={styles.managementWorkspace}>
-      <section className={styles.managementHero}>
-        <div className={styles.managementHeroCopy}>
-          <span className={styles.managementHeroEyebrow}>Channel Management</span>
+    <div className={`${styles.managementWorkspace} ${styles.extensionWorkspace} ${styles.channelWorkspace}`}>
+      <header className={styles.extensionHeading}>
+        <div>
+          <span className={styles.extensionEyebrow}>CONNECTIONS / {channelPage === 'weixin' ? 'WECHAT' : 'FEISHU'}</span>
           <h2>{currentPageTitle}</h2>
           <p>{currentPageDescription}</p>
         </div>
-        <div className={styles.managementHeroActions}>
+        <div className={styles.extensionHeadingActions}>
+          <span className={styles.extensionCount}>{channelBindings.length} 条绑定</span>
+          <button type="button" className={styles.extensionSecondaryButton} disabled={loadingBindings} onClick={() => void loadBindings(scope)}>
+            {loadingBindings ? '刷新中…' : '刷新'}
+          </button>
+          <button type="button" className={styles.extensionPrimaryButton} onClick={() => setCreateOpen(true)}>＋ 新增绑定</button>
+        </div>
+      </header>
+
+      <div className={styles.channelToolbar}>
+        <div className={styles.channelScope} role="group" aria-label="绑定查看范围">
           <button
             className={
-              scope === 'my' ? styles.managementButton : styles.managementMinorButton
+              scope === 'my' ? styles.channelScopeActive : ''
             }
             onClick={() => setScope('my')}
           >
@@ -483,415 +473,105 @@ export function ChannelManagementView({
             <button
               className={
                 scope === 'all'
-                  ? styles.managementButton
-                  : styles.managementMinorButton
+                  ? styles.channelScopeActive
+                  : ''
               }
               onClick={() => setScope('all')}
             >
               全部绑定
             </button>
           ) : null}
-          <button
-            className={styles.managementMinorButton}
-            disabled={loadingBindings}
-            onClick={() => void loadBindings(scope)}
-          >
-            {loadingBindings ? '刷新中...' : '刷新列表'}
-          </button>
         </div>
-      </section>
+        <div className={styles.channelFilters}>
+          {scope === 'all' && <>
+            <input className={styles.channelFilterInput} value={adminOwnerFilter} onChange={(event) => setAdminOwnerFilter(event.target.value)} placeholder="所属用户 ID" aria-label="筛选所属用户" />
+            <select className={styles.channelFilterInput} value={adminStatusFilter} onChange={(event) => setAdminStatusFilter(event.target.value)} aria-label="筛选运行状态">
+              <option value="">全部状态</option><option value="connected">已连接</option><option value="pending">待处理</option><option value="error">异常</option><option value="starting">启动中</option><option value="stopped">已停止</option>
+            </select>
+          </>}
+          <label className={styles.extensionSearch}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+            <input value={bindingSearch} onChange={(event) => setBindingSearch(event.target.value)} placeholder="搜索绑定" aria-label="搜索绑定" />
+          </label>
+        </div>
+      </div>
 
       <div className={styles.managementNoticeRow}>
         {notice ? <div className={styles.managementNotice}>{notice}</div> : null}
         {error ? <div className={styles.managementError}>{error}</div> : null}
       </div>
 
-      {channelPage === 'weixin' ? (
-        <>
-          <section className={styles.managementCard}>
-            <div className={styles.managementHeader}>
-              <h3>{currentChannelLabel}绑定</h3>
-              <span className={styles.managementMeta}>
-                {channelBindings.length} 条绑定
-              </span>
+      {createOpen && (
+        <div className={styles.extensionDialogOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setCreateOpen(false) }}>
+          <section className={`${styles.extensionDialog} ${styles.channelCreateDialog}`} role="dialog" aria-modal="true" aria-labelledby="channel-create-title">
+            <div className={styles.extensionDialogHeader}><div><span className={styles.extensionEyebrow}>NEW / {currentChannelLabel}</span><h3 id="channel-create-title">新增{currentChannelLabel}绑定</h3></div><button type="button" className={styles.extensionIconButton} aria-label="关闭新增绑定" onClick={() => setCreateOpen(false)}>×</button></div>
+            <div className={styles.channelCreateFields}>
+              <label>所属系统用户 ID<input className={styles.managementInput} value={channelPage === 'weixin' ? weixinOwnerUserId : feishuOwnerUserId} onChange={(event) => channelPage === 'weixin' ? setWeixinOwnerUserId(event.target.value) : setFeishuOwnerUserId(event.target.value)} /></label>
+              <label>绑定备注名<input className={styles.managementInput} value={channelPage === 'weixin' ? weixinDisplayName : feishuDisplayName} onChange={(event) => channelPage === 'weixin' ? setWeixinDisplayName(event.target.value) : setFeishuDisplayName(event.target.value)} placeholder="便于识别的名称" /></label>
+              {channelPage === 'feishu' && <>
+                <label>App ID<input className={styles.managementInput} value={feishuAppId} onChange={(event) => setFeishuAppId(event.target.value)} /></label>
+                <label>App Secret<input type="password" className={styles.managementInput} value={feishuAppSecret} onChange={(event) => setFeishuAppSecret(event.target.value)} autoComplete="off" /></label>
+                <label>应用域名<select className={styles.managementInput} value={feishuDomain} onChange={(event) => setFeishuDomain(event.target.value as 'feishu' | 'lark')}><option value="feishu">Feishu</option><option value="lark">Lark</option></select></label>
+                <label>群聊策略<select className={styles.managementInput} value={feishuGroupPolicy} onChange={(event) => setFeishuGroupPolicy(event.target.value as 'mention' | 'open')}><option value="mention">仅被提及时回复</option><option value="open">开放回复</option></select></label>
+                <label className={styles.channelCreateSwitch}>长连接<button type="button" role="switch" aria-checked={feishuStreaming} className={`${styles.extensionSwitch} ${feishuStreaming ? styles.extensionSwitchOn : ''}`} onClick={() => setFeishuStreaming((current) => !current)}><span /></button></label>
+              </>}
             </div>
-            <div className={styles.managementToolbar}>
-              <input
-                className={styles.managementInput}
-                value={weixinOwnerUserId}
-                onChange={(event) => setWeixinOwnerUserId(event.target.value)}
-                placeholder="所属系统用户 ID"
-              />
-              <input
-                className={styles.managementInput}
-                value={weixinDisplayName}
-                onChange={(event) => setWeixinDisplayName(event.target.value)}
-                placeholder="例如：张三主号 / 李四代绑号"
-              />
-              <button
-                className={styles.managementButton}
-                disabled={submittingWeixin}
-                onClick={() => void createWeixinBinding()}
-              >
-                {submittingWeixin ? '创建中...' : '新增微信绑定'}
-              </button>
-            </div>
-            <div className={styles.managementMetaPanel}>
-              <span>同一系统用户可以维护多个微信绑定。</span>
-              <span>每条绑定独立生成二维码、独立维护状态、独立删除。</span>
-            </div>
-            {scope === 'all' ? (
-              <div className={styles.managementToolbar}>
-                <input
-                  className={styles.managementInput}
-                  value={adminOwnerFilter}
-                  onChange={(event) => setAdminOwnerFilter(event.target.value)}
-                  placeholder="按所属系统用户筛选"
-                />
-                <select
-                  className={styles.managementInput}
-                  value={adminStatusFilter}
-                  onChange={(event) => setAdminStatusFilter(event.target.value)}
-                >
-                  <option value="">全部状态</option>
-                  <option value="connected">connected</option>
-                  <option value="pending">pending</option>
-                  <option value="error">error</option>
-                  <option value="starting">starting</option>
-                  <option value="stopped">stopped</option>
-                </select>
-              </div>
-            ) : null}
+            {error && <div className={styles.managementError} role="alert">{error}</div>}
+            <div className={styles.extensionDialogActions}><button type="button" className={styles.extensionSecondaryButton} onClick={() => setCreateOpen(false)}>取消</button><button type="button" className={styles.extensionPrimaryButton} disabled={submittingWeixin || submittingFeishu} onClick={() => void (channelPage === 'weixin' ? createWeixinBinding() : createFeishuBinding())}>{submittingWeixin || submittingFeishu ? '创建中…' : '创建绑定'}</button></div>
           </section>
-
-          <div className={styles.managementPageGrid}>
-            {ownerListSection}
-
-            <section className={styles.managementCard}>
-              <div className={styles.managementHeader}>
-                <h3>绑定实例明细</h3>
-                <span className={styles.managementMeta}>
-                  {selectedOwnerBindings.length} 条绑定
-                </span>
-              </div>
-              <p className={styles.managementHelperText}>
-                {selectedOwnerRow
-                  ? `当前查看用户 ${selectedOwnerRow.ownerUserId} 在微信渠道下的绑定实例。`
-                  : '请选择一个已绑定用户查看该用户的绑定实例。'}
-              </p>
-              <div className={styles.managementList}>
-                {selectedOwnerBindings.length > 0 ? (
-                  <div className={styles.managementListItemStatic}>
-                    <div className={styles.managementHeader}>
-                      <h3>选择绑定实例</h3>
-                      <span className={styles.managementMeta}>
-                        当前选中 {selectedBinding?.display_name || selectedBinding?.id || '-'}
-                      </span>
-                    </div>
-                    <div className={styles.managementActionRow}>
-                      {selectedOwnerBindings.map((binding) => (
-                        <button
-                          key={binding.id}
-                          className={
-                            binding.id === selectedBinding?.id
-                              ? styles.managementButton
-                              : styles.managementMinorButton
-                          }
-                          onClick={() => setSelectedBindingId(binding.id)}
-                          type="button"
-                        >
-                          {binding.display_name || `绑定 ${binding.id}`}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-                {!selectedBinding ? (
-                  <div className={styles.managementEmpty}>
-                    当前没有匹配的微信绑定。
-                  </div>
-                ) : (
-                  (() => {
-                    const binding = selectedBinding
-                    const status = statusOverrides[binding.id]
-                    const qrcodeUrl = getBindingQrcodeUrl(binding)
-                    const qrcodePayload = getBindingQrcodePayload(binding)
-                    const renderState = getChannelManagementQrRenderState({
-                      qrcode: qrcodePayload,
-                      qrcodeUrl,
-                      generatedDataUrl: generatedQrcodes[binding.id] || '',
-                    })
-                    const baseUrl =
-                      typeof binding.credentials.base_url === 'string'
-                        ? binding.credentials.base_url
-                        : status?.base_url || status?.baseurl || '未获取'
-
-                    return (
-                      <div key={binding.id} className={styles.managementListItemStatic}>
-                        <div className={styles.managementListHeader}>
-                          <strong>{binding.display_name || `绑定 ${binding.id}`}</strong>
-                          <span>{status?.status || getBindingRuntimeStatus(binding)}</span>
-                        </div>
-                        <div className={styles.channelQrPanel}>
-                          {renderState.imageSrc ? (
-                            <img
-                              className={styles.channelQrImage}
-                              src={
-                                isDirectImageUrl(renderState.imageSrc)
-                                  ? renderState.imageSrc
-                                  : generatedQrcodes[binding.id] || renderState.imageSrc
-                              }
-                              alt={`${binding.display_name || binding.id} 二维码`}
-                            />
-                          ) : (
-                            <div className={styles.channelQrPlaceholder}>等待生成二维码</div>
-                          )}
-                          <div className={styles.channelQrDetails}>
-                            <strong>二维码链接</strong>
-                            {qrcodeUrl ? (
-                              <a
-                                className={`${styles.managementLink} ${styles.channelQrLink}`}
-                                href={qrcodeUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                {qrcodeUrl}
-                              </a>
-                            ) : (
-                              <span className={styles.managementMeta}>暂无二维码链接</span>
-                            )}
-                            <div className={styles.managementListMeta}>
-                              <span>所属用户: {binding.owner_user_id}</span>
-                              <span>管理人: {binding.manager_user_id}</span>
-                              <span>ClawBot 节点: {baseUrl}</span>
-                              <span>更新: {formatDateTime(binding.updated_at)}</span>
-                            </div>
-                            <div className={styles.managementActionRow}>
-                              <button
-                                className={styles.managementMinorButton}
-                                disabled={pendingBindingId === binding.id}
-                                onClick={() => void checkWeixinStatus(binding.id)}
-                              >
-                                {pendingBindingId === binding.id ? '检查中...' : '检查状态'}
-                              </button>
-                              <button
-                                className={styles.managementMinorButton}
-                                disabled={pendingBindingId === binding.id}
-                                onClick={() => void refreshWeixinQrcode(binding.id)}
-                              >
-                                刷新二维码
-                              </button>
-                              <button
-                                className={styles.managementDangerMinorButton}
-                                disabled={pendingBindingId === binding.id}
-                                onClick={() => void deleteBinding(binding)}
-                              >
-                                删除绑定
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })()
-                )}
-              </div>
-            </section>
-          </div>
-        </>
-      ) : (
-        <>
-          <section className={styles.managementCard}>
-            <div className={styles.managementHeader}>
-              <h3>{currentChannelLabel}绑定</h3>
-              <span className={styles.managementMeta}>
-                {channelBindings.length} 条绑定
-              </span>
-            </div>
-            <div className={styles.managementToolbar}>
-              <input
-                className={styles.managementInput}
-                value={feishuOwnerUserId}
-                onChange={(event) => setFeishuOwnerUserId(event.target.value)}
-                placeholder="所属系统用户 ID"
-              />
-              <input
-                className={styles.managementInput}
-                value={feishuDisplayName}
-                onChange={(event) => setFeishuDisplayName(event.target.value)}
-                placeholder="绑定备注名"
-              />
-              <input
-                className={styles.managementInput}
-                value={feishuAppId}
-                onChange={(event) => setFeishuAppId(event.target.value)}
-                placeholder="App ID"
-              />
-              <input
-                className={styles.managementInput}
-                value={feishuAppSecret}
-                onChange={(event) => setFeishuAppSecret(event.target.value)}
-                placeholder="App Secret"
-              />
-            </div>
-            <div className={styles.managementToolbar}>
-              <select
-                className={styles.managementInput}
-                value={feishuDomain}
-                onChange={(event) =>
-                  setFeishuDomain(event.target.value as 'feishu' | 'lark')
-                }
-              >
-                <option value="feishu">feishu</option>
-                <option value="lark">lark</option>
-              </select>
-              <select
-                className={styles.managementInput}
-                value={feishuGroupPolicy}
-                onChange={(event) =>
-                  setFeishuGroupPolicy(event.target.value as 'mention' | 'open')
-                }
-              >
-                <option value="mention">mention</option>
-                <option value="open">open</option>
-              </select>
-              <button
-                className={
-                  feishuStreaming
-                    ? styles.managementButton
-                    : styles.managementMinorButton
-                }
-                onClick={() => setFeishuStreaming((current) => !current)}
-              >
-                {feishuStreaming ? '长连接已启用' : '启用长连接'}
-              </button>
-              <button
-                className={styles.managementButton}
-                disabled={submittingFeishu}
-                onClick={() => void createFeishuBinding()}
-              >
-                {submittingFeishu ? '创建中...' : '新增飞书绑定'}
-              </button>
-            </div>
-            <div className={styles.managementMetaPanel}>
-              <span>每条飞书绑定独立保存自己的 app_id / app_secret。</span>
-              <span>群聊策略当前支持 mention 与 open。</span>
-            </div>
-            {scope === 'all' ? (
-              <div className={styles.managementToolbar}>
-                <input
-                  className={styles.managementInput}
-                  value={adminOwnerFilter}
-                  onChange={(event) => setAdminOwnerFilter(event.target.value)}
-                  placeholder="按所属系统用户筛选"
-                />
-                <select
-                  className={styles.managementInput}
-                  value={adminStatusFilter}
-                  onChange={(event) => setAdminStatusFilter(event.target.value)}
-                >
-                  <option value="">全部状态</option>
-                  <option value="connected">connected</option>
-                  <option value="pending">pending</option>
-                  <option value="error">error</option>
-                  <option value="starting">starting</option>
-                  <option value="stopped">stopped</option>
-                </select>
-              </div>
-            ) : null}
-          </section>
-
-          <div className={styles.managementPageGrid}>
-            {ownerListSection}
-
-            <section className={styles.managementCard}>
-              <div className={styles.managementHeader}>
-                <h3>绑定实例明细</h3>
-                <span className={styles.managementMeta}>
-                  {selectedOwnerBindings.length} 条绑定
-                </span>
-              </div>
-              <p className={styles.managementHelperText}>
-                {selectedOwnerRow
-                  ? `当前查看用户 ${selectedOwnerRow.ownerUserId} 在飞书渠道下的绑定实例。`
-                  : '请选择一个已绑定用户查看该用户的绑定实例。'}
-              </p>
-              <div className={styles.managementList}>
-                {selectedOwnerBindings.length > 0 ? (
-                  <div className={styles.managementListItemStatic}>
-                    <div className={styles.managementHeader}>
-                      <h3>选择绑定实例</h3>
-                      <span className={styles.managementMeta}>
-                        当前选中 {selectedBinding?.display_name || selectedBinding?.id || '-'}
-                      </span>
-                    </div>
-                    <div className={styles.managementActionRow}>
-                      {selectedOwnerBindings.map((binding) => (
-                        <button
-                          key={binding.id}
-                          className={
-                            binding.id === selectedBinding?.id
-                              ? styles.managementButton
-                              : styles.managementMinorButton
-                          }
-                          onClick={() => setSelectedBindingId(binding.id)}
-                          type="button"
-                        >
-                          {binding.display_name || `绑定 ${binding.id}`}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-                {!selectedBinding ? (
-                  <div className={styles.managementEmpty}>当前还没有飞书绑定。</div>
-                ) : (
-                  <div key={selectedBinding.id} className={styles.managementListItemStatic}>
-                    <div className={styles.managementListHeader}>
-                      <strong>
-                        {selectedBinding.display_name || `绑定 ${selectedBinding.id}`}
-                      </strong>
-                      <span>{getBindingRuntimeStatus(selectedBinding)}</span>
-                    </div>
-                    <p className={styles.managementDescription}>
-                      App ID:{' '}
-                      {typeof selectedBinding.credentials.app_id === 'string'
-                        ? maskText(selectedBinding.credentials.app_id)
-                        : '未配置'}
-                    </p>
-                    <div className={styles.managementListMeta}>
-                      <span>所属用户: {selectedBinding.owner_user_id}</span>
-                      <span>管理人: {selectedBinding.manager_user_id}</span>
-                      <span>
-                        群策略:{' '}
-                        {typeof selectedBinding.config.group_policy === 'string'
-                          ? selectedBinding.config.group_policy
-                          : 'mention'}
-                      </span>
-                      <span>
-                        Bot Open ID:{' '}
-                        {typeof selectedBinding.runtime_state.bot_open_id === 'string'
-                          ? selectedBinding.runtime_state.bot_open_id
-                          : '未识别'}
-                      </span>
-                      <span>更新: {formatDateTime(selectedBinding.updated_at)}</span>
-                    </div>
-                    <div className={styles.managementActionRow}>
-                      <button
-                        className={styles.managementDangerMinorButton}
-                        disabled={pendingBindingId === selectedBinding.id}
-                        onClick={() => void deleteBinding(selectedBinding)}
-                      >
-                        {pendingBindingId === selectedBinding.id ? '删除中...' : '删除绑定'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </section>
-          </div>
-        </>
+        </div>
       )}
+
+      <div className={styles.channelWorkspaceGrid}>
+        {ownerListSection}
+        <section className={styles.channelDetailPanel} aria-label="绑定详情">
+          {!selectedBinding ? (
+            <div className={styles.extensionEmpty}><strong>选择绑定查看详情</strong><span>选中左侧记录后，可检查状态和管理配置。</span></div>
+          ) : (
+            <>
+              <div className={styles.channelDetailHeading}>
+                <div><span className={styles.extensionEyebrow}>BINDING / {selectedBinding.id}</span><h3>{selectedBinding.display_name || `绑定 ${selectedBinding.id}`}</h3><span className={styles.channelDetailSubtitle}>所属用户 {selectedBinding.owner_user_id} · 管理人 {selectedBinding.manager_user_id}</span></div>
+                <span className={`${styles.channelStatus} ${selectedStatus === 'connected' ? styles.channelStatusConnected : selectedStatus === 'error' ? styles.channelStatusError : ''}`}>{selectedStatus}</span>
+              </div>
+              {channelPage === 'weixin' ? (
+                <div className={styles.channelSection}>
+                  <h4>扫码登录</h4>
+                  <div className={styles.channelQrContent}>
+                    {selectedQr?.imageSrc ? <img className={styles.channelQrImage} src={isDirectImageUrl(selectedQr.imageSrc) ? selectedQr.imageSrc : generatedQrcodes[selectedBinding.id] || selectedQr.imageSrc} alt={`${selectedBinding.display_name || selectedBinding.id} 二维码`} /> : <div className={styles.channelQrPlaceholder}>等待生成二维码</div>}
+                    <div className={styles.channelQrCopy}>
+                      <strong>使用微信扫码</strong><p>二维码失效时刷新，扫码后检查连接状态。</p>
+                      <div className={styles.channelDetailActions}>
+                        <button className={styles.extensionSecondaryButton} disabled={pendingBindingId === selectedBinding.id} onClick={() => void checkWeixinStatus(selectedBinding.id)}>{pendingBindingId === selectedBinding.id ? '检查中…' : '检查状态'}</button>
+                        <button className={styles.extensionSecondaryButton} disabled={pendingBindingId === selectedBinding.id} onClick={() => void refreshWeixinQrcode(selectedBinding.id)}>刷新二维码</button>
+                      </div>
+                      {getBindingQrcodeUrl(selectedBinding) && <a className={styles.channelExternalLink} href={getBindingQrcodeUrl(selectedBinding)} target="_blank" rel="noreferrer">在新窗口打开二维码链接 ↗</a>}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className={styles.channelSection}>
+                  <h4>飞书应用配置</h4>
+                  <dl className={styles.channelDetailTable}>
+                    <div><dt>App ID</dt><dd>{typeof selectedBinding.credentials.app_id === 'string' ? maskText(selectedBinding.credentials.app_id) : '未配置'}</dd></div>
+                    <div><dt>群聊策略</dt><dd>{typeof selectedBinding.config.group_policy === 'string' ? selectedBinding.config.group_policy : 'mention'}</dd></div>
+                    <div><dt>Bot Open ID</dt><dd>{typeof selectedBinding.runtime_state.bot_open_id === 'string' ? selectedBinding.runtime_state.bot_open_id : '未识别'}</dd></div>
+                  </dl>
+                </div>
+              )}
+              <div className={styles.channelSection}>
+                <h4>绑定信息</h4>
+                <dl className={styles.channelDetailTable}>
+                  <div><dt>所属用户</dt><dd>{selectedBinding.owner_user_id}</dd></div>
+                  <div><dt>管理人</dt><dd>{selectedBinding.manager_user_id}</dd></div>
+                  {channelPage === 'weixin' && <div><dt>ClawBot 节点</dt><dd>{typeof selectedBinding.credentials.base_url === 'string' ? selectedBinding.credentials.base_url : statusOverrides[selectedBinding.id]?.base_url || statusOverrides[selectedBinding.id]?.baseurl || '未获取'}</dd></div>}
+                  <div><dt>最近更新</dt><dd>{formatDateTime(selectedBinding.updated_at)}</dd></div>
+                </dl>
+              </div>
+              <div className={styles.channelDangerZone}><button type="button" className={styles.extensionDeleteButton} disabled={pendingBindingId === selectedBinding.id} onClick={() => void deleteBinding(selectedBinding)}>删除绑定</button></div>
+            </>
+          )}
+        </section>
+      </div>
     </div>
   )
 }
