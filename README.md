@@ -613,6 +613,7 @@ curl http://localhost:7869/api/agui/threads/demo-thread/state -H "Authorization:
 | `AUTH_ADMIN_EMAIL` / `AUTH_ADMIN_PASSWORD` | 首次启动时自举的管理员账号 |
 | `AUTH_TOKEN_EXPIRE_DAYS` | 访问令牌有效期天数，默认 `1` |
 | `AGUI_RUN_RETENTION_SECONDS` | Run 与事件的保留时长，默认 `3600` |
+| `AGUI_THREAD_RETENTION_SECONDS` | Thread 索引保留时长；默认 `0` 表示不自动过期 |
 | `AGUI_RUN_MAX_EVENTS` | 单个 Run 的事件数量上限，默认 `2000` |
 | `AGUI_RUN_CLEANUP_INTERVAL_SECONDS` | 过期清理任务间隔，默认 `60` |
 | `AGUI_RUN_POLL_INTERVAL_SECONDS` | 事件流轮询间隔，默认 `0.5` |
