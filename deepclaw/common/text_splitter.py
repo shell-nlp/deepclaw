@@ -1,4 +1,5 @@
 ﻿import copy
+import difflib
 import io
 import os
 import re
@@ -614,6 +615,51 @@ def levenshtein_distance(s1, s2):
         previous_row = current_row
 
     return previous_row[-1]
+
+
+def normalize_pdf_title(text: str) -> str:
+    """统一标题的宽度、大小写和格式标点。
+
+    Args:
+        text: 书签标题或 PDF 提取出的候选文本。
+    """
+    normalized = unicodedata.normalize("NFKC", text).casefold()
+    return "".join(char for char in normalized if char.isalnum())
+
+
+def match_pdf_title(title: str, lines: list[str], start: int, end: int) -> tuple[int, str] | None:
+    """在指定页定位书签标题，优先严格匹配并避免模糊误切。
+
+    Args:
+        title: PDF 目录中的书签标题。
+        lines: 文档全部提取行。
+        start: 指定页内尚未匹配的起始行。
+        end: 指定页的结束行。
+    """
+    target = normalize_pdf_title(title)
+    if not target:
+        return None
+    for index in range(start, end):
+        candidate = normalize_pdf_title(lines[index])
+        if candidate == target:
+            return index, "exact"
+        if len(target) >= 8 and candidate.startswith(target) and len(candidate) <= len(target) + 4:
+            return index, "exact"
+    for index in range(start, end):
+        candidate = normalize_pdf_title("".join(lines[index:min(index + 2, end)]))
+        if candidate == target:
+            return index, "multiline"
+    for index in range(start, end):
+        candidate = normalize_pdf_title(lines[index])
+        if len(target) >= 20 and len(candidate) >= 20:
+            similarity = difflib.SequenceMatcher(None, target, candidate).ratio()
+            if similarity >= 0.95:
+                return index, "fuzzy"
+        elif abs(len(target) - len(candidate)) <= 2 and levenshtein_distance(
+            candidate, target
+        ) <= 2:
+            return index, "fuzzy"
+    return None
 
 
 def extract_toc_from_fitz(title_info, level):
@@ -1367,17 +1413,24 @@ class PDFParser:
         lines = [line for page in page_lines for line in page]
         boundaries: list[tuple[int, str]] = [(0, "")]
         cursor = 0
+        match_counts = {"exact": 0, "multiline": 0, "fuzzy": 0, "unmatched": 0}
         for title, page, _level in toc:
             if not 1 <= page <= pdf_lens:
+                match_counts["unmatched"] += 1
                 continue
             page_start = offsets[page - 1]
             page_end = offsets[page]
-            for position in range(max(cursor, page_start), page_end):
-                if levenshtein_distance(lines[position].strip(), title) <= 2:
-                    if position > boundaries[-1][0]:
-                        boundaries.append((position, title))
-                    cursor = position + 1
-                    break
+            matched = match_pdf_title(title, lines, max(cursor, page_start), page_end)
+            if matched is None:
+                match_counts["unmatched"] += 1
+                logger.debug("PDF 目录标题未匹配: 页码={} 标题={!r}", page, title)
+                continue
+            position, kind = matched
+            match_counts[kind] += 1
+            if position > boundaries[-1][0]:
+                boundaries.append((position, title))
+            cursor = position + 1
+        logger.info("PDF 目录匹配诊断: 总数={} 分类={}", len(toc), match_counts)
 
         title_docs: list[Document] = []
         for index, (start, title) in enumerate(boundaries):

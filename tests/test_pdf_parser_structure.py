@@ -4,7 +4,7 @@ import fitz
 import pytest
 
 from deepclaw.common import text_splitter as pdf_module
-from deepclaw.common.text_splitter import LoadedPDFFile, PDFParser
+from deepclaw.common.text_splitter import LoadedPDFFile, PDFParser, match_pdf_title
 
 
 class MemoryPDFReader:
@@ -26,6 +26,35 @@ class MemoryPDFReader:
             file_path: 文件路径。
         """
         return LoadedPDFFile(self.file_bytes, file_path)
+
+
+def test_pdf_title_matching_normalizes_format_and_rejects_unrelated_text():
+    """格式差异和高置信近似可匹配，缺少标题则不猜测边界。
+
+    Args:
+        无。
+    """
+    lines = [
+        "第一章  项目概述\n",
+        "项目概述内容。\n",
+        "1) 固定资产包括办公设施设备和办公用品等\n",
+        "这里是无关正文。\n",
+    ]
+    assert match_pdf_title("第一章：项目概述", lines, 0, len(lines)) == (0, "exact")
+    assert match_pdf_title(
+        "1)固定资产包括办公设施设备和办公用品", lines, 2, len(lines)
+    ) == (2, "exact")
+    assert match_pdf_title("其他章节", lines, 0, len(lines)) is None
+
+
+def test_pdf_title_matching_across_two_lines():
+    """提取器把书签标题断成两行时仍可定位首行。
+
+    Args:
+        无。
+    """
+    lines = ["第一章 项目\n", "概述\n", "详细内容\n"]
+    assert match_pdf_title("第一章项目概述", lines, 0, len(lines)) == (0, "multiline")
 
 
 def test_same_page_outline_preserves_text_without_duplicates():
