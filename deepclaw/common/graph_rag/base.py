@@ -5,8 +5,9 @@ from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
 from langchain_core.documents import Document
+from langchain_core.exceptions import OutputParserException
 from loguru import logger
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from deepclaw.common.vector_store.base import AbstractVectorStore
 from deepclaw.utils import get_chat_model
@@ -17,6 +18,8 @@ TRIPLET_PROMPT = """从文本中抽取知识图谱三元组。
 - 只抽取文本明确表达的事实，不要补充常识。
 - subject/object 使用简洁实体名。
 - predicate 使用简短中文或英文关系短语。
+- 每条必须有非空的 subject、predicate、object；没有明确宾语就不要输出该关系。
+- 无法确认事实时返回 {{"triplets":[]}}，不要输出缺字段的三元组。
 - 最多返回 20 个三元组。
 - 只返回 JSON，格式：{{"triplets":[{{"subject":"...","predicate":"...","object":"..."}}]}}
 
@@ -504,10 +507,24 @@ class BaseGraphRAG(ABC):
         return self._extract_triplets(document.page_content)
 
     def _extract_triplets(self, text: str) -> List[Tuple[str, str, str]]:
+        """抽取三元组；格式错误时重试一次。
+
+        Args:
+            text: 待抽取的文本。
+        """
         model = self._get_chat_model().with_structured_output(
             TripletExtractionResult, method="json_mode"
         )
-        result: TripletExtractionResult = model.invoke(TRIPLET_PROMPT.format(text=text))
+        prompt = TRIPLET_PROMPT.format(text=text)
+        try:
+            result: TripletExtractionResult = model.invoke(prompt)
+        except (OutputParserException, ValidationError, ValueError) as exc:
+            logger.warning("三元组格式错误，重新抽取一次: {}", exc)
+            result = model.invoke(
+                f"{prompt}\n上一次输出未通过格式校验：{str(exc)[:500]}\n"
+                "请重新根据原文抽取，缺少明确宾语的关系不要输出；"
+                "只返回满足格式要求的 JSON。"
+            )
         return [
             (triplet.subject, triplet.predicate, triplet.object)
             for triplet in result.triplets

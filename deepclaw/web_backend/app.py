@@ -33,6 +33,7 @@ from deepclaw.web_backend.common.agui_runs import (
 from deepclaw.web_backend.knowledge_bases.router import (
     router as knowledge_bases_router,
 )
+from deepclaw.web_backend.knowledge_bases.service import get_knowledge_base_manager
 from deepclaw.web_backend.skills.router import router as skills_router
 
 
@@ -176,10 +177,13 @@ async def app_lifespan(app: FastAPI):
         get_agui_agents_path(),
     )
     await get_auth_service().bootstrap_admin_if_needed()
+    upload_manager = get_knowledge_base_manager()
+    await upload_manager.start_upload_workers()
     try:
         async with channel_lifespan():
             yield
     finally:
+        await upload_manager.stop_upload_workers()
         runtime_cache = getattr(app.state, "agent_runtime_cache", None)
         if runtime_cache is not None:
             await runtime_cache.close()

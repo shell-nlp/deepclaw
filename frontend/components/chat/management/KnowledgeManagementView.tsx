@@ -8,6 +8,7 @@ import { Pagination } from '../shared/Pagination'
 import type {
   KnowledgeBase,
   KnowledgeDocument,
+  KnowledgeUploadTask,
   KnowledgeDocumentDetailResponse,
   KnowledgePage,
   ViewMode,
@@ -30,6 +31,7 @@ interface KnowledgeManagementViewProps {
   knowledgeBasePage: number
   knowledgeBasePageTotal: number
   documents: KnowledgeDocument[]
+  uploadTasks: KnowledgeUploadTask[]
   documentTotal: number
   documentPage: number
   documentPageTotal: number
@@ -101,6 +103,7 @@ export function KnowledgeManagementView({
   knowledgeBasePage,
   knowledgeBasePageTotal,
   documents,
+  uploadTasks,
   documentTotal,
   documentPage,
   documentPageTotal,
@@ -358,9 +361,22 @@ export function KnowledgeManagementView({
             </button>
           </div>
 
+          {uploadTasks.some((task) => task.status !== 'succeeded') ? (
+            <div className={styles.knowledgeUploadTasks} aria-live="polite">
+              {uploadTasks.filter((task) => task.status !== 'succeeded').map((task) => (
+                <div key={task.task_id} className={styles.knowledgeUploadTask}>
+                  <strong title={task.file_name}>{task.file_name}</strong>
+                  <span className={task.status === 'failed' ? styles.knowledgeUploadFailed : styles.knowledgeUploadActive}>
+                    {task.status === 'queued' ? '排队中' : task.status === 'parsing' ? '解析中' : task.status === 'indexing' ? '抽取与索引中' : '失败'}
+                  </span>
+                  {task.status === 'failed' ? <small title={task.error}>{task.error || '处理失败'}</small> : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
           <div className={styles.knowledgeList}>
             {documents.length === 0 ? (
-              <div className={styles.extensionEmpty}><strong>还没有知识文件</strong><span>上传 PDF、DOCX 等文件后会自动完成切片和索引。</span><button className={styles.extensionTextButton} disabled={uploadingDocuments || writeDisabled} onClick={onOpenUploadDialog}>上传文件</button></div>
+              <div className={styles.extensionEmpty}><strong>{uploadTasks.some((task) => ['queued', 'parsing', 'indexing'].includes(task.status)) ? '文件正在后台处理' : '还没有知识文件'}</strong><span>{uploadTasks.some((task) => ['queued', 'parsing', 'indexing'].includes(task.status)) ? '完成后会自动出现在列表中，可继续上传其他文件。' : '上传 PDF、DOCX 等文件后会自动完成切片和索引。'}</span><button className={styles.extensionTextButton} disabled={uploadingDocuments || writeDisabled} onClick={onOpenUploadDialog}>上传文件</button></div>
             ) : documents.map((document) => (
               <div className={styles.knowledgeRow} key={document.document_id}>
                 <label className={styles.knowledgeCheckbox} onClick={(event) => onToggleDocumentChecked(document.document_id, event as unknown as MouseEvent<HTMLButtonElement | HTMLInputElement>)}><input type="checkbox" aria-label={`选择文件 ${document.display_name}`} checked={checkedDocumentIds.includes(document.document_id)} onChange={() => undefined} /></label>

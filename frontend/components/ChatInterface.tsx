@@ -67,6 +67,7 @@ import {
   KB_DOCUMENT_LIST_API_PATH,
   KB_DOCUMENT_UPDATE_API_PATH,
   KB_DOCUMENT_UPLOAD_API_PATH,
+  KB_DOCUMENT_UPLOAD_TASKS_API_PATH,
   KB_LIST_API_PATH,
   KB_UPDATE_API_PATH,
   KNOWLEDGE_BASE_PAGE_SIZE,
@@ -95,6 +96,7 @@ import type {
   InterruptData,
   KnowledgeBase,
   KnowledgeDocument,
+  KnowledgeUploadTask,
   KnowledgeDocumentDetailResponse,
   KnowledgePage,
   Message,
@@ -681,6 +683,8 @@ export default function ChatInterface() {
   const [checkedKnowledgeBaseIds, setCheckedKnowledgeBaseIds] = useState<string[]>([])
 
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([])
+  const [uploadTasks, setUploadTasks] = useState<KnowledgeUploadTask[]>([])
+  const uploadTaskStatusRef = useRef<Record<string, string>>({})
   const [documentTotal, setDocumentTotal] = useState(0)
   const [documentPage, setDocumentPage] = useState(1)
   const [documentSearchInput, setDocumentSearchInput] = useState('')
@@ -1422,9 +1426,9 @@ export default function ChatInterface() {
   )
 
   const loadKnowledgeBaseDetail = useCallback(
-    async (knowledgeBaseId: string) => {
+    async (knowledgeBaseId: string, silent = false) => {
       if (!knowledgeBaseId) return
-      setManagementError('')
+      if (!silent) setManagementError('')
       try {
         const result = await requestJson<KnowledgeBase>(KB_DETAIL_API_PATH, {
           method: 'POST',
@@ -1437,7 +1441,9 @@ export default function ChatInterface() {
         setSelectedKnowledgeBase(result)
         setSelectedKnowledgeBaseId(result.knowledge_base_id)
       } catch (error) {
-        setManagementError(error instanceof Error ? error.message : '加载知识库详情失败。')
+        if (!silent) {
+          setManagementError(error instanceof Error ? error.message : '加载知识库详情失败。')
+        }
       }
     },
     [currentUserId, requestJson]
@@ -1447,7 +1453,8 @@ export default function ChatInterface() {
     async (
       knowledgeBaseId: string,
       page = documentPage,
-      search = documentSearch
+      search = documentSearch,
+      silent = false
     ) => {
       if (!knowledgeBaseId) {
         setDocuments([])
@@ -1455,8 +1462,10 @@ export default function ChatInterface() {
         return
       }
 
-      setLoadingDocuments(true)
-      setManagementError('')
+      if (!silent) {
+        setLoadingDocuments(true)
+        setManagementError('')
+      }
       try {
         const result = await requestJson<PaginatedKnowledgeDocumentResponse>(
           KB_DOCUMENT_LIST_API_PATH,
@@ -1475,11 +1484,13 @@ export default function ChatInterface() {
         setDocuments(result.items)
         setDocumentTotal(result.total)
       } catch (error) {
-        setManagementError(error instanceof Error ? error.message : '加载文档失败。')
-        setDocuments([])
-        setDocumentTotal(0)
+        if (!silent) {
+          setManagementError(error instanceof Error ? error.message : '加载文档失败。')
+          setDocuments([])
+          setDocumentTotal(0)
+        }
       } finally {
-        setLoadingDocuments(false)
+        if (!silent) setLoadingDocuments(false)
       }
     },
     [currentUserId, documentPage, documentSearch, requestJson]
@@ -1581,6 +1592,48 @@ export default function ChatInterface() {
     if (!selectedKnowledgeBaseId) return
     void loadDocuments(selectedKnowledgeBaseId, documentPage, documentSearch)
   }, [documentPage, documentSearch, loadDocuments, selectedKnowledgeBaseId])
+
+  useEffect(() => {
+    if (!selectedKnowledgeBaseId || knowledgePage !== 'library-detail') return
+    let active = true
+    let refreshing = false
+    const refresh = async () => {
+      if (refreshing) return
+      refreshing = true
+      try {
+        const tasks = await requestJson<KnowledgeUploadTask[]>(
+          KB_DOCUMENT_UPLOAD_TASKS_API_PATH,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              user_id: currentUserId,
+              knowledge_base_id: selectedKnowledgeBaseId,
+            }),
+          }
+        )
+        if (!active) return
+        setUploadTasks(tasks)
+        const changed = tasks.some((task) =>
+          uploadTaskStatusRef.current[task.task_id] !== task.status
+        )
+        uploadTaskStatusRef.current = Object.fromEntries(
+          tasks.map((task) => [task.task_id, task.status])
+        )
+        if (changed) {
+          await loadDocuments(selectedKnowledgeBaseId, documentPage, documentSearch, true)
+          await loadKnowledgeBaseDetail(selectedKnowledgeBaseId, true)
+        }
+      } catch {
+        // 状态轮询失败不覆盖已有文档列表与管理提示。
+      } finally {
+        refreshing = false
+      }
+    }
+    void refresh()
+    const timer = window.setInterval(() => void refresh(), 3000)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [selectedKnowledgeBaseId, knowledgePage, currentUserId, requestJson, loadDocuments, documentPage, documentSearch, loadKnowledgeBaseDetail])
 
   useEffect(() => {
     if (!selectedKnowledgeBaseId || !selectedDocumentId || knowledgePage !== 'document-detail') {
@@ -2044,28 +2097,21 @@ export default function ChatInterface() {
         method: 'POST',
         body: formData,
       })
-      await loadKnowledgeBases(knowledgeBasePage, knowledgeBaseSearch)
-      await loadKnowledgeBaseDetail(selectedKnowledgeBase.knowledge_base_id)
-      await loadDocuments(selectedKnowledgeBase.knowledge_base_id, 1, documentSearch)
-      setDocumentPage(1)
-
-      const successCount = result.documents.length
-      const errorCount = result.errors.length
-      setManagementNotice(
-        errorCount
-          ? `成功入库 ${successCount} 个文件，失败 ${errorCount} 个。`
-          : `已成功入库 ${successCount} 个文件。`
-      )
-      if (errorCount) {
-        setManagementError(
-          result.errors.map((item) => `${item.file_name}: ${item.error}`).join('\n')
-        )
+      setUploadTasks((previous) => [
+        ...result.tasks,
+        ...previous.filter((task) => !result.tasks.some((item) => item.task_id === task.task_id)),
+      ])
+      if (result.tasks.length) {
+        setManagementNotice(`已提交 ${result.tasks.length} 个文件，后台处理中。`)
+      }
+      if (result.errors.length) {
+        setManagementError(result.errors.map((item) => `${item.file_name}: ${item.error}`).join('\n'))
       }
     } catch (error) {
       setManagementError(error instanceof Error ? error.message : '上传文件失败。')
     } finally {
       setUploadingDocuments(false)
-      event.target.value = ''
+      if (uploadInputRef.current) uploadInputRef.current.value = ''
     }
   }
 
@@ -3620,6 +3666,7 @@ export default function ChatInterface() {
                 knowledgeBasePage={knowledgeBasePage}
                 knowledgeBasePageTotal={knowledgeBasePageTotal}
                 documents={documents}
+                uploadTasks={uploadTasks}
                 documentTotal={documentTotal}
                 documentPage={documentPage}
                 documentPageTotal={documentPageTotal}

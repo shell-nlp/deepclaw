@@ -36,6 +36,24 @@ def _load_app_module(monkeypatch):
         return None
 
     monkeypatch.setattr(app_module.AgentRuntimeCache, "preload", noop_preload)
+    class UploadManagerSpy:
+        """隔离应用生命周期里的知识库 worker。"""
+
+        async def start_upload_workers(self):
+            """模拟启动上传 worker。
+
+            Args:
+                无。
+            """
+
+        async def stop_upload_workers(self):
+            """模拟停止上传 worker。
+
+            Args:
+                无。
+            """
+
+    monkeypatch.setattr(app_module, "get_knowledge_base_manager", UploadManagerSpy)
     return app_module
 
 

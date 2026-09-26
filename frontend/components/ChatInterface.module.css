@@ -4262,6 +4262,14 @@ button.extensionListRow { cursor: pointer; }
 .knowledgeSearchInput { flex: 1; width: min(300px, 100%); min-width: 0; height: 38px; padding: 0 12px; border: 1px solid #e3e9f0; border-radius: 6px; background: #fff; color: #263444; font-size: 13px; }
 .knowledgeSearchInput:focus { border-color: #627b9e; outline: 2px solid #627b9e20; }
 .knowledgeList { overflow: hidden; border: 1px solid #e3e9f0; border-radius: 8px; background: #fff; }
+.knowledgeUploadTasks { display: grid; gap: 0; margin: 0 0 14px; border: 1px solid #e3e9f0; border-radius: 8px; background: #fff; }
+.knowledgeUploadTask { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 10px 16px; color: #344355; font-size: 12px; }
+.knowledgeUploadTask + .knowledgeUploadTask { border-top: 1px solid #edf1f5; }
+.knowledgeUploadTask strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.knowledgeUploadTask small { max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #a04444; }
+.knowledgeUploadActive { flex: none; color: #506c95; font-weight: 600; }
+.knowledgeUploadFailed { flex: none; color: #a04444; font-weight: 600; }
+@media (max-width: 600px) { .knowledgeUploadTask { flex-wrap: wrap; } .knowledgeUploadTask small { max-width: 100%; flex-basis: 100%; } }
 .knowledgeRow { display: flex; align-items: center; gap: 14px; min-height: 79px; padding: 12px 18px; }
 .knowledgeRow + .knowledgeRow { border-top: 1px solid #edf1f5; }
 .knowledgeRow:hover { background: #fafbfd; }

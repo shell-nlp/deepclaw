@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -37,6 +38,63 @@ class FakeMetadataStore:
         self.document_count = 0
         self._kb_source: dict[str, Any] | None = None
         self._docs: list[dict[str, Any]] = []
+        self.tasks: dict[str, dict[str, Any]] = {}
+
+    async def save_upload_task(self, source):
+        """保存上传任务阶段。
+
+        Args:
+            source: 任务元数据。
+        """
+        self.tasks[source["task_id"]] = deepcopy(source)
+        return deepcopy(source)
+
+    async def requeue_upload_tasks(self):
+        """模拟后台任务恢复。
+
+        Args:
+            无。
+        """
+
+    async def touch_upload_task(self, task_id):
+        """模拟上传任务心跳。
+
+        Args:
+            task_id: 任务 ID。
+        """
+        return None
+
+    async def claim_upload_task(self, task_id):
+        """模拟原子领取排队任务。
+
+        Args:
+            task_id: 任务 ID。
+        """
+        task = self.tasks[task_id]
+        if task["status"] != "queued":
+            return None
+        task["status"] = "parsing"
+        return deepcopy(task)
+
+    async def list_upload_tasks(self, *, user_id, knowledge_base_id=None):
+        """按用户与知识库查询任务。
+
+        Args:
+            user_id: 用户 ID。
+            knowledge_base_id: 可选知识库 ID。
+        """
+        return [deepcopy(task) for task in self.tasks.values()
+                if (not user_id or task["user_id"] == user_id)
+                and (not knowledge_base_id or task["knowledge_base_id"] == knowledge_base_id)]
+
+    async def delete_upload_tasks(self, *, task_ids):
+        """删除指定任务。
+
+        Args:
+            task_ids: 任务 ID 列表。
+        """
+        for task_id in task_ids:
+            self.tasks.pop(task_id, None)
 
     async def get_knowledge_base(self, *, user_id, knowledge_base_id, error_message):
         if self._kb_source is None:
@@ -233,6 +291,80 @@ _UPLOAD_FILE = UploadedKnowledgeFile(
     content_type="application/pdf",
     data=b"fake pdf content",
 )
+
+
+def test_background_upload_submission_and_processing(monkeypatch):
+    """提交立即返回，后台处理阶段可查询且最终生成文档。"""
+    async def scenario():
+        """在假解析器和向量存储上执行单文件任务。
+
+        Args:
+            无。
+        """
+        monkeypatch.setattr(
+            "deepclaw.web_backend.knowledge_bases.service.PDFParser.get_chunk",
+            lambda self: _make_fake_chunks(2),
+        )
+        monkeypatch.setattr(BaseGraphRAG, "_extract_triplets", lambda self, text: [])
+        metadata = FakeMetadataStore()
+        manager = KnowledgeBaseManager(
+            vector_store=FakePgVectorStore(), metadata_store=metadata,
+            object_storage=FakeObjectStorage(), upload_workers=1,
+        )
+        submitted = await manager.submit_uploads("alice", "kb-one", [_UPLOAD_FILE])
+        task = submitted.tasks[0]
+        assert task.status == "queued"
+        assert metadata.saved_document is None
+        assert (await manager.list_upload_tasks("alice", "kb-one"))[0].status == "queued"
+
+        await manager._process_upload(metadata.tasks[task.task_id].copy())
+        assert metadata.tasks[task.task_id]["status"] == "succeeded"
+        assert metadata.saved_document["document_id"] == task.task_id
+
+    asyncio.run(scenario())
+
+
+def test_upload_workers_finish_current_file_before_shutdown(monkeypatch):
+    """关闭时等待当前任务完成，不再领取排队中的其他文件。"""
+    async def scenario():
+        """模拟长任务并观察后台 worker 停止时机。
+
+        Args:
+            无。
+        """
+        metadata = FakeMetadataStore()
+        manager = KnowledgeBaseManager(
+            vector_store=FakePgVectorStore(), metadata_store=metadata,
+            object_storage=FakeObjectStorage(), upload_workers=1,
+        )
+        await manager.submit_uploads("alice", "kb-one", [
+            _UPLOAD_FILE, UploadedKnowledgeFile("later.pdf", "application/pdf", b"later")
+        ])
+        started = asyncio.Event()
+        release = asyncio.Event()
+        processed = []
+
+        async def process(source):
+            """模拟一个等待外部完成信号的文件任务。
+
+            Args:
+                source: 领取的任务记录。
+            """
+            processed.append(source["task_id"])
+            started.set()
+            await release.wait()
+
+        monkeypatch.setattr(manager, "_process_upload", process)
+        await manager.start_upload_workers()
+        await asyncio.wait_for(started.wait(), 2)
+        stopping = asyncio.create_task(manager.stop_upload_workers())
+        await asyncio.sleep(0)
+        assert not stopping.done()
+        release.set()
+        await asyncio.wait_for(stopping, 2)
+        assert len(processed) == 1
+
+    asyncio.run(scenario())
 
 
 # ============================ PgVectorStore 后端 ============================

@@ -42,6 +42,7 @@ export const KB_BULK_DELETE_API_PATH = '/api/rag/knowledge-bases/bulk-delete'
 export const KB_DOCUMENT_LIST_API_PATH = '/api/rag/knowledge-bases/documents/list'
 export const KB_DOCUMENT_DETAIL_API_PATH = '/api/rag/knowledge-bases/documents/detail'
 export const KB_DOCUMENT_UPLOAD_API_PATH = '/api/rag/knowledge-bases/documents/upload'
+export const KB_DOCUMENT_UPLOAD_TASKS_API_PATH = '/api/rag/knowledge-bases/documents/upload-tasks'
 export const KB_DOCUMENT_UPDATE_API_PATH = '/api/rag/knowledge-bases/documents/update'
 export const KB_DOCUMENT_DELETE_API_PATH = '/api/rag/knowledge-bases/documents/delete'
 export const KB_DOCUMENT_BULK_DELETE_API_PATH =

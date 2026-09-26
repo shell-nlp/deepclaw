@@ -38,3 +38,20 @@ class KnowledgeBaseDocumentMetadata(SQLModel, table=True):
     storage_path: str = ""
     created_at: str = Field(default_factory=now_iso)
     updated_at: str = Field(default_factory=now_iso)
+
+
+class KnowledgeUploadTaskMetadata(SQLModel, table=True):
+    __tablename__ = "knowledge_upload_tasks"
+
+    task_id: str = Field(primary_key=True)
+    knowledge_base_id: str = Field(index=True)
+    user_id: str = Field(index=True)
+    file_name: str
+    content_type: str = ""
+    file_size: int = 0
+    storage_path: str
+    status: str = Field(default="queued", index=True)
+    error: str = ""
+    document_id: str = ""
+    created_at: str = Field(default_factory=now_iso)
+    updated_at: str = Field(default_factory=now_iso)

@@ -30,6 +30,26 @@ def test_app_lifespan_bootstraps_admin(monkeypatch):
     monkeypatch.setattr(web_app_module, "init_agent_env", fake_init_agent_env)
     monkeypatch.setattr(web_app_module, "channel_lifespan", _noop_channel_lifespan)
     monkeypatch.setattr(web_app_module, "get_auth_service", lambda: service, raising=False)
+    monkeypatch.setattr(
+        web_app_module, "get_knowledge_base_manager", lambda: UploadManagerSpy()
+    )
+
+    class UploadManagerSpy:
+        """避免启动测试连接真实知识库存储。"""
+
+        async def start_upload_workers(self):
+            """模拟启动上传 worker。
+
+            Args:
+                无。
+            """
+
+        async def stop_upload_workers(self):
+            """模拟停止上传 worker。
+
+            Args:
+                无。
+            """
 
     async def noop_preload(self, **kwargs):
         """跳过智能体预热。
