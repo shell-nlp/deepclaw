@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 import uuid
 from dataclasses import dataclass
@@ -76,6 +77,26 @@ class KnowledgeBaseUploadResponse(BaseModel):
     errors: list[KnowledgeBaseUploadError] = Field(default_factory=list)
 
 
+class KnowledgeUploadTaskResponse(BaseModel):
+    task_id: str
+    knowledge_base_id: str
+    user_id: str
+    file_name: str
+    content_type: str = ""
+    file_size: int = 0
+    storage_path: str
+    status: str
+    error: str = ""
+    document_id: str = ""
+    created_at: str
+    updated_at: str
+
+
+class KnowledgeUploadSubmissionResponse(BaseModel):
+    tasks: list[KnowledgeUploadTaskResponse]
+    errors: list[KnowledgeBaseUploadError] = Field(default_factory=list)
+
+
 class PaginatedKnowledgeBaseResponse(BaseModel):
     items: list[KnowledgeBaseRecord]
     total: int
@@ -135,6 +156,7 @@ class KnowledgeBaseManager:
         vector_store: AbstractVectorStore,
         metadata_store: KnowledgeBaseMetadataStore | None = None,
         object_storage: ObjectStorage | None = None,
+        upload_workers: int | None = None,
     ):
         """初始化知识库管理器。
 
@@ -142,10 +164,227 @@ class KnowledgeBaseManager:
             vector_store: 向量存储。
             metadata_store: 知识库元数据存储。
             object_storage: 对象存储，未传时按配置创建。
+            upload_workers: 后台并发处理文件数，未传时读取配置。
         """
         self._vector_store = vector_store
         self.metadata_store = metadata_store or SQLModelKnowledgeBaseMetadataStore()
         self.object_storage = object_storage or create_object_storage(settings)
+        self.upload_workers = upload_workers if upload_workers is not None else settings.KNOWLEDGE_UPLOAD_WORKERS
+        if not 1 <= self.upload_workers <= 8:
+            raise ValueError("知识库上传 worker 数必须在 1 到 8 之间")
+        self._upload_workers: list[asyncio.Task[None]] = []
+        self._upload_stop: asyncio.Event | None = None
+        self._stats_lock = asyncio.Lock()
+
+    async def start_upload_workers(self) -> None:
+        """启动限流的后台上传 worker，恢复未完成任务。
+
+        Args:
+            无。
+        """
+        if self._upload_workers:
+            return
+        await self.metadata_store.requeue_upload_tasks()
+        self._upload_stop = asyncio.Event()
+        for _ in range(self.upload_workers):
+            self._upload_workers.append(asyncio.create_task(self._upload_worker()))
+
+    async def stop_upload_workers(self) -> None:
+        """停止领取新任务，并等待当前文件处理结束。
+
+        Args:
+            无。
+        """
+        if self._upload_stop is not None:
+            self._upload_stop.set()
+        workers, self._upload_workers = self._upload_workers, []
+        if workers:
+            await asyncio.gather(*workers)
+        self._upload_stop = None
+
+    async def list_upload_tasks(
+        self, user_id: str, knowledge_base_id: str
+    ) -> list[KnowledgeUploadTaskResponse]:
+        """查询当前知识库的后台上传阶段。
+
+        Args:
+            user_id: 归属用户。
+            knowledge_base_id: 知识库 ID。
+        """
+        await self.get_knowledge_base(user_id, knowledge_base_id)
+        rows = await self.metadata_store.list_upload_tasks(
+            user_id=user_id, knowledge_base_id=knowledge_base_id
+        )
+        return [KnowledgeUploadTaskResponse(**row) for row in rows]
+
+    async def submit_uploads(
+        self, user_id: str, knowledge_base_id: str,
+        files: Iterable[UploadedKnowledgeFile],
+    ) -> KnowledgeUploadSubmissionResponse:
+        """保存原始文件并提交后台任务，不等待解析或索引。
+
+        Args:
+            user_id: 归属用户。
+            knowledge_base_id: 知识库 ID。
+            files: 上传的原始文件。
+        """
+        await self.get_knowledge_base(user_id, knowledge_base_id)
+        tasks: list[KnowledgeUploadTaskResponse] = []
+        errors: list[KnowledgeBaseUploadError] = []
+        for uploaded_file in files:
+            file_name = Path(uploaded_file.file_name or "unnamed").name
+            task_id = uuid.uuid4().hex
+            bucket_name = self._storage_bucket_name(user_id, knowledge_base_id)
+            file_path = self._storage_file_path(
+                user_id=user_id,
+                knowledge_base_id=knowledge_base_id,
+                storage_name=f"{task_id}_{self._safe_file_name(file_name)}",
+            )
+            try:
+                await asyncio.to_thread(
+                    self.object_storage.put_bytes,
+                    bucket_name, file_path, uploaded_file.data,
+                    content_type=uploaded_file.content_type,
+                )
+            except Exception as exc:
+                logger.exception("保存上传文件失败: {}", file_name)
+                errors.append(KnowledgeBaseUploadError(file_name=file_name, error=str(exc)))
+                continue
+            now = self._now()
+            source = {
+                "task_id": task_id,
+                "knowledge_base_id": knowledge_base_id,
+                "user_id": user_id,
+                "file_name": file_name,
+                "content_type": uploaded_file.content_type,
+                "file_size": len(uploaded_file.data),
+                "storage_path": f"{bucket_name}/{file_path}",
+                "status": "queued",
+                "error": "",
+                "document_id": "",
+                "created_at": now,
+                "updated_at": now,
+            }
+            try:
+                saved = await self.metadata_store.save_upload_task(source)
+            except Exception as exc:
+                await asyncio.to_thread(self.object_storage.delete_object, bucket_name, file_path)
+                errors.append(KnowledgeBaseUploadError(file_name=file_name, error=str(exc)))
+                continue
+            tasks.append(KnowledgeUploadTaskResponse(**saved))
+        return KnowledgeUploadSubmissionResponse(tasks=tasks, errors=errors)
+
+    async def _upload_worker(self) -> None:
+        """处理待入库文件，耗时同步代码在线程中执行。
+
+        Args:
+            无。
+        """
+        assert self._upload_stop is not None
+        while not self._upload_stop.is_set():
+            try:
+                await self.metadata_store.requeue_upload_tasks()
+                rows = await self.metadata_store.list_upload_tasks(user_id="")
+                pending = None
+                for candidate in reversed(rows):
+                    if candidate["status"] == "queued":
+                        pending = await self.metadata_store.claim_upload_task(candidate["task_id"])
+                        if pending is not None:
+                            break
+                if pending is None:
+                    await asyncio.sleep(1)
+                    continue
+                await self._process_upload(pending)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("知识库后台任务调度失败")
+                await asyncio.sleep(2)
+
+    async def _process_upload(self, source: dict[str, Any]) -> None:
+        """解析并索引单个文件，持久化阶段及最终结果。
+
+        Args:
+            source: 上传任务记录。
+        """
+        task_id = source["task_id"]
+        knowledge_base: KnowledgeBaseRecord | None = None
+        heartbeat = asyncio.create_task(self._upload_heartbeat(task_id))
+        try:
+            knowledge_base = await self.get_knowledge_base(
+                source["user_id"], source["knowledge_base_id"]
+            )
+            bucket_name, file_path = self._storage_location_from_source(
+                user_id=source["user_id"],
+                knowledge_base_id=source["knowledge_base_id"],
+                document_id=task_id,
+                source=source,
+            )
+            source.update(status="parsing", error="", updated_at=datetime.now().astimezone().isoformat())
+            await self.metadata_store.save_upload_task(source)
+            parser = PDFParser(
+                bucket_name=bucket_name, file_path=file_path, file_id=task_id,
+                reader=ObjectStoragePDFReader(self.object_storage),
+            )
+            chunks = await asyncio.to_thread(parser.get_chunk)
+            documents = self._prepare_documents(
+                knowledge_base=knowledge_base, user_id=source["user_id"],
+                document_id=task_id, bucket_name=bucket_name, file_path=file_path,
+                storage_name=Path(file_path).name, storage_path=source["storage_path"],
+                original_file_name=source["file_name"],
+                content_type=source["content_type"], chunks=chunks,
+            )
+            source.update(status="indexing", updated_at=datetime.now().astimezone().isoformat())
+            await self.metadata_store.save_upload_task(source)
+            rag = create_graph_rag(self._vector_store, knowledge_base.index_prefix)
+            await asyncio.to_thread(
+                rag.upsert_documents_by_source, documents,
+                source=task_id, extract_triplets=True,
+            )
+            now = self._now()
+            await self.metadata_store.save_document(
+                document_id=task_id,
+                source={
+                    "document_id": task_id, "knowledge_base_id": source["knowledge_base_id"],
+                    "user_id": source["user_id"], "file_name": source["file_name"],
+                    "display_name": source["file_name"], "content_type": source["content_type"],
+                    "file_size": source["file_size"], "chunk_count": len(documents),
+                    "storage_path": source["storage_path"], "created_at": source["created_at"],
+                    "updated_at": now,
+                },
+            )
+            await self._refresh_knowledge_base_stats(knowledge_base)
+            source.update(status="succeeded", document_id=task_id, updated_at=datetime.now().astimezone().isoformat())
+            await self.metadata_store.save_upload_task(source)
+        except Exception as exc:
+            logger.exception("知识文件后台处理失败: {}", source["file_name"])
+            ownership_lost = str(exc) == "上传任务已被其他进程接管或终止"
+            if source["status"] == "indexing" and knowledge_base is not None and not ownership_lost:
+                try:
+                    rag = create_graph_rag(self._vector_store, knowledge_base.index_prefix)
+                    await asyncio.to_thread(rag.delete_documents_by_source, task_id)
+                    await self.metadata_store.delete_document(document_id=task_id)
+                except Exception:
+                    logger.exception("知识文件失败后清理索引失败: {}", task_id)
+            if not ownership_lost:
+                source.update(status="failed", error=str(exc)[:1000], updated_at=datetime.now().astimezone().isoformat())
+                await self.metadata_store.save_upload_task(source)
+        finally:
+            heartbeat.cancel()
+            await asyncio.gather(heartbeat, return_exceptions=True)
+
+    async def _upload_heartbeat(self, task_id: str) -> None:
+        """周期性刷新正在执行的上传任务时间。
+
+        Args:
+            task_id: 正在执行的任务 ID。
+        """
+        while True:
+            await asyncio.sleep(30)
+            try:
+                await self.metadata_store.touch_upload_task(task_id)
+            except Exception:
+                logger.exception("更新知识文件任务心跳失败: {}", task_id)
 
     async def list_knowledge_bases(self, user_id: str) -> list[KnowledgeBaseRecord]:
         return [
@@ -246,6 +485,11 @@ class KnowledgeBaseManager:
         self, user_id: str, knowledge_base_id: str
     ) -> KnowledgeBaseDeleteResult:
         knowledge_base = await self.get_knowledge_base(user_id, knowledge_base_id)
+        tasks = await self.metadata_store.list_upload_tasks(
+            user_id=user_id, knowledge_base_id=knowledge_base_id
+        )
+        if any(task["status"] in {"queued", "parsing", "indexing"} for task in tasks):
+            raise BusinessRuleError("有文件正在处理，请完成后再删除知识库。")
         rag = create_graph_rag(self._vector_store, knowledge_base.index_prefix)
         graph_result = rag.delete_graph(ignore_missing=True)
 
@@ -260,6 +504,17 @@ class KnowledgeBaseManager:
             self.object_storage.delete_object(bucket_name, file_path)
         if document_ids:
             await self.metadata_store.delete_documents(document_ids=document_ids)
+
+        for task in tasks:
+            if task["status"] != "succeeded":
+                bucket_name, file_path = self._storage_location_from_source(
+                    user_id=user_id, knowledge_base_id=knowledge_base_id,
+                    document_id=task["task_id"], source=task,
+                )
+                self.object_storage.delete_object(bucket_name, file_path)
+        await self.metadata_store.delete_upload_tasks(
+            task_ids=[task["task_id"] for task in tasks]
+        )
 
         await self.metadata_store.delete_knowledge_base(knowledge_base_id=knowledge_base_id)
 
@@ -419,6 +674,7 @@ class KnowledgeBaseManager:
         )
         self.object_storage.delete_object(bucket_name, file_path)
         await self.metadata_store.delete_document(document_id=document_id)
+        await self.metadata_store.delete_upload_tasks(task_ids=[document_id])
         knowledge_base = await self._refresh_knowledge_base_stats(knowledge_base)
 
         return {
@@ -650,6 +906,22 @@ class KnowledgeBaseManager:
     async def _refresh_knowledge_base_stats(
         self, knowledge_base: KnowledgeBaseRecord
     ) -> KnowledgeBaseRecord:
+        """串行刷新知识库文档与切片统计。
+
+        Args:
+            knowledge_base: 待更新的知识库记录。
+        """
+        async with self._stats_lock:
+            return await self._refresh_knowledge_base_stats_locked(knowledge_base)
+
+    async def _refresh_knowledge_base_stats_locked(
+        self, knowledge_base: KnowledgeBaseRecord
+    ) -> KnowledgeBaseRecord:
+        """在互斥保护下重算知识库文档及切片统计。
+
+        Args:
+            knowledge_base: 待更新的知识库记录。
+        """
         source = await self.metadata_store.get_knowledge_base(
             user_id=knowledge_base.user_id,
             knowledge_base_id=knowledge_base.knowledge_base_id,
@@ -659,7 +931,9 @@ class KnowledgeBaseManager:
             user_id=knowledge_base.user_id,
             knowledge_base_id=knowledge_base.knowledge_base_id,
         )
-        source["chunk_count"] = self._count_index(source["passage_index"])
+        source["chunk_count"] = await asyncio.to_thread(
+            self._count_index, source["passage_index"]
+        )
         source["updated_at"] = self._now()
         saved = await self.metadata_store.save_knowledge_base(
             knowledge_base_id=knowledge_base.knowledge_base_id,

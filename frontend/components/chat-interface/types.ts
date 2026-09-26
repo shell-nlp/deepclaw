@@ -182,12 +182,21 @@ export interface KnowledgeDocument {
 }
 
 export interface UploadResult {
-  knowledge_base: KnowledgeBase
-  documents: KnowledgeDocument[]
-  errors: Array<{
-    file_name: string
-    error: string
-  }>
+  tasks: KnowledgeUploadTask[]
+  errors: Array<{ file_name: string; error: string }>
+}
+
+export interface KnowledgeUploadTask {
+  task_id: string
+  knowledge_base_id: string
+  user_id: string
+  file_name: string
+  file_size: number
+  status: 'queued' | 'parsing' | 'indexing' | 'succeeded' | 'failed'
+  error: string
+  document_id: string
+  created_at: string
+  updated_at: string
 }
 
 export interface PaginatedKnowledgeBaseResponse {

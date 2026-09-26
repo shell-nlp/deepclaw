@@ -2,6 +2,49 @@ import asyncio
 from types import SimpleNamespace
 
 
+def test_upload_task_store_persists_status_and_filters_owner():
+    """上传任务可持久化阶段，且不能跨用户读取。"""
+    async def scenario():
+        """使用独立 SQLite 文件验证任务创建、更新与删除。
+
+        Args:
+            无。
+        """
+        from deepclaw.web_backend.knowledge_bases.store import (
+            SQLModelKnowledgeBaseMetadataStore,
+        )
+
+        store = SQLModelKnowledgeBaseMetadataStore("sqlite:///:memory:")
+        row = {
+            "task_id": "task-1", "knowledge_base_id": "kb-1", "user_id": "alice",
+            "file_name": "test.pdf", "file_size": 4, "storage_path": "bucket/test.pdf",
+            "status": "queued", "created_at": "2026-09-27T10:00:00+08:00",
+            "updated_at": "2026-09-27T10:00:00+08:00",
+        }
+        await store.save_upload_task(row)
+        assert (await store.claim_upload_task("task-1"))["status"] == "parsing"
+        assert await store.claim_upload_task("task-1") is None
+        row["status"] = "succeeded"
+        row["updated_at"] = "2026-09-27T10:02:00+08:00"
+        row["status"] = "indexing"
+        await store.save_upload_task(row)
+        row["status"] = "succeeded"
+        await store.save_upload_task(row)
+        row["status"] = "failed"
+        try:
+            await store.save_upload_task(row)
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("终态不得被旧 worker 覆盖")
+        assert (await store.list_upload_tasks(user_id="alice"))[0]["status"] == "succeeded"
+        assert await store.list_upload_tasks(user_id="bob") == []
+        await store.delete_upload_tasks(task_ids=["task-1"])
+        assert await store.list_upload_tasks(user_id="alice") == []
+
+    asyncio.run(scenario())
+
+
 def test_sqlmodel_metadata_store_defaults_to_pg_database_url_when_configured(monkeypatch):
     import deepclaw.web_backend.db as db_module
     import deepclaw.web_backend.knowledge_bases.store as kb_store_module

@@ -4,8 +4,11 @@ from copy import deepcopy
 from unittest.mock import MagicMock
 
 from langchain_core.documents import Document
+import pytest
+from langchain_core.exceptions import OutputParserException
 
 from deepclaw.common.graph_rag.pg import PgGraphRAG
+from deepclaw.common.graph_rag.base import TripletExtractionResult
 from deepclaw.common.graph_rag.elastic import ElasticGraphRAG
 from deepclaw.common.vector_store.elasticsearch import ElasticsearchVectorStore
 from deepclaw.common.vector_store.pgsql import PgVectorStore
@@ -494,3 +497,32 @@ def test_pg_list_ids_by_filter_uses_bound_source(monkeypatch):
     ) == ["p1", "p2"]
     assert "metadata ->> 'document_id' = %(value_0)s" in captured["statement"]
     assert captured["params"]["value_0"] == "file-1"
+
+
+def test_triplet_extraction_retries_invalid_schema_once():
+    """缺少宾语时重试一次并采纳修正后的完整三元组。"""
+    model = MagicMock()
+    structured = model.with_structured_output.return_value
+    structured.invoke.side_effect = [
+        OutputParserException("triplets.0.object missing"),
+        TripletExtractionResult.model_validate({
+            "triplets": [{"subject": "公司", "predicate": "聘用", "object": "人才"}]
+        }),
+    ]
+    rag = PgGraphRAG(MemoryPgVectorStore(), "kb", chat_model=model)
+
+    assert rag._extract_triplets("公司聘用人才") == [("公司", "聘用", "人才")]
+    assert structured.invoke.call_count == 2
+    assert "没有明确宾语" in structured.invoke.call_args.args[0]
+
+
+def test_triplet_extraction_raises_after_one_retry():
+    """再次格式错误必须明确失败，不返回空图谱。"""
+    model = MagicMock()
+    structured = model.with_structured_output.return_value
+    structured.invoke.side_effect = OutputParserException("object missing")
+    rag = PgGraphRAG(MemoryPgVectorStore(), "kb", chat_model=model)
+
+    with pytest.raises(OutputParserException):
+        rag._extract_triplets("公司聘用人才")
+    assert structured.invoke.call_count == 2

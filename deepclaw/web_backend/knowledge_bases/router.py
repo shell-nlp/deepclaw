@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 
 from deepclaw.web_backend.auth.dependencies import get_current_actor
 from deepclaw.web_backend.knowledge_bases.schemas import (
@@ -20,7 +20,8 @@ from deepclaw.web_backend.knowledge_bases.service import (
     KnowledgeBaseDocumentDetailResponse,
     KnowledgeBaseDocumentRecord,
     KnowledgeBaseRecord,
-    KnowledgeBaseUploadResponse,
+    KnowledgeUploadSubmissionResponse,
+    KnowledgeUploadTaskResponse,
     PaginatedKnowledgeBaseDocumentResponse,
     PaginatedKnowledgeBaseResponse,
     UploadedKnowledgeFile,
@@ -156,9 +157,10 @@ async def get_document_detail(
 
 @router.post(
     "/knowledge-bases/documents/upload",
-    response_model=KnowledgeBaseUploadResponse,
+    response_model=KnowledgeUploadSubmissionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
     summary="上传文档",
-    description="上传文件并写入指定知识库的检索索引。"
+    description="持久化文件并提交后台解析与索引任务。"
 )
 async def upload_documents(
     user_id: str = Form(..., description="User ID"),
@@ -166,6 +168,14 @@ async def upload_documents(
     files: list[UploadFile] = File(..., description="Uploaded files"),
     actor=Depends(get_current_actor),
 ):
+    """接收原始文件并提交后台入库任务。
+
+    Args:
+        user_id: 客户端传入的用户 ID，实际归属由认证主体决定。
+        knowledge_base_id: 目标知识库 ID。
+        files: 待上传文件。
+        actor: 当前认证主体。
+    """
     owner_id = _resolved_user_id(actor)
     uploaded_files: list[UploadedKnowledgeFile] = []
     for file in files:
@@ -178,10 +188,30 @@ async def upload_documents(
         )
         await file.close()
 
-    return await get_knowledge_base_manager().upload_documents(
+    return await get_knowledge_base_manager().submit_uploads(
         user_id=owner_id,
         knowledge_base_id=knowledge_base_id,
         files=uploaded_files,
+    )
+
+
+@router.post(
+    "/knowledge-bases/documents/upload-tasks",
+    response_model=list[KnowledgeUploadTaskResponse],
+    summary="查询上传任务状态",
+)
+async def list_upload_tasks(
+    request: KnowledgeBaseIdentityRequest,
+    actor=Depends(get_current_actor),
+):
+    """查询当前知识库文件后台处理阶段。
+
+    Args:
+        request: 目标知识库。
+        actor: 当前访问主体。
+    """
+    return await get_knowledge_base_manager().list_upload_tasks(
+        _resolved_user_id(actor), request.knowledge_base_id
     )
 
 @router.post(
