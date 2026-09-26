@@ -1106,11 +1106,6 @@ export default function ChatInterface() {
     const parsedMcpConfig = parseMcpConfig(storedMcpConfig)
 
     localStorage.setItem('rag_chat_session_id', freshSessionId)
-    localStorage.setItem(
-      'rag_mcp_enabled',
-      parsedMcpConfig.config && storedMcpEnabled ? 'true' : 'false'
-    )
-
     activeThreadIdRef.current = freshSessionId
     messagesRef.current = []
     setSessionId(freshSessionId)
@@ -1118,7 +1113,7 @@ export default function ChatInterface() {
     setMcpConfigDraft(storedMcpConfig)
     setSavedMcpConfigText(storedMcpConfig)
     setMcpConfig(parsedMcpConfig.config)
-    setMcpEnabled(Boolean(parsedMcpConfig.config) && storedMcpEnabled)
+    setMcpEnabled(storedMcpEnabled)
 
     if (storedMcpConfig && parsedMcpConfig.error) {
       setMcpError(`本地保存的 MCP 配置无效：${parsedMcpConfig.error}`)
@@ -1628,12 +1623,10 @@ export default function ChatInterface() {
     if (!trimmed) {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('rag_mcp_config')
-        localStorage.setItem('rag_mcp_enabled', 'false')
       }
       setSavedMcpConfigText('')
       setMcpConfigDraft('')
       setMcpConfig(null)
-      setMcpEnabled(false)
       setMcpNotice('MCP 配置已清空。')
       setMcpError('')
       return
@@ -1687,23 +1680,11 @@ export default function ChatInterface() {
       return
     }
 
-    if (mcpConfigDirty) {
-      setMcpNotice('')
-      setMcpError('当前 MCP 草稿尚未保存，请先保存后再启用。')
-      return
-    }
-
-    if (!mcpConfig) {
-      setMcpNotice('')
-      setMcpError('请先保存一份有效的 MCP 配置后再启用。')
-      return
-    }
-
     if (typeof window !== 'undefined') {
       localStorage.setItem('rag_mcp_enabled', 'true')
     }
     setMcpEnabled(true)
-    setMcpNotice('MCP 已启用，后续通用 Agent 请求会附带该配置。')
+    setMcpNotice(mcpConfig ? 'MCP 已启用，通用 Agent 将使用已保存的配置。' : 'MCP 已启用；当前没有配置服务，聊天不会加载 MCP 工具。')
     setMcpError('')
   }
 
@@ -2997,13 +2978,6 @@ export default function ChatInterface() {
       navigateTo('knowledge', 'libraries')
       return
     }
-    if (requestMode === 'agent' && mcpEnabled && !requestMcpConfig) {
-      setMcpNotice('')
-      setMcpError('MCP 已启用，但当前没有有效配置，请先在 MCP 管理中保存配置。')
-      navigateTo('mcp')
-      return
-    }
-
     setMessagesAndRef((prev) =>
       prev.map((message) =>
         message.recommendedQuestions
