@@ -11,6 +11,14 @@ class KnowledgeUploadTaskRequest(BaseModel):
     task_id: str = Field(..., description="Upload task ID")
 
 
+class UpdateKnowledgeChunkRequest(BaseModel):
+    knowledge_base_id: str = Field(..., description="Knowledge base ID")
+    document_id: str = Field(..., description="Document ID")
+    chunk_id: str = Field(..., description="Chunk ID")
+    content: str | None = Field(None, description="新的切片正文")
+    state: bool | None = Field(None, description="切片开关状态")
+
+
 class KnowledgeBaseListRequest(BaseModel):
     user_id: str = Field(..., description="User ID")
     search: str = Field("", description="Search text")

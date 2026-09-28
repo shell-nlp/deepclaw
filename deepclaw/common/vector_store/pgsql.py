@@ -435,6 +435,56 @@ class PgVectorStore(AbstractVectorStore):
             return candidates
         return [item for item in candidates if item.get("score") is None or item["score"] >= min_similarity]
 
+    @staticmethod
+    def _build_filter_clauses(
+        filter_conditions: dict[str, Any] | None,
+        params: dict[str, Any],
+        *,
+        prefix: str,
+    ) -> list[str]:
+        """构造元数据过滤 SQL 片段，并写入绑定参数。
+
+        Args:
+            filter_conditions: 过滤条件，支持 ``metadata.<key>`` 与普通列名。
+            params: 参数绑定字典，会被就地写入。
+            prefix: 绑定参数名前缀，避免与调用方已有参数冲突。
+
+        Returns:
+            WHERE 子句片段列表，无条件时为空列表。
+        """
+        clauses: list[str] = []
+        for idx, (field, value) in enumerate((filter_conditions or {}).items()):
+            param_name = f"{prefix}_{idx}"
+            if field.startswith("metadata."):
+                metadata_key = field.split(".", 1)[1]
+                if isinstance(value, dict) and "$ne" in value:
+                    # 不等值条件：缺失字段视为满足，便于历史数据平滑过渡。
+                    clauses.append(
+                        f"metadata ->> '{metadata_key}' IS DISTINCT FROM %({param_name})s"
+                    )
+                    excluded = value["$ne"]
+                    params[param_name] = (
+                        str(excluded).lower()
+                        if isinstance(excluded, bool)
+                        else str(excluded)
+                    )
+                    continue
+                if isinstance(value, list):
+                    clauses.append(
+                        f"(metadata -> '{metadata_key}') ?| %({param_name})s"
+                    )
+                    params[param_name] = [str(item) for item in value]
+                    continue
+                clauses.append(f"metadata ->> '{metadata_key}' = %({param_name})s")
+                # JSONB 的 ->> 取值为 'true'/'false'，布尔条件需要小写绑定。
+                params[param_name] = (
+                    str(value).lower() if isinstance(value, bool) else str(value)
+                )
+                continue
+            clauses.append(f"{field} = %({param_name})s")
+            params[param_name] = str(value)
+        return clauses
+
     def _row_to_result(self, row: dict[str, Any]) -> dict[str, Any]:
         """将数据库行转换为统一的返回结果字典。
 
@@ -465,6 +515,7 @@ class PgVectorStore(AbstractVectorStore):
         query: str,
         index_names: list[str],
         limit: int,
+        filter_conditions: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """执行关键词全文检索查询，返回匹配行。
 
@@ -472,6 +523,7 @@ class PgVectorStore(AbstractVectorStore):
             query: 检索关键词。
             index_names: 要检索的索引名称列表。
             limit: 返回结果数量上限。
+            filter_conditions: 元数据过滤条件。
 
         Returns:
             查询结果行列表。
@@ -479,16 +531,27 @@ class PgVectorStore(AbstractVectorStore):
         self._ensure_base_schema()
         for index_name in index_names:
             self._ensure_partition(index_name)
+        params: dict[str, Any] = {
+            "index_names": index_names,
+            "query": query,
+            "limit": limit,
+        }
+        extra_sql = "".join(
+            f" AND {clause}"
+            for clause in self._build_filter_clauses(
+                filter_conditions, params, prefix="filter"
+            )
+        )
         sql = f"""
         SELECT id, index_name, content, metadata, pdb.score(id) AS score
         FROM {self._qualified_table_name()}
         WHERE index_name = ANY(%(index_names)s)
-          AND content ||| %(query)s
+          AND content ||| %(query)s{extra_sql}
         ORDER BY score DESC
         LIMIT %(limit)s
         """
         with self._connect() as conn, conn.cursor() as cur:
-            cur.execute(sql, {"index_names": index_names, "query": query, "limit": limit})
+            cur.execute(sql, params)
             return cur.fetchall()
 
     def _fetch_vector_candidates(
@@ -513,30 +576,14 @@ class PgVectorStore(AbstractVectorStore):
         self._ensure_base_schema()
         self._ensure_partition(index_name)
         partition_table = self._qualified_partition_name(index_name)
-        where_clauses: list[str] = []
         params: dict[str, Any] = {
             "index_name": index_name,
             "query_vector": query_vector,
             "limit": limit,
         }
-        if filter_conditions:
-            for idx, (field, value) in enumerate(filter_conditions.items()):
-                param_name = f"filter_{idx}"
-                if field.startswith("metadata."):
-                    metadata_key = field.split(".", 1)[1]
-                    if isinstance(value, list):
-                        where_clauses.append(
-                            f"(metadata -> '{metadata_key}') ?| %({param_name})s"
-                        )
-                        params[param_name] = [str(item) for item in value]
-                    else:
-                        where_clauses.append(
-                            f"metadata ->> '{metadata_key}' = %({param_name})s"
-                        )
-                        params[param_name] = str(value)
-                else:
-                    where_clauses.append(f"{field} = %({param_name})s")
-                    params[param_name] = str(value)
+        where_clauses = self._build_filter_clauses(
+            filter_conditions, params, prefix="filter"
+        )
         where_sql = f" AND {' AND '.join(where_clauses)}" if where_clauses else ""
         sql = f"""
         SELECT
@@ -951,21 +998,9 @@ class PgVectorStore(AbstractVectorStore):
         self._ensure_base_schema()
         where_clauses = ["index_name = ANY(%(index_names)s)"]
         params: dict[str, Any] = {"index_names": target_indexes, "limit": k}
-        if filter_conditions:
-            for idx, (field, value) in enumerate(filter_conditions.items()):
-                param_name = f"value_{idx}"
-                if field.startswith("metadata."):
-                    metadata_key = field.split(".", 1)[1]
-                    if isinstance(value, list):
-                        where_clauses.append(
-                            f"(metadata -> '{metadata_key}') ?| %({param_name})s"
-                        )
-                        params[param_name] = [str(item) for item in value]
-                        continue
-                    where_clauses.append(f"metadata ->> '{metadata_key}' = %({param_name})s")
-                else:
-                    where_clauses.append(f"{field} = %({param_name})s")
-                params[param_name] = str(value)
+        where_clauses.extend(
+            self._build_filter_clauses(filter_conditions, params, prefix="value")
+        )
         sql = f"""
         SELECT id, index_name, content, metadata
         FROM {self._qualified_table_name()}
@@ -1137,6 +1172,7 @@ class PgVectorStore(AbstractVectorStore):
         query: str,
         k: int = 3,
         index_names: list[str] | None = None,
+        filter_conditions: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """全文关键词检索，使用 pg_search 的 BM25 评分。
 
@@ -1144,6 +1180,7 @@ class PgVectorStore(AbstractVectorStore):
             query: 检索关键词。
             k: 返回结果数量。
             index_names: 目标索引名称列表。
+            filter_conditions: 元数据过滤条件。
 
         Returns:
             检索结果列表。
@@ -1152,7 +1189,12 @@ class PgVectorStore(AbstractVectorStore):
         if not target_indexes:
             return []
 
-        rows = self._fetch_keyword_rows(query=query, index_names=target_indexes, limit=k)
+        rows = self._fetch_keyword_rows(
+            query=query,
+            index_names=target_indexes,
+            limit=k,
+            filter_conditions=filter_conditions,
+        )
         return [self._row_to_result(row) for row in rows]
 
     def refresh_embeddings(

@@ -8,15 +8,21 @@ class DummyVectorStore:
     def __init__(self):
         self.rrf_calls = []
 
-    def retrieve_with_rrf(self, query, k=3, index_names=None):
+    def retrieve_with_rrf(self, query, k=3, index_names=None, filter_conditions=None):
         """记录调用并返回固定的混合检索结果。
 
         Args:
             query: 查询文本。
             k: 召回数量。
             index_names: 目标索引列表。
+            filter_conditions: 元数据过滤条件。
         """
-        self.rrf_calls.append({"query": query, "k": k, "index_names": index_names})
+        self.rrf_calls.append({
+            "query": query,
+            "k": k,
+            "index_names": index_names,
+            "filter_conditions": filter_conditions,
+        })
         return [
             {
                 "content": "rrf result",
@@ -38,7 +44,12 @@ def test_rag_retrieval_uses_hybrid_rrf():
     )
 
     assert store.rrf_calls == [
-        {"query": "hello", "k": 2, "index_names": ["kb_demo_passages"]}
+        {
+            "query": "hello",
+            "k": 2,
+            "index_names": ["kb_demo_passages"],
+            "filter_conditions": {"metadata.state": {"$ne": False}},
+        }
     ]
     assert results[0][0].page_content == "rrf result"
     assert results[0][0].metadata == {"source": "hybrid"}
