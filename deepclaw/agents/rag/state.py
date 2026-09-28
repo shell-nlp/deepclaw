@@ -8,8 +8,8 @@ class StateSchema(AgentState):
 
     # 当前用户标识，由路由层写入可信值。
     user_id: NotRequired[str]
-    # 知识库 passage 索引名称。
-    index_name: NotRequired[str]
+    # 参与检索的知识库 passage 索引名称列表。
+    index_names: NotRequired[list[str]]
     # 是否启用联网搜索。
     internet_search: NotRequired[bool]
     # 是否启用深度思考。

@@ -55,6 +55,7 @@ export const KB_DOCUMENT_BULK_DELETE_API_PATH =
   '/api/rag/knowledge-bases/documents/bulk-delete'
 
 export const KNOWLEDGE_BASE_PAGE_SIZE = 8
+export const KNOWLEDGE_BASE_OPTION_PAGE_SIZE = 100
 export const DOCUMENT_PAGE_SIZE = 10
 export const DOCUMENT_CHUNK_PAGE_SIZE = 8
 export const DEFAULT_KNOWLEDGE_PAGE: KnowledgePage = 'libraries'

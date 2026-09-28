@@ -108,9 +108,9 @@
 图 RAG（`deepclaw/common/graph_rag/`、`BaseGraphRAG`/`ElasticGraphRAG`/`PgGraphRAG`、`create_graph_rag()`）已整体移除，原因是查询时的实体抽取与图谱扩展太慢、检索收益一般。当前形态：
 
 - 知识库只维护 passage 索引（`kb_<knowledge_base_id>_passages`），上传只写切片、不再做三元组抽取，删除按 `document_id` 清理来源
-- 检索统一走 `AbstractVectorStore.retrieve_with_rrf()`（BM25 + 向量 + RRF），`index_name` 是唯一的检索入参，`graph_name` 已从 state、agent 白名单和前端请求中移除
+- 检索统一走 `AbstractVectorStore.retrieve_with_rrf()`（BM25 + 向量 + RRF），检索入参是 state 里的 `index_names`（知识库 `passage_index` 列表，支持一次检索多个知识库），`graph_name` 已从 state、agent 白名单和前端请求中移除
 - `knowledge_bases.index_prefix` / `entity_index` / `relation_index` 三个字段已从模型、API 与前端类型中删除；`SQLModelKnowledgeBaseMetadataStore._ensure_init()` 会在启动时 best-effort 清理存量库中的这三列（PostgreSQL 走 `DROP COLUMN IF EXISTS`，SQLite 按语句失败跳过），旧数据行仍可正常读取
-- `deepclaw/web_backend/agent/run_store.py` 的旧数据归类只依据 `index_name`：把早期被错存为通用 agent 的 RAG run 修正为 `rag`，以及从 checkpoint 回填 Thread 索引时判断 agent
+- `deepclaw/web_backend/agent/run_store.py` 的旧数据归类依据 `index_names`（兼容历史数据的 `index_name`）：把早期被错存为通用 agent 的 RAG run 修正为 `rag`，以及从 checkpoint 回填 Thread 索引时判断 agent
 
 - `deepclaw/middleware/`
   业务开关、RAG 注入、MCP、工具搜索、计划，以及 `cron` 工具实现等中间件与运行时扩展。
@@ -393,7 +393,7 @@ pnpm build
   - 恢复：`POST /api/agui/runs/{run_id}/resume`
   - 取消：`POST /api/agui/runs/{run_id}/cancel`
 - 新增 Agent 时只需在 `deepclaw/agents/<name>/agent.py` 中定义 `Agent` 子类，`AgentRegistry.discover()` 会自动加载；不需要修改 Web 路由或集中式 Agent 列表。
-- 运行参数（`user_id`、`internet_search`、`deep_thinking`、`mcp_config`、`index_name`、`header_info`）统一存放在 LangGraph state，不再依赖独立 context 模型
+- 运行参数（`user_id`、`internet_search`、`deep_thinking`、`mcp_config`、`index_names`、`header_info`）统一存放在 LangGraph state，不再依赖独立 context 模型；RAG 只认 `index_names`，输入框的「知识库」选择器默认全选并直接写入该列表
 - Human-in-the-loop 中断通过标准 `RUN_FINISHED.outcome` 暴露，恢复使用顶层 `resume[]`（`interruptId`、`status`、`payload`），不再使用 `forwardedProps.command.resume`
 - 卡片 Action 不走独立接口：`POST /api/agui/runs/{run_id}/actions` 已删除，恢复入口只有 `POST /api/agui/runs/{run_id}/resume`，客户端把决策放进顶层 `resume[].payload`（例如 `{"decisions": [...]}`）
 - Thread 资源现在记录 `thread_id -> owner_user_id + agent_id`，创建 Run 时会自动创建或校验 Thread 归属

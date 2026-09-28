@@ -530,7 +530,7 @@ curl -X POST http://localhost:7869/api/agui/runs/run-demo-1/resume \
 
 ### Knowledge base Q&A
 
-`index_name` comes from the knowledge base detail field `passage_index`:
+`index_names` is a list of `passage_index` values from knowledge base details, so several knowledge bases can be searched together:
 
 ```bash
 curl -X POST http://localhost:7869/api/agui/runs \
@@ -541,7 +541,7 @@ curl -X POST http://localhost:7869/api/agui/runs \
     "threadId": "rag-thread",
     "runId": "rag-run-demo-1",
     "state": {
-      "index_name": "kb_xxx_passages",
+      "index_names": ["kb_xxx_passages", "kb_yyy_passages"],
       "deep_thinking": false
     },
     "messages": [

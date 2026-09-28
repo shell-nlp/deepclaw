@@ -13,7 +13,7 @@ class RagAgent(Agent):
         {"knowledge_base", "deep_thinking", "internet_search"}
     )
     allowed_state_keys = frozenset(
-        {"index_name", "internet_search", "deep_thinking"}
+        {"index_names", "internet_search", "deep_thinking"}
     )
 
     @classmethod

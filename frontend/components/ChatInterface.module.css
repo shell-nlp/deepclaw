@@ -1845,7 +1845,8 @@ textarea.interruptInput {
   padding: 0;
 }
 
-.toggle {
+.toggle,
+.toggleActive {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1856,10 +1857,12 @@ textarea.interruptInput {
   border-radius: 999px;
   background: #ffffff;
   color: var(--text-secondary);
+  font-family: inherit;
   transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
 }
 
-.toggle:hover {
+.toggle:hover,
+.toggleActive:hover {
   border-color: rgba(77, 107, 254, 0.32);
   color: var(--accent-primary);
 }
@@ -1868,10 +1871,17 @@ textarea.interruptInput {
   display: none;
 }
 
-.toggle:has(input:checked) {
+.toggle:has(input:checked),
+.toggleActive {
   background: rgba(77, 107, 254, 0.09);
   border-color: rgba(77, 107, 254, 0.42);
   color: var(--accent-primary);
+}
+
+.toggle:disabled,
+.toggleActive:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .toggleLabel {
@@ -1884,6 +1894,193 @@ textarea.interruptInput {
   width: 14px;
   height: 14px;
   flex: 0 0 auto;
+}
+
+.knowledgePicker {
+  position: relative;
+  display: inline-flex;
+}
+
+.knowledgePickerValue {
+  max-width: 132px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  color: inherit;
+  opacity: 0.85;
+}
+
+.knowledgePickerChevron,
+.knowledgePickerChevronOpen {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  transition: transform 0.18s ease;
+}
+
+.knowledgePickerChevronOpen {
+  transform: rotate(180deg);
+}
+
+.knowledgePickerPanel {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  z-index: 24;
+  display: flex;
+  flex-direction: column;
+  width: 296px;
+  max-height: 344px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 18px 44px rgba(21, 32, 52, 0.16);
+}
+
+.knowledgePickerHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.knowledgePickerHeader strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.knowledgePickerHeader span {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.knowledgePickerAll {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 16px;
+  border-bottom: 1px solid #eef2f7;
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.knowledgePickerAll input,
+.knowledgePickerItem input {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  margin: 0;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+
+.knowledgePickerAllCount {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.knowledgePickerList {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.knowledgePickerItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.knowledgePickerItem:hover {
+  background: rgba(77, 107, 254, 0.06);
+}
+
+.knowledgePickerItemText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.knowledgePickerItemText strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.knowledgePickerItemText small {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.knowledgePickerEmpty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 26px 18px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.knowledgePickerLink {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-primary);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.knowledgePickerFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px 12px 16px;
+  border-top: 1px solid #eef2f7;
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+.knowledgePickerDone {
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent-primary);
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.knowledgePickerDone:hover {
+  filter: brightness(1.06);
+}
+
+@media (max-width: 560px) {
+  .knowledgePickerPanel { width: min(296px, calc(100vw - 32px)); }
 }
 
 .composerFooter {
@@ -1899,44 +2096,6 @@ textarea.interruptInput {
   text-align: center;
   font-size: 11.5px;
   color: var(--text-muted);
-}
-
-.chatKnowledgeRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: rgba(77, 107, 254, 0.055);
-  border: 1px solid rgba(77, 107, 254, 0.13);
-}
-
-.chatKnowledgeStatus {
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.chatKnowledgeAction {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 12px;
-  border: none;
-  border-radius: var(--radius-md);
-  background: var(--accent-primary);
-  color: white;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 6px 18px rgba(77, 107, 254, 0.18);
-}
-
-.chatKnowledgeAction:hover {
-  transform: translateY(-1px);
 }
 
 .sendBtn,

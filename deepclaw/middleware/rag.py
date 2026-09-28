@@ -245,12 +245,26 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
             return self.vector_store()
         return self.vector_store
 
-    def _get_index_name(self, runtime: Runtime) -> str:
+    def _get_index_names(self, runtime: Runtime) -> list[str]:
+        """解析本次检索使用的知识库索引列表。
+
+        Args:
+            runtime: LangGraph 运行时。
+
+        Returns:
+            去重后的索引名称列表。
+        """
         state = runtime.state or {}
-        index_name = state.get("index_name")
-        if not index_name:
-            raise ValueError("state.index_name is required")
-        return index_name
+        raw_names = state.get("index_names")
+        candidates = (
+            [str(item) for item in raw_names if str(item).strip()]
+            if isinstance(raw_names, list)
+            else []
+        )
+        unique_names = list(dict.fromkeys(candidates))
+        if not unique_names:
+            raise ValueError("state.index_names is required")
+        return unique_names
 
     def _get_rewrite_query(self, messages: List[BaseMessage]) -> str:
         """用户根据历史消息重写query
@@ -315,7 +329,7 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
     def _get_retrieve_result(
         self,
         query: str,
-        index_name: str,
+        index_names: list[str],
         k: int = 3,
     ) -> List[tuple[Document, float | None]]:
         """根据 query 检索结果。
@@ -324,8 +338,8 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
         ----------
         query : str
             用户 query
-        index_name : str
-            ES 检索索引名
+        index_names : list[str]
+            参与检索的索引名称列表
         k : int, optional
             检索结果数量，默认 3。
 
@@ -339,7 +353,7 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
             hits = vector_store.retrieve_with_rrf(
                 query=query,
                 k=k,
-                index_names=[index_name],
+                index_names=index_names,
                 # 关闭的切片不参与检索；缺少 state 的历史切片仍视为开启。
                 filter_conditions={"metadata.state": {"$ne": False}},
             )
@@ -370,13 +384,13 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
 如果问题中提供的时间超过当前的时间，必须指出问题中的时间尚未到来。
 </当前的时间>"""
         if router == "RAG":
-            index_name = self._get_index_name(runtime)
+            index_names = self._get_index_names(runtime)
             # 改写问题
             query = self._get_rewrite_query(messages)
             logger.info(f"用于检索的问题：{query}")
             # 检索结果
             retrieved_docs = self._get_retrieve_result(
-                query=query, index_name=index_name, k=3
+                query=query, index_names=index_names, k=3
             )
             context = ""
             docs = []
