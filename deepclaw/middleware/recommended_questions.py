@@ -7,6 +7,7 @@ from langgraph.config import get_config
 from loguru import logger
 
 from deepclaw.utils import get_chat_model
+from deepclaw.utils.model_factory import DISABLE_THINKING_EXTRA_BODY
 
 
 class RecommendedQuestionsMiddleware(AgentMiddleware):
@@ -40,8 +41,7 @@ class RecommendedQuestionsMiddleware(AgentMiddleware):
             )
             .bind(
                 extra_body={
-                    "thinking": {"type": "disabled"},
-                    "chat_template_kwargs": {"enable_thinking": False},
+                    **DISABLE_THINKING_EXTRA_BODY,
                     "response_format": {"type": "json_object"},
                 }
             )

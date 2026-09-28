@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 
@@ -414,18 +415,24 @@ class AbstractVectorStore(ABC):
             filter_conditions: 元数据过滤条件；值为 ``{"$ne": x}`` 时表示不等值，缺失该字段的文档也视为满足。
         """
         candidate_k = max(k * 4, 20)
-        vector_results = self.vector_search(
-            query=query,
-            k=candidate_k,
-            index_names=index_names,
-            filter_conditions=filter_conditions,
-        )
-        keyword_results = self.keyword_search(
-            query=query,
-            k=candidate_k,
-            index_names=index_names,
-            filter_conditions=filter_conditions,
-        )
+        # 向量检索包含一次 embedding 请求，与 BM25 无依赖，放线程池并行执行。
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            vector_future = executor.submit(
+                self.vector_search,
+                query=query,
+                k=candidate_k,
+                index_names=index_names,
+                filter_conditions=filter_conditions,
+            )
+            keyword_future = executor.submit(
+                self.keyword_search,
+                query=query,
+                k=candidate_k,
+                index_names=index_names,
+                filter_conditions=filter_conditions,
+            )
+            vector_results = vector_future.result()
+            keyword_results = keyword_future.result()
         return self.merge_results_rrf(
             vector_results=vector_results,
             keyword_results=keyword_results,

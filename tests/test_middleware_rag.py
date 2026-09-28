@@ -133,6 +133,40 @@ def test_merge_results_rrf_writes_fused_score():
     assert by_id["b"]["raw_score"] == 18.2
 
 
+def test_retrieve_with_rrf_runs_both_channels_in_parallel():
+    """向量与 BM25 必须并行执行：两路都用同一个 barrier，串行会超时。"""
+    import threading
+
+    barrier = threading.Barrier(2, timeout=2)
+
+    class ParallelStore:
+        merge_results_rrf = staticmethod(AbstractVectorStore.merge_results_rrf)
+
+        def vector_search(self, **kwargs):
+            """等待另一路一起到达 barrier。
+
+            Args:
+                kwargs: 检索参数。
+            """
+            barrier.wait()
+            return [{"id": "v1", "content": "V", "score": 0.9}]
+
+        def keyword_search(self, **kwargs):
+            """等待另一路一起到达 barrier。
+
+            Args:
+                kwargs: 检索参数。
+            """
+            barrier.wait()
+            return [{"id": "k1", "content": "K", "score": 9.1}]
+
+    results = AbstractVectorStore.retrieve_with_rrf(
+        ParallelStore(), query="hello", k=2, index_names=["kb_a"]
+    )
+
+    assert [item["id"] for item in results] == ["v1", "k1"]
+
+
 class RecordingRewriteModel:
     """记录 config 的问题改写模型替身。"""
 
