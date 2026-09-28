@@ -77,7 +77,7 @@
   技能管理路由、请求模型与服务实现。
 
 - `deepclaw/web_backend/knowledge_bases/`
- 知识库管理路由、请求模型、元数据存储与服务实现。上传接口先将原始文件保存到对象存储并登记独立的 `knowledge_upload_tasks` 任务，返回 202；每实例后台 worker 数由 `KNOWLEDGE_UPLOAD_WORKERS` 控制（默认 2，允许 1–8），原子领取任务，在线程中执行 PDF 解析、三元组抽取和索引，按排队/解析/索引/成功/失败持久化阶段，前端轮询 `/api/rag/knowledge-bases/documents/upload-tasks`。进程异常中断的任务心跳过期后重新排队；部署多实例时共享元数据数据库和对象存储。知识库解析统一选择 `PDFParser`；PDF 直接解析，TXT/MD 等文本格式先生成 PDF，DOCX/PPTX/XLSX 等由 LibreOffice 转换为 PDF 后再解析。`create_document_parser()` 保留给非知识库上传场景。
+ 知识库管理路由、请求模型、元数据存储与服务实现。上传接口先将原始文件保存到对象存储并登记独立的 `knowledge_upload_tasks` 任务，返回 202；每实例后台 worker 数由 `KNOWLEDGE_UPLOAD_WORKERS` 控制（默认 2，允许 1–8），原子领取任务，在线程中执行 PDF 解析和切片写入（只写 passage 索引，不做三元组抽取），按排队/解析/索引/成功/失败持久化阶段，前端轮询 `/api/rag/knowledge-bases/documents/upload-tasks`。进程异常中断的任务心跳过期后重新排队；部署多实例时共享元数据数据库和对象存储。知识库解析统一选择 `PDFParser`；PDF 直接解析，TXT/MD 等文本格式先生成 PDF，DOCX/PPTX/XLSX 等由 LibreOffice 转换为 PDF 后再解析。`create_document_parser()` 保留给非知识库上传场景。
 
 ### 核心能力层
 
@@ -88,7 +88,7 @@
   RAG Agent 组装、上下文与状态定义；`rag/agent.py` 的 `RagAgent.build_agent` 直接承载构建实现。
 
 - `deepclaw/common/`
-  Elasticsearch、向量数据库抽象、Graph RAG（`BaseGraphRAG` + `ElasticGraphRAG` + `PgGraphRAG`）、PDF 切分等通用算法实现。
+  Elasticsearch、向量数据库抽象、混合检索（BM25 + 向量 + RRF）、PDF 切分等通用算法实现。
 
 - `deepclaw/common/object_storage/`
   对象存储抽象与实现。`ObjectStorage` 是 ABC 端口，`LocalObjectStorage` 用 `root/bucket_name/file_path` 模拟对象存储，`MinioObjectStorage` 使用 S3 兼容协议；`ObjectStoragePDFReader` 把对象存储适配给 PDF/Docling 解析器。知识库上传默认走本地实现，配置 `OBJECT_STORAGE_PROVIDER=minio` 后切换远端。
@@ -97,21 +97,19 @@
   Docling 统一文档解析适配器。按文件后缀选择 Docling 或回退解析器，将 PDF、DOCX、PPTX、XLSX、HTML、Markdown、TXT 转换为现有知识库兼容的 LangChain Document 切片，并保留标题路径、页码和 Docling 元数据。
 
 - `deepclaw/common/vector_store/`
-  向量数据库抽象层，包含通用 `AbstractVectorStore`、统一创建入口 `create_vector_store()`、Elasticsearch 实现，以及基于 PostgreSQL + pgvector + pg_search 的实现。图谱使用的候选 ID 向量检索 `vector_search_by_ids()`、按元数据列出全部 ID 的 `list_ids_by_filter()` 与索引清理 `clear_index()` 统一由此层提供；ES 批量写入保留外部传入的图谱 ID，PG 元数据数组列表过滤表示任一匹配。
-
-- `deepclaw/common/graph_rag/`
-  Graph RAG 统一包，包含：
-  - `base.py` — `BaseGraphRAG` 抽象基类，承载图构建、三元组抽取、共享检索与 CRUD 编排；增量上传合并跨批次共享实体/关系，重传相同 passage ID 时只移除失效邻接；`upsert_documents_by_source()` / `delete_documents_by_source()` 支持按 `document_id` 等稳定来源整份替换或删除
-  - `elastic.py` — `ElasticGraphRAG(BaseGraphRAG)`，Elasticsearch 图谱索引映射和存储适配；检索走基类统一流程
-  - `pg.py` — `PgGraphRAG(BaseGraphRAG)`，PostgreSQL pgvector 存储适配；检索走基类统一流程
-  - `__init__.py` — 统一导出入口
-
-- `deepclaw/common/elastic_graph_rag.py` / `deepclaw/common/pg_graph_rag.py`
-  向后兼容的 re-export 存根，新代码请从 `deepclaw/common/graph_rag` 导入。
+  向量数据库抽象层，包含通用 `AbstractVectorStore`、统一创建入口 `create_vector_store()`、Elasticsearch 实现，以及基于 PostgreSQL + pgvector + pg_search 的实现。限定文档 ID 的 `vector_search_by_ids()`、按元数据列出全部 ID 的 `list_ids_by_filter()` 与索引清理 `clear_index()` 统一由此层提供；ES 批量写入保留外部传入的 ID，PG 元数据数组列表过滤表示任一匹配。混合检索由 `retrieve_with_rrf()` 提供：分别取 BM25 关键词检索与向量检索结果，再按 RRF 融合，是当前 RAG 检索的唯一实现。
 
 - `deepclaw/common/__init__.py`
-  导出所有公共类型，并提供 `create_graph_rag()` 工厂函数，根据 `vector_store` 类型自动创建对应的 `ElasticGraphRAG` 或 `PgGraphRAG` 实例。
-  知识库上传以新生成的 `document_id` 作为来源调用 source 级接口，删除文档按相同来源清理；同名文件再次上传仍创建新文档，不自动覆盖旧文件。
+  导出公共类型。知识库上传以新生成的 `document_id` 作为来源整体替换 passage 索引，删除文档按相同来源清理；同名文件再次上传仍创建新文档，不自动覆盖旧文件。
+
+### 已移除：Graph RAG
+
+图 RAG（`deepclaw/common/graph_rag/`、`BaseGraphRAG`/`ElasticGraphRAG`/`PgGraphRAG`、`create_graph_rag()`）已整体移除，原因是查询时的实体抽取与图谱扩展太慢、检索收益一般。当前形态：
+
+- 知识库只维护 passage 索引（`kb_<knowledge_base_id>_passages`），上传只写切片、不再做三元组抽取，删除按 `document_id` 清理来源
+- 检索统一走 `AbstractVectorStore.retrieve_with_rrf()`（BM25 + 向量 + RRF），`index_name` 是唯一的检索入参，`graph_name` 已从 state、agent 白名单和前端请求中移除
+- `knowledge_bases.index_prefix` / `entity_index` / `relation_index` 三个字段已从模型、API 与前端类型中删除；`SQLModelKnowledgeBaseMetadataStore._ensure_init()` 会在启动时 best-effort 清理存量库中的这三列（PostgreSQL 走 `DROP COLUMN IF EXISTS`，SQLite 按语句失败跳过），旧数据行仍可正常读取
+- `deepclaw/web_backend/agent/run_store.py` 的旧数据归类只依据 `index_name`：把早期被错存为通用 agent 的 RAG run 修正为 `rag`，以及从 checkpoint 回填 Thread 索引时判断 agent
 
 - `deepclaw/middleware/`
   业务开关、RAG 注入、MCP、工具搜索、计划，以及 `cron` 工具实现等中间件与运行时扩展。
@@ -394,7 +392,7 @@ pnpm build
   - 恢复：`POST /api/agui/runs/{run_id}/resume`
   - 取消：`POST /api/agui/runs/{run_id}/cancel`
 - 新增 Agent 时只需在 `deepclaw/agents/<name>/agent.py` 中定义 `Agent` 子类，`AgentRegistry.discover()` 会自动加载；不需要修改 Web 路由或集中式 Agent 列表。
-- 运行参数（`user_id`、`internet_search`、`deep_thinking`、`mcp_config`、`index_name`、`graph_name`、`header_info`）统一存放在 LangGraph state，不再依赖独立 context 模型
+- 运行参数（`user_id`、`internet_search`、`deep_thinking`、`mcp_config`、`index_name`、`header_info`）统一存放在 LangGraph state，不再依赖独立 context 模型
 - Human-in-the-loop 中断通过标准 `RUN_FINISHED.outcome` 暴露，恢复使用顶层 `resume[]`（`interruptId`、`status`、`payload`），不再使用 `forwardedProps.command.resume`
 - 卡片 Action 不走独立接口：`POST /api/agui/runs/{run_id}/actions` 已删除，恢复入口只有 `POST /api/agui/runs/{run_id}/resume`，客户端把决策放进顶层 `resume[].payload`（例如 `{"decisions": [...]}`）
 - Thread 资源现在记录 `thread_id -> owner_user_id + agent_id`，创建 Run 时会自动创建或校验 Thread 归属

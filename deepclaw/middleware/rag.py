@@ -13,7 +13,6 @@ from langgraph.runtime import Runtime
 from loguru import logger
 
 from deepclaw.agents.rag.state import StateSchema
-from deepclaw.common import create_graph_rag
 from deepclaw.common.vector_store import AbstractVectorStore
 
 RAG_SYSTEM_PROMPT = """<角色>您是一个精通文档引用的问答专家，能够精准依据来源内容构建回答。</角色>
@@ -253,17 +252,6 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
             raise ValueError("state.index_name is required")
         return index_name
 
-    def _get_graph_name(self, runtime: Runtime) -> str | None:
-        state = runtime.state or {}
-        graph_name = state.get("graph_name")
-        if graph_name:
-            return graph_name
-
-        index_name = state.get("index_name")
-        if index_name and str(index_name).endswith("_passages"):
-            return str(index_name)[: -len("_passages")]
-        return None
-
     def _get_rewrite_query(self, messages: List[BaseMessage]) -> str:
         """用户根据历史消息重写query
 
@@ -328,7 +316,6 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
         self,
         query: str,
         index_name: str,
-        graph_name: str | None = None,
         k: int = 3,
     ) -> List[tuple[Document, float | None]]:
         """根据 query 检索结果。
@@ -349,31 +336,9 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
         """
         try:
             vector_store = self._resolve_vector_store()
-            if graph_name:
-                try:
-                    rag = create_graph_rag(vector_store, graph_name)
-                except ValueError:
-                    rag = None
-
-                if rag:
-                    raw_result = rag.retrieve(query=query, k=k)
-                    hits = (
-                        raw_result["passages"]
-                        if isinstance(raw_result, dict)
-                        else raw_result
-                    )
-                else:
-                    logger.info(
-                        "当前向量库不支持图检索，已降级为普通检索：{}",
-                        type(vector_store).__name__,
-                    )
-                    hits = vector_store.retrieve(
-                        query=query, k=k, index_names=[index_name]
-                    )
-            else:
-                hits = vector_store.retrieve(
-                    query=query, k=k, index_names=[index_name]
-                )
+            hits = vector_store.retrieve_with_rrf(
+                query=query, k=k, index_names=[index_name]
+            )
             results = []
             for item in hits:
                 results.append(
@@ -402,13 +367,12 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
 </当前的时间>"""
         if router == "RAG":
             index_name = self._get_index_name(runtime)
-            graph_name = self._get_graph_name(runtime)
             # 改写问题
             query = self._get_rewrite_query(messages)
             logger.info(f"用于检索的问题：{query}")
             # 检索结果
             retrieved_docs = self._get_retrieve_result(
-                query=query, index_name=index_name, graph_name=graph_name, k=3
+                query=query, index_name=index_name, k=3
             )
             context = ""
             docs = []

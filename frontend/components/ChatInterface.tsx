@@ -3101,7 +3101,6 @@ export default function ChatInterface() {
       }
       if (requestMode === 'rag' && selectedKnowledgeBase) {
         state.index_name = selectedKnowledgeBase.passage_index
-        state.graph_name = selectedKnowledgeBase.index_prefix
       } else if (requestMode === 'agent' && requestMcpConfig) {
         state.mcp_config = requestMcpConfig
       }

@@ -1,7 +1,7 @@
 """知识库文件上传流程集成测试。
 
 覆盖从 upload_documents → _ingest_file → PDFParser.get_chunk()
-→ _prepare_documents → BaseGraphRAG.add_documents → _bulk_index
+→ _prepare_documents → KnowledgeBaseManager._write_passages → add_batch
 的完整流水线，包含 PgVectorStore 和 ElasticsearchVectorStore 两种后端。
 """
 
@@ -14,8 +14,6 @@ from unittest.mock import MagicMock
 
 from langchain_core.documents import Document
 
-from deepclaw.common.graph_rag.base import BaseGraphRAG
-from deepclaw.common.graph_rag.pg import PgGraphRAG
 from deepclaw.common.object_storage import LocalObjectStorage
 from deepclaw.common.vector_store.elasticsearch import ElasticsearchVectorStore
 from deepclaw.common.vector_store.pgsql import PgVectorStore
@@ -103,10 +101,7 @@ class FakeMetadataStore:
                 "user_id": user_id,
                 "name": "测试知识库",
                 "description": "desc",
-                "index_prefix": f"kb_{knowledge_base_id}",
                 "passage_index": f"kb_{knowledge_base_id}_passages",
-                "entity_index": f"kb_{knowledge_base_id}_entities",
-                "relation_index": f"kb_{knowledge_base_id}_relations",
                 "document_count": 0,
                 "chunk_count": 0,
                 "created_at": "2026-01-01T00:00:00+08:00",
@@ -143,6 +138,8 @@ class FakePgVectorStore(PgVectorStore):
             embedding_dimensions=4,
         )
         self.added_batches: list[tuple[list[dict[str, Any]], str]] = []
+        self.deleted_batches: list[tuple[str, list[str]]] = []
+        self.source_ids: list[str] = []
         self.count_value = 0
 
     def _connect(self):
@@ -165,13 +162,23 @@ class FakePgVectorStore(PgVectorStore):
         return []
 
     def list_ids_by_filter(self, index_name, filter_conditions):
-        """模拟空索引中的来源查询。
+        """返回预设的来源查询结果。
 
         Args:
             index_name: 索引名称。
             filter_conditions: 来源过滤条件。
         """
-        return []
+        return list(self.source_ids)
+
+    def delete_batch(self, doc_ids, index_name=None):
+        """记录批量删除并返回成功标记。
+
+        Args:
+            doc_ids: 待删除文档 ID。
+            index_name: 索引名称。
+        """
+        self.deleted_batches.append((index_name, list(doc_ids)))
+        return [True for _ in doc_ids]
 
     def batch_get(self, doc_ids, index_name=None):
         """模拟空索引中的批量读取。
@@ -305,7 +312,6 @@ def test_background_upload_submission_and_processing(monkeypatch):
             "deepclaw.web_backend.knowledge_bases.service.PDFParser.get_chunk",
             lambda self: _make_fake_chunks(2),
         )
-        monkeypatch.setattr(BaseGraphRAG, "_extract_triplets", lambda self, text: [])
         metadata = FakeMetadataStore()
         manager = KnowledgeBaseManager(
             vector_store=FakePgVectorStore(), metadata_store=metadata,
@@ -377,10 +383,6 @@ def test_pg_upload_single_file_success(monkeypatch):
             "deepclaw.web_backend.knowledge_bases.service.PDFParser.get_chunk",
             lambda self: _make_fake_chunks(2),
         )
-        monkeypatch.setattr(
-            BaseGraphRAG, "_extract_triplets", lambda self, text: []
-        )
-
         manager = KnowledgeBaseManager(
             vector_store=FakePgVectorStore(),
             metadata_store=FakeMetadataStore(),
@@ -407,10 +409,6 @@ def test_pg_upload_multiple_files(monkeypatch):
             "deepclaw.web_backend.knowledge_bases.service.PDFParser.get_chunk",
             lambda self: _make_fake_chunks(2),
         )
-        monkeypatch.setattr(
-            BaseGraphRAG, "_extract_triplets", lambda self, text: []
-        )
-
         manager = KnowledgeBaseManager(
             vector_store=FakePgVectorStore(),
             metadata_store=FakeMetadataStore(),
@@ -475,19 +473,13 @@ def test_upload_non_pdf_uses_pdf_parser(monkeypatch):
     asyncio.run(_run())
 
 
-def test_pg_upload_calls_add_batch_for_each_index(monkeypatch):
-    """上传应调用 add_batch: 每个索引（entity/relation/passage）至少一次。"""
+def test_pg_upload_only_writes_passage_index(monkeypatch):
+    """图 RAG 移除后，上传只写 passage 索引，不再产生 entity/relation 索引。"""
     async def _run():
         monkeypatch.setattr(
             "deepclaw.web_backend.knowledge_bases.service.PDFParser.get_chunk",
             lambda self: _make_fake_chunks(2),
         )
-        monkeypatch.setattr(
-            BaseGraphRAG,
-            "_extract_triplets",
-            lambda self, text: [("实体1", "关系", "实体2")],
-        )
-
         vector_store = FakePgVectorStore()
         manager = KnowledgeBaseManager(
             vector_store=vector_store,
@@ -501,10 +493,62 @@ def test_pg_upload_calls_add_batch_for_each_index(monkeypatch):
         )
 
         index_names = {batch[1] for batch in vector_store.added_batches}
-        for suffix in ("_entities", "_relations", "_passages"):
-            assert any(
-                name.endswith(suffix) for name in index_names
-            ), f"缺少 {suffix} 索引的写入"
+        assert len(index_names) == 1
+        (only_index,) = index_names
+        assert only_index.endswith("_passages")
+
+    asyncio.run(_run())
+
+
+def test_pg_upload_replaces_previous_passages_for_same_document(monkeypatch):
+    """同一个 document_id 重新入库时，先清掉旧切片再写新切片。"""
+    async def _run():
+        """在 FakePgVectorStore 上重复写入同一个来源。
+
+        Args:
+            无。
+        """
+        monkeypatch.setattr(
+            "deepclaw.web_backend.knowledge_bases.service.PDFParser.get_chunk",
+            lambda self: _make_fake_chunks(2),
+        )
+        vector_store = FakePgVectorStore()
+        manager = KnowledgeBaseManager(
+            vector_store=vector_store,
+            metadata_store=FakeMetadataStore(),
+            object_storage=FakeObjectStorage(),
+        )
+        knowledge_base = KnowledgeBaseRecord(
+            knowledge_base_id="kb_index",
+            user_id="user_test",
+            name="测试",
+            description="",
+            passage_index="kb_index_passages",
+            created_at="2026-01-01T00:00:00+08:00",
+            updated_at="2026-01-01T00:00:00+08:00",
+        )
+        vector_store.added_batches.append(([{"id": "old"}], "kb_index_passages"))
+        vector_store.source_ids = ["old"]
+
+        documents = manager._prepare_documents(
+            knowledge_base=knowledge_base,
+            user_id="user_test",
+            document_id="doc_same",
+            bucket_name="knowledge-bases",
+            file_path="user_test/kb_index/doc_same_test.pdf",
+            storage_name="doc_same_test.pdf",
+            storage_path="knowledge-bases/user_test/kb_index/doc_same_test.pdf",
+            original_file_name="测试.pdf",
+            content_type="application/pdf",
+            chunks=_make_fake_chunks(2),
+        )
+        written = manager._write_passages(
+            knowledge_base=knowledge_base, documents=documents
+        )
+
+        assert written == 2
+        assert vector_store.deleted_batches == [("kb_index_passages", ["old"])]
+        assert vector_store.added_batches[-1][1] == "kb_index_passages"
 
     asyncio.run(_run())
 
@@ -516,10 +560,6 @@ def test_pg_upload_file_error_does_not_block_others(monkeypatch):
             "deepclaw.web_backend.knowledge_bases.service.PDFParser.get_chunk",
             lambda self: _make_fake_chunks(2),
         )
-        monkeypatch.setattr(
-            BaseGraphRAG, "_extract_triplets", lambda self, text: []
-        )
-
         manager = KnowledgeBaseManager(
             vector_store=FakePgVectorStore(),
             metadata_store=FakeMetadataStore(),
@@ -558,10 +598,6 @@ def test_pg_upload_storage_dir_created(monkeypatch, tmp_path):
             "deepclaw.web_backend.knowledge_bases.service.PDFParser.get_chunk",
             lambda self: _make_fake_chunks(2),
         )
-        monkeypatch.setattr(
-            BaseGraphRAG, "_extract_triplets", lambda self, text: []
-        )
-
         object_storage = LocalObjectStorage(tmp_path / "objects")
         manager = KnowledgeBaseManager(
             vector_store=FakePgVectorStore(),
@@ -594,10 +630,6 @@ def test_es_upload_single_file_success(monkeypatch):
             "deepclaw.web_backend.knowledge_bases.service.PDFParser.get_chunk",
             lambda self: _make_fake_chunks(2),
         )
-        monkeypatch.setattr(
-            BaseGraphRAG, "_extract_triplets", lambda self, text: []
-        )
-
         manager = KnowledgeBaseManager(
             vector_store=FakeESVectorStore(),
             metadata_store=FakeMetadataStore(),
@@ -661,10 +693,6 @@ def test_ingest_saves_document_metadata(monkeypatch):
             "deepclaw.web_backend.knowledge_bases.service.PDFParser.get_chunk",
             lambda self: _make_fake_chunks(2),
         )
-        monkeypatch.setattr(
-            BaseGraphRAG, "_extract_triplets", lambda self, text: []
-        )
-
         vector_store = FakePgVectorStore()
         metadata_store = FakeMetadataStore()
         object_storage = FakeObjectStorage()
@@ -673,17 +701,13 @@ def test_ingest_saves_document_metadata(monkeypatch):
             metadata_store=metadata_store,
             object_storage=object_storage,
         )
-        rag = PgGraphRAG(vector_store, "kb_test_ingest")
 
         kb = KnowledgeBaseRecord(
             knowledge_base_id="kb_test_ingest",
             user_id="user_test",
             name="测试",
             description="",
-            index_prefix="kb_test_ingest",
             passage_index="kb_test_ingest_passages",
-            entity_index="kb_test_ingest_entities",
-            relation_index="kb_test_ingest_relations",
             created_at="2026-01-01T00:00:00+08:00",
             updated_at="2026-01-01T00:00:00+08:00",
         )
@@ -691,7 +715,6 @@ def test_ingest_saves_document_metadata(monkeypatch):
         record = await manager._ingest_file(
             user_id="user_test",
             knowledge_base=kb,
-            rag=rag,
             uploaded_file=_UPLOAD_FILE,
         )
 
