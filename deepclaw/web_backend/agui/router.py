@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from loguru import logger
 
 from deepclaw.agent_registry import AgentRegistry
 from deepclaw.web_backend.agent.run_store import (
@@ -80,6 +82,22 @@ def get_agui_run_store() -> RunStore:
         当前进程共享的 Run/Thread 存储。
     """
     return get_run_store()
+
+
+def format_run_payload(payload: AgUiRunRequest) -> str:
+    """把 AG-UI Run 请求入参格式化为带缩进的 JSON 文本。
+
+    Args:
+        payload: AG-UI Run 请求体。
+
+    Returns:
+        缩进后的 JSON 字符串；无法序列化时回退为字符串表示。
+    """
+    try:
+        data = payload.model_dump(mode="json")
+    except Exception:  # noqa: BLE001
+        return repr(payload)
+    return json.dumps(data, ensure_ascii=False, indent=2, default=str)
 
 
 async def _resolve_run_manager(
@@ -179,6 +197,7 @@ async def create_run(
     run_store: RunStore = Depends(get_agui_run_store),
 ):
     """创建统一 AG-UI Run。"""
+    logger.info("AG-UI 创建 Run 入参：\n{}", format_run_payload(payload))
     registry = request.app.state.agent_registry
     try:
         agent = registry.resolve(payload.agent_id)
@@ -263,6 +282,9 @@ async def resume_run(
     run_store: RunStore = Depends(get_agui_run_store),
 ):
     """恢复统一 AG-UI Run。"""
+    logger.info(
+        "AG-UI 恢复 Run 入参（run_id={}）：\n{}", run_id, format_run_payload(payload)
+    )
     registry = request.app.state.agent_registry
     state, agent, manager = await _resolve_run_manager(
         request=request,

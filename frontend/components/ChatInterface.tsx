@@ -6,6 +6,7 @@ import {
   MouseEvent,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react'
@@ -73,6 +74,7 @@ import {
   KB_DOCUMENT_UPLOAD_TASKS_API_PATH,
   KB_LIST_API_PATH,
   KB_UPDATE_API_PATH,
+  KNOWLEDGE_BASE_OPTION_PAGE_SIZE,
   KNOWLEDGE_BASE_PAGE_SIZE,
   SKILL_DELETE_API_PATH,
   SKILL_LIST_API_PATH,
@@ -663,6 +665,10 @@ export default function ChatInterface() {
   const [internetSearch, setInternetSearch] = useState(false)
   const [deepThinking, setDeepThinking] = useState(true)
   const [useKnowledgeBase, setUseKnowledgeBase] = useState(false)
+  const [selectedKnowledgeBaseIds, setSelectedKnowledgeBaseIds] = useState<string[]>([])
+  const [knowledgeBaseOptions, setKnowledgeBaseOptions] = useState<KnowledgeBase[]>([])
+  const [knowledgePickerOpen, setKnowledgePickerOpen] = useState(false)
+  const [loadingKnowledgeBaseOptions, setLoadingKnowledgeBaseOptions] = useState(false)
   const [showInterrupt, setShowInterrupt] = useState(false)
   const [interruptData, setInterruptData] = useState<InterruptData | null>(null)
   const [toolCallDurations, setToolCallDurations] = useState<Record<string, number>>({})
@@ -1429,6 +1435,34 @@ export default function ChatInterface() {
     [currentUserId, knowledgeBasePage, knowledgeBaseSearch, requestJson, selectedKnowledgeBaseId]
   )
 
+  const loadKnowledgeBaseOptions = useCallback(async () => {
+    setLoadingKnowledgeBaseOptions(true)
+    try {
+      const result = await requestJson<PaginatedKnowledgeBaseResponse>(
+        KB_LIST_API_PATH,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: currentUserId,
+            search: '',
+            page: 1,
+            page_size: KNOWLEDGE_BASE_OPTION_PAGE_SIZE,
+          }),
+        }
+      )
+      setKnowledgeBaseOptions(result.items)
+      return result.items
+    } catch (error) {
+      setManagementError(
+        error instanceof Error ? error.message : '加载知识库列表失败。'
+      )
+      return [] as KnowledgeBase[]
+    } finally {
+      setLoadingKnowledgeBaseOptions(false)
+    }
+  }, [currentUserId, requestJson])
+
   const loadKnowledgeBaseDetail = useCallback(
     async (knowledgeBaseId: string, silent = false) => {
       if (!knowledgeBaseId) return
@@ -1670,16 +1704,100 @@ export default function ChatInterface() {
     [clearChat, selectedKnowledgeBaseId, useKnowledgeBase]
   )
 
-  const handleKnowledgeBaseToggle = (checked: boolean) => {
-    if (checked !== useKnowledgeBase) {
-      clearChat()
-      setShowInterrupt(false)
-      setInterruptData(null)
-      requestModeRef.current = checked ? 'rag' : 'agent'
-      requestKnowledgeBaseRef.current = checked ? selectedKnowledgeBase : null
+  const applyKnowledgeSelection = useCallback(
+    (ids: string[], options: KnowledgeBase[] = knowledgeBaseOptions) => {
+      const uniqueIds = Array.from(new Set(ids))
+      const enabled = uniqueIds.length > 0
+      setSelectedKnowledgeBaseIds(uniqueIds)
+      if (enabled !== useKnowledgeBase) {
+        clearChat()
+        setShowInterrupt(false)
+        setInterruptData(null)
+        requestModeRef.current = enabled ? 'rag' : 'agent'
+      }
+      setUseKnowledgeBase(enabled)
+      requestKnowledgeBaseRef.current = enabled
+        ? options.find((item) => item.knowledge_base_id === uniqueIds[0]) ?? null
+        : null
+    },
+    [clearChat, knowledgeBaseOptions, useKnowledgeBase]
+  )
+
+  const handleKnowledgePickerOpenChange = useCallback(
+    (open: boolean) => {
+      setKnowledgePickerOpen(open)
+      if (!open) return
+      void (async () => {
+        const options = knowledgeBaseOptions.length
+          ? knowledgeBaseOptions
+          : await loadKnowledgeBaseOptions()
+        // 默认全选：首次打开或已清空选择时，把全部知识库选中。
+        if (selectedKnowledgeBaseIds.length === 0 && options.length > 0) {
+          applyKnowledgeSelection(
+            options.map((item) => item.knowledge_base_id),
+            options
+          )
+        }
+      })()
+    },
+    [
+      applyKnowledgeSelection,
+      knowledgeBaseOptions,
+      loadKnowledgeBaseOptions,
+      selectedKnowledgeBaseIds,
+    ]
+  )
+
+  const handleKnowledgeSelectionChange = useCallback(
+    (ids: string[]) => applyKnowledgeSelection(ids),
+    [applyKnowledgeSelection]
+  )
+
+  const knowledgeIndexNames = useMemo(() => {
+    const names = selectedKnowledgeBaseIds
+      .map(
+        (id) =>
+          knowledgeBaseOptions.find((item) => item.knowledge_base_id === id)
+            ?.passage_index
+      )
+      .filter((name): name is string => Boolean(name))
+    if (names.length > 0) return names
+    return selectedKnowledgeBase ? [selectedKnowledgeBase.passage_index] : []
+  }, [knowledgeBaseOptions, selectedKnowledgeBase, selectedKnowledgeBaseIds])
+
+  const primaryKnowledgeBase = useMemo(
+    () =>
+      knowledgeBaseOptions.find(
+        (item) => item.knowledge_base_id === selectedKnowledgeBaseIds[0]
+      ) ?? selectedKnowledgeBase,
+    [knowledgeBaseOptions, selectedKnowledgeBase, selectedKnowledgeBaseIds]
+  )
+
+  const knowledgeSelectionLabel = useMemo(() => {
+    if (!useKnowledgeBase || knowledgeIndexNames.length === 0) return '未启用'
+    if (selectedKnowledgeBaseIds.length === 1) {
+      return (
+        knowledgeBaseOptions.find(
+          (item) => item.knowledge_base_id === selectedKnowledgeBaseIds[0]
+        )?.name ??
+        primaryKnowledgeBase?.name ??
+        '已选 1 个'
+      )
     }
-    setUseKnowledgeBase(checked)
-  }
+    if (
+      knowledgeBaseOptions.length > 0 &&
+      selectedKnowledgeBaseIds.length >= knowledgeBaseOptions.length
+    ) {
+      return `全部 ${selectedKnowledgeBaseIds.length} 个`
+    }
+    return `已选 ${selectedKnowledgeBaseIds.length} 个`
+  }, [
+    knowledgeBaseOptions,
+    knowledgeIndexNames.length,
+    primaryKnowledgeBase,
+    selectedKnowledgeBaseIds,
+    useKnowledgeBase,
+  ])
 
   const saveMcpConfig = () => {
     const trimmed = mcpConfigDraft.trim()
@@ -3119,8 +3237,8 @@ export default function ChatInterface() {
       return
     }
     const requestMcpConfig = requestMode === 'agent' && mcpEnabled ? mcpConfig : null
-    if (requestMode === 'rag' && !selectedKnowledgeBase) {
-      setManagementError('启用知识库问答后，必须先选择一个知识库。')
+    if (requestMode === 'rag' && knowledgeIndexNames.length === 0) {
+      setManagementError('启用知识库问答后，必须先选择至少一个知识库。')
       navigateTo('knowledge', 'libraries')
       return
     }
@@ -3164,7 +3282,7 @@ export default function ChatInterface() {
     reasoningBlockCounterRef.current = 0
     contentBlockCounterRef.current = 0
     requestModeRef.current = requestMode
-    requestKnowledgeBaseRef.current = selectedKnowledgeBase
+    requestKnowledgeBaseRef.current = primaryKnowledgeBase
     requestMcpConfigRef.current = requestMcpConfig
     addMessage({
       id: assistantMessageId,
@@ -3177,7 +3295,7 @@ export default function ChatInterface() {
     runtime.messages = messagesRef.current
     runtime.assistantMessageId = assistantMessageId
     runtime.requestMode = requestMode
-    runtime.requestKnowledgeBase = selectedKnowledgeBase
+    runtime.requestKnowledgeBase = primaryKnowledgeBase
     runtime.requestMcpConfig = requestMcpConfig
 
     abortControllerRef.current = new AbortController()
@@ -3188,8 +3306,8 @@ export default function ChatInterface() {
         internet_search: internetSearch,
         deep_thinking: deepThinking,
       }
-      if (requestMode === 'rag' && selectedKnowledgeBase) {
-        state.index_name = selectedKnowledgeBase.passage_index
+      if (requestMode === 'rag' && knowledgeIndexNames.length > 0) {
+        state.index_names = knowledgeIndexNames
       } else if (requestMode === 'agent' && requestMcpConfig) {
         state.mcp_config = requestMcpConfig
       }
@@ -3591,7 +3709,7 @@ export default function ChatInterface() {
     ? getPageTotal(selectedDocumentDetail.total_chunks, selectedDocumentDetail.page_size)
     : 1
   const visibleChunkTotal = knowledgeBases.reduce((sum, item) => sum + item.chunk_count, 0)
-  const chatDisabled = useKnowledgeBase && !selectedKnowledgeBase
+  const chatDisabled = useKnowledgeBase && knowledgeIndexNames.length === 0
   const chatModeLabel = useKnowledgeBase ? '知识库 RAG' : '通用 Agent'
   const mcpStatusLabel = mcpEnabled
     ? useKnowledgeBase
@@ -3649,7 +3767,11 @@ export default function ChatInterface() {
               status={status}
               isProcessing={isProcessing}
               useKnowledgeBase={useKnowledgeBase}
-              selectedKnowledgeBaseName={selectedKnowledgeBase?.name || null}
+              knowledgeSelectionLabel={knowledgeSelectionLabel}
+              knowledgeBaseOptions={knowledgeBaseOptions}
+              selectedKnowledgeBaseIds={selectedKnowledgeBaseIds}
+              knowledgePickerOpen={knowledgePickerOpen}
+              loadingKnowledgeBaseOptions={loadingKnowledgeBaseOptions}
               showInterrupt={showInterrupt}
               interruptData={interruptData}
               inputValue={inputValue}
@@ -3666,7 +3788,8 @@ export default function ChatInterface() {
               onAskUserResponse={handleAskUserResponse}
               onInputChange={setInputValue}
               onKeyDown={handleKeyDown}
-              onKnowledgeBaseToggle={handleKnowledgeBaseToggle}
+              onKnowledgePickerOpenChange={handleKnowledgePickerOpenChange}
+              onKnowledgeSelectionChange={handleKnowledgeSelectionChange}
               onInternetSearchChange={setInternetSearch}
               onDeepThinkingChange={setDeepThinking}
               onNavigateToKnowledge={() => navigateTo('knowledge', 'libraries')}

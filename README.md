@@ -523,7 +523,7 @@ curl -X POST http://localhost:7869/api/agui/runs/run-demo-1/resume \
 
 ### 知识库问答
 
-`index_name` 取自知识库详情的 `passage_index`：
+`index_names` 是知识库详情中 `passage_index` 组成的列表，可一次传入多个知识库一起检索：
 
 ```bash
 curl -X POST http://localhost:7869/api/agui/runs \
@@ -534,7 +534,7 @@ curl -X POST http://localhost:7869/api/agui/runs \
     "threadId": "rag-thread",
     "runId": "rag-run-demo-1",
     "state": {
-      "index_name": "kb_xxx_passages",
+      "index_names": ["kb_xxx_passages", "kb_yyy_passages"],
       "deep_thinking": false
     },
     "messages": [

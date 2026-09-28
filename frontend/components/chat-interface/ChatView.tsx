@@ -5,9 +5,13 @@ import type { KeyboardEvent, ReactNode, Ref } from 'react'
 
 import styles from '../ChatInterface.module.css'
 import { AssistantMessageBody } from '../chat/cards/AssistantMessageBody'
+import {
+  KnowledgeBasePicker,
+} from '../chat/shared/KnowledgeBasePicker'
 import type {
   ChatStatus,
   InterruptData,
+  KnowledgeBase,
   Message,
 } from './types'
 import {
@@ -28,7 +32,7 @@ function formatMessageTime(msg: Message): string {
   })
 }
 
-type ComposerToggleIconName = 'knowledge' | 'internet' | 'thinking'
+type ComposerToggleIconName = 'internet' | 'thinking'
 
 /**
  * 渲染输入框能力开关的图标。
@@ -38,12 +42,6 @@ type ComposerToggleIconName = 'knowledge' | 'internet' | 'thinking'
  */
 function ComposerToggleIcon({ name }: { name: ComposerToggleIconName }) {
   const paths: Record<ComposerToggleIconName, ReactNode> = {
-    knowledge: (
-      <>
-        <path d="M5.5 5.8h5.1c1.1 0 2 .9 2 2v10.7c0-1.1-.9-2-2-2H5.5z" />
-        <path d="M18.5 5.8h-5.1c-1.1 0-2 .9-2 2v10.7c0-1.1.9-2 2-2h5.1z" />
-      </>
-    ),
     internet: (
       <>
         <circle cx="12" cy="12" r="8" />
@@ -114,7 +112,11 @@ interface ChatViewProps {
   status: ChatStatus
   isProcessing: boolean
   useKnowledgeBase: boolean
-  selectedKnowledgeBaseName: string | null
+  knowledgeSelectionLabel: string
+  knowledgeBaseOptions: KnowledgeBase[]
+  selectedKnowledgeBaseIds: string[]
+  knowledgePickerOpen: boolean
+  loadingKnowledgeBaseOptions: boolean
   showInterrupt: boolean
   interruptData: InterruptData | null
   inputValue: string
@@ -134,7 +136,8 @@ interface ChatViewProps {
   onAskUserResponse: (answer: string) => void | Promise<void>
   onInputChange: (value: string) => void
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void
-  onKnowledgeBaseToggle: (checked: boolean) => void
+  onKnowledgePickerOpenChange: (open: boolean) => void
+  onKnowledgeSelectionChange: (ids: string[]) => void
   onInternetSearchChange: (checked: boolean) => void
   onDeepThinkingChange: (checked: boolean) => void
   onNavigateToKnowledge: () => void
@@ -380,7 +383,11 @@ export function ChatView({
   status,
   isProcessing,
   useKnowledgeBase,
-  selectedKnowledgeBaseName,
+  knowledgeSelectionLabel,
+  knowledgeBaseOptions,
+  selectedKnowledgeBaseIds,
+  knowledgePickerOpen,
+  loadingKnowledgeBaseOptions,
   showInterrupt,
   interruptData,
   inputValue,
@@ -397,7 +404,8 @@ export function ChatView({
   onAskUserResponse,
   onInputChange,
   onKeyDown,
-  onKnowledgeBaseToggle,
+  onKnowledgePickerOpenChange,
+  onKnowledgeSelectionChange,
   onInternetSearchChange,
   onDeepThinkingChange,
   onNavigateToKnowledge,
@@ -669,9 +677,7 @@ export function ChatView({
           <code className={styles.sessionId}>{chatModeLabel}</code>
           <span className={styles.sessionDivider}>|</span>
           <span className={styles.sessionLabel}>知识库</span>
-          <code className={styles.sessionId}>
-            {useKnowledgeBase ? selectedKnowledgeBaseName || '未选择' : '未启用'}
-          </code>
+          <code className={styles.sessionId}>{knowledgeSelectionLabel}</code>
           <span className={styles.sessionDivider}>|</span>
           <span className={styles.sessionLabel}>MCP</span>
           <code className={styles.sessionId}>{mcpStatusLabel}</code>
@@ -771,25 +777,17 @@ export function ChatView({
             }
             rows={1}
           />
-          {useKnowledgeBase && (
-            <div className={styles.chatKnowledgeRow}>
-              <span className={styles.chatKnowledgeStatus}>
-                {selectedKnowledgeBaseName
-                  ? `当前知识库：${selectedKnowledgeBaseName}`
-                  : '已开启知识库问答，请先选择知识库'}
-              </span>
-              <button className={styles.chatKnowledgeAction} onClick={onNavigateToKnowledge}>
-                {selectedKnowledgeBaseName ? '切换知识库' : '选择知识库'}
-              </button>
-            </div>
-          )}
           <div className={styles.composerFooter}>
             <div className={styles.toggles}>
-              <ComposerToggle
-                label="知识库"
-                iconName="knowledge"
-                checked={useKnowledgeBase}
-                onChange={onKnowledgeBaseToggle}
+              <KnowledgeBasePicker
+                open={knowledgePickerOpen}
+                options={knowledgeBaseOptions}
+                selectedIds={selectedKnowledgeBaseIds}
+                loading={loadingKnowledgeBaseOptions}
+                disabled={status === 'connecting'}
+                onOpenChange={onKnowledgePickerOpenChange}
+                onSelectionChange={onKnowledgeSelectionChange}
+                onNavigateToKnowledge={onNavigateToKnowledge}
               />
               <ComposerToggle
                 label="联网"

@@ -39,7 +39,7 @@ def test_rag_retrieval_uses_hybrid_rrf():
 
     results = middleware._get_retrieve_result(
         query="hello",
-        index_name="kb_demo_passages",
+        index_names=["kb_demo_passages"],
         k=2,
     )
 
@@ -54,6 +54,36 @@ def test_rag_retrieval_uses_hybrid_rrf():
     assert results[0][0].page_content == "rrf result"
     assert results[0][0].metadata == {"source": "hybrid"}
     assert results[0][1] == 0.5
+
+
+def test_rag_index_names_dedupe_and_drop_blank():
+    """state 中的 index_names 会去重并丢弃空值。"""
+    middleware = RAGMiddleware(DummyVectorStore())
+
+    class DummyRuntime:
+        state = {
+            "index_names": ["kb_a_passages", "kb_b_passages", "kb_a_passages", ""],
+        }
+
+    assert middleware._get_index_names(DummyRuntime()) == [
+        "kb_a_passages",
+        "kb_b_passages",
+    ]
+
+
+def test_rag_index_names_requires_state():
+    """缺少 index_names 时应直接报错，不再回退到单个索引。"""
+    middleware = RAGMiddleware(DummyVectorStore())
+
+    class DummyRuntime:
+        state = {}
+
+    try:
+        middleware._get_index_names(DummyRuntime())
+    except ValueError as exc:
+        assert "index_names" in str(exc)
+    else:  # pragma: no cover - 仅用于断言必须抛错
+        raise AssertionError("缺少 index_names 时应抛出 ValueError")
 
 
 def test_merge_results_rrf_ranks_shared_documents_first():

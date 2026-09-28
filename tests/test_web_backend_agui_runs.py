@@ -184,6 +184,25 @@ def test_create_run_uses_top_level_agent_id_and_trusted_actor():
     assert manager.created.state["deep_thinking"] is True
 
 
+def test_create_run_keeps_index_names_and_drops_legacy_index_name():
+    """RAG Run 只透传 index_names，历史字段 index_name 不再进入 state。"""
+    client, manager, _ = build_client()
+    body = payload(agent_id="rag")
+    body["state"] = {
+        "index_names": ["kb_a_passages", "kb_b_passages"],
+        "index_name": "kb_a_passages",
+    }
+
+    response = client.post("/api/agui/runs", json=body)
+
+    assert response.status_code == 202
+    assert manager.created.state["index_names"] == [
+        "kb_a_passages",
+        "kb_b_passages",
+    ]
+    assert "index_name" not in manager.created.state
+
+
 def test_create_run_rejects_unknown_agent():
     """验证未知 agentId 返回 422。"""
     client, _, _ = build_client()
