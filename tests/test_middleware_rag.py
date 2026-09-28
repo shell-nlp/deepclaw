@@ -57,6 +57,7 @@ def test_rag_retrieval_uses_hybrid_rrf():
     assert results[0][0].page_content == "rrf result"
     assert results[0][0].metadata == {"source": "hybrid"}
     assert results[0][1] == 0.5
+    assert results[0][2] is None
 
 
 def test_rag_index_names_dedupe_and_drop_blank():

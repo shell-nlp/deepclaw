@@ -38,11 +38,13 @@ def invoke_internal_model(runnable, payload):
         return context.run(runnable.invoke, payload, INTERNAL_MODEL_CONFIG)
 
 
-def format_retrieved_docs(results: List[tuple[Document, float | None]]) -> str:
+def format_retrieved_docs(
+    results: List[tuple[Document, float | None, float | None]],
+) -> str:
     """把检索结果格式化成人可读的多行文本，便于排查召回质量。
 
     Args:
-        results: (Document, score) 列表，按融合分数从高到低排列。
+        results: (Document, 融合分, 单路原始分) 列表，按融合分数从高到低排列。
 
     Returns:
         每条包含排名、分数、元数据与完整正文的文本；无命中时返回提示语。
@@ -50,11 +52,13 @@ def format_retrieved_docs(results: List[tuple[Document, float | None]]) -> str:
     if not results:
         return "（无命中）"
     blocks: list[str] = []
-    for index, (doc, score) in enumerate(results, start=1):
+    for index, (doc, score, raw_score) in enumerate(results, start=1):
         metadata = doc.metadata or {}
-        score_text = "None" if score is None else f"{score:.4f}"
+        score_text = "None" if score is None else f"{score:.5f}"
+        raw_text = "None" if raw_score is None else f"{raw_score:.4f}"
         blocks.append(
-            f"[{index}] score={score_text}"
+            f"[{index}] rrf={score_text}"
+            f" raw={raw_text}"
             f" segment={metadata.get('segment_id', '-')}"
             f" page={metadata.get('pages_number', '-')}"
             f" document={metadata.get('document_id', '-')}"
@@ -377,7 +381,7 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
         query: str,
         index_names: list[str],
         k: int = 3,
-    ) -> List[tuple[Document, float | None]]:
+    ) -> List[tuple[Document, float | None, float | None]]:
         """根据 query 检索结果。
 
         Parameters
@@ -392,7 +396,7 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
         Returns
         -------
         List[tuple[Document, float | None]]
-            检索结果及分数
+            检索结果及（融合分、单路原始分）
         """
         try:
             vector_store = self._resolve_vector_store()
@@ -412,6 +416,7 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
                             metadata=item.get("metadata", {}),
                         ),
                         item.get("score"),
+                        item.get("raw_score"),
                     )
                 )
         except Exception as e:
@@ -446,7 +451,7 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
             )
             context = ""
             docs = []
-            for idx, (doc, socre) in enumerate(retrieved_docs, start=1):
+            for idx, (doc, _score, _raw_score) in enumerate(retrieved_docs, start=1):
                 docs.append(doc)
                 context += f"文档 {idx}: \n{doc.page_content}\n\n"
 
