@@ -74,15 +74,23 @@ class AbstractVectorStore(ABC):
         """
         scores: dict[str, float] = {}
         items: dict[str, dict[str, Any]] = {}
-        for rank_list in (vector_results, keyword_results):
+        best_rank: dict[str, int] = {}
+        first_list: dict[str, int] = {}
+        for list_index, rank_list in enumerate((vector_results, keyword_results)):
             for rank, item in enumerate(rank_list, start=1):
                 key = str(item.get("id") or item.get("content", ""))
                 if not key:
                     continue
                 scores[key] = scores.get(key, 0.0) + 1.0 / (rrf_k + rank)
                 items.setdefault(key, item)
-        ordered = sorted(scores.items(), key=lambda pair: pair[1], reverse=True)
-        return [items[key] for key, _ in ordered[:k]]
+                best_rank[key] = min(best_rank.get(key, rank), rank)
+                first_list.setdefault(key, list_index)
+        # 两路候选常常互不重合，此时同分项必须按排名交替取，否则排在前面的那一路会独占结果。
+        ordered = sorted(
+            scores,
+            key=lambda key: (-scores[key], best_rank[key], first_list[key]),
+        )
+        return [items[key] for key in ordered[:k]]
 
     @abstractmethod
     def add(

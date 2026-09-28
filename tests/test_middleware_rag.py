@@ -1,6 +1,7 @@
 from langchain_core.messages import AIMessage, HumanMessage
 
 from deepclaw.common.vector_store.base import AbstractVectorStore
+from deepclaw.middleware import rag as rag_module
 from deepclaw.middleware.rag import RAGMiddleware
 
 
@@ -61,13 +62,11 @@ def test_rag_retrieval_uses_hybrid_rrf():
 def test_rag_index_names_dedupe_and_drop_blank():
     """state 中的 index_names 会去重并丢弃空值。"""
     middleware = RAGMiddleware(DummyVectorStore())
+    state = {
+        "index_names": ["kb_a_passages", "kb_b_passages", "kb_a_passages", ""],
+    }
 
-    class DummyRuntime:
-        state = {
-            "index_names": ["kb_a_passages", "kb_b_passages", "kb_a_passages", ""],
-        }
-
-    assert middleware._get_index_names(DummyRuntime()) == [
+    assert middleware._get_index_names(state) == [
         "kb_a_passages",
         "kb_b_passages",
     ]
@@ -77,11 +76,8 @@ def test_rag_index_names_requires_state():
     """缺少 index_names 时应直接报错，不再回退到单个索引。"""
     middleware = RAGMiddleware(DummyVectorStore())
 
-    class DummyRuntime:
-        state = {}
-
     try:
-        middleware._get_index_names(DummyRuntime())
+        middleware._get_index_names({})
     except ValueError as exc:
         assert "index_names" in str(exc)
     else:  # pragma: no cover - 仅用于断言必须抛错
@@ -106,6 +102,20 @@ def test_merge_results_rrf_ranks_shared_documents_first():
     )
 
     assert [item["id"] for item in merged] == ["b", "a", "c"]
+
+
+def test_merge_results_rrf_interleaves_disjoint_lists():
+    """两路候选完全不重合时必须交替取，否则 BM25 结果会被整段丢掉。"""
+    vector_results = [{"id": f"v{index}"} for index in range(1, 6)]
+    keyword_results = [{"id": f"k{index}"} for index in range(1, 6)]
+
+    merged = AbstractVectorStore.merge_results_rrf(
+        vector_results=vector_results,
+        keyword_results=keyword_results,
+        k=6,
+    )
+
+    assert [item["id"] for item in merged] == ["v1", "k1", "v2", "k2", "v3", "k3"]
 
 
 class RecordingRewriteModel:
@@ -187,3 +197,30 @@ def test_internal_model_calls_do_not_emit_stream_events():
     assert rewrite_model.configs[0]["tags"] == ["rag_internal"]
     assert router_model.configs[0]["callbacks"] == []
     assert router_model.configs[0]["tags"] == ["rag_internal"]
+
+
+def test_before_model_retrieves_with_configured_top_k(monkeypatch):
+    """真实 Runtime 没有 state 属性，检索参数必须来自 state 与 RAG_TOP_K。"""
+    store = DummyVectorStore()
+    middleware = RAGMiddleware(store)
+    monkeypatch.setattr(rag_module.settings, "RAG_TOP_K", 7)
+
+    class RuntimeWithoutState:
+        """刻意不提供 state 属性，复现 langgraph Runtime 的真实形态。"""
+
+    state = {
+        "messages": [HumanMessage(content="公司馈赠行为准则")],
+        "index_names": ["kb_a_passages"],
+    }
+
+    result = middleware.before_model(state, RuntimeWithoutState())
+
+    assert store.rrf_calls == [
+        {
+            "query": "公司馈赠行为准则",
+            "k": 7,
+            "index_names": ["kb_a_passages"],
+            "filter_conditions": {"metadata.state": {"$ne": False}},
+        }
+    ]
+    assert [doc.page_content for doc in result["docs"]] == ["rrf result"]

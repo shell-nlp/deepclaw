@@ -25,6 +25,38 @@ def test_metadata_filter_ne_excludes_only_explicit_value():
     assert params["filter_1"] == "doc001"
 
 
+def test_index_object_names_stay_within_postgres_limit():
+    """索引对象名必须短于 63 字符，避免被截断成与分区表同名而跳过创建。"""
+    long_index = f"kb_{'a' * 32}_passages"
+    store = PgVectorStore(
+        database_url="postgresql://demo",
+        embedding_model=FakeEmbeddingModel(),
+        embedding_dimensions=1024,
+    )
+
+    names = [
+        store._index_object_name(long_index, "id_uidx"),
+        store._bm25_index_name(long_index),
+        store._vector_index_name(long_index),
+        store._search_vector_index_name(long_index),
+    ]
+
+    assert all(len(name) < 63 for name in names)
+    assert len(set(names)) == len(names)
+    assert store._partition_table_name(long_index) not in names
+
+
+def test_matches_ne_filters_treats_missing_as_enabled():
+    """Python 侧不等值过滤与 SQL 语义一致：缺字段放行，显式停用才拦截。"""
+    assert PgVectorStore._matches_ne_filters({}, {"metadata.state": {"$ne": False}})
+    assert PgVectorStore._matches_ne_filters(
+        {"state": True}, {"metadata.state": {"$ne": False}}
+    )
+    assert not PgVectorStore._matches_ne_filters(
+        {"state": False}, {"metadata.state": {"$ne": False}}
+    )
+
+
 def test_es_filter_ne_uses_must_not():
     """ES 不等值过滤应使用 must_not，使缺失字段的文档保持命中。"""
     clauses = build_es_filter_clauses({"metadata.state": {"$ne": False}})
