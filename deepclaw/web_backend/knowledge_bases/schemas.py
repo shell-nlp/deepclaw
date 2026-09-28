@@ -6,6 +6,11 @@ class KnowledgeBaseIdentityRequest(BaseModel):
     knowledge_base_id: str = Field(..., description="Knowledge base ID")
 
 
+class KnowledgeUploadTaskRequest(BaseModel):
+    knowledge_base_id: str = Field(..., description="Knowledge base ID")
+    task_id: str = Field(..., description="Upload task ID")
+
+
 class KnowledgeBaseListRequest(BaseModel):
     user_id: str = Field(..., description="User ID")
     search: str = Field("", description="Search text")

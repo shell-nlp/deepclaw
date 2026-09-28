@@ -13,10 +13,12 @@ from typing import Any
 from unittest.mock import MagicMock
 
 from langchain_core.documents import Document
+import pytest
 
 from deepclaw.common.object_storage import LocalObjectStorage
 from deepclaw.common.vector_store.elasticsearch import ElasticsearchVectorStore
 from deepclaw.common.vector_store.pgsql import PgVectorStore
+from deepclaw.web_backend.common.errors import BusinessRuleError
 from deepclaw.web_backend.knowledge_bases.service import (
     KnowledgeBaseManager,
     KnowledgeBaseRecord,
@@ -93,6 +95,33 @@ class FakeMetadataStore:
         """
         for task_id in task_ids:
             self.tasks.pop(task_id, None)
+
+    async def retry_upload_task(self, *, task_id, updated_at):
+        """把失败任务重新置为排队。
+
+        Args:
+            task_id: 任务 ID。
+            updated_at: 更新时间。
+        """
+        task = self.tasks.get(task_id)
+        if task is None or task["status"] != "failed":
+            return False
+        task["status"] = "queued"
+        task["error"] = ""
+        task["updated_at"] = updated_at
+        return True
+
+    async def delete_failed_upload_task(self, *, task_id):
+        """删除失败任务记录。
+
+        Args:
+            task_id: 任务 ID。
+        """
+        task = self.tasks.get(task_id)
+        if task is None or task["status"] != "failed":
+            return False
+        self.tasks.pop(task_id, None)
+        return True
 
     async def get_knowledge_base(self, *, user_id, knowledge_base_id, error_message):
         if self._kb_source is None:
@@ -326,6 +355,42 @@ def test_background_upload_submission_and_processing(monkeypatch):
         await manager._process_upload(metadata.tasks[task.task_id].copy())
         assert metadata.tasks[task.task_id]["status"] == "succeeded"
         assert metadata.saved_document["document_id"] == task.task_id
+
+    asyncio.run(scenario())
+
+
+def test_failed_upload_task_can_be_retried_and_deleted():
+    """失败任务可重试与删除，非失败态一律拒绝。"""
+    async def scenario():
+        """在假元数据存储上验证重试与删除约束。
+
+        Args:
+            无。
+        """
+        metadata = FakeMetadataStore()
+        manager = KnowledgeBaseManager(
+            vector_store=FakePgVectorStore(), metadata_store=metadata,
+            object_storage=FakeObjectStorage(), upload_workers=1,
+        )
+        submitted = await manager.submit_uploads("alice", "kb-one", [_UPLOAD_FILE])
+        task_id = submitted.tasks[0].task_id
+        metadata.tasks[task_id].update(status="failed", error="解析失败")
+
+        retried = await manager.retry_upload_task("alice", "kb-one", task_id)
+        assert retried.status == "queued"
+        assert retried.error == ""
+
+        with pytest.raises(BusinessRuleError):
+            await manager.delete_upload_task("alice", "kb-one", task_id)
+
+        metadata.tasks[task_id]["status"] = "failed"
+        deleted = await manager.delete_upload_task("alice", "kb-one", task_id)
+        assert deleted.task_id == task_id
+        assert deleted.deleted is True
+        assert metadata.tasks == {}
+
+        with pytest.raises(BusinessRuleError):
+            await manager.retry_upload_task("alice", "kb-one", task_id)
 
     asyncio.run(scenario())
 

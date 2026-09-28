@@ -93,6 +93,11 @@ class KnowledgeUploadSubmissionResponse(BaseModel):
     errors: list[KnowledgeBaseUploadError] = Field(default_factory=list)
 
 
+class KnowledgeUploadTaskDeleteResponse(BaseModel):
+    task_id: str
+    deleted: bool = True
+
+
 class PaginatedKnowledgeBaseResponse(BaseModel):
     items: list[KnowledgeBaseRecord]
     total: int
@@ -224,6 +229,69 @@ class KnowledgeBaseManager:
             user_id=user_id, knowledge_base_id=knowledge_base_id
         )
         return [KnowledgeUploadTaskResponse(**row) for row in rows]
+
+    async def retry_upload_task(
+        self, user_id: str, knowledge_base_id: str, task_id: str
+    ) -> KnowledgeUploadTaskResponse:
+        """把失败的上传任务重新排队，等待后台 worker 重新处理。
+
+        Args:
+            user_id: 归属用户。
+            knowledge_base_id: 知识库 ID。
+            task_id: 上传任务 ID。
+        """
+        task = await self._get_upload_task(user_id, knowledge_base_id, task_id)
+        if task["status"] != "failed":
+            raise BusinessRuleError("只有失败的上传任务可以重试。")
+        retried = await self.metadata_store.retry_upload_task(
+            task_id=task_id, updated_at=self._now()
+        )
+        if not retried:
+            raise BusinessRuleError("上传任务状态已变化，请刷新后重试。")
+        refreshed = await self.metadata_store.list_upload_tasks(
+            user_id=user_id, knowledge_base_id=knowledge_base_id
+        )
+        for row in refreshed:
+            if row["task_id"] == task_id:
+                return KnowledgeUploadTaskResponse(**row)
+        raise BusinessRuleError("上传任务不存在。")
+
+    async def delete_upload_task(
+        self, user_id: str, knowledge_base_id: str, task_id: str
+    ) -> KnowledgeUploadTaskDeleteResponse:
+        """删除失败的上传任务记录，原始文件保留在对象存储。
+
+        Args:
+            user_id: 归属用户。
+            knowledge_base_id: 知识库 ID。
+            task_id: 上传任务 ID。
+        """
+        task = await self._get_upload_task(user_id, knowledge_base_id, task_id)
+        if task["status"] != "failed":
+            raise BusinessRuleError("只有失败的上传任务可以删除。")
+        deleted = await self.metadata_store.delete_failed_upload_task(task_id=task_id)
+        if not deleted:
+            raise BusinessRuleError("上传任务状态已变化，请刷新后重试。")
+        return KnowledgeUploadTaskDeleteResponse(task_id=task_id)
+
+    async def _get_upload_task(
+        self, user_id: str, knowledge_base_id: str, task_id: str
+    ) -> dict[str, Any]:
+        """读取属于该知识库与用户的上传任务。
+
+        Args:
+            user_id: 归属用户。
+            knowledge_base_id: 知识库 ID。
+            task_id: 上传任务 ID。
+        """
+        await self.get_knowledge_base(user_id, knowledge_base_id)
+        rows = await self.metadata_store.list_upload_tasks(
+            user_id=user_id, knowledge_base_id=knowledge_base_id
+        )
+        for row in rows:
+            if row["task_id"] == task_id:
+                return row
+        raise BusinessRuleError("上传任务不存在。")
 
     async def submit_uploads(
         self, user_id: str, knowledge_base_id: str,

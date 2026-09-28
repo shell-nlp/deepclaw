@@ -113,7 +113,6 @@ export function McpManagementView({
           <div className={styles.extensionEmpty}>
             <strong>{search ? '没有匹配的服务' : draftError ? '配置需要修正' : '还没有配置 MCP 服务'}</strong>
             <span>{search ? '试试服务名称或传输方式。' : draftError || '打开配置编辑器，添加第一个服务。'}</span>
-            {!search && <button className={styles.extensionTextButton} onClick={() => setEditorOpen(true)}>打开配置编辑器</button>}
           </div>
         ) : visibleServers.map((server) => (
           <div className={styles.extensionListEntry} key={server.name}>

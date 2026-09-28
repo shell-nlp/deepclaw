@@ -8,7 +8,7 @@ from typing import Any, Protocol
 
 from loguru import logger
 from sqlalchemy import text, update
-from sqlmodel import SQLModel, or_, select
+from sqlmodel import SQLModel, delete, or_, select
 
 from deepclaw.web_backend.common.errors import BusinessRuleError
 from deepclaw.common.vector_store.elasticsearch import ElasticsearchVectorStore
@@ -904,6 +904,43 @@ class SQLModelKnowledgeBaseMetadataStore:
             if user_id:
                 rows = rows[:100]
             return [item.model_dump() for item in rows]
+
+    async def retry_upload_task(self, *, task_id: str, updated_at: str) -> bool:
+        """把失败的上传任务重新置为排队，返回是否成功。
+
+        Args:
+            task_id: 待重试的任务 ID。
+            updated_at: 新的更新时间。
+        """
+        await self._ensure_init()
+        async with self.async_session() as session:
+            result = await session.exec(
+                update(KnowledgeUploadTaskMetadata)
+                .where(
+                    KnowledgeUploadTaskMetadata.task_id == task_id,
+                    KnowledgeUploadTaskMetadata.status == "failed",
+                )
+                .values(status="queued", error="", updated_at=updated_at)
+            )
+            await session.commit()
+            return result.rowcount == 1
+
+    async def delete_failed_upload_task(self, *, task_id: str) -> bool:
+        """删除失败的上传任务记录，返回是否删除成功。
+
+        Args:
+            task_id: 待删除的任务 ID。
+        """
+        await self._ensure_init()
+        async with self.async_session() as session:
+            result = await session.exec(
+                delete(KnowledgeUploadTaskMetadata).where(
+                    KnowledgeUploadTaskMetadata.task_id == task_id,
+                    KnowledgeUploadTaskMetadata.status == "failed",
+                )
+            )
+            await session.commit()
+            return result.rowcount == 1
 
     async def delete_upload_tasks(self, *, task_ids: list[str]) -> None:
         """删除上传任务记录。
