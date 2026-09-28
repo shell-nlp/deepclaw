@@ -47,6 +47,8 @@ export const KB_DOCUMENT_UPLOAD_TASK_RETRY_API_PATH =
   '/api/rag/knowledge-bases/documents/upload-tasks/retry'
 export const KB_DOCUMENT_UPLOAD_TASK_DELETE_API_PATH =
   '/api/rag/knowledge-bases/documents/upload-tasks/delete'
+export const KB_DOCUMENT_CHUNK_UPDATE_API_PATH =
+  '/api/rag/knowledge-bases/documents/chunks/update'
 export const KB_DOCUMENT_UPDATE_API_PATH = '/api/rag/knowledge-bases/documents/update'
 export const KB_DOCUMENT_DELETE_API_PATH = '/api/rag/knowledge-bases/documents/delete'
 export const KB_DOCUMENT_BULK_DELETE_API_PATH =

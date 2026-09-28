@@ -271,6 +271,7 @@ class AbstractVectorStore(ABC):
         query: str,
         k: int = 3,
         index_names: list[str] | None = None,
+        filter_conditions: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """关键词全文检索。
 
@@ -278,6 +279,7 @@ class AbstractVectorStore(ABC):
             query: 搜索关键词。
             k: 返回的最大结果数。
             index_names: 目标索引列表，为 None 时表示全量索引。
+            filter_conditions: 元数据过滤条件。
         """
         ...
 
@@ -367,6 +369,7 @@ class AbstractVectorStore(ABC):
         k: int = 3,
         index_names: list[str] | None = None,
         rrf_k: int = 60,
+        filter_conditions: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """混合检索：BM25 关键词检索与向量检索按 RRF 融合后返回。
 
@@ -375,17 +378,20 @@ class AbstractVectorStore(ABC):
             k: 返回的最大结果数。
             index_names: 目标索引列表，为 None 时表示全量索引。
             rrf_k: RRF 平滑参数。
+            filter_conditions: 元数据过滤条件；值为 ``{"$ne": x}`` 时表示不等值，缺失该字段的文档也视为满足。
         """
         candidate_k = max(k * 4, 20)
         vector_results = self.vector_search(
             query=query,
             k=candidate_k,
             index_names=index_names,
+            filter_conditions=filter_conditions,
         )
         keyword_results = self.keyword_search(
             query=query,
             k=candidate_k,
             index_names=index_names,
+            filter_conditions=filter_conditions,
         )
         return self.merge_results_rrf(
             vector_results=vector_results,

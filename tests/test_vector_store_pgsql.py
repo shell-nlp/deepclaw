@@ -1,4 +1,5 @@
 
+from deepclaw.common.vector_store.elasticsearch import build_es_filter_clauses
 from deepclaw.common.vector_store.pgsql import PgVectorStore
 from pgvector import Vector
 
@@ -6,6 +7,29 @@ from pgvector import Vector
 class FakeEmbeddingModel:
     def embed_query(self, query: str):
         return [0.1, 0.2, 0.3]
+
+
+def test_metadata_filter_ne_excludes_only_explicit_value():
+    """不等值过滤应写成 IS DISTINCT FROM，缺失字段因此不会被排除。"""
+    params: dict[str, object] = {}
+
+    clauses = PgVectorStore._build_filter_clauses(
+        {"metadata.state": {"$ne": False}, "metadata.document_id": "doc001"},
+        params,
+        prefix="filter",
+    )
+
+    assert clauses[0] == "metadata ->> 'state' IS DISTINCT FROM %(filter_0)s"
+    assert params["filter_0"] == "false"
+    assert clauses[1] == "metadata ->> 'document_id' = %(filter_1)s"
+    assert params["filter_1"] == "doc001"
+
+
+def test_es_filter_ne_uses_must_not():
+    """ES 不等值过滤应使用 must_not，使缺失字段的文档保持命中。"""
+    clauses = build_es_filter_clauses({"metadata.state": {"$ne": False}})
+
+    assert clauses == [{"bool": {"must_not": [{"term": {"metadata.state": False}}]}}]
 
 
 def _make_mock_connect(table_exists: bool, existing_dim: int | None = None):
@@ -77,10 +101,11 @@ def test_keyword_search_merges_multiple_indexes(monkeypatch):
 
     recorded = {}
 
-    def fake_fetch_keyword_rows(*, query, index_names, limit):
+    def fake_fetch_keyword_rows(*, query, index_names, limit, filter_conditions=None):
         recorded["query"] = query
         recorded["index_names"] = index_names
         recorded["limit"] = limit
+        recorded["filter_conditions"] = filter_conditions
         return [
             {"id": "1", "content": "alpha", "metadata": {"index_name": "kb_a"}, "score": 0.7},
             {"id": "2", "content": "beta", "metadata": {"index_name": "kb_b"}, "score": 0.6},
@@ -88,9 +113,19 @@ def test_keyword_search_merges_multiple_indexes(monkeypatch):
 
     monkeypatch.setattr(store, "_fetch_keyword_rows", fake_fetch_keyword_rows)
 
-    results = store.keyword_search("hello", k=2, index_names=["kb_a", "kb_b"])
+    results = store.keyword_search(
+        "hello",
+        k=2,
+        index_names=["kb_a", "kb_b"],
+        filter_conditions={"metadata.state": {"$ne": False}},
+    )
 
-    assert recorded == {"query": "hello", "index_names": ["kb_a", "kb_b"], "limit": 2}
+    assert recorded == {
+        "query": "hello",
+        "index_names": ["kb_a", "kb_b"],
+        "limit": 2,
+        "filter_conditions": {"metadata.state": {"$ne": False}},
+    }
     assert [item["content"] for item in results] == ["alpha", "beta"]
 
 

@@ -337,7 +337,11 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
         try:
             vector_store = self._resolve_vector_store()
             hits = vector_store.retrieve_with_rrf(
-                query=query, k=k, index_names=[index_name]
+                query=query,
+                k=k,
+                index_names=[index_name],
+                # 关闭的切片不参与检索；缺少 state 的历史切片仍视为开启。
+                filter_conditions={"metadata.state": {"$ne": False}},
             )
             results = []
             for item in hits:

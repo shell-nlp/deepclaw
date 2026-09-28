@@ -4,8 +4,10 @@ import { useState, type ChangeEvent, type MouseEvent, type Ref } from 'react'
 
 import styles from '../../ChatInterface.module.css'
 import { CreateKnowledgeBaseModal } from '../shared/CreateKnowledgeBaseModal'
+import { KnowledgeChunkList } from './KnowledgeChunkList'
 import { Pagination } from '../shared/Pagination'
 import type {
+  KnowledgeChunk,
   KnowledgeBase,
   KnowledgeDocument,
   KnowledgeUploadTask,
@@ -71,6 +73,10 @@ interface KnowledgeManagementViewProps {
   onHandleUploadFiles: (event: ChangeEvent<HTMLInputElement>) => void | Promise<void>
   onRetryUploadTask: (task: KnowledgeUploadTask) => void | Promise<void>
   onDeleteUploadTask: (task: KnowledgeUploadTask) => void | Promise<void>
+  onUpdateDocumentChunk: (
+    chunk: KnowledgeChunk,
+    changes: { content?: string; state?: boolean }
+  ) => void | Promise<void>
   onDocumentSearchInputChange: (value: string) => void
   onDocumentPageChange: (page: number | ((prev: number) => number)) => void
   onDocumentSearchChange: (value: string) => void
@@ -137,6 +143,7 @@ export function KnowledgeManagementView({
   onHandleUploadFiles,
   onRetryUploadTask,
   onDeleteUploadTask,
+  onUpdateDocumentChunk,
   onDocumentSearchInputChange,
   onDocumentPageChange,
   onDocumentSearchChange,
@@ -222,66 +229,43 @@ export function KnowledgeManagementView({
             <button className={styles.extensionDeleteButton} disabled={writeDisabled} onClick={() => void onDeleteDocument(selectedDocumentDetail.document.document_id, selectedDocumentDetail.document.display_name)}>删除文档</button>
           </div>
         </header>
-        <div className={styles.knowledgeDocumentLayout}>
-          <section className={styles.knowledgeFilePanel}>
-            <div className={styles.managementHeader}>
-              <h3>{selectedDocumentDetail.document.display_name}</h3>
-              <span className={styles.managementMeta}>
-                {loadingDocumentDetail
-                  ? '加载中...'
-                  : `${selectedDocumentDetail.total_chunks} 个切片`}
-              </span>
-            </div>
-            <div className={styles.managementMetaPanel}>
-              <span>所属知识库: {selectedDocumentDetail.knowledge_base.name}</span>
-              <span>原始文件: {selectedDocumentDetail.document.file_name}</span>
-              <span>
-                文件大小: {Math.max(1, Math.round(selectedDocumentDetail.document.file_size / 1024))} KB
-              </span>
-              <span>切片数量: {selectedDocumentDetail.document.chunk_count}</span>
-              <span>更新时间: {formatDateTime(selectedDocumentDetail.document.updated_at)}</span>
-            </div>
-          </section>
+        <section className={styles.chunkDocumentMeta}>
+          <div className={styles.chunkDocumentMetaItem}>
+            <span>原始文件</span>
+            <strong>{selectedDocumentDetail.document.file_name}</strong>
+          </div>
+          <div className={styles.chunkDocumentMetaItem}>
+            <span>所属知识库</span>
+            <strong>{selectedDocumentDetail.knowledge_base.name}</strong>
+          </div>
+          <div className={styles.chunkDocumentMetaItem}>
+            <span>文件大小</span>
+            <strong>
+              {Math.max(1, Math.round(selectedDocumentDetail.document.file_size / 1024))} KB
+            </strong>
+          </div>
+          <div className={styles.chunkDocumentMetaItem}>
+            <span>切片数量</span>
+            <strong>{selectedDocumentDetail.document.chunk_count}</strong>
+          </div>
+          <div className={styles.chunkDocumentMetaItem}>
+            <span>更新时间</span>
+            <strong>{formatDateTime(selectedDocumentDetail.document.updated_at)}</strong>
+          </div>
+        </section>
 
-          <section className={styles.knowledgeChunksPanel}>
-            <div className={styles.managementHeader}>
-              <h3>切片详情</h3>
-              <span className={styles.managementMeta}>
-                第 {documentChunkPage} / {documentChunkPageTotal} 页
-              </span>
-            </div>
-            <div className={styles.knowledgeChunksList}>
-              {selectedDocumentDetail.chunks.length === 0 ? (
-                <div className={styles.managementEmpty}>暂无切片数据</div>
-              ) : (
-                selectedDocumentDetail.chunks.map((chunk) => (
-                  <article key={chunk.chunk_id} className={styles.knowledgeChunk}>
-                    <div className={styles.managementListHeader}>
-                      <strong>切片 #{chunk.segment_id || '-'}</strong>
-                      <span>{chunk.chunk_id}</span>
-                    </div>
-                    <p className={styles.knowledgeChunkContent}>{chunk.content}</p>
-                    <div className={styles.managementListMeta}>
-                      <span>页码: {String(chunk.metadata.pages_number ?? '-')}</span>
-                      <span>标题: {String(chunk.metadata.title ?? '-')}</span>
-                    </div>
-                  </article>
-                ))
-              )}
-            </div>
-            <Pagination
-              page={documentChunkPage}
-              pageTotal={documentChunkPageTotal}
-              total={selectedDocumentDetail.total_chunks}
-              onPrev={() => onDocumentChunkPageChange((prev) => Math.max(1, prev - 1))}
-              onNext={() =>
-                onDocumentChunkPageChange((prev) =>
-                  Math.min(documentChunkPageTotal, prev + 1)
-                )
-              }
-            />
-          </section>
-        </div>
+        <section className={styles.knowledgeChunksPanel}>
+          <KnowledgeChunkList
+            chunks={selectedDocumentDetail.chunks}
+            total={selectedDocumentDetail.total_chunks}
+            page={documentChunkPage}
+            pageTotal={documentChunkPageTotal}
+            loading={loadingDocumentDetail}
+            writeDisabled={writeDisabled}
+            onPageChange={onDocumentChunkPageChange}
+            onUpdateChunk={onUpdateDocumentChunk}
+          />
+        </section>
       </div>
     ) : (
       <div className={styles.managementEmptyState}>
@@ -309,7 +293,6 @@ export function KnowledgeManagementView({
             </p>
           </div>
           <div className={styles.extensionHeadingActions}>
-            <span className={styles.extensionCount}>{selectedKnowledgeBase.document_count} 文档 · {selectedKnowledgeBase.chunk_count} 切片</span>
             <button
               className={styles.extensionPrimaryButton}
               disabled={uploadingDocuments || writeDisabled}
@@ -326,6 +309,21 @@ export function KnowledgeManagementView({
             />
           </div>
         </header>
+
+        <section className={styles.knowledgeStatStrip}>
+          <div className={styles.knowledgeStat}>
+            <span>知识文件</span>
+            <strong>{selectedKnowledgeBase.document_count}</strong>
+          </div>
+          <div className={styles.knowledgeStat}>
+            <span>文本切片</span>
+            <strong>{selectedKnowledgeBase.chunk_count}</strong>
+          </div>
+          <div className={styles.knowledgeStat}>
+            <span>最近更新</span>
+            <strong>{formatDateTime(selectedKnowledgeBase.updated_at)}</strong>
+          </div>
+        </section>
 
         <section
           className={styles.knowledgeDetailSection}

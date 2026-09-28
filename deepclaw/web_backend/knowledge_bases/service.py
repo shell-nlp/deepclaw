@@ -671,6 +671,74 @@ class KnowledgeBaseManager:
         )
         return KnowledgeBaseDocumentRecord(**saved)
 
+    async def update_document_chunk(
+        self,
+        user_id: str,
+        knowledge_base_id: str,
+        document_id: str,
+        chunk_id: str,
+        *,
+        content: str | None = None,
+        state: bool | None = None,
+    ) -> KnowledgeBaseDocumentChunkRecord:
+        """更新单个切片的正文或启用状态。
+
+        Args:
+            user_id: 归属用户。
+            knowledge_base_id: 知识库 ID。
+            document_id: 文档 ID。
+            chunk_id: 切片 ID。
+            content: 新的切片正文，None 表示不修改。
+            state: 切片开关，None 表示不修改。
+
+        Returns:
+            更新后的切片记录。
+        """
+        if content is None and state is None:
+            raise BusinessRuleError("至少需要提供切片正文或开关状态。")
+        knowledge_base = await self.get_knowledge_base(user_id, knowledge_base_id)
+        document_source = await self.metadata_store.get_document(
+            user_id=user_id,
+            document_id=document_id,
+            error_message="Document not found.",
+        )
+        if document_source["knowledge_base_id"] != knowledge_base_id:
+            raise BusinessRuleError("Document does not belong to this knowledge base.")
+        rows = await asyncio.to_thread(
+            self._vector_store.batch_get,
+            [chunk_id],
+            index_name=knowledge_base.passage_index,
+        )
+        existing = rows[0] if rows else None
+        metadata = dict((existing or {}).get("metadata") or {})
+        if existing is None or str(metadata.get("document_id") or "") != document_id:
+            raise BusinessRuleError("切片不存在。")
+        if state is not None:
+            metadata["state"] = bool(state)
+        await asyncio.to_thread(
+            self._vector_store.update,
+            chunk_id,
+            content=content,
+            metadata=metadata,
+            index_name=knowledge_base.passage_index,
+        )
+        refreshed_rows = await asyncio.to_thread(
+            self._vector_store.batch_get,
+            [chunk_id],
+            index_name=knowledge_base.passage_index,
+        )
+        refreshed = refreshed_rows[0] if refreshed_rows else None
+        if refreshed is None:
+            raise BusinessRuleError("切片不存在。")
+        refreshed_metadata = dict(refreshed.get("metadata") or {})
+        return KnowledgeBaseDocumentChunkRecord(
+            chunk_id=chunk_id,
+            document_id=document_id,
+            segment_id=refreshed_metadata.get("segment_id"),
+            content=refreshed.get("content", ""),
+            metadata=refreshed_metadata,
+        )
+
     async def get_document_detail(
         self,
         user_id: str,
@@ -971,6 +1039,10 @@ class KnowledgeBaseManager:
                     "storage_name": storage_name,
                     "storage_path": storage_path,
                     "content_type": content_type or "",
+                    # 切片开关，默认开启；关闭后该切片不应参与检索。
+                    "state": True,
+                    # 多租户预留字段，当前未接入租户体系，统一为空。
+                    "tenant_id": "",
                 }
             )
             prepared_documents.append(

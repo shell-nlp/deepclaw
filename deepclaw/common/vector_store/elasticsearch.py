@@ -11,6 +11,29 @@ if TYPE_CHECKING:
     from elasticsearch import Elasticsearch as ESClient
 
 
+def build_es_filter_clauses(
+    filter_conditions: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """把过滤条件转换为 ES 查询子句。
+
+    Args:
+        filter_conditions: 过滤条件字典，值为列表时按任一匹配，值为 ``{"$ne": x}`` 时表示不等值（缺失字段视为满足）。
+
+    Returns:
+        ES bool 查询的 filter/must 子句列表。
+    """
+    clauses: list[dict[str, Any]] = []
+    for field, value in filter_conditions.items():
+        if isinstance(value, dict) and "$ne" in value:
+            # 缺失字段不会被 term 命中，因此 must_not 天然把历史数据视为满足条件。
+            clauses.append({"bool": {"must_not": [{"term": {field: value["$ne"]}}]}})
+        elif isinstance(value, list):
+            clauses.append({"terms": {field: value}})
+        else:
+            clauses.append({"term": {field: value}})
+    return clauses
+
+
 class ElasticsearchVectorStore(AbstractVectorStore):
     """基于 Elasticsearch 的向量数据库实现。"""
 
@@ -133,13 +156,9 @@ class ElasticsearchVectorStore(AbstractVectorStore):
             "num_candidates": max(k * 2, 10),
         }
         if filter_conditions:
-            es_filter: List[Dict[str, Any]] = []
-            for field, value in filter_conditions.items():
-                if isinstance(value, list):
-                    es_filter.append({"terms": {field: value}})
-                else:
-                    es_filter.append({"term": {field: value}})
-            knn_query["filter"] = {"bool": {"filter": es_filter}}
+            knn_query["filter"] = {
+                "bool": {"filter": build_es_filter_clauses(filter_conditions)}
+            }
 
         results = self.es_client.search(
             index=target_indexes,
@@ -159,6 +178,7 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         query: str,
         k: int = 3,
         index_names: list[str] | None = None,
+        filter_conditions: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """基于关键词匹配的全文检索。
 
@@ -168,6 +188,7 @@ class ElasticsearchVectorStore(AbstractVectorStore):
             query: 查询关键词文本。
             k: 返回的匹配文档数量，默认为 3。
             index_names: 目标索引名称列表。
+            filter_conditions: 元数据过滤条件。
 
         Returns:
             匹配文档列表，每项包含 id、content、metadata、score 等字段。
@@ -176,10 +197,9 @@ class ElasticsearchVectorStore(AbstractVectorStore):
             index_names,
             operation="search",
         )
-        results = self.es_client.search(
-            index=target_indexes,
-            body={
-                "query": {
+        bool_query: Dict[str, Any] = {
+            "must": [
+                {
                     "multi_match": {
                         "query": query,
                         "fields": ["content", "title", "summary"],
@@ -187,7 +207,13 @@ class ElasticsearchVectorStore(AbstractVectorStore):
                         "boost": 0.3,
                     }
                 }
-            },
+            ]
+        }
+        if filter_conditions:
+            bool_query["filter"] = build_es_filter_clauses(filter_conditions)
+        results = self.es_client.search(
+            index=target_indexes,
+            body={"query": {"bool": bool_query}},
             size=k,
         )
         return [self._hit_to_result(hit) for hit in results["hits"]["hits"]]
@@ -318,10 +344,7 @@ class ElasticsearchVectorStore(AbstractVectorStore):
             raise ValueError("filter_conditions 不能为空")
         if not self.es_client.indices.exists(index=index_name):
             return []
-        clauses = [
-            {"terms" if isinstance(value, list) else "term": {field: value}}
-            for field, value in filter_conditions.items()
-        ]
+        clauses = build_es_filter_clauses(filter_conditions)
         response = self.es_client.search(
             index=index_name,
             body={"query": {"bool": {"filter": clauses}}, "_source": False},
@@ -571,12 +594,9 @@ class ElasticsearchVectorStore(AbstractVectorStore):
             index_names,
             operation="delete_by_filter",
         )
-        must_clauses: list[dict[str, Any]] = []
-        for field, value in filter_conditions.items():
-            if isinstance(value, list):
-                must_clauses.append({"terms": {field: value}})
-            else:
-                must_clauses.append({"term": {field: value}})
+        must_clauses: list[dict[str, Any]] = build_es_filter_clauses(
+            filter_conditions
+        )
         response = self.es_client.delete_by_query(
             index=target_indexes,
             body={"query": {"bool": {"must": must_clauses}}},
@@ -688,8 +708,7 @@ class ElasticsearchVectorStore(AbstractVectorStore):
                 }
             )
         if filter_conditions:
-            for field, value in filter_conditions.items():
-                must_clauses.append({"term": {field: value}})
+            must_clauses.extend(build_es_filter_clauses(filter_conditions))
 
         search_body: Dict[str, Any] = (
             {"query": {"bool": {"must": must_clauses}}}

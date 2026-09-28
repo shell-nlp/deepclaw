@@ -4286,25 +4286,63 @@ button.extensionListRow { cursor: pointer; }
 .knowledgeRowActions { display: flex; align-items: center; gap: 9px; flex: none; }
 .knowledgeDetailSection { display: flex; flex-direction: column; gap: 15px; }
 .knowledgeDetailSection > .managementHeader { padding: 0 0 12px; }
-.knowledgeDocumentLayout { display: grid; grid-template-columns: minmax(260px, 0.48fr) minmax(0, 1fr); gap: 18px; align-items: start; }
-.knowledgeFilePanel, .knowledgeChunksPanel { min-width: 0; padding: 20px; border: 1px solid #e3e9f0; border-radius: 8px; background: #fff; }
-.knowledgeFilePanel .managementHeader { align-items: flex-start; }
-.knowledgeFilePanel .managementHeader h3 { overflow-wrap: anywhere; font-size: 15px; }
-.knowledgeFilePanel .managementMetaPanel { display: grid; gap: 9px; margin-top: 15px; padding: 0; border: 0; background: transparent; }
-.knowledgeChunksPanel { display: grid; gap: 16px; }
-.knowledgeChunksList { display: grid; gap: 0; }
-.knowledgeChunk { padding: 17px 0; border-top: 1px solid #edf1f5; }
-.knowledgeChunk .managementListHeader { min-width: 0; }
-.knowledgeChunk .managementListHeader span { max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.knowledgeChunkContent { margin: 12px 0; color: #344355; font-size: 13px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
+.knowledgeStatStrip { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom: 26px; border: 1px solid #e3e9f0; border-radius: 8px; background: #fff; overflow: hidden; }
+.knowledgeStat { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 16px 20px; }
+.knowledgeStat + .knowledgeStat { border-left: 1px solid #edf1f5; }
+.knowledgeStat span { color: #8491a2; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; }
+.knowledgeStat strong { color: #212b38; font: 650 20px/1.1 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chunkDocumentMeta { display: grid; grid-template-columns: repeat(auto-fit, minmax(162px, 1fr)); margin-bottom: 26px; border: 1px solid #e3e9f0; border-radius: 8px; background: #fff; overflow: hidden; }
+.chunkDocumentMetaItem { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 15px 18px; }
+.chunkDocumentMetaItem + .chunkDocumentMetaItem { border-left: 1px solid #edf1f5; }
+.chunkDocumentMetaItem span { color: #8491a2; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; }
+.chunkDocumentMetaItem strong { color: #263444; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.knowledgeChunksPanel { display: grid; gap: 14px; min-width: 0; }
+.chunkList { margin: 0; padding: 0; list-style: none; border: 1px solid #e3e9f0; border-radius: 8px; background: #fff; overflow: hidden; }
+.chunkEmpty { padding: 26px 20px; color: #8491a2; font-size: 13px; text-align: center; }
+.chunkRow { display: grid; grid-template-columns: 62px minmax(0, 1fr) auto; gap: 16px; align-items: start; padding: 15px 18px; }
+.chunkRow + .chunkRow { border-top: 1px solid #edf1f5; }
+.chunkRow:hover { background: #fafbfd; }
+.chunkRow[data-state='off'] { background: #fafbfc; }
+.chunkIndex { display: flex; align-items: center; gap: 8px; padding-top: 2px; color: #8b97a5; font: 600 12px/1.4 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+.chunkIndex::before { flex: none; width: 6px; height: 6px; border-radius: 50%; background: #cbd4de; content: ''; }
+.chunkRow[data-state='on'] .chunkIndex::before { background: var(--extension-green); }
+.chunkBody { display: grid; gap: 7px; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.chunkBody:focus-visible { border-radius: 4px; outline: 2px solid #5479a9; outline-offset: 3px; }
+.chunkTitle { color: #212b38; font-size: 13px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chunkText { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; color: #5a6a7d; font-size: 13px; line-height: 1.72; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chunkTextOpen { display: block; max-height: 320px; overflow-y: auto; color: #344355; font-size: 13px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chunkMeta { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; color: #8b97a5; font-size: 11.5px; }
+.chunkMeta > span:last-child { color: #43648f; font-weight: 650; }
+.chunkDisabledTag { padding: 1px 7px; border-radius: 999px; background: #f0f2f5; color: #8a95a3; font-size: 11px; font-weight: 600; }
+.chunkRow[data-state='off'] .chunkTitle, .chunkRow[data-state='off'] .chunkText { color: #97a2b0; }
+.chunkActions { display: flex; align-items: center; gap: 12px; flex: none; padding-top: 1px; }
+.chunkSwitch { position: relative; display: inline-flex; flex: none; cursor: pointer; }
+.chunkSwitch input { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; }
+.chunkSwitchTrack { position: relative; display: block; width: 34px; height: 19px; border-radius: 999px; background: #d5dde6; transition: background 0.15s ease; }
+.chunkSwitchTrack::after { position: absolute; top: 2px; left: 2px; width: 15px; height: 15px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(23, 33, 45, 0.25); content: ''; transition: transform 0.15s ease; }
+.chunkSwitch input:checked + .chunkSwitchTrack { background: var(--extension-green); }
+.chunkSwitch input:checked + .chunkSwitchTrack::after { transform: translateX(15px); }
+.chunkSwitch input:focus-visible + .chunkSwitchTrack { outline: 2px solid #5479a9; outline-offset: 2px; }
+.chunkSwitch input:disabled + .chunkSwitchTrack { opacity: 0.5; cursor: not-allowed; }
+.chunkEditButton { flex: none; padding: 0; border: 0; background: transparent; color: #365f9d; font-size: 12px; font-weight: 650; cursor: pointer; }
+.chunkEditButton:hover { text-decoration: underline; }
+.chunkEditButton:disabled { color: #a7b1bd; cursor: not-allowed; }
+.chunkEditorDialog { width: min(720px, 100%); }
+.chunkEditorInput { width: 100%; min-height: 300px; max-height: 52vh; padding: 14px 16px; border: 1px solid #dce3eb; border-radius: 6px; background: #fbfcfe; color: #263444; font-family: inherit; font-size: 13px; line-height: 1.75; resize: vertical; }
+.chunkEditorInput:focus { border-color: #627b9e; outline: 2px solid #627b9e20; }
 .knowledgeModal { width: min(500px, 100%); }
 .knowledgeModal .managementForm { gap: 15px; }
 .knowledgeModalLabel { display: grid; gap: 7px; color: #59697e; font-size: 12px; font-weight: 600; }
 .knowledgeModal .extensionDialogActions { justify-content: flex-end; }
 .knowledgeWorkspace button:focus-visible, .knowledgeWorkspace input:focus-visible { outline: 2px solid #5479a9; outline-offset: 2px; }
 
-@media (max-width: 1100px) { .knowledgeDocumentLayout { grid-template-columns: 1fr; } }
+@media (max-width: 640px) {
+  .chunkRow { grid-template-columns: 42px minmax(0, 1fr); gap: 10px; padding: 14px 15px; }
+  .chunkActions { grid-column: 2; padding-top: 0; }
+}
 @media (max-width: 740px) {
+  .knowledgeStatStrip, .chunkDocumentMeta { grid-template-columns: 1fr; }
+  .knowledgeStat + .knowledgeStat, .chunkDocumentMetaItem + .chunkDocumentMetaItem { border-left: 0; border-top: 1px solid #edf1f5; }
   .knowledgeToolbar { flex-wrap: wrap; }
   .knowledgeToolbar .managementSearchGroup { flex: 1 1 100%; max-width: none; flex-wrap: nowrap; }
   .knowledgeToolbar .managementSearchGroup .knowledgeSearchInput { width: 0; flex: 1 1 auto; }
@@ -4321,7 +4359,7 @@ button.extensionListRow { cursor: pointer; }
   .knowledgeRowDate { display: none; }
   .knowledgeRowActions { gap: 2px; }
   .knowledgeRowMetric { font-size: 11px; }
-  .knowledgeFilePanel, .knowledgeChunksPanel { padding: 15px; }
+  .knowledgeStat, .chunkDocumentMetaItem { padding: 13px 15px; }
 }
 
 .knowledgeWorkspace .knowledgeToolbar .managementSearchGroup {

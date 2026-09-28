@@ -11,6 +11,7 @@ from deepclaw.web_backend.knowledge_bases.schemas import (
     KnowledgeBaseIdentityRequest,
     KnowledgeUploadTaskRequest,
     KnowledgeBaseListRequest,
+    UpdateKnowledgeChunkRequest,
     UpdateKnowledgeBaseDocumentRequest,
     UpdateKnowledgeBaseRequest,
 )
@@ -18,6 +19,7 @@ from deepclaw.web_backend.knowledge_bases.service import (
     BulkDeleteDocumentResponse,
     BulkDeleteKnowledgeBaseResponse,
     KnowledgeBaseDeleteResult,
+    KnowledgeBaseDocumentChunkRecord,
     KnowledgeBaseDocumentDetailResponse,
     KnowledgeBaseDocumentRecord,
     KnowledgeBaseRecord,
@@ -272,6 +274,31 @@ async def update_document(
         knowledge_base_id=request.knowledge_base_id,
         document_id=request.document_id,
         display_name=request.display_name,
+    )
+
+@router.post(
+    "/knowledge-bases/documents/chunks/update",
+    response_model=KnowledgeBaseDocumentChunkRecord,
+    summary="更新切片",
+    description="修改单个切片的正文内容或启用开关。"
+)
+async def update_document_chunk(
+    request: UpdateKnowledgeChunkRequest,
+    actor=Depends(get_current_actor),
+):
+    """更新单个切片。
+
+    Args:
+        request: 目标切片与更新字段。
+        actor: 当前访问主体。
+    """
+    return await get_knowledge_base_manager().update_document_chunk(
+        _resolved_user_id(actor),
+        request.knowledge_base_id,
+        request.document_id,
+        request.chunk_id,
+        content=request.content,
+        state=request.state,
     )
 
 @router.post("/knowledge-bases/documents/delete", summary="删除文档", description="删除指定文档及其关联索引数据。")

@@ -42,6 +42,35 @@ class FakePassageStore:
         """
         return list(reversed(self.rows))[:k]
 
+    def batch_get(self, ids, *, index_name=None):
+        """按 ID 返回切片副本。
+
+        Args:
+            ids: 目标切片 ID 列表。
+            index_name: 索引名。
+        """
+        wanted = set(ids)
+        return [dict(row) for row in self.rows if row["id"] in wanted]
+
+    def update(self, doc_id, content=None, metadata=None, index_name=None):
+        """就地更新切片的正文与元数据。
+
+        Args:
+            doc_id: 切片 ID。
+            content: 新正文，None 表示不修改。
+            metadata: 新元数据，None 表示不修改。
+            index_name: 索引名。
+        """
+        for row in self.rows:
+            if row["id"] != doc_id:
+                continue
+            if content is not None:
+                row["content"] = content
+            if metadata is not None:
+                row["metadata"] = dict(metadata)
+            return True
+        return False
+
 
 class FakeMetadataStore:
     def __init__(self):
@@ -164,5 +193,38 @@ def test_document_chunk_pagination_sorts_full_result_before_slicing():
         assert [
             hit["_source"]["metadata"]["segment_id"] for hit in second_page
         ] == list(range(9, 17))
+
+    asyncio.run(_run())
+
+
+def test_update_document_chunk_updates_state_and_content():
+    """更新切片应同时写入新正文与开关状态，并保留原有元数据。"""
+
+    async def _run():
+        """在假向量库上校验切片更新结果。
+
+        Args:
+            无。
+        """
+        store = FakePassageStore([1])
+        manager = KnowledgeBaseManager(
+            vector_store=store, metadata_store=FakeMetadataStore()
+        )
+
+        record = await manager.update_document_chunk(
+            user_id="user-1",
+            knowledge_base_id="kb001",
+            document_id="doc001",
+            chunk_id="doc001_1",
+            content="新正文",
+            state=False,
+        )
+
+        assert record.chunk_id == "doc001_1"
+        assert record.content == "新正文"
+        assert record.metadata["state"] is False
+        assert store.rows[0]["content"] == "新正文"
+        assert store.rows[0]["metadata"]["state"] is False
+        assert store.rows[0]["metadata"]["segment_id"] == 1
 
     asyncio.run(_run())

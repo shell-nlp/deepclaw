@@ -69,6 +69,7 @@ import {
   KB_DOCUMENT_UPLOAD_API_PATH,
   KB_DOCUMENT_UPLOAD_TASK_DELETE_API_PATH,
   KB_DOCUMENT_UPLOAD_TASK_RETRY_API_PATH,
+  KB_DOCUMENT_CHUNK_UPDATE_API_PATH,
   KB_DOCUMENT_UPLOAD_TASKS_API_PATH,
   KB_LIST_API_PATH,
   KB_UPDATE_API_PATH,
@@ -97,9 +98,10 @@ import type {
   ChatStatus,
   InterruptData,
   KnowledgeBase,
+  KnowledgeChunk,
   KnowledgeDocument,
-  KnowledgeUploadTask,
   KnowledgeDocumentDetailResponse,
+  KnowledgeUploadTask,
   KnowledgePage,
   Message,
   PaginatedKnowledgeBaseResponse,
@@ -2168,6 +2170,40 @@ export default function ChatInterface() {
     }
   }
 
+  const updateDocumentChunk = async (
+    chunk: KnowledgeChunk,
+    changes: { content?: string; state?: boolean }
+  ) => {
+    if (!selectedDocumentDetail) return
+    const knowledgeBaseId = selectedDocumentDetail.knowledge_base.knowledge_base_id
+    const documentId = selectedDocumentDetail.document.document_id
+    setManagementError('')
+    setManagementNotice('')
+    try {
+      await requestJson<KnowledgeChunk>(KB_DOCUMENT_CHUNK_UPDATE_API_PATH, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          knowledge_base_id: knowledgeBaseId,
+          document_id: documentId,
+          chunk_id: chunk.chunk_id,
+          ...(changes.content === undefined ? {} : { content: changes.content }),
+          ...(changes.state === undefined ? {} : { state: changes.state }),
+        }),
+      })
+      await loadDocumentDetail(knowledgeBaseId, documentId, documentChunkPage)
+      setManagementNotice(
+        changes.state === undefined
+          ? '切片内容已更新。'
+          : changes.state
+            ? '已启用该切片。'
+            : '已停用该切片。'
+      )
+    } catch (error) {
+      setManagementError(error instanceof Error ? error.message : '更新切片失败。')
+    }
+  }
+
   const renameDocument = async (document: KnowledgeDocument) => {
     if (!selectedKnowledgeBase) return
     const nextName = window.prompt('请输入新的文档展示名称', document.display_name)
@@ -3743,6 +3779,7 @@ export default function ChatInterface() {
                 onHandleUploadFiles={handleUploadFiles}
                 onRetryUploadTask={retryUploadTask}
                 onDeleteUploadTask={deleteUploadTask}
+                onUpdateDocumentChunk={updateDocumentChunk}
                 onDocumentSearchInputChange={setDocumentSearchInput}
                 onDocumentPageChange={setDocumentPage}
                 onDocumentSearchChange={setDocumentSearch}
