@@ -9,11 +9,33 @@ from langchain.agents.middleware import AgentMiddleware
 from langchain_core.documents import Document
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage, SystemMessage
+from langchain_core.runnables.config import set_config_context
 from langgraph.runtime import Runtime
 from loguru import logger
 
 from deepclaw.agents.rag.state import StateSchema
 from deepclaw.common.vector_store import AbstractVectorStore
+
+# 中间件内部的辅助模型调用（问题改写、检索路由）不应进入 AG-UI 事件流，
+# 否则它们的原始输出会被当成助手正文流式返回。
+INTERNAL_MODEL_CONFIG = {"callbacks": [], "tags": ["rag_internal"]}
+
+
+def invoke_internal_model(runnable, payload):
+    """在隔离的配置上下文中调用中间件内部的辅助模型。
+
+    隔离上下文可以避免父级 Run 的回调被继承，从而不产生 on_chat_model_stream 事件。
+
+    Args:
+        runnable: 已绑定参数的模型或 RunnableBinding。
+        payload: 传给模型的提示词或消息列表。
+
+    Returns:
+        模型返回结果。
+    """
+    with set_config_context(INTERNAL_MODEL_CONFIG) as context:
+        return context.run(runnable.invoke, payload, INTERNAL_MODEL_CONFIG)
+
 
 RAG_SYSTEM_PROMPT = """<角色>您是一个精通文档引用的问答专家，能够精准依据来源内容构建回答。</角色>
 <任务>基于提供的内容和用户的问题,撰写一篇详细完备的最终回答.</任务>
@@ -280,13 +302,10 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
             最新的query
         """
         if self.rewrite_query and self.model:
-            new_query = (
-                self.model.bind(extra_body={"enable_thinking": False})
-                .invoke(
-                    REWRITE_QUREY_PROMPT.format(history=messages2str(messages[-20:]))
-                )
-                .content
-            )
+            new_query = invoke_internal_model(
+                self.model.bind(extra_body={"enable_thinking": False}),
+                REWRITE_QUREY_PROMPT.format(history=messages2str(messages[-20:])),
+            ).content
             logger.info(f"改写问题：{messages[-1].content} -> {new_query}")
             return new_query
         else:
@@ -316,11 +335,12 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
             structured_model = self.model.with_structured_output(
                 schema=Output, method="json_mode"
             ).bind(extra_body={"enable_thinking": False})
-            value = structured_model.invoke(
+            value = invoke_internal_model(
+                structured_model,
                 [
                     SystemMessage(content=RETRIEVE_ROUTER_PROMPT),
                 ]
-                + messages[-20:]
+                + messages[-20:],
             )
             logger.info(f"路由结果：{value}")
             router = value["路由"]
