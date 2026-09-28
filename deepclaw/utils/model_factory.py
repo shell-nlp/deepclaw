@@ -9,6 +9,12 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 from deepclaw.settings import settings
 
+# 兼容网关关闭思考的统一参数：只传 enable_thinking 不足以关闭，必须同时给 thinking。
+DISABLE_THINKING_EXTRA_BODY: dict[str, Any] = {
+    "chat_template_kwargs": {"enable_thinking": False},
+    "thinking": {"type": "disabled"},
+}
+
 
 class ReasoningChatOpenAI(ChatOpenAI):
     """在 ChatOpenAI 上补抓兼容接口的流式 reasoning_content。
@@ -90,9 +96,8 @@ def get_chat_model(tags: list[str] | None = None) -> ChatOpenAI:
         streaming=True,
         tags=tags or ["agent"],
         extra_body={
-            "chat_template_kwargs": {"enable_thinking": False},
+            **DISABLE_THINKING_EXTRA_BODY,
             "tool_choice": "auto",
-            "thinking": {"type": "disabled"},
         },
     )
 

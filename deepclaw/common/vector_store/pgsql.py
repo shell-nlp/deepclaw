@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,9 @@ from deepclaw.common.vector_store.base import AbstractVectorStore
 
 class PgVectorStore(AbstractVectorStore):
     """基于 PostgreSQL + pgvector + pg_search 的向量库实现。"""
+
+    # 向量与 BM25 并行检索时会同时触发分区 DDL，用进程内锁避免并发建表/建索引。
+    _ddl_lock = threading.Lock()
 
     def __init__(
         self,
@@ -249,7 +253,7 @@ class PgVectorStore(AbstractVectorStore):
             WITH (key_field='id')
             """,
         ]
-        with self._connect() as conn, conn.cursor() as cur:
+        with self._ddl_lock, self._connect() as conn, conn.cursor() as cur:
             for stmt in statements:
                 cur.execute(stmt)
 

@@ -16,6 +16,7 @@ from loguru import logger
 from deepclaw.agents.rag.state import StateSchema
 from deepclaw.common.vector_store import AbstractVectorStore
 from deepclaw.settings import settings
+from deepclaw.utils.model_factory import DISABLE_THINKING_EXTRA_BODY
 
 # 中间件内部的辅助模型调用（问题改写、检索路由）不应进入 AG-UI 事件流，
 # 否则它们的原始输出会被当成助手正文流式返回。
@@ -333,7 +334,7 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
         """
         if self.rewrite_query and self.model:
             new_query = invoke_internal_model(
-                self.model.bind(extra_body={"enable_thinking": False}),
+                self.model.bind(extra_body=dict(DISABLE_THINKING_EXTRA_BODY)),
                 REWRITE_QUREY_PROMPT.format(history=messages2str(messages[-20:])),
             ).content
             logger.info(f"改写问题：{messages[-1].content} -> {new_query}")
@@ -364,7 +365,7 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
 
             structured_model = self.model.with_structured_output(
                 schema=Output, method="json_mode"
-            ).bind(extra_body={"enable_thinking": False})
+            ).bind(extra_body=dict(DISABLE_THINKING_EXTRA_BODY))
             value = invoke_internal_model(
                 structured_model,
                 [
