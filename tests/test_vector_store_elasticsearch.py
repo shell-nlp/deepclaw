@@ -67,3 +67,44 @@ def test_retrieve_merges_vector_and_keyword_hits_without_duplicates(monkeypatch)
 
     results = store.retrieve(query="hello", k=3, index_names=["kb_a", "kb_b"])
     assert [item["content"] for item in results] == ["alpha", "beta", "gamma"]
+
+
+def test_create_index_uses_ik_smart_analyzer():
+    """ES 索引必须使用 ik_smart 中文分词，否则长中文句子无法命中 BM25。"""
+    captured = {}
+
+    class FakeIndices:
+        def exists(self, index):
+            """索引不存在。
+
+            Args:
+                index: 索引名称。
+            """
+            return False
+
+        def create(self, index, body):
+            """记录建索引请求体。
+
+            Args:
+                index: 索引名称。
+                body: 请求体。
+            """
+            captured["index"] = index
+            captured["body"] = body
+
+    class FakeClient:
+        indices = FakeIndices()
+
+    store = ElasticsearchVectorStore(
+        url="http://localhost:9200",
+        embedding_model=FakeEmbeddingModel(),
+    )
+    store._es_client = FakeClient()
+
+    store.create_index("kb_demo_passages", vector_dim=3)
+
+    analyzer = captured["body"]["settings"]["analysis"]["analyzer"]["kb_text_analyzer"]
+    assert analyzer["tokenizer"] == "ik_smart"
+    props = captured["body"]["mappings"]["properties"]
+    assert props["content"]["analyzer"] == "kb_text_analyzer"
+    assert props["embedding"]["dims"] == 3

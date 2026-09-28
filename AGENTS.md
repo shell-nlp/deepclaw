@@ -98,7 +98,7 @@
   Docling 统一文档解析适配器。按文件后缀选择 Docling 或回退解析器，将 PDF、DOCX、PPTX、XLSX、HTML、Markdown、TXT 转换为现有知识库兼容的 LangChain Document 切片，并保留标题路径、页码和 Docling 元数据。
 
 - `deepclaw/common/vector_store/`
-  向量数据库抽象层，包含通用 `AbstractVectorStore`、统一创建入口 `create_vector_store()`、Elasticsearch 实现，以及基于 PostgreSQL + pgvector + pg_search 的实现。限定文档 ID 的 `vector_search_by_ids()`、按元数据列出全部 ID 的 `list_ids_by_filter()` 与索引清理 `clear_index()` 统一由此层提供；ES 批量写入保留外部传入的 ID，PG 元数据数组列表过滤表示任一匹配。混合检索由 `retrieve_with_rrf()` 提供：分别取 BM25 关键词检索与向量检索结果，再按 RRF 融合，是当前 RAG 检索的唯一实现。
+  向量数据库抽象层，包含通用 `AbstractVectorStore`、统一创建入口 `create_vector_store()`、Elasticsearch 实现，以及基于 PostgreSQL + pgvector + pg_search 的实现。限定文档 ID 的 `vector_search_by_ids()`、按元数据列出全部 ID 的 `list_ids_by_filter()` 与索引清理 `clear_index()` 统一由此层提供；ES 批量写入保留外部传入的 ID，PG 元数据数组列表过滤表示任一匹配，ES 建索引使用 `ik_smart` 中文分词（缺失插件时回退默认分词）并在写入前自动建索引。混合检索由 `retrieve_with_rrf()` 提供：分别取 BM25 关键词检索与向量检索结果，再按 RRF 融合（每路保底 `k // 3` 个名额，避免单路独有命中被另一路的共识噪声挤出），是当前 RAG 检索的唯一实现；返回项的 `score` 是融合分，单路原始分放在 `raw_score`。
 
 - `deepclaw/common/__init__.py`
   导出公共类型。知识库上传以新生成的 `document_id` 作为来源整体替换 passage 索引，删除文档按相同来源清理；同名文件再次上传仍创建新文档，不自动覆盖旧文件。
