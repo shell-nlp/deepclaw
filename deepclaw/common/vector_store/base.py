@@ -53,6 +53,37 @@ class AbstractVectorStore(ABC):
                 break
         return merged
 
+    @staticmethod
+    def merge_results_rrf(
+        *,
+        vector_results: list[dict[str, Any]],
+        keyword_results: list[dict[str, Any]],
+        k: int,
+        rrf_k: int = 60,
+    ) -> list[dict[str, Any]]:
+        """用 RRF（倒数排名融合）合并向量检索与关键词检索结果。
+
+        Args:
+            vector_results: 向量检索结果，按相关性从高到低排列。
+            keyword_results: 关键词（BM25）检索结果，按相关性从高到低排列。
+            k: 返回的最大条数。
+            rrf_k: RRF 平滑参数，数值越大越弱化头部排名差异。
+
+        Returns:
+            按融合分数从高到低排列、并按文档 ID 去重后的结果。
+        """
+        scores: dict[str, float] = {}
+        items: dict[str, dict[str, Any]] = {}
+        for rank_list in (vector_results, keyword_results):
+            for rank, item in enumerate(rank_list, start=1):
+                key = str(item.get("id") or item.get("content", ""))
+                if not key:
+                    continue
+                scores[key] = scores.get(key, 0.0) + 1.0 / (rrf_k + rank)
+                items.setdefault(key, item)
+        ordered = sorted(scores.items(), key=lambda pair: pair[1], reverse=True)
+        return [items[key] for key, _ in ordered[:k]]
+
     @abstractmethod
     def add(
         self,
@@ -328,6 +359,39 @@ class AbstractVectorStore(ABC):
             vector_results=vector_results,
             keyword_results=keyword_results,
             k=k,
+        )
+
+    def retrieve_with_rrf(
+        self,
+        query: str,
+        k: int = 3,
+        index_names: list[str] | None = None,
+        rrf_k: int = 60,
+    ) -> list[dict[str, Any]]:
+        """混合检索：BM25 关键词检索与向量检索按 RRF 融合后返回。
+
+        Args:
+            query: 查询文本。
+            k: 返回的最大结果数。
+            index_names: 目标索引列表，为 None 时表示全量索引。
+            rrf_k: RRF 平滑参数。
+        """
+        candidate_k = max(k * 4, 20)
+        vector_results = self.vector_search(
+            query=query,
+            k=candidate_k,
+            index_names=index_names,
+        )
+        keyword_results = self.keyword_search(
+            query=query,
+            k=candidate_k,
+            index_names=index_names,
+        )
+        return self.merge_results_rrf(
+            vector_results=vector_results,
+            keyword_results=keyword_results,
+            k=k,
+            rrf_k=rrf_k,
         )
 
     def refresh_embeddings(

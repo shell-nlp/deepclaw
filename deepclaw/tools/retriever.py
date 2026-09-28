@@ -1,12 +1,9 @@
 from langchain.tools import tool
 
-from deepclaw.common import create_graph_rag
 from deepclaw.common.vector_store import (
     AbstractVectorStore,
     create_default_vector_store,
 )
-from deepclaw.common.vector_store.elasticsearch import ElasticsearchVectorStore
-from deepclaw.settings import settings
 from deepclaw.utils import get_embedding_model
 
 DEFAULT_INDEX_NAME = "236"
@@ -49,26 +46,6 @@ def retrieve_context(query: str):
 
 
 retrieve_tool = retrieve_context
-
-
-@tool
-def retrieve_graph_context(query: str, graph_name: str = DEFAULT_INDEX_NAME):
-    """使用 ES 向量图 RAG 检索与查询相关的上下文。"""
-    # 图检索依赖 graph_name 构造实例，因此按调用动态创建。
-    es = ElasticsearchVectorStore(
-        url=settings.ES_URL,
-        username=settings.ES_URSR,
-        password=settings.ES_PWD,
-        embedding_model=get_default_retriever().embedding_model,
-    )
-    rag = create_graph_rag(es, graph_name)
-    result = rag.retrieve(query=query, k=5)
-    passages = result["passages"] if isinstance(result, dict) else result
-
-    context = ""
-    for idx, doc in enumerate(passages, start=1):
-        context += f"文档 {idx}: \n{doc.get('content', '')}\n\n"
-    return context
 
 
 if __name__ == "__main__":

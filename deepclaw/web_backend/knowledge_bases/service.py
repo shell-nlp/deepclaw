@@ -13,8 +13,7 @@ from loguru import logger
 from pydantic import BaseModel, Field
 
 from deepclaw.web_backend.common.errors import BusinessRuleError
-from deepclaw.common import create_default_vector_store, create_graph_rag
-from deepclaw.common.graph_rag import BaseGraphRAG
+from deepclaw.common import create_default_vector_store
 from deepclaw.common.object_storage import (
     ObjectStorage,
     ObjectStoragePDFReader,
@@ -36,10 +35,7 @@ class KnowledgeBaseRecord(BaseModel):
     user_id: str
     name: str
     description: str = ""
-    index_prefix: str
     passage_index: str
-    entity_index: str
-    relation_index: str
     document_count: int = 0
     chunk_count: int = 0
     created_at: str
@@ -144,6 +140,18 @@ class UploadedKnowledgeFile:
     file_name: str
     content_type: str
     data: bytes
+
+
+def _passage_index_name(knowledge_base_id: str) -> str:
+    """由知识库 ID 派生篇章索引名。
+
+    Args:
+        knowledge_base_id: 知识库 ID。
+
+    Returns:
+        篇章索引名称。
+    """
+    return f"kb_{knowledge_base_id}_passages"
 
 
 class KnowledgeBaseManager:
@@ -336,10 +344,10 @@ class KnowledgeBaseManager:
             )
             source.update(status="indexing", updated_at=datetime.now().astimezone().isoformat())
             await self.metadata_store.save_upload_task(source)
-            rag = create_graph_rag(self._vector_store, knowledge_base.index_prefix)
             await asyncio.to_thread(
-                rag.upsert_documents_by_source, documents,
-                source=task_id, extract_triplets=True,
+                self._write_passages,
+                knowledge_base=knowledge_base,
+                documents=documents,
             )
             now = self._now()
             await self.metadata_store.save_document(
@@ -361,8 +369,11 @@ class KnowledgeBaseManager:
             ownership_lost = str(exc) == "上传任务已被其他进程接管或终止"
             if source["status"] == "indexing" and knowledge_base is not None and not ownership_lost:
                 try:
-                    rag = create_graph_rag(self._vector_store, knowledge_base.index_prefix)
-                    await asyncio.to_thread(rag.delete_documents_by_source, task_id)
+                    await asyncio.to_thread(
+                        self._delete_passages_by_source,
+                        index_name=knowledge_base.passage_index,
+                        source=task_id,
+                    )
                     await self.metadata_store.delete_document(document_id=task_id)
                 except Exception:
                     logger.exception("知识文件失败后清理索引失败: {}", task_id)
@@ -422,18 +433,13 @@ class KnowledgeBaseManager:
             raise BusinessRuleError("Knowledge base name is required.")
 
         knowledge_base_id = uuid.uuid4().hex
-        index_prefix = f"kb_{knowledge_base_id}"
-        indexes = BaseGraphRAG.index_names(index_prefix)
         now = self._now()
         source = {
             "knowledge_base_id": knowledge_base_id,
             "user_id": user_id,
             "name": normalized_name,
             "description": description.strip(),
-            "index_prefix": index_prefix,
-            "passage_index": indexes["passage"],
-            "entity_index": indexes["entity"],
-            "relation_index": indexes["relation"],
+            "passage_index": _passage_index_name(knowledge_base_id),
             "document_count": 0,
             "chunk_count": 0,
             "created_at": now,
@@ -490,8 +496,15 @@ class KnowledgeBaseManager:
         )
         if any(task["status"] in {"queued", "parsing", "indexing"} for task in tasks):
             raise BusinessRuleError("有文件正在处理，请完成后再删除知识库。")
-        rag = create_graph_rag(self._vector_store, knowledge_base.index_prefix)
-        graph_result = rag.delete_graph(ignore_missing=True)
+        deleted_indexes: dict[str, str] = {}
+        try:
+            self._clear_passage_index(knowledge_base.passage_index)
+            deleted_indexes["passage"] = "deleted"
+        except Exception:
+            logger.exception(
+                "清理知识库篇章索引失败: {}", knowledge_base.passage_index
+            )
+            deleted_indexes["passage"] = "missing"
 
         documents = await self.list_documents(user_id, knowledge_base_id)
         document_ids = [item.document_id for item in documents]
@@ -521,7 +534,7 @@ class KnowledgeBaseManager:
         return KnowledgeBaseDeleteResult(
             knowledge_base=knowledge_base,
             deleted_documents=len(document_ids),
-            deleted_indexes=graph_result["result"],
+            deleted_indexes=deleted_indexes,
         )
 
     async def list_documents(
@@ -663,8 +676,10 @@ class KnowledgeBaseManager:
         if source["knowledge_base_id"] != knowledge_base_id:
             raise BusinessRuleError("Document does not belong to this knowledge base.")
 
-        rag = create_graph_rag(self._vector_store, knowledge_base.index_prefix)
-        delete_result = rag.delete_documents_by_source(document_id)
+        deleted_passages = self._delete_passages_by_source(
+            index_name=knowledge_base.passage_index,
+            source=document_id,
+        )
 
         bucket_name, file_path = self._storage_location_from_source(
             user_id=user_id,
@@ -680,9 +695,7 @@ class KnowledgeBaseManager:
         return {
             "knowledge_base": knowledge_base,
             "document_id": document_id,
-            "deleted_passages": delete_result["deleted_passages"],
-            "deleted_relations": delete_result["deleted_relations"],
-            "deleted_entities": delete_result["deleted_entities"],
+            "deleted_passages": deleted_passages,
         }
 
     async def bulk_delete_knowledge_bases(
@@ -735,7 +748,6 @@ class KnowledgeBaseManager:
         files: Iterable[UploadedKnowledgeFile],
     ) -> KnowledgeBaseUploadResponse:
         knowledge_base = await self.get_knowledge_base(user_id, knowledge_base_id)
-        rag = create_graph_rag(self._vector_store, knowledge_base.index_prefix)
 
         documents: list[KnowledgeBaseDocumentRecord] = []
         errors: list[KnowledgeBaseUploadError] = []
@@ -745,7 +757,6 @@ class KnowledgeBaseManager:
                 document_record = await self._ingest_file(
                     user_id=user_id,
                     knowledge_base=knowledge_base,
-                    rag=rag,
                     uploaded_file=uploaded_file,
                 )
                 documents.append(document_record)
@@ -770,7 +781,6 @@ class KnowledgeBaseManager:
         *,
         user_id: str,
         knowledge_base: KnowledgeBaseRecord,
-        rag: BaseGraphRAG,
         uploaded_file: UploadedKnowledgeFile,
     ) -> KnowledgeBaseDocumentRecord:
         """写入对象存储并完成解析、索引和元数据保存。
@@ -778,7 +788,6 @@ class KnowledgeBaseManager:
         Args:
             user_id: 用户 ID。
             knowledge_base: 知识库记录。
-            rag: 图谱检索实例。
             uploaded_file: 上传文件。
         """
         original_file_name = Path(uploaded_file.file_name or "unnamed").name
@@ -827,10 +836,9 @@ class KnowledgeBaseManager:
                 chunks=chunks,
             )
 
-            rag.upsert_documents_by_source(
-                prepared_documents,
-                source=document_id,
-                extract_triplets=True,
+            self._write_passages(
+                knowledge_base=knowledge_base,
+                documents=prepared_documents,
             )
 
             now = self._now()
@@ -855,9 +863,12 @@ class KnowledgeBaseManager:
         except Exception:
             self.object_storage.delete_object(bucket_name, file_path)
             try:
-                rag.delete_documents_by_source(document_id)
+                self._delete_passages_by_source(
+                    index_name=knowledge_base.passage_index,
+                    source=document_id,
+                )
             except Exception:
-                logger.exception("知识库上传回滚图谱失败: document_id={}", document_id)
+                logger.exception("知识库上传回滚索引失败: document_id={}", document_id)
             raise
 
     def _prepare_documents(
@@ -902,6 +913,72 @@ class KnowledgeBaseManager:
                 )
             )
         return prepared_documents
+
+    def _write_passages(
+        self, *, knowledge_base: KnowledgeBaseRecord, documents: list[Document]
+    ) -> int:
+        """按 document_id 整体替换写入篇章索引，返回写入的切片数。
+
+        Args:
+            knowledge_base: 知识库记录。
+            documents: 待写入的切片，metadata 中必须带 document_id。
+
+        Returns:
+            实际写入的切片数量。
+        """
+        if not documents:
+            return 0
+        document_id = str(documents[0].metadata.get("document_id") or "").strip()
+        if not document_id:
+            raise BusinessRuleError("切片缺少 document_id，无法写入索引。")
+        self._delete_passages_by_source(
+            index_name=knowledge_base.passage_index, source=document_id
+        )
+        payload = [
+            {
+                "id": str(document.id),
+                "content": document.page_content,
+                "metadata": dict(document.metadata or {}),
+            }
+            for document in documents
+        ]
+        self._vector_store.add_batch(
+            documents=payload, index_name=knowledge_base.passage_index
+        )
+        return len(payload)
+
+    def _delete_passages_by_source(self, *, index_name: str, source: str) -> int:
+        """按来源标识删除篇章索引中的切片，返回删除数量。
+
+        Args:
+            index_name: 篇章索引名。
+            source: 来源标识，对应切片 metadata 中的 document_id。
+
+        Returns:
+            已删除的切片数量。
+        """
+        normalized = source.strip()
+        if not normalized:
+            return 0
+        doc_ids = [
+            str(doc_id)
+            for doc_id in self._vector_store.list_ids_by_filter(
+                index_name, {"metadata.document_id": normalized}
+            )
+        ]
+        for offset in range(0, len(doc_ids), 500):
+            self._vector_store.delete_batch(
+                doc_ids=doc_ids[offset:offset + 500], index_name=index_name
+            )
+        return len(doc_ids)
+
+    def _clear_passage_index(self, index_name: str) -> None:
+        """清空篇章索引。
+
+        Args:
+            index_name: 篇章索引名。
+        """
+        self._vector_store.clear_index(index_name)
 
     async def _refresh_knowledge_base_stats(
         self, knowledge_base: KnowledgeBaseRecord

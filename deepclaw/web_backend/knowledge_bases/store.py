@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
 
+from loguru import logger
 from sqlalchemy import text, update
 from sqlmodel import SQLModel, or_, select
 
@@ -131,10 +132,7 @@ class ElasticsearchKnowledgeBaseMetadataStore:
                             "fields": {"keyword": {"type": "keyword"}},
                         },
                         "description": {"type": "text"},
-                        "index_prefix": {"type": "keyword"},
                         "passage_index": {"type": "keyword"},
-                        "entity_index": {"type": "keyword"},
-                        "relation_index": {"type": "keyword"},
                         "document_count": {"type": "integer"},
                         "chunk_count": {"type": "integer"},
                         "created_at": {"type": "date"},
@@ -470,8 +468,43 @@ class SQLModelKnowledgeBaseMetadataStore:
                 if self.db_url.startswith("postgresql"):
                     await conn.execute(text("SELECT pg_advisory_xact_lock(787017331)"))
                 await conn.run_sync(SQLModel.metadata.create_all)
+                await self._drop_legacy_graph_columns(conn)
             await self._import_home_sqlite_if_needed()
             self._init_done = True
+
+    async def _drop_legacy_graph_columns(self, conn) -> None:
+        """清理图 RAG 时期遗留的 index_prefix / entity_index / relation_index 列。
+
+        Args:
+            conn: 当前数据库连接。
+        """
+        statements = [
+            "DROP INDEX IF EXISTS ix_knowledge_bases_entity_index",
+            "DROP INDEX IF EXISTS ix_knowledge_bases_relation_index",
+            "DROP INDEX IF EXISTS ix_knowledge_bases_index_prefix",
+        ]
+        if self.db_url.startswith("postgresql"):
+            statements.extend(
+                [
+                    "ALTER TABLE knowledge_bases DROP COLUMN IF EXISTS index_prefix",
+                    "ALTER TABLE knowledge_bases DROP COLUMN IF EXISTS entity_index",
+                    "ALTER TABLE knowledge_bases DROP COLUMN IF EXISTS relation_index",
+                ]
+            )
+        else:
+            # SQLite 不支持 DROP COLUMN IF EXISTS，列不存在时语句会失败，按 best-effort 跳过。
+            statements.extend(
+                [
+                    "ALTER TABLE knowledge_bases DROP COLUMN index_prefix",
+                    "ALTER TABLE knowledge_bases DROP COLUMN entity_index",
+                    "ALTER TABLE knowledge_bases DROP COLUMN relation_index",
+                ]
+            )
+        for statement in statements:
+            try:
+                await conn.execute(text(statement))
+            except Exception:  # noqa: BLE001
+                logger.debug("跳过图 RAG 遗留列清理: {}", statement)
 
     async def _import_home_sqlite_if_needed(self) -> None:
         if self._sqlite_import_path is None or self._sqlite_import_marker.exists():
@@ -491,8 +524,13 @@ class SQLModelKnowledgeBaseMetadataStore:
                     if not _sqlite_table_exists(connection, table_name):
                         continue
                     rows = connection.execute(f"SELECT * FROM {table_name}").fetchall()
+                    allowed_fields = set(model_class.model_fields)
                     for row in rows:
-                        payload = dict(row)
+                        payload = {
+                            key: value
+                            for key, value in dict(row).items()
+                            if key in allowed_fields
+                        }
                         result = await session.exec(
                             select(model_class).where(
                                 getattr(model_class, identity_column)

@@ -124,7 +124,7 @@ immediately revokes every token of that user.
 | Web framework | FastAPI + Uvicorn |
 | Agents | LangGraph, LangChain, DeepAgents, ag-ui-langgraph |
 | Protocol | AG-UI (HTTP + SSE) |
-| RAG | PostgreSQL + pgvector + pg_search, or Elasticsearch (dense vector + BM25); Graph RAG supports Elasticsearch / PostgreSQL and graph DB supports Neo4j / NetworkX |
+| RAG | PostgreSQL + pgvector + pg_search, or Elasticsearch (dense vector + BM25), with all retrieval going through BM25 + vector + RRF hybrid search; graph DB supports Neo4j / NetworkX |
 | State | LangGraph checkpoints (PostgreSQL / in-memory), run & thread event tables (PostgreSQL / SQLite / in-memory), AsyncPostgresStore / InMemoryStore |
 | Frontend | Next.js 15, React 19, TypeScript, CSS Modules |
 | Execution backends | Local Shell, Store Backend, OpenSandbox (Docker sandbox) |
@@ -139,7 +139,7 @@ deepclaw/
 ├── deepclaw/
 │   ├── agent_registry.py    # Agent base class and auto-discovery registry
 │   ├── agents/              # Agent implementations: general/, rag/
-│   ├── common/              # Vector stores, Graph DB / Graph RAG, Docling parsing and text splitting
+│   ├── common/              # Vector stores, Graph DB, Docling parsing and text splitting
 │   ├── middleware/          # Business toggles, MCP, charts, NL2SQL, memory, Python execution, sandbox
 │   ├── patch/               # Third-party patches and adapters
 │   ├── sandbox/             # OpenSandbox execution backend
@@ -530,7 +530,7 @@ curl -X POST http://localhost:7869/api/agui/runs/run-demo-1/resume \
 
 ### Knowledge base Q&A
 
-`index_name` and `graph_name` come from the knowledge base detail fields `passage_index` and `index_prefix`:
+`index_name` comes from the knowledge base detail field `passage_index`:
 
 ```bash
 curl -X POST http://localhost:7869/api/agui/runs \
@@ -542,7 +542,6 @@ curl -X POST http://localhost:7869/api/agui/runs \
     "runId": "rag-run-demo-1",
     "state": {
       "index_name": "kb_xxx_passages",
-      "graph_name": "kb_xxx",
       "deep_thinking": false
     },
     "messages": [

@@ -157,10 +157,7 @@ export interface KnowledgeBase {
   user_id: string
   name: string
   description: string
-  index_prefix: string
   passage_index: string
-  entity_index: string
-  relation_index: string
   document_count: number
   chunk_count: number
   created_at: string

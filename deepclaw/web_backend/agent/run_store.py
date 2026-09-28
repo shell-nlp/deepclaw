@@ -1180,10 +1180,7 @@ class SqlRunStore(BaseRunStore):
                         "UPDATE agui_runs "
                         "SET agent_id = 'rag' "
                         "WHERE agent_id = 'agent' "
-                        "AND ("
-                        "CAST(input_json AS TEXT) LIKE '%\"index_name\"%' "
-                        "OR CAST(input_json AS TEXT) LIKE '%\"graph_name\"%'"
-                        ")"
+                        "AND CAST(input_json AS TEXT) LIKE '%\"index_name\"%'"
                     )
                 )
                 await connection.execute(
@@ -1473,11 +1470,7 @@ class SqlRunStore(BaseRunStore):
             values = checkpoint.get("channel_values", {})
             messages = values.get("messages") or []
             timestamp = checkpoint_timestamp(checkpoint.get("ts"))
-            agent_id = (
-                "rag"
-                if values.get("index_name") or values.get("graph_name")
-                else default_agent_id
-            )
+            agent_id = "rag" if values.get("index_name") else default_agent_id
             state = ThreadState(
                 thread_id=thread_id,
                 owner_user_id=str(values.get("user_id") or "guest"),

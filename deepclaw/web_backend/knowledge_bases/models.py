@@ -14,10 +14,7 @@ class KnowledgeBaseMetadata(SQLModel, table=True):
     user_id: str = Field(index=True)
     name: str = Field(index=True)
     description: str = ""
-    index_prefix: str = Field(index=True)
     passage_index: str = Field(index=True)
-    entity_index: str = Field(index=True)
-    relation_index: str = Field(index=True)
     document_count: int = 0
     chunk_count: int = 0
     created_at: str = Field(default_factory=now_iso)

@@ -120,7 +120,7 @@ checkpoint 统一持久化，前端构建产物由同一个进程静态托管。
 | Web 框架 | FastAPI + Uvicorn |
 | 智能体 | LangGraph, LangChain, DeepAgents, ag-ui-langgraph |
 | 协议 | AG-UI（HTTP + SSE） |
-| RAG | PostgreSQL + pgvector + pg_search，或 Elasticsearch（Dense Vector + BM25）；Graph RAG 支持 Elasticsearch / PostgreSQL，Graph DB 支持 Neo4j / NetworkX |
+| RAG | PostgreSQL + pgvector + pg_search，或 Elasticsearch（Dense Vector + BM25），检索统一走 BM25 + 向量 + RRF 混合检索；Graph DB 支持 Neo4j / NetworkX |
 | 状态存储 | LangGraph checkpoint（PostgreSQL / 内存）、Run/Thread 事件表（PostgreSQL / SQLite / 内存）、AsyncPostgresStore / InMemoryStore |
 | 前端 | Next.js 15, React 19, TypeScript, CSS Modules |
 | 执行后端 | Local Shell, Store Backend, OpenSandbox（Docker 容器沙箱） |
@@ -135,7 +135,7 @@ deepclaw/
 ├── deepclaw/
 │   ├── agent_registry.py    # Agent 基类与自动发现注册表
 │   ├── agents/              # 智能体实现：general/ 通用智能体、rag/ 知识库智能体
-│   ├── common/              # 向量库、Graph DB / Graph RAG、Docling 解析与文本切分
+│   ├── common/              # 向量库、Graph DB、Docling 解析与文本切分
 │   ├── middleware/          # 业务开关、MCP、图表、NL2SQL、记忆、Python 执行、沙箱等
 │   ├── patch/               # 第三方库补丁与适配
 │   ├── sandbox/             # OpenSandbox 执行后端
@@ -523,7 +523,7 @@ curl -X POST http://localhost:7869/api/agui/runs/run-demo-1/resume \
 
 ### 知识库问答
 
-`index_name` / `graph_name` 取自知识库详情的 `passage_index` 与 `index_prefix`：
+`index_name` 取自知识库详情的 `passage_index`：
 
 ```bash
 curl -X POST http://localhost:7869/api/agui/runs \
@@ -535,7 +535,6 @@ curl -X POST http://localhost:7869/api/agui/runs \
     "runId": "rag-run-demo-1",
     "state": {
       "index_name": "kb_xxx_passages",
-      "graph_name": "kb_xxx",
       "deep_thinking": false
     },
     "messages": [

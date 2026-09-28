@@ -10,8 +10,6 @@ class StateSchema(AgentState):
     user_id: NotRequired[str]
     # 知识库 passage 索引名称。
     index_name: NotRequired[str]
-    # 知识图谱索引前缀。
-    graph_name: NotRequired[str]
     # 是否启用联网搜索。
     internet_search: NotRequired[bool]
     # 是否启用深度思考。
