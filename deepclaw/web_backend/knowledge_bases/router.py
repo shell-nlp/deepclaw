@@ -9,6 +9,7 @@ from deepclaw.web_backend.knowledge_bases.schemas import (
     DocumentDetailRequest,
     DocumentListRequest,
     KnowledgeBaseIdentityRequest,
+    KnowledgeUploadTaskRequest,
     KnowledgeBaseListRequest,
     UpdateKnowledgeBaseDocumentRequest,
     UpdateKnowledgeBaseRequest,
@@ -20,6 +21,7 @@ from deepclaw.web_backend.knowledge_bases.service import (
     KnowledgeBaseDocumentDetailResponse,
     KnowledgeBaseDocumentRecord,
     KnowledgeBaseRecord,
+    KnowledgeUploadTaskDeleteResponse,
     KnowledgeUploadSubmissionResponse,
     KnowledgeUploadTaskResponse,
     PaginatedKnowledgeBaseDocumentResponse,
@@ -212,6 +214,46 @@ async def list_upload_tasks(
     """
     return await get_knowledge_base_manager().list_upload_tasks(
         _resolved_user_id(actor), request.knowledge_base_id
+    )
+
+@router.post(
+    "/knowledge-bases/documents/upload-tasks/retry",
+    response_model=KnowledgeUploadTaskResponse,
+    summary="重试失败的上传任务",
+    description="把失败的上传任务重新置为排队，由后台 worker 重新解析与入库。"
+)
+async def retry_upload_task(
+    request: KnowledgeUploadTaskRequest,
+    actor=Depends(get_current_actor),
+):
+    """重试失败的上传任务。
+
+    Args:
+        request: 目标知识库与上传任务 ID。
+        actor: 当前访问主体。
+    """
+    return await get_knowledge_base_manager().retry_upload_task(
+        _resolved_user_id(actor), request.knowledge_base_id, request.task_id
+    )
+
+@router.post(
+    "/knowledge-bases/documents/upload-tasks/delete",
+    response_model=KnowledgeUploadTaskDeleteResponse,
+    summary="删除失败的上传任务",
+    description="删除失败的上传任务记录，原始文件继续保留在对象存储中。"
+)
+async def delete_upload_task(
+    request: KnowledgeUploadTaskRequest,
+    actor=Depends(get_current_actor),
+):
+    """删除失败的上传任务记录。
+
+    Args:
+        request: 目标知识库与上传任务 ID。
+        actor: 当前访问主体。
+    """
+    return await get_knowledge_base_manager().delete_upload_task(
+        _resolved_user_id(actor), request.knowledge_base_id, request.task_id
     )
 
 @router.post(

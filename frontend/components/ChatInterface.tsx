@@ -67,6 +67,8 @@ import {
   KB_DOCUMENT_LIST_API_PATH,
   KB_DOCUMENT_UPDATE_API_PATH,
   KB_DOCUMENT_UPLOAD_API_PATH,
+  KB_DOCUMENT_UPLOAD_TASK_DELETE_API_PATH,
+  KB_DOCUMENT_UPLOAD_TASK_RETRY_API_PATH,
   KB_DOCUMENT_UPLOAD_TASKS_API_PATH,
   KB_LIST_API_PATH,
   KB_UPDATE_API_PATH,
@@ -2115,6 +2117,57 @@ export default function ChatInterface() {
     }
   }
 
+  const retryUploadTask = async (task: KnowledgeUploadTask) => {
+    if (!selectedKnowledgeBase) return
+    setManagementError('')
+    setManagementNotice('')
+    try {
+      const updated = await requestJson<KnowledgeUploadTask>(
+        KB_DOCUMENT_UPLOAD_TASK_RETRY_API_PATH,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: currentUserId,
+            knowledge_base_id: selectedKnowledgeBase.knowledge_base_id,
+            task_id: task.task_id,
+          }),
+        }
+      )
+      setUploadTasks((previous) =>
+        previous.map((item) => (item.task_id === updated.task_id ? updated : item))
+      )
+      setManagementNotice(`已重新提交 ${updated.file_name}，后台处理中。`)
+    } catch (error) {
+      setManagementError(error instanceof Error ? error.message : '重试上传任务失败。')
+    }
+  }
+
+  const deleteUploadTask = async (task: KnowledgeUploadTask) => {
+    if (!selectedKnowledgeBase) return
+    if (!window.confirm(`确认删除失败的上传记录 "${task.file_name}" 吗？`)) return
+    setManagementError('')
+    setManagementNotice('')
+    try {
+      await requestJson<{ task_id: string; deleted: boolean }>(
+        KB_DOCUMENT_UPLOAD_TASK_DELETE_API_PATH,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: currentUserId,
+            knowledge_base_id: selectedKnowledgeBase.knowledge_base_id,
+            task_id: task.task_id,
+          }),
+        }
+      )
+      setUploadTasks((previous) => previous.filter((item) => item.task_id !== task.task_id))
+      setManagementNotice(`已删除上传记录 ${task.file_name}。`)
+    } catch (error) {
+      setManagementError(error instanceof Error ? error.message : '删除上传记录失败。')
+    }
+  }
+
   const renameDocument = async (document: KnowledgeDocument) => {
     if (!selectedKnowledgeBase) return
     const nextName = window.prompt('请输入新的文档展示名称', document.display_name)
@@ -3688,6 +3741,8 @@ export default function ChatInterface() {
                 onDeleteKnowledgeBase={deleteKnowledgeBase}
                 onOpenUploadDialog={openUploadDialog}
                 onHandleUploadFiles={handleUploadFiles}
+                onRetryUploadTask={retryUploadTask}
+                onDeleteUploadTask={deleteUploadTask}
                 onDocumentSearchInputChange={setDocumentSearchInput}
                 onDocumentPageChange={setDocumentPage}
                 onDocumentSearchChange={setDocumentSearch}

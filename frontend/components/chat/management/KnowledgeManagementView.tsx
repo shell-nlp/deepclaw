@@ -15,6 +15,13 @@ import type {
 } from '../../chat-interface/types'
 import { formatDateTime } from '../../chat-interface/utils'
 
+const UPLOAD_TASK_STATUS_LABEL: Record<string, string> = {
+  queued: '排队中',
+  parsing: '解析中',
+  indexing: '索引中',
+  failed: '失败',
+}
+
 interface KnowledgeManagementViewProps {
   knowledgePage: Exclude<KnowledgePage, 'users'>
   managementNotice: string
@@ -62,6 +69,8 @@ interface KnowledgeManagementViewProps {
   onDeleteKnowledgeBase: (knowledgeBaseId?: string) => void | Promise<void>
   onOpenUploadDialog: () => void
   onHandleUploadFiles: (event: ChangeEvent<HTMLInputElement>) => void | Promise<void>
+  onRetryUploadTask: (task: KnowledgeUploadTask) => void | Promise<void>
+  onDeleteUploadTask: (task: KnowledgeUploadTask) => void | Promise<void>
   onDocumentSearchInputChange: (value: string) => void
   onDocumentPageChange: (page: number | ((prev: number) => number)) => void
   onDocumentSearchChange: (value: string) => void
@@ -126,6 +135,8 @@ export function KnowledgeManagementView({
   onDeleteKnowledgeBase,
   onOpenUploadDialog,
   onHandleUploadFiles,
+  onRetryUploadTask,
+  onDeleteUploadTask,
   onDocumentSearchInputChange,
   onDocumentPageChange,
   onDocumentSearchChange,
@@ -284,6 +295,8 @@ export function KnowledgeManagementView({
       </div>
     )
 
+  const activeUploadTasks = uploadTasks.filter((task) => task.status !== 'succeeded')
+
   const renderLibraryDetailPage = () =>
     selectedKnowledgeBase ? (
       <div className={`${styles.managementWorkspace} ${styles.extensionWorkspace} ${styles.knowledgeWorkspace}`}>
@@ -361,23 +374,19 @@ export function KnowledgeManagementView({
             </button>
           </div>
 
-          {uploadTasks.some((task) => task.status !== 'succeeded') ? (
-            <div className={styles.knowledgeUploadTasks} aria-live="polite">
-              {uploadTasks.filter((task) => task.status !== 'succeeded').map((task) => (
-                <div key={task.task_id} className={styles.knowledgeUploadTask}>
-                  <strong title={task.file_name}>{task.file_name}</strong>
-                  <span className={task.status === 'failed' ? styles.knowledgeUploadFailed : styles.knowledgeUploadActive}>
-                    {task.status === 'queued' ? '排队中' : task.status === 'parsing' ? '解析中' : task.status === 'indexing' ? '抽取与索引中' : '失败'}
-                  </span>
-                  {task.status === 'failed' ? <small title={task.error}>{task.error || '处理失败'}</small> : null}
-                </div>
-              ))}
-            </div>
-          ) : null}
           <div className={styles.knowledgeList}>
-            {documents.length === 0 ? (
-              <div className={styles.extensionEmpty}><strong>{uploadTasks.some((task) => ['queued', 'parsing', 'indexing'].includes(task.status)) ? '文件正在后台处理' : '还没有知识文件'}</strong><span>{uploadTasks.some((task) => ['queued', 'parsing', 'indexing'].includes(task.status)) ? '完成后会自动出现在列表中，可继续上传其他文件。' : '上传 PDF、DOCX 等文件后会自动完成切片和索引。'}</span><button className={styles.extensionTextButton} disabled={uploadingDocuments || writeDisabled} onClick={onOpenUploadDialog}>上传文件</button></div>
-            ) : documents.map((document) => (
+            {documents.length === 0 && activeUploadTasks.length === 0 ? (
+              <div className={styles.extensionEmpty}><strong>还没有知识文件</strong><span>上传 PDF、DOCX 等文件后会自动完成切片和索引。</span></div>
+            ) : null}
+            {activeUploadTasks.map((task) => (
+              <div key={task.task_id} className={styles.knowledgeUploadTask} aria-live="polite">
+                <strong title={task.file_name}>{task.file_name}</strong>
+                <span className={task.status === 'failed' ? styles.knowledgeUploadFailed : styles.knowledgeUploadActive}>{UPLOAD_TASK_STATUS_LABEL[task.status] || task.status}</span>
+                {task.status === 'failed' ? <small title={task.error}>{task.error || '处理失败'}</small> : null}
+                {task.status === 'failed' ? <div className={styles.knowledgeRowActions}><button type="button" className={styles.extensionTextButton} disabled={writeDisabled} onClick={() => void onRetryUploadTask(task)}>重试</button><button type="button" className={styles.extensionDeleteButton} disabled={writeDisabled} onClick={() => void onDeleteUploadTask(task)}>删除</button></div> : null}
+              </div>
+            ))}
+            {documents.map((document) => (
               <div className={styles.knowledgeRow} key={document.document_id}>
                 <label className={styles.knowledgeCheckbox} onClick={(event) => onToggleDocumentChecked(document.document_id, event as unknown as MouseEvent<HTMLButtonElement | HTMLInputElement>)}><input type="checkbox" aria-label={`选择文件 ${document.display_name}`} checked={checkedDocumentIds.includes(document.document_id)} onChange={() => undefined} /></label>
                 <button type="button" className={styles.knowledgeRowPrimary} onClick={() => onOpenDocumentDetail(document)}><span className={styles.knowledgeDocumentMark} aria-hidden="true">{document.file_name.split('.').pop()?.slice(0, 3).toUpperCase() || 'DOC'}</span><span className={styles.knowledgeRowText}><strong>{document.display_name}</strong><small>{document.file_name}</small></span></button>
