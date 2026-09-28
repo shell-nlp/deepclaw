@@ -3,6 +3,46 @@ import asyncio
 from deepclaw.web_backend.knowledge_bases.service import KnowledgeBaseManager
 
 
+class FakePassageStore:
+    """模拟 PgVectorStore.search 的替身：按更新时间倒序返回前 k 条。"""
+
+    def __init__(self, segments):
+        """按给定 segment_id 顺序构造切片。
+
+        Args:
+            segments: segment_id 序列，越靠后表示写入越晚。
+        """
+        self.rows = [
+            {
+                "id": f"doc001_{segment}",
+                "content": f"内容{segment}",
+                "metadata": {"document_id": "doc001", "segment_id": segment},
+            }
+            for segment in segments
+        ]
+
+    def count(self, *, index_name=None, index_names=None, filter_conditions=None):
+        """返回命中总数。
+
+        Args:
+            index_name: 单个索引名。
+            index_names: 索引名列表。
+            filter_conditions: 过滤条件。
+        """
+        return len(self.rows)
+
+    def search(self, *, index_name=None, index_names=None, filter_conditions=None, k=3):
+        """模拟 PG 的 ORDER BY updated_at DESC + LIMIT。
+
+        Args:
+            index_name: 单个索引名。
+            index_names: 索引名列表。
+            filter_conditions: 过滤条件。
+            k: 返回数量上限。
+        """
+        return list(reversed(self.rows))[:k]
+
+
 class FakeMetadataStore:
     def __init__(self):
         self.created_knowledge_base = None
@@ -91,5 +131,38 @@ def test_update_document_delegates_document_metadata_save():
         assert metadata_store.saved_document["document_id"] == "doc001"
         assert metadata_store.saved_document["source"]["display_name"] == "新名称"
         assert record.display_name == "新名称"
+
+    asyncio.run(_run())
+
+
+def test_document_chunk_pagination_sorts_full_result_before_slicing():
+    """PG 分页必须先取回命中全集再排序，保证第一页从 segment_id = 1 开始。"""
+    async def _run():
+        """在假 PG 向量库上校验切片排序与分页。
+
+        Args:
+            无。
+        """
+        manager = KnowledgeBaseManager(
+            vector_store=FakePassageStore(range(1, 21)),
+            metadata_store=FakeMetadataStore(),
+        )
+        query = {"bool": {"filter": [{"term": {"metadata.document_id": "doc001"}}]}}
+        sort = [{"metadata.segment_id": {"order": "asc"}}]
+
+        first_page, total = manager._search_with_total(
+            index_name="kb_kb001_passages", query=query, size=8, from_=0, sort=sort
+        )
+        second_page, _ = manager._search_with_total(
+            index_name="kb_kb001_passages", query=query, size=8, from_=8, sort=sort
+        )
+
+        assert total == 20
+        assert [
+            hit["_source"]["metadata"]["segment_id"] for hit in first_page
+        ] == list(range(1, 9))
+        assert [
+            hit["_source"]["metadata"]["segment_id"] for hit in second_page
+        ] == list(range(9, 17))
 
     asyncio.run(_run())

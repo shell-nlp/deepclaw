@@ -1114,10 +1114,14 @@ class KnowledgeBaseManager:
         filter_conditions = self._es_term_query_to_filter(query)
         pg = self._vector_store
         total = pg.count(index_names=[index_name], filter_conditions=filter_conditions)
+        if total == 0:
+            return [], 0
+        # search() 只按 updated_at 倒序返回前 k 条，必须先取回全部命中再排序，
+        # 否则排序只作用在被 LIMIT 截断的子集上，页码与顺序都会错乱。
         results = pg.search(
             index_names=[index_name],
             filter_conditions=filter_conditions,
-            k=from_ + size,
+            k=total,
         )
         if sort:
             sort_field = list(sort[0].keys())[0] if sort else ""
