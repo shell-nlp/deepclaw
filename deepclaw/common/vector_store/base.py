@@ -90,7 +90,32 @@ class AbstractVectorStore(ABC):
             scores,
             key=lambda key: (-scores[key], best_rank[key], first_list[key]),
         )
-        return [items[key] for key in ordered[:k]]
+        # 再给每个通道保底名额：单路独有的高分命中不应被另一路的“共识噪声”整体挤出。
+        quota = max(1, k // 3)
+        head = ordered[: max(0, k - 2 * quota)]
+        selected = list(head)
+        selected_keys = set(head)
+        for rank_list in (vector_results, keyword_results):
+            kept = 0
+            for item in rank_list[:quota]:
+                key = str(item.get("id") or item.get("content", ""))
+                if key not in scores or key in selected_keys:
+                    continue
+                selected.append(key)
+                selected_keys.add(key)
+                kept += 1
+                if kept >= quota:
+                    break
+        for key in ordered:
+            if len(selected) >= k:
+                break
+            if key not in selected_keys:
+                selected.append(key)
+                selected_keys.add(key)
+        return [
+            {**items[key], "score": scores[key], "raw_score": items[key].get("score")}
+            for key in selected
+        ]
 
     @abstractmethod
     def add(

@@ -118,6 +118,20 @@ def test_merge_results_rrf_interleaves_disjoint_lists():
     assert [item["id"] for item in merged] == ["v1", "k1", "v2", "k2", "v3", "k3"]
 
 
+def test_merge_results_rrf_writes_fused_score():
+    """返回项的 score 必须是融合分，原始单路分数挪到 raw_score，避免日志误读。"""
+    merged = AbstractVectorStore.merge_results_rrf(
+        vector_results=[{"id": "a", "content": "A", "score": 0.72}],
+        keyword_results=[{"id": "b", "content": "B", "score": 18.2}],
+        k=2,
+    )
+
+    by_id = {item["id"]: item for item in merged}
+    assert by_id["a"]["score"] == 1.0 / 61
+    assert by_id["a"]["raw_score"] == 0.72
+    assert by_id["b"]["raw_score"] == 18.2
+
+
 class RecordingRewriteModel:
     """记录 config 的问题改写模型替身。"""
 

@@ -410,6 +410,7 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         if not index_name:
             raise ValueError("index_name is required for add operations")
         embedding = self.embedding_model.embed_query(content)
+        self._ensure_index(index_name, len(embedding))
         doc_body = {
             "content": content,
             "embedding": embedding,
@@ -448,9 +449,11 @@ class ElasticsearchVectorStore(AbstractVectorStore):
         if not documents:
             return []
         operations = []
+        vector_dim: int | None = None
         for doc in documents:
             content = doc.get("content", "")
             embedding = self.embedding_model.embed_query(content)
+            vector_dim = vector_dim or len(embedding)
             document_id = doc.get("id") or (doc.get("metadata") or {}).get("id")
             action = {"_index": index_name}
             if document_id:
@@ -464,6 +467,7 @@ class ElasticsearchVectorStore(AbstractVectorStore):
                 }
             )
 
+        self._ensure_index(index_name, vector_dim)
         result = self.es_client.bulk(operations=operations, refresh=True)
         ids = []
         for item in result["items"]:
@@ -837,10 +841,36 @@ class ElasticsearchVectorStore(AbstractVectorStore):
             logger.info(f"已删除旧索引: {index_name}")
 
         dim = vector_dim or self.embedding_dimensions or 1536
-        mapping = {
+        dim = vector_dim or getattr(self, "embedding_dimensions", None) or 1536
+        body = {
+            "settings": {
+                "analysis": {
+                    "analyzer": {
+                        # 中文用 ik_smart 细分，避免长句被当成单 token 影响 BM25 命中。
+                        "kb_text_analyzer": {
+                            "type": "custom",
+                            "tokenizer": "ik_smart",
+                        }
+                    }
+                }
+            },
             "mappings": {
                 "properties": {
-                    "content": {"type": "text"},
+                    "content": {
+                        "type": "text",
+                        "analyzer": "kb_text_analyzer",
+                        "search_analyzer": "kb_text_analyzer",
+                    },
+                    "title": {
+                        "type": "text",
+                        "analyzer": "kb_text_analyzer",
+                        "search_analyzer": "kb_text_analyzer",
+                    },
+                    "summary": {
+                        "type": "text",
+                        "analyzer": "kb_text_analyzer",
+                        "search_analyzer": "kb_text_analyzer",
+                    },
                     "embedding": {
                         "type": "dense_vector",
                         "dims": dim,
@@ -849,11 +879,32 @@ class ElasticsearchVectorStore(AbstractVectorStore):
                     },
                     "metadata": {"type": "object", "dynamic": True},
                 }
-            }
+            },
         }
-        self.es_client.indices.create(index=index_name, body=mapping)
-        logger.info(f"索引创建成功: {index_name}, 向量维度={dim}")
+        try:
+            self.es_client.indices.create(index=index_name, body=body)
+        except Exception as exc:  # noqa: BLE001 - ik 插件缺失时回退默认分词
+            logger.warning(f"索引 {index_name} 使用 ik_smart 失败，回退默认分词: {exc}")
+            body["settings"] = {}
+            for field in ("content", "title", "summary"):
+                body["mappings"]["properties"].pop(field, None)
+            body["mappings"]["properties"]["content"] = {"type": "text"}
+            self.es_client.indices.create(index=index_name, body=body)
+        logger.info(f"索引创建成功: {index_name}, 向量维度={dim}, 分词=ik_smart")
         return True
+
+    def _ensure_index(self, index_name: str, vector_dim: int | None = None) -> None:
+        """确保 ES 索引存在，并按向量维度创建 dense_vector 映射。
+
+        动态映射无法推断 dense_vector 维度，所以写入前必须显式建索引。
+
+        Args:
+            index_name: 目标索引名称。
+            vector_dim: 向量维度。
+        """
+        if self.es_client.indices.exists(index=index_name):
+            return
+        self.create_index(index_name, vector_dim=vector_dim)
 
     def delete_index(self, index_name: str) -> bool:
         """删除 ES 索引。

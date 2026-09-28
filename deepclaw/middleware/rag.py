@@ -38,6 +38,32 @@ def invoke_internal_model(runnable, payload):
         return context.run(runnable.invoke, payload, INTERNAL_MODEL_CONFIG)
 
 
+def format_retrieved_docs(results: List[tuple[Document, float | None]]) -> str:
+    """把检索结果格式化成人可读的多行文本，便于排查召回质量。
+
+    Args:
+        results: (Document, score) 列表，按融合分数从高到低排列。
+
+    Returns:
+        每条包含排名、分数、元数据与完整正文的文本；无命中时返回提示语。
+    """
+    if not results:
+        return "（无命中）"
+    blocks: list[str] = []
+    for index, (doc, score) in enumerate(results, start=1):
+        metadata = doc.metadata or {}
+        score_text = "None" if score is None else f"{score:.4f}"
+        blocks.append(
+            f"[{index}] score={score_text}"
+            f" segment={metadata.get('segment_id', '-')}"
+            f" page={metadata.get('pages_number', '-')}"
+            f" document={metadata.get('document_id', '-')}"
+            f" title={metadata.get('title') or '-'}\n"
+            f"{doc.page_content}"
+        )
+    return "\n\n".join(blocks)
+
+
 RAG_SYSTEM_PROMPT = """<角色>您是一个精通文档引用的问答专家，能够精准依据来源内容构建回答。</角色>
 <任务>基于提供的内容和用户的问题,撰写一篇详细完备的最终回答.</任务>
 
@@ -412,6 +438,12 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
             retrieved_docs = self._get_retrieve_result(
                 query=query, index_names=index_names, k=settings.RAG_TOP_K
             )
+            logger.info(
+                "检索命中 {} 条（index_names={}）：\n{}",
+                len(retrieved_docs),
+                index_names,
+                format_retrieved_docs(retrieved_docs),
+            )
             context = ""
             docs = []
             for idx, (doc, socre) in enumerate(retrieved_docs, start=1):
@@ -427,6 +459,7 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
                 "system_msg": sys_msg,
             }
         else:
+            logger.info("路由结果=LLM，跳过知识库检索")
             sys_msg = SystemMessage(content=cur_time)
             return {
                 "system_msg": sys_msg,
