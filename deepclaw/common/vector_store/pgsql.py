@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime
 from pathlib import Path
@@ -84,13 +85,26 @@ class PgVectorStore(AbstractVectorStore):
         """
         return f"{self.schema_name}.{self._partition_table_name(index_name)}"
 
+    def _index_object_name(self, index_name: str, suffix: str) -> str:
+        """生成稳定的短索引对象名，避免超过 PostgreSQL 的 63 字符标识符上限。
+
+        分区表名本身就可能接近或被截断到 63 字符，若继续拼接后缀，
+        索引名会被截断成与表名相同的前缀，``IF NOT EXISTS`` 会直接跳过创建。
+
+        Args:
+            index_name: 分区索引名称。
+            suffix: 索引用途后缀。
+        """
+        digest = hashlib.sha1(index_name.encode("utf-8")).hexdigest()[:10]
+        return f"{self.table_name}_{digest}_{suffix}"
+
     def _bm25_index_name(self, index_name: str) -> str:
         """返回全文检索 BM25 索引的名称。
 
         Args:
             index_name: 索引名称。
         """
-        return f"{self._partition_table_name(index_name)}_bm25_idx"
+        return self._index_object_name(index_name, "bm25_idx")
 
     def _vector_index_name(self, index_name: str) -> str:
         """返回 HNSW 向量索引的名称。
@@ -98,7 +112,7 @@ class PgVectorStore(AbstractVectorStore):
         Args:
             index_name: 索引名称。
         """
-        return f"{self._partition_table_name(index_name)}_embedding_idx"
+        return self._index_object_name(index_name, "embedding_idx")
 
     def _search_vector_index_name(self, index_name: str) -> str:
         """返回 tsvector GIN 索引的名称。
@@ -106,7 +120,7 @@ class PgVectorStore(AbstractVectorStore):
         Args:
             index_name: 索引名称。
         """
-        return f"{self._partition_table_name(index_name)}_search_vector_idx"
+        return self._index_object_name(index_name, "search_vector_idx")
 
     def _ensure_embedding_dimensions(self, embedding: list[float]) -> int:
         """确保 embedding_dimensions 已设置，未设置时从传入向量推断。
@@ -202,7 +216,7 @@ class PgVectorStore(AbstractVectorStore):
             index_name: 索引名称。
         """
         partition_table = self._qualified_partition_name(index_name)
-        partition_name = self._partition_table_name(index_name)
+        id_index_name = self._index_object_name(index_name, "id_uidx")
         bm25_index_name = self._bm25_index_name(index_name)
         vector_index_name = self._vector_index_name(index_name)
         search_vector_index_name = self._search_vector_index_name(index_name)
@@ -215,7 +229,7 @@ class PgVectorStore(AbstractVectorStore):
             FOR VALUES IN ('{escaped}')
             """,
             f"""
-            CREATE UNIQUE INDEX IF NOT EXISTS {partition_name}_id_uidx
+            CREATE UNIQUE INDEX IF NOT EXISTS {id_index_name}
             ON {partition_table} (id)
             """,
             f"""
@@ -270,7 +284,7 @@ class PgVectorStore(AbstractVectorStore):
         for index_name in index_names:
             partition_table = self._qualified_partition_name(index_name)
             vector_idx = self._vector_index_name(index_name)
-            uid_idx = f"{self._partition_table_name(index_name)}_id_uidx"
+            uid_idx = self._index_object_name(index_name, "id_uidx")
             with self._connect() as conn, conn.cursor() as cur:
                 cur.execute(f"DROP INDEX IF EXISTS {vector_idx}")
                 cur.execute(f"DROP INDEX IF EXISTS {uid_idx}")
@@ -529,30 +543,76 @@ class PgVectorStore(AbstractVectorStore):
             查询结果行列表。
         """
         self._ensure_base_schema()
+        # ParadeDB 的 bm25 查询无法下推 IS DISTINCT FROM，这类条件改到 Python 侧过滤。
+        ne_filters = {
+            field: value
+            for field, value in (filter_conditions or {}).items()
+            if isinstance(value, dict) and "$ne" in value
+        }
+        sql_filters = {
+            field: value
+            for field, value in (filter_conditions or {}).items()
+            if field not in ne_filters
+        }
+        fetch_limit = limit * 4 if ne_filters else limit
+        # bm25 索引建在分区表上，基表没有 bm25 索引，必须逐分区检索再合并。
+        rows: list[dict[str, Any]] = []
         for index_name in index_names:
             self._ensure_partition(index_name)
-        params: dict[str, Any] = {
-            "index_names": index_names,
-            "query": query,
-            "limit": limit,
-        }
-        extra_sql = "".join(
-            f" AND {clause}"
-            for clause in self._build_filter_clauses(
-                filter_conditions, params, prefix="filter"
+            params: dict[str, Any] = {
+                "index_name": index_name,
+                "query": query,
+                "limit": fetch_limit,
+            }
+            extra_sql = "".join(
+                f" AND {clause}"
+                for clause in self._build_filter_clauses(
+                    sql_filters, params, prefix="filter"
+                )
             )
-        )
-        sql = f"""
-        SELECT id, index_name, content, metadata, pdb.score(id) AS score
-        FROM {self._qualified_table_name()}
-        WHERE index_name = ANY(%(index_names)s)
-          AND content ||| %(query)s{extra_sql}
-        ORDER BY score DESC
-        LIMIT %(limit)s
+            sql = f"""
+            SELECT id, index_name, content, metadata, pdb.score(id) AS score
+            FROM {self._qualified_partition_name(index_name)}
+            WHERE index_name = %(index_name)s
+              AND content ||| %(query)s{extra_sql}
+            ORDER BY score DESC
+            LIMIT %(limit)s
+            """
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(sql, params)
+                partition_rows = cur.fetchall()
+            rows.extend(
+                row
+                for row in partition_rows
+                if self._matches_ne_filters(row.get("metadata"), ne_filters)
+            )
+        rows.sort(key=lambda row: row.get("score") or 0.0, reverse=True)
+        return rows[:limit]
+
+    @staticmethod
+    def _matches_ne_filters(
+        metadata: dict[str, Any] | None,
+        ne_filters: dict[str, Any],
+    ) -> bool:
+        """判断元数据是否满足不等值过滤条件。
+
+        缺失字段视为满足，与 SQL 侧 ``IS DISTINCT FROM`` 的语义保持一致。
+
+        Args:
+            metadata: 文档元数据。
+            ne_filters: 形如 ``{"metadata.<key>": {"$ne": value}}`` 的条件。
+
+        Returns:
+            是否满足全部不等值条件。
         """
-        with self._connect() as conn, conn.cursor() as cur:
-            cur.execute(sql, params)
-            return cur.fetchall()
+        for field, condition in ne_filters.items():
+            key = field.split(".", 1)[1] if field.startswith("metadata.") else field
+            actual = (metadata or {}).get(key)
+            if actual is None:
+                continue
+            if str(actual).lower() == str(condition["$ne"]).lower():
+                return False
+        return True
 
     def _fetch_vector_candidates(
         self,

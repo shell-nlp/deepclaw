@@ -1,8 +1,8 @@
 import asyncio
 from collections import defaultdict
 from datetime import datetime
-from collections.abc import Callable
-from typing import Dict, List, Literal, NotRequired, TypedDict
+from collections.abc import Callable, Mapping
+from typing import Any, Dict, List, Literal, NotRequired, TypedDict
 from zoneinfo import ZoneInfo
 
 from langchain.agents.middleware import AgentMiddleware
@@ -15,6 +15,7 @@ from loguru import logger
 
 from deepclaw.agents.rag.state import StateSchema
 from deepclaw.common.vector_store import AbstractVectorStore
+from deepclaw.settings import settings
 
 # 中间件内部的辅助模型调用（问题改写、检索路由）不应进入 AG-UI 事件流，
 # 否则它们的原始输出会被当成助手正文流式返回。
@@ -267,16 +268,15 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
             return self.vector_store()
         return self.vector_store
 
-    def _get_index_names(self, runtime: Runtime) -> list[str]:
+    def _get_index_names(self, state: Mapping[str, Any]) -> list[str]:
         """解析本次检索使用的知识库索引列表。
 
         Args:
-            runtime: LangGraph 运行时。
+            state: 当前图状态，客户端传入的 index_names 存放在这里。
 
         Returns:
             去重后的索引名称列表。
         """
-        state = runtime.state or {}
         raw_names = state.get("index_names")
         candidates = (
             [str(item) for item in raw_names if str(item).strip()]
@@ -404,13 +404,13 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
 如果问题中提供的时间超过当前的时间，必须指出问题中的时间尚未到来。
 </当前的时间>"""
         if router == "RAG":
-            index_names = self._get_index_names(runtime)
+            index_names = self._get_index_names(state)
             # 改写问题
             query = self._get_rewrite_query(messages)
             logger.info(f"用于检索的问题：{query}")
             # 检索结果
             retrieved_docs = self._get_retrieve_result(
-                query=query, index_names=index_names, k=3
+                query=query, index_names=index_names, k=settings.RAG_TOP_K
             )
             context = ""
             docs = []

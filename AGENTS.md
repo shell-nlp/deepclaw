@@ -108,7 +108,7 @@
 图 RAG（`deepclaw/common/graph_rag/`、`BaseGraphRAG`/`ElasticGraphRAG`/`PgGraphRAG`、`create_graph_rag()`）已整体移除，原因是查询时的实体抽取与图谱扩展太慢、检索收益一般。当前形态：
 
 - 知识库只维护 passage 索引（`kb_<knowledge_base_id>_passages`），上传只写切片、不再做三元组抽取，删除按 `document_id` 清理来源
-- 检索统一走 `AbstractVectorStore.retrieve_with_rrf()`（BM25 + 向量 + RRF），检索入参是 state 里的 `index_names`（知识库 `passage_index` 列表，支持一次检索多个知识库），`graph_name` 已从 state、agent 白名单和前端请求中移除
+- 检索统一走 `AbstractVectorStore.retrieve_with_rrf()`（BM25 + 向量 + RRF），检索入参是 state 里的 `index_names`（知识库 `passage_index` 列表，支持一次检索多个知识库），召回条数由 `RAG_TOP_K`（默认 15）控制、单路候选量为 `max(RAG_TOP_K * 4, 20)`；`graph_name` 已从 state、agent 白名单和前端请求中移除
 - `knowledge_bases.index_prefix` / `entity_index` / `relation_index` 三个字段已从模型、API 与前端类型中删除；`SQLModelKnowledgeBaseMetadataStore._ensure_init()` 会在启动时 best-effort 清理存量库中的这三列（PostgreSQL 走 `DROP COLUMN IF EXISTS`，SQLite 按语句失败跳过），旧数据行仍可正常读取
 - `deepclaw/web_backend/agent/run_store.py` 的旧数据归类依据 `index_names`（兼容历史数据的 `index_name`）：把早期被错存为通用 agent 的 RAG run 修正为 `rag`，以及从 checkpoint 回填 Thread 索引时判断 agent
 
@@ -202,6 +202,7 @@ pnpm build
 - `MINIO_SECRET_KEY`
 - `MINIO_SERVICE_ADDRESSES`
 - `KNOWLEDGE_UPLOAD_WORKERS`
+- `RAG_TOP_K`
 - `TAVILY_API_KEY`
 - `BACKEND_TYPE`
 - `PG_DATABASE_URL`

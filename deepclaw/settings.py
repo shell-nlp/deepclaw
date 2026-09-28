@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     # 单个服务实例同时处理的知识文件数；PDF 解析和索引会占用 CPU 与模型服务。
     KNOWLEDGE_UPLOAD_WORKERS: int = Field(default=2, ge=1, le=8)
 
+    # RAG 检索最终交给模型的切片数量；单路候选量为 max(RAG_TOP_K * 4, 20)。
+    RAG_TOP_K: int = Field(default=15, ge=1, le=100)
+
     # 是否使用copilotkit 的ag-ui 组件供前端使用
     USE_COPILOTKIT: bool = False
 
