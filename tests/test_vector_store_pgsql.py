@@ -206,6 +206,38 @@ def test_ensure_base_schema_creates_table_when_not_exists():
     assert create_sent, "表不存在时应发送 CREATE TABLE"
 
 
+def test_ensure_base_schema_uses_model_dimension_when_unknown():
+    """未显式指定维度时，建表应使用模型实际输出维度而非固定默认值。"""
+    executed, mock_conn = _make_mock_connect(table_exists=False)
+    store = PgVectorStore(
+        database_url="postgresql://demo",
+        embedding_model=FakeEmbeddingModel(),
+    )
+    store._connect = lambda: mock_conn()
+    store._ensure_base_schema()
+
+    create_sql = next(sql for sql in executed if "CREATE TABLE" in sql)
+    assert "vector(3)" in create_sql
+    assert "vector(1536)" not in create_sql
+    assert not any("ALTER" in sql and "embedding" in sql for sql in executed)
+
+
+def test_ensure_base_schema_adopts_existing_column_dimension():
+    """未显式指定维度时，应沿用已有列维度，不探测模型也不触发 ALTER。"""
+    executed, mock_conn = _make_mock_connect(table_exists=True, existing_dim=1024)
+    store = PgVectorStore(
+        database_url="postgresql://demo",
+        embedding_model=FakeEmbeddingModel(),
+    )
+    store._connect = lambda: mock_conn()
+    store._ensure_base_schema()
+
+    assert store.embedding_dimensions == 1024
+    create_sql = next(sql for sql in executed if "CREATE TABLE" in sql)
+    assert "vector(1024)" in create_sql
+    assert not any("ALTER" in sql and "embedding" in sql for sql in executed)
+
+
 def test_vector_search_merges_partition_candidates(monkeypatch):
     store = PgVectorStore(
         database_url="postgresql://demo",

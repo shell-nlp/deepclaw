@@ -1,4 +1,5 @@
 import os
+import socket
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -49,6 +50,61 @@ def setup_observability() -> None:
     except ImportError:
         logger.warning("Phoenix 未安装，跳过可观测性初始化。")
 
+
+def get_local_ip_addresses() -> list[str]:
+    """获取本机可用于访问服务的 IPv4 地址。
+
+    Args:
+        无。
+
+    Returns:
+        去重后的本机 IPv4 地址列表，默认出口地址排在前面。
+    """
+    candidates: list[str] = []
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.connect(("8.8.8.8", 80))
+            candidates.append(probe.getsockname()[0])
+    except OSError:
+        pass
+
+    try:
+        _, _, host_ips = socket.gethostbyname_ex(socket.gethostname())
+    except OSError:
+        host_ips = []
+    candidates.extend(host_ips)
+
+    addresses: list[str] = []
+    for ip in candidates:
+        if ip.startswith("127.") or ip in addresses:
+            continue
+        addresses.append(ip)
+    return addresses
+
+
+def log_startup_urls() -> None:
+    """记录服务启动后可访问的地址。
+
+    Args:
+        无。
+    """
+    port = settings.PORT
+    port_suffix = "" if port == 80 else f":{port}"
+    host = settings.HOST
+
+    urls = [f"http://localhost{port_suffix}"]
+    if host in {"0.0.0.0", "::", ""}:
+        urls.extend(f"http://{ip}{port_suffix}" for ip in get_local_ip_addresses())
+    elif host not in {"127.0.0.1", "localhost", "::1"}:
+        urls.append(f"http://{host}{port_suffix}")
+
+    logger.info(
+        "服务已启动，监听 {}:{}，可访问地址：\n{}",
+        host,
+        port,
+        "\n".join(f"    {url}" for url in urls),
+    )
 
 
 async def handle_business_rule_error(
@@ -181,6 +237,7 @@ async def app_lifespan(app: FastAPI):
     await upload_manager.start_upload_workers()
     try:
         async with channel_lifespan():
+            log_startup_urls()
             yield
     finally:
         await upload_manager.stop_upload_workers()
