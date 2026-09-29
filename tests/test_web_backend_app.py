@@ -89,7 +89,7 @@ def test_create_app_defers_agent_env_init_to_lifespan(monkeypatch):
         init_calls += 1
         app.state.checkpointer = checkpointer
         app.state.store = store
-        app.state.agent_store_ctx = None
+        app.state.langgraph_store_ctx = None
 
     class ServiceSpy:
         async def bootstrap_admin_if_needed(self):
@@ -205,7 +205,7 @@ def test_init_agent_env_uses_checked_postgres_connection_pools(monkeypatch):
     assert checkpointer_pool.open_calls == [True]
     assert app.state.checkpointer.pool is checkpointer_pool
     assert app.state.store is store
-    assert app.state.agent_store_ctx is store_ctx
+    assert app.state.langgraph_store_ctx is store_ctx
     assert app.state.checkpointer.setup_calls == 1
     assert store.setup_calls == 1
 
@@ -221,7 +221,7 @@ def test_create_app_agent_route_remains_postable_with_frontend_mount(monkeypatch
     async def fake_init_agent_env(app):
         app.state.checkpointer = object()
         app.state.store = object()
-        app.state.agent_store_ctx = None
+        app.state.langgraph_store_ctx = None
 
     fake_agui_router = APIRouter()
 
@@ -265,7 +265,7 @@ def test_create_app_serves_exported_login_html_route(monkeypatch, tmp_path: Path
     async def fake_init_agent_env(app):
         app.state.checkpointer = object()
         app.state.store = object()
-        app.state.agent_store_ctx = None
+        app.state.langgraph_store_ctx = None
 
     class ServiceSpy:
         async def bootstrap_admin_if_needed(self):

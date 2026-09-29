@@ -308,18 +308,18 @@ def test_run_manager_injects_auth_user_and_syncs_skills(monkeypatch, tmp_path):
     monkeypatch.setattr(general_utils, "SKILLS_DIR", skills_dir)
     monkeypatch.setattr(settings, "BACKEND_TYPE", "store")
 
-    agent_store = InMemoryStore()
+    langgraph_store = InMemoryStore()
 
     async def scenario():
         manager = AgentRunManager(
             graph=None,
             store=InMemoryRunStore(),
             agent_id="agent",
-            agent_store=agent_store,
+            langgraph_store=langgraph_store,
         )
         try:
             config = manager._run_config("alice")
-            await manager._prepare_agent_store("alice")
+            await manager._prepare_langgraph_store("alice")
             return config
         finally:
             await manager.close()
@@ -328,6 +328,7 @@ def test_run_manager_injects_auth_user_and_syncs_skills(monkeypatch, tmp_path):
 
     assert config["configurable"][LANGGRAPH_AUTH_USER_KEY].identity == "alice"
     keys = sorted(
-        item.key for item in agent_store.search(general_utils.user_namespace("alice"))
+        item.key
+        for item in langgraph_store.search(general_utils.user_namespace("alice"))
     )
     assert keys == [f"{general_utils.SKILLS_VIRTUAL_ROOT}/demo/SKILL.md"]

@@ -73,7 +73,7 @@ class AgentRunManager:
         graph: 已装配完成的 LangGraph Agent 图。
         config: 每次 AG-UI 运行共享的 LangGraph 配置。
         store: 可选 Run 存储；为空时使用进程级默认存储。
-        agent_store: 可选 LangGraph 长期存储，用于运行前同步技能等准备工作。
+        langgraph_store: 可选 LangGraph 长期存储，用于运行前同步技能等准备工作。
     """
 
     def __init__(
@@ -82,7 +82,7 @@ class AgentRunManager:
         config: dict[str, Any] | None = None,
         store: RunStore | None = None,
         agent_id: str = "agent",
-        agent_store: Any | None = None,
+        langgraph_store: Any | None = None,
     ) -> None:
         """初始化 Run 管理器。
 
@@ -91,13 +91,13 @@ class AgentRunManager:
             config: 每次 AG-UI 运行共享的 LangGraph 配置。
             store: 可选 Run 存储。
             agent_id: 当前 Run 管理器绑定的智能体 ID。
-            agent_store: 可选 LangGraph 长期存储。
+            langgraph_store: 可选 LangGraph 长期存储，区别于 Run 存储。
         """
         self.graph = install_reasoning_text_split(graph)
         self.config = config or {}
         self.store = store or get_run_store()
         self.agent_id = agent_id
-        self.agent_store = agent_store
+        self.langgraph_store = langgraph_store
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._watchers: dict[str, asyncio.Task[None]] = {}
         self._cleanup_task: asyncio.Task[None] | None = None
@@ -260,8 +260,8 @@ class AgentRunManager:
         config["configurable"] = configurable
         return config
 
-    async def _prepare_agent_store(self, user_id: str) -> None:
-        """运行前准备当前用户的长期存储。
+    async def _prepare_langgraph_store(self, user_id: str) -> None:
+        """运行前准备当前用户的 LangGraph 长期存储。
 
         store 后端下 deep agent 从 Store 读取技能，而 Store 命名空间按用户隔离，
         因此必须在图启动前把最新技能写进该用户的命名空间。
@@ -269,12 +269,12 @@ class AgentRunManager:
         Args:
             user_id: 当前用户 ID。
         """
-        if settings.BACKEND_TYPE != "store" or self.agent_store is None:
+        if settings.BACKEND_TYPE != "store" or self.langgraph_store is None:
             return
 
         from deepclaw.agents.general.utils import SKILLS_DIR, sync_skills_store
 
-        await sync_skills_store(SKILLS_DIR, self.agent_store, user_id)
+        await sync_skills_store(SKILLS_DIR, self.langgraph_store, user_id)
 
     def _start_task(self, run_id: str, payload: RunAgentInput) -> asyncio.Task[None]:
         """启动 Run 后台执行任务和取消监听任务。
@@ -548,7 +548,7 @@ class AgentRunManager:
         encoder = EventEncoder()
         await self.store.update_run_status(run_id, "running")
         owner_user_id = self._owner_user_id(payload)
-        await self._prepare_agent_store(owner_user_id)
+        await self._prepare_langgraph_store(owner_user_id)
         agent = LangGraphAgent(
             name="deepclaw-agent",
             graph=self.graph,
