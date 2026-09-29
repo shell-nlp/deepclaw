@@ -5,6 +5,7 @@ from loguru import logger
 
 from deepclaw.agent_registry import Agent
 from deepclaw.agents.general.state import StateSchema
+from deepclaw.agents.general.utils import SKILLS_VIRTUAL_ROOT, user_namespace_factory
 from deepclaw.constant import (
     AGENT_VIRTUAL_PREFERENCES,
     HOME_PATH,
@@ -16,19 +17,6 @@ from deepclaw.constant import (
 )
 from deepclaw.settings import settings
 from deepclaw.utils import get_chat_model
-
-
-def user_namespace_factory(runtime: Any) -> tuple[str, ...]:
-    """动态生成用户 namespace。
-
-    Args:
-        runtime: 当前 Agent 运行时，优先读取运行时身份信息。
-    """
-    server_info = getattr(runtime, "server_info", None)
-    user = getattr(server_info, "user", None)
-    identity = getattr(user, "identity", None)
-    user_id = str(identity) if identity else "default"
-    return ("filesystem", user_id)
 
 
 class GeneralAgent(Agent):
@@ -167,12 +155,8 @@ class GeneralAgent(Agent):
             )
             logger.info("使用 LocalShellBackend 作为后端")
         elif settings.BACKEND_TYPE == "store":
-            from deepclaw.agents.general.utils import copy_skills_to_store
-
-            copy_skills_to_store(
-                skills_dir=WORKSPACE_PATH / "skills",
-                store=store,
-            )
+            # 技能已由 sync_skills_store 写入 store，这里只需声明 SkillsMiddleware 的读取源。
+            skills = [SKILLS_VIRTUAL_ROOT]
             logger.info("使用 StoreBackend 作为后端")
 
         from deepagents.backends import CompositeBackend, StoreBackend
