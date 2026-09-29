@@ -104,7 +104,7 @@ async def init_agent_env(app: FastAPI) -> None:
         )
         store = await store_ctx.__aenter__()
         await store.setup()
-        app.state.agent_store_ctx = store_ctx
+        app.state.langgraph_store_ctx = store_ctx
         app.state.store = store
         logger.info("使用 AsyncPostgresStore 作为长期记忆")
     else:
@@ -116,7 +116,7 @@ async def init_agent_env(app: FastAPI) -> None:
         logger.info("使用 InMemorySaver 作为检查点")
 
         store = InMemoryStore()
-        app.state.agent_store_ctx = None
+        app.state.langgraph_store_ctx = None
         logger.info("使用 InMemoryStore 作为长期记忆")
 
     app.state.checkpointer = checkpointer
@@ -190,7 +190,7 @@ async def app_lifespan(app: FastAPI):
         checkpointer_pool = getattr(app.state, "agent_checkpointer_pool", None)
         if checkpointer_pool is not None:
             await checkpointer_pool.close()
-        store_ctx = getattr(app.state, "agent_store_ctx", None)
+        store_ctx = getattr(app.state, "langgraph_store_ctx", None)
         if store_ctx is not None:
             await store_ctx.__aexit__(None, None, None)
 
