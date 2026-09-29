@@ -77,6 +77,13 @@ export interface AgentListResponse {
   total: number
 }
 
+export interface ChatModeOption {
+  id: string
+  label: string
+  description?: string
+  isKnowledge: boolean
+}
+
 export interface ReasoningBlock {
   id: string
   content: string

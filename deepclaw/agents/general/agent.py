@@ -38,7 +38,9 @@ class GeneralAgent(Agent):
     name = "通用智能体"
     description = "通用工具调用、MCP 与深度思考"
     capabilities = frozenset({"mcp", "deep_thinking", "internet_search"})
-    allowed_state_keys = frozenset({"internet_search", "deep_thinking", "mcp_config"})
+    allowed_state_keys = frozenset(
+        {"internet_search", "deep_thinking", "mcp_config", "index_names"}
+    )
     is_default = True
 
     @classmethod
@@ -100,8 +102,9 @@ class GeneralAgent(Agent):
             通用工具列表。
         """
         from deepclaw.tools import ask_user, get_weather, web_fetch
+        from deepclaw.tools.retriever import retrieve_context
 
-        return [get_weather, web_fetch, ask_user]
+        return [get_weather, web_fetch, ask_user, retrieve_context]
 
     @classmethod
     def build_agent(
