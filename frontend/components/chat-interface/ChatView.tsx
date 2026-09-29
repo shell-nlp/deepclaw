@@ -5,10 +5,12 @@ import type { KeyboardEvent, ReactNode, Ref } from 'react'
 
 import styles from '../ChatInterface.module.css'
 import { AssistantMessageBody } from '../chat/cards/AssistantMessageBody'
+import { AgentModeSwitcher } from '../chat/shared/AgentModeSwitcher'
 import {
   KnowledgeBasePicker,
 } from '../chat/shared/KnowledgeBasePicker'
 import type {
+  ChatModeOption,
   ChatStatus,
   InterruptData,
   KnowledgeBase,
@@ -106,13 +108,12 @@ function ComposerToggle({ label, iconName, checked, onChange }: ComposerTogglePr
 interface ChatViewProps {
   messages: Message[]
   sessionId: string
-  userId: string
-  chatModeLabel: string
+  chatModeOptions: ChatModeOption[]
+  activeChatModeId: string
   mcpStatusLabel: string
   status: ChatStatus
   isProcessing: boolean
-  useKnowledgeBase: boolean
-  knowledgeSelectionLabel: string
+  isKnowledgeMode: boolean
   knowledgeBaseOptions: KnowledgeBase[]
   selectedKnowledgeBaseIds: string[]
   knowledgePickerOpen: boolean
@@ -138,6 +139,7 @@ interface ChatViewProps {
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void
   onKnowledgePickerOpenChange: (open: boolean) => void
   onKnowledgeSelectionChange: (ids: string[]) => void
+  onChatModeChange: (optionId: string) => void
   onInternetSearchChange: (checked: boolean) => void
   onDeepThinkingChange: (checked: boolean) => void
   onNavigateToKnowledge: () => void
@@ -377,13 +379,12 @@ function InterruptArgFields({
 export function ChatView({
   messages,
   sessionId,
-  userId,
-  chatModeLabel,
+  chatModeOptions,
+  activeChatModeId,
   mcpStatusLabel,
   status,
   isProcessing,
-  useKnowledgeBase,
-  knowledgeSelectionLabel,
+  isKnowledgeMode,
   knowledgeBaseOptions,
   selectedKnowledgeBaseIds,
   knowledgePickerOpen,
@@ -406,6 +407,7 @@ export function ChatView({
   onKeyDown,
   onKnowledgePickerOpenChange,
   onKnowledgeSelectionChange,
+  onChatModeChange,
   onInternetSearchChange,
   onDeepThinkingChange,
   onNavigateToKnowledge,
@@ -669,16 +671,13 @@ export function ChatView({
         <div className={styles.sessionInfo}>
           <span className={styles.sessionLabel}>会话</span>
           <code className={styles.sessionId}>{sessionId.slice(0, 8)}...</code>
-          <span className={styles.sessionDivider}>|</span>
-          <span className={styles.sessionLabel}>用户</span>
-          <code className={styles.sessionId}>{userId}</code>
-          <span className={styles.sessionDivider}>|</span>
           <span className={styles.sessionLabel}>模式</span>
-          <code className={styles.sessionId}>{chatModeLabel}</code>
-          <span className={styles.sessionDivider}>|</span>
-          <span className={styles.sessionLabel}>知识库</span>
-          <code className={styles.sessionId}>{knowledgeSelectionLabel}</code>
-          <span className={styles.sessionDivider}>|</span>
+          <AgentModeSwitcher
+            options={chatModeOptions}
+            value={activeChatModeId}
+            disabled={isProcessing}
+            onChange={onChatModeChange}
+          />
           <span className={styles.sessionLabel}>MCP</span>
           <code className={styles.sessionId}>{mcpStatusLabel}</code>
         </div>
@@ -769,7 +768,7 @@ export function ChatView({
             onChange={(event) => onInputChange(event.target.value)}
             onKeyDown={onKeyDown}
             placeholder={
-              useKnowledgeBase
+              isKnowledgeMode
                 ? chatDisabled
                   ? '请先在知识管理中选择一个知识库...'
                   : '输入您的知识库问题...'

@@ -44,3 +44,25 @@ def test_general_agent_exposes_common_tools() -> None:
     assert {"get_weather", "web_fetch", "ask_user"}.issubset(common_tool_names)
     assert len(extra_tools) == 1
     assert extra_tools[0].name == "extra_tool"
+
+
+def test_general_agent_exposes_knowledge_retrieval_tool() -> None:
+    """通用 Agent 以工具方式支持知识库检索。
+
+    Args:
+        无。
+    """
+    common_tool_names = {
+        getattr(tool, "name", "") for tool in GeneralAgent.get_common_tools()
+    }
+
+    assert "retrieve_context" in common_tool_names
+
+
+def test_general_agent_accepts_index_names_state() -> None:
+    """通用 Agent 需要接收 index_names，retrieve_context 才能按库检索。
+
+    Args:
+        无。
+    """
+    assert "index_names" in GeneralAgent.allowed_state_keys

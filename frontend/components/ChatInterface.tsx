@@ -76,6 +76,9 @@ import {
   KB_UPDATE_API_PATH,
   KNOWLEDGE_BASE_OPTION_PAGE_SIZE,
   KNOWLEDGE_BASE_PAGE_SIZE,
+  GENERAL_AGENT_ID,
+  KNOWLEDGE_AGENT_CAPABILITY,
+  KNOWLEDGE_AGENT_ID,
   SKILL_DELETE_API_PATH,
   SKILL_LIST_API_PATH,
   SKILL_UPLOAD_API_PATH,
@@ -97,6 +100,7 @@ import type {
   BulkDeleteKnowledgeBaseResponse,
   ChatError,
   ChatErrorKind,
+  ChatModeOption,
   ChatStatus,
   InterruptData,
   KnowledgeBase,
@@ -664,7 +668,7 @@ export default function ChatInterface() {
   const [runningThreadIds, setRunningThreadIds] = useState<string[]>([])
   const [internetSearch, setInternetSearch] = useState(false)
   const [deepThinking, setDeepThinking] = useState(true)
-  const [useKnowledgeBase, setUseKnowledgeBase] = useState(false)
+  const [isKnowledgeMode, setIsKnowledgeMode] = useState(false)
   const [selectedKnowledgeBaseIds, setSelectedKnowledgeBaseIds] = useState<string[]>([])
   const [knowledgeBaseOptions, setKnowledgeBaseOptions] = useState<KnowledgeBase[]>([])
   const [knowledgePickerOpen, setKnowledgePickerOpen] = useState(false)
@@ -1688,7 +1692,7 @@ export default function ChatInterface() {
 
   const selectKnowledgeBase = useCallback(
     (knowledgeBase: KnowledgeBase) => {
-      if (useKnowledgeBase && knowledgeBase.knowledge_base_id !== selectedKnowledgeBaseId) {
+      if (isKnowledgeMode && knowledgeBase.knowledge_base_id !== selectedKnowledgeBaseId) {
         clearChat()
         setCheckedDocumentIds([])
       }
@@ -1701,26 +1705,19 @@ export default function ChatInterface() {
       setSelectedDocumentDetail(null)
       setDocumentChunkPage(1)
     },
-    [clearChat, selectedKnowledgeBaseId, useKnowledgeBase]
+    [clearChat, selectedKnowledgeBaseId, isKnowledgeMode]
   )
 
   const applyKnowledgeSelection = useCallback(
     (ids: string[], options: KnowledgeBase[] = knowledgeBaseOptions) => {
       const uniqueIds = Array.from(new Set(ids))
-      const enabled = uniqueIds.length > 0
       setSelectedKnowledgeBaseIds(uniqueIds)
-      if (enabled !== useKnowledgeBase) {
-        clearChat()
-        setShowInterrupt(false)
-        setInterruptData(null)
-        requestModeRef.current = enabled ? 'rag' : 'agent'
-      }
-      setUseKnowledgeBase(enabled)
-      requestKnowledgeBaseRef.current = enabled
-        ? options.find((item) => item.knowledge_base_id === uniqueIds[0]) ?? null
-        : null
+      requestKnowledgeBaseRef.current =
+        uniqueIds.length > 0
+          ? options.find((item) => item.knowledge_base_id === uniqueIds[0]) ?? null
+          : null
     },
-    [clearChat, knowledgeBaseOptions, useKnowledgeBase]
+    [knowledgeBaseOptions]
   )
 
   const handleKnowledgePickerOpenChange = useCallback(
@@ -1753,6 +1750,72 @@ export default function ChatInterface() {
     [applyKnowledgeSelection]
   )
 
+  const chatModeOptions = useMemo<ChatModeOption[]>(() => {
+    const knowledgeAgent = availableAgents.find((agent) =>
+      agent.capabilities.includes(KNOWLEDGE_AGENT_CAPABILITY)
+    )
+    const generalAgent =
+      availableAgents.find((agent) => agent.default) ??
+      availableAgents.find(
+        (agent) => !agent.capabilities.includes(KNOWLEDGE_AGENT_CAPABILITY)
+      )
+    return [
+      {
+        id: generalAgent?.id ?? GENERAL_AGENT_ID,
+        label: generalAgent?.name ?? '通用智能体',
+        description: generalAgent?.description,
+        isKnowledge: false,
+      },
+      {
+        id: knowledgeAgent?.id ?? KNOWLEDGE_AGENT_ID,
+        label: knowledgeAgent?.name ?? '知识库问答',
+        description: knowledgeAgent?.description,
+        isKnowledge: true,
+      },
+    ]
+  }, [availableAgents])
+
+  const activeChatModeId =
+    chatModeOptions.find((option) => option.isKnowledge === isKnowledgeMode)?.id ??
+    chatModeOptions[0].id
+
+  const handleChatModeChange = useCallback(
+    (optionId: string) => {
+      const option = chatModeOptions.find((item) => item.id === optionId)
+      if (!option || option.isKnowledge === isKnowledgeMode) return
+
+      clearChat()
+      setShowInterrupt(false)
+      setInterruptData(null)
+      setKnowledgePickerOpen(false)
+      requestModeRef.current = option.isKnowledge ? 'rag' : 'agent'
+      setIsKnowledgeMode(option.isKnowledge)
+      if (!option.isKnowledge) return
+
+      // 切到知识库模式时默认全选知识库，避免必须先手动打开选择器才能提问。
+      void (async () => {
+        const options = knowledgeBaseOptions.length
+          ? knowledgeBaseOptions
+          : await loadKnowledgeBaseOptions()
+        if (selectedKnowledgeBaseIds.length === 0 && options.length > 0) {
+          applyKnowledgeSelection(
+            options.map((item) => item.knowledge_base_id),
+            options
+          )
+        }
+      })()
+    },
+    [
+      applyKnowledgeSelection,
+      chatModeOptions,
+      clearChat,
+      knowledgeBaseOptions,
+      loadKnowledgeBaseOptions,
+      selectedKnowledgeBaseIds,
+      isKnowledgeMode,
+    ]
+  )
+
   const knowledgeIndexNames = useMemo(() => {
     const names = selectedKnowledgeBaseIds
       .map(
@@ -1772,32 +1835,6 @@ export default function ChatInterface() {
       ) ?? selectedKnowledgeBase,
     [knowledgeBaseOptions, selectedKnowledgeBase, selectedKnowledgeBaseIds]
   )
-
-  const knowledgeSelectionLabel = useMemo(() => {
-    if (!useKnowledgeBase || knowledgeIndexNames.length === 0) return '未启用'
-    if (selectedKnowledgeBaseIds.length === 1) {
-      return (
-        knowledgeBaseOptions.find(
-          (item) => item.knowledge_base_id === selectedKnowledgeBaseIds[0]
-        )?.name ??
-        primaryKnowledgeBase?.name ??
-        '已选 1 个'
-      )
-    }
-    if (
-      knowledgeBaseOptions.length > 0 &&
-      selectedKnowledgeBaseIds.length >= knowledgeBaseOptions.length
-    ) {
-      return `全部 ${selectedKnowledgeBaseIds.length} 个`
-    }
-    return `已选 ${selectedKnowledgeBaseIds.length} 个`
-  }, [
-    knowledgeBaseOptions,
-    knowledgeIndexNames.length,
-    primaryKnowledgeBase,
-    selectedKnowledgeBaseIds,
-    useKnowledgeBase,
-  ])
 
   const saveMcpConfig = () => {
     const trimmed = mcpConfigDraft.trim()
@@ -3227,8 +3264,8 @@ export default function ChatInterface() {
     streamGenerationRef.current = generation
     const runtime = getThreadRuntime(threadId)
 
-    const selectedAgentId = runtime.agentId ?? (useKnowledgeBase ? 'rag' : 'agent')
-    const requestMode: RequestMode = selectedAgentId === 'rag' ? 'rag' : 'agent'
+    const selectedAgentId = runtime.agentId ?? activeChatModeId
+    const requestMode: RequestMode = selectedAgentId === KNOWLEDGE_AGENT_ID ? 'rag' : 'agent'
     if (
       availableAgents.length > 0 &&
       !availableAgents.some((agent) => agent.id === selectedAgentId)
@@ -3306,9 +3343,11 @@ export default function ChatInterface() {
         internet_search: internetSearch,
         deep_thinking: deepThinking,
       }
-      if (requestMode === 'rag' && knowledgeIndexNames.length > 0) {
+      if (knowledgeIndexNames.length > 0) {
+        // 知识库模式由中间件自动检索，通用模式交给 retrieve_context 工具按需检索。
         state.index_names = knowledgeIndexNames
-      } else if (requestMode === 'agent' && requestMcpConfig) {
+      }
+      if (requestMcpConfig) {
         state.mcp_config = requestMcpConfig
       }
       const runInput = createAgUiRunInput({
@@ -3709,10 +3748,9 @@ export default function ChatInterface() {
     ? getPageTotal(selectedDocumentDetail.total_chunks, selectedDocumentDetail.page_size)
     : 1
   const visibleChunkTotal = knowledgeBases.reduce((sum, item) => sum + item.chunk_count, 0)
-  const chatDisabled = useKnowledgeBase && knowledgeIndexNames.length === 0
-  const chatModeLabel = useKnowledgeBase ? '知识库 RAG' : '通用 Agent'
+  const chatDisabled = isKnowledgeMode && knowledgeIndexNames.length === 0
   const mcpStatusLabel = mcpEnabled
-    ? useKnowledgeBase
+    ? isKnowledgeMode
       ? '已启用，但当前 RAG 不使用'
       : savedMcpParseResult.serverSummaries.length > 0
         ? `已启用 ${savedMcpParseResult.serverSummaries.length} 个服务`
@@ -3761,13 +3799,12 @@ export default function ChatInterface() {
             <ChatView
               messages={messages}
               sessionId={sessionId}
-              userId={currentUserId}
-              chatModeLabel={chatModeLabel}
+              chatModeOptions={chatModeOptions}
+              activeChatModeId={activeChatModeId}
               mcpStatusLabel={mcpStatusLabel}
               status={status}
               isProcessing={isProcessing}
-              useKnowledgeBase={useKnowledgeBase}
-              knowledgeSelectionLabel={knowledgeSelectionLabel}
+              isKnowledgeMode={isKnowledgeMode}
               knowledgeBaseOptions={knowledgeBaseOptions}
               selectedKnowledgeBaseIds={selectedKnowledgeBaseIds}
               knowledgePickerOpen={knowledgePickerOpen}
@@ -3790,6 +3827,7 @@ export default function ChatInterface() {
               onKeyDown={handleKeyDown}
               onKnowledgePickerOpenChange={handleKnowledgePickerOpenChange}
               onKnowledgeSelectionChange={handleKnowledgeSelectionChange}
+              onChatModeChange={handleChatModeChange}
               onInternetSearchChange={setInternetSearch}
               onDeepThinkingChange={setDeepThinking}
               onNavigateToKnowledge={() => navigateTo('knowledge', 'libraries')}

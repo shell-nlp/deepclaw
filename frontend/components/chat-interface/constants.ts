@@ -60,6 +60,11 @@ export const DOCUMENT_PAGE_SIZE = 10
 export const DOCUMENT_CHUNK_PAGE_SIZE = 8
 export const DEFAULT_KNOWLEDGE_PAGE: KnowledgePage = 'libraries'
 export const DEFAULT_CHANNEL_PAGE: ChannelManagementPage = 'weixin'
+// 会话模式对应的智能体 ID：通用 Agent 与知识库问答。
+export const GENERAL_AGENT_ID = 'agent'
+export const KNOWLEDGE_AGENT_ID = 'rag'
+// 智能体声明该能力时，代表它按知识库问答模式运行。
+export const KNOWLEDGE_AGENT_CAPABILITY = 'knowledge_base'
 export const AUTH_TOKEN_STORAGE_KEY = 'rag_auth_token'
 export const AUTH_REMEMBER_LOGIN_STORAGE_KEY = 'rag_remember_login'
 export const DEFAULT_MCP_CONFIG_TEMPLATE = `{

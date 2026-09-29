@@ -14,6 +14,8 @@ class StateSchema(AgentState):
     deep_thinking: NotRequired[bool]
     # 本次请求使用的 MCP 配置。
     mcp_config: NotRequired[dict[str, Any] | None]
+    # 参与检索的知识库 passage 索引名称列表，由 retrieve_context 工具使用。
+    index_names: NotRequired[list[str]]
     # 透传给下游请求的 HTTP 请求头。
     header_info: NotRequired[dict[str, str]]
     # 当前已加载的 MCP 工具名称。

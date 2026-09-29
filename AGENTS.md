@@ -121,6 +121,7 @@
 - `deepclaw/tools/`
   天气、网页抓取、检索等工具导出；`cron` 相关实现已归档到 `deepclaw/middleware/cron/`。
   `deepclaw/tools/ask_user.py`：基于 LangGraph `interrupt` 的人机协作提问工具；向客户端发送结构化问题载荷，并通过 `Command(resume=...)` 接收用户回答。
+  `deepclaw/tools/retriever.py`：提供惰性单例 `get_default_retriever()`，以及基于 `ToolRuntime` 读取 `state.index_names` 的 `retrieve_context` 工具（走 `retrieve_with_rrf()` + `RAG_TOP_K` + 排除停用切片）。它是通用 Agent 按需检索知识库的唯一入口：`GeneralAgent.allowed_state_keys` 已放开 `index_names`，并把该工具加入 `get_common_tools()`；知识库问答模式仍由 `RAGMiddleware` 自动注入检索结果。
 
 - `deepclaw/sandbox/`
   OpenSandbox 执行后端实现。
