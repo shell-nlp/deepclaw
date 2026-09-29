@@ -139,33 +139,60 @@ class PgVectorStore(AbstractVectorStore):
             self.embedding_dimensions = len(embedding)
         return self.embedding_dimensions
 
+    def _query_column_dimension(self) -> int | None:
+        """查询基表 embedding 列的当前维度。
+
+        Args:
+            无。
+
+        Returns:
+            基表存在且含 embedding 列时返回其维度，否则返回 None。
+        """
+        with self._connect() as conn, conn.cursor() as cur:
+            # pgvector 的 vector(N) 维度直接存放在 pg_attribute.atttypmod 中；
+            # to_regclass 在表不存在时返回 NULL，避免 regclass 转换直接报错。
+            cur.execute(
+                f"SELECT atttypmod FROM pg_catalog.pg_attribute "
+                f"WHERE attrelid = to_regclass('{self._qualified_table_name()}') "
+                f"AND attname = 'embedding' "
+                f"AND attnum > 0 AND NOT attisdropped"
+            )
+            row = cur.fetchone()
+        if row is None:
+            return None
+        return int(row["atttypmod"])
+
+    def _probe_embedding_dimension(self) -> int:
+        """通过一次嵌入调用获取嵌入模型输出的向量维度。
+
+        Args:
+            无。
+
+        Returns:
+            嵌入模型输出的向量维度。
+        """
+        return len(self.embedding_model.embed_query("dimension probe"))
+
     def _ensure_column_dimension(self, target_dim: int) -> None:
         """检查并调整表的 embedding 列维度以匹配目标维度。
 
         Args:
             target_dim: 目标向量维度。
         """
+        current_dim = self._query_column_dimension()
+        if current_dim is None or current_dim == target_dim:
+            return
+        logger.info(
+            "向量维度不匹配: 表中有 {} 维, 目标 {} 维, 执行 ALTER COLUMN",
+            current_dim,
+            target_dim,
+        )
         with self._connect() as conn, conn.cursor() as cur:
-            # pgvector 的 vector(N) 类型，维度存储在 pg_attribute.atttypmod 中
-            # atttypmod = 维度 + 4 (VARHDRSZ)
             cur.execute(
-                f"SELECT atttypmod FROM pg_catalog.pg_attribute "
-                f"WHERE attrelid = '{self._qualified_table_name()}'::regclass "
-                f"AND attname = 'embedding' "
-                f"AND attnum > 0 AND NOT attisdropped"
+                f"ALTER TABLE {self._qualified_table_name()} "
+                f"ALTER COLUMN embedding TYPE vector({target_dim}) "
+                f"USING embedding::vector({target_dim})"
             )
-            row = cur.fetchone()
-            if row is not None:
-                current_dim = row["atttypmod"]
-                if current_dim != target_dim:
-                    logger.info(
-                        "向量维度不匹配: 表中有 {} 维, 目标 {} 维, 执行 ALTER COLUMN", current_dim, target_dim
-                    )
-                    cur.execute(
-                        f"ALTER TABLE {self._qualified_table_name()} "
-                        f"ALTER COLUMN embedding TYPE vector({target_dim}) "
-                        f"USING embedding::vector({target_dim})"
-                    )
 
     def _require_single_index_name(
         self,
@@ -191,7 +218,15 @@ class PgVectorStore(AbstractVectorStore):
 
     def _ensure_base_schema(self) -> None:
         """确保基础表结构存在，包括 vector 和 pg_search 扩展及分区基表。"""
-        dimensions = self.embedding_dimensions or 1536
+        if self.embedding_dimensions is None:
+            existing_dim = self._query_column_dimension()
+            if existing_dim is not None:
+                # 表已存在时沿用已有列维度，避免按猜测维度建表后又改列
+                self.embedding_dimensions = existing_dim
+                self._dimension_verified = True
+            else:
+                self.embedding_dimensions = self._probe_embedding_dimension()
+        dimensions = self.embedding_dimensions
         sql = f"""
         CREATE EXTENSION IF NOT EXISTS vector;
         CREATE EXTENSION IF NOT EXISTS pg_search;
@@ -209,8 +244,8 @@ class PgVectorStore(AbstractVectorStore):
         """
         with self._connect() as conn, conn.cursor() as cur:
             cur.execute(sql)
-        if self.embedding_dimensions is not None and not self._dimension_verified:
-            self._ensure_column_dimension(self.embedding_dimensions)
+        if not self._dimension_verified:
+            self._ensure_column_dimension(dimensions)
             self._dimension_verified = True
 
     def _ensure_partition(self, index_name: str) -> None:
