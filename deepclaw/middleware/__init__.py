@@ -1,4 +1,4 @@
-﻿"""langchain中间件模块,详细的使用文档见：https://docs.langchain.com/oss/python/langchain/middleware/overview"""
+"""langchain中间件模块,详细的使用文档见：https://docs.langchain.com/oss/python/langchain/middleware/overview"""
 
 from deepclaw.middleware.chart import ChartMiddleware
 from deepclaw.middleware.common import BusinessMiddleware

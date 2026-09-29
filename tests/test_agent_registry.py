@@ -56,17 +56,19 @@ def test_runtime_cache_preload_builds_agents(monkeypatch):
     class FakeRunManager:
         """测试用 Run 管理器。"""
 
-        def __init__(self, graph, store=None, agent_id=None):
+        def __init__(self, graph, store=None, agent_id=None, agent_store=None):
             """初始化测试用 Run 管理器。
 
             Args:
                 graph: 已构建的图。
                 store: Run 存储。
                 agent_id: 智能体 ID。
+                agent_store: LangGraph 长期存储。
             """
             self.graph = graph
             self.store = store
             self.agent_id = agent_id
+            self.agent_store = agent_store
 
     class CountingAgent(Agent):
         """记录构建次数的测试智能体。"""

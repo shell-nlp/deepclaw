@@ -5,7 +5,6 @@ import re
 import shutil
 from datetime import datetime
 from pathlib import Path, PurePosixPath
-from typing import Any
 from zipfile import ZipFile
 
 from loguru import logger
@@ -13,7 +12,6 @@ from pydantic import BaseModel, Field
 
 from deepclaw.web_backend.common.errors import BusinessRuleError
 from deepclaw.constant import WORKSPACE_PATH
-from deepclaw.settings import settings
 
 
 class SkillRecord(BaseModel):
@@ -61,20 +59,7 @@ class SkillManager:
         items.sort(key=lambda item: item.updated_at, reverse=True)
         return SkillListResponse(items=items, total=len(items))
 
-    async def upload_skill_zip(
-        self,
-        *,
-        file_name: str,
-        data: bytes,
-        store: Any | None = None,
-    ) -> SkillUploadResponse:
-        """保存上传的技能包，并在 store 后端下同步到 LangGraph Store。
-
-        Args:
-            file_name: 上传文件名。
-            data: 技能包压缩内容。
-            store: 当前应用的 LangGraph Store，未提供时为 None。
-        """
+    def upload_skill_zip(self, *, file_name: str, data: bytes) -> SkillUploadResponse:
         if not data:
             raise BusinessRuleError("Uploaded zip file is empty.")
         if not file_name.lower().endswith(".zip"):
@@ -100,24 +85,12 @@ class SkillManager:
             raise
 
         logger.info("Skill uploaded: {} -> {}", file_name, target_dir)
-        await self._sync_store_backend(store)
         return SkillUploadResponse(
             skill=self._build_skill_record(target_dir),
             extracted_files=extracted_files,
         )
 
-    async def delete_skill(
-        self,
-        *,
-        skill_name: str,
-        store: Any | None = None,
-    ) -> SkillDeleteResponse:
-        """删除技能包，并在 store 后端下同步到 LangGraph Store。
-
-        Args:
-            skill_name: 技能包名称。
-            store: 当前应用的 LangGraph Store，未提供时为 None。
-        """
+    def delete_skill(self, *, skill_name: str) -> SkillDeleteResponse:
         normalized_name = self._normalize_skill_name(skill_name)
         target_dir = self.SKILLS_ROOT / normalized_name
         if not target_dir.exists() or not target_dir.is_dir():
@@ -127,7 +100,6 @@ class SkillManager:
 
         shutil.rmtree(target_dir)
         logger.info("Skill deleted: {}", target_dir)
-        await self._sync_store_backend(store)
         return SkillDeleteResponse(
             skill_name=normalized_name,
             deleted_path=str(target_dir),
@@ -227,19 +199,6 @@ class SkillManager:
             raise BusinessRuleError("Invalid skill name.")
         normalized = re.sub(r"[\\/]+", "-", normalized)
         return normalized
-
-    async def _sync_store_backend(self, store: Any | None) -> None:
-        """在 store 后端下把技能目录重新同步到 LangGraph Store。
-
-        Args:
-            store: 当前应用的 LangGraph Store，未提供时为 None。
-        """
-        if settings.BACKEND_TYPE != "store" or store is None:
-            return
-        # 仅在 store 后端启用时同步技能目录，避免管理层反向侵入核心逻辑。
-        from deepclaw.agents.general.utils import sync_skills_store
-
-        await sync_skills_store(self.SKILLS_ROOT, store)
 
 
 skill_manager = SkillManager()

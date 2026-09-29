@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from dataclasses import dataclass
 from typing import Any
 
 from ag_ui.core import RunAgentInput, RunErrorEvent
@@ -11,6 +12,7 @@ from langgraph.graph.state import CompiledStateGraph
 from loguru import logger
 
 from deepclaw.patch.ag_ui_langgraph import install_reasoning_text_split
+from deepclaw.settings import settings
 from deepclaw.web_backend.agent.run_store import (
     RunState,
     RunStore,
@@ -19,6 +21,23 @@ from deepclaw.web_backend.agent.run_store import (
     get_run_store,
 )
 
+# LangGraph 只在该 configurable 键存在时才构造 Runtime.server_info。
+LANGGRAPH_AUTH_USER_KEY = "langgraph_auth_user"
+
+
+@dataclass(frozen=True)
+class AgentAuthUser:
+    """注入给 LangGraph 的最小认证用户对象。
+
+    LangGraph 的 _build_server_info 在 configurable 里读不到用户时不会构造 server_info，
+    runtime.server_info.user.identity 就会为空，Store 命名空间只能落到兜底用户；
+    这里把已由路由层确认过的用户身份传进去。
+
+    Attributes:
+        identity: 用户唯一标识，决定 Store 命名空间。
+    """
+
+    identity: str
 
 
 class ThreadOwnershipError(ValueError):
@@ -54,6 +73,7 @@ class AgentRunManager:
         graph: 已装配完成的 LangGraph Agent 图。
         config: 每次 AG-UI 运行共享的 LangGraph 配置。
         store: 可选 Run 存储；为空时使用进程级默认存储。
+        agent_store: 可选 LangGraph 长期存储，用于运行前同步技能等准备工作。
     """
 
     def __init__(
@@ -62,6 +82,7 @@ class AgentRunManager:
         config: dict[str, Any] | None = None,
         store: RunStore | None = None,
         agent_id: str = "agent",
+        agent_store: Any | None = None,
     ) -> None:
         """初始化 Run 管理器。
 
@@ -70,11 +91,13 @@ class AgentRunManager:
             config: 每次 AG-UI 运行共享的 LangGraph 配置。
             store: 可选 Run 存储。
             agent_id: 当前 Run 管理器绑定的智能体 ID。
+            agent_store: 可选 LangGraph 长期存储。
         """
         self.graph = install_reasoning_text_split(graph)
         self.config = config or {}
         self.store = store or get_run_store()
         self.agent_id = agent_id
+        self.agent_store = agent_store
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._watchers: dict[str, asyncio.Task[None]] = {}
         self._cleanup_task: asyncio.Task[None] | None = None
@@ -221,6 +244,37 @@ class AgentRunManager:
                 await asyncio.sleep(interval)
         except asyncio.CancelledError:
             return
+
+    def _run_config(self, user_id: str) -> dict[str, Any]:
+        """构造带认证用户的 LangGraph 运行配置。
+
+        Args:
+            user_id: 当前用户 ID。
+
+        Returns:
+            合并了 langgraph_auth_user 的运行配置。
+        """
+        config = dict(self.config)
+        configurable = dict(config.get("configurable") or {})
+        configurable[LANGGRAPH_AUTH_USER_KEY] = AgentAuthUser(identity=user_id)
+        config["configurable"] = configurable
+        return config
+
+    async def _prepare_agent_store(self, user_id: str) -> None:
+        """运行前准备当前用户的长期存储。
+
+        store 后端下 deep agent 从 Store 读取技能，而 Store 命名空间按用户隔离，
+        因此必须在图启动前把最新技能写进该用户的命名空间。
+
+        Args:
+            user_id: 当前用户 ID。
+        """
+        if settings.BACKEND_TYPE != "store" or self.agent_store is None:
+            return
+
+        from deepclaw.agents.general.utils import SKILLS_DIR, sync_skills_store
+
+        await sync_skills_store(SKILLS_DIR, self.agent_store, user_id)
 
     def _start_task(self, run_id: str, payload: RunAgentInput) -> asyncio.Task[None]:
         """启动 Run 后台执行任务和取消监听任务。
@@ -493,10 +547,12 @@ class AgentRunManager:
         """
         encoder = EventEncoder()
         await self.store.update_run_status(run_id, "running")
+        owner_user_id = self._owner_user_id(payload)
+        await self._prepare_agent_store(owner_user_id)
         agent = LangGraphAgent(
             name="deepclaw-agent",
             graph=self.graph,
-            config=dict(self.config),
+            config=self._run_config(owner_user_id),
             enable_legacy_on_interrupt_event=False,
             emit_interrupt_outcome=True,
             # 前端和渠道不消费原始 LangGraph 事件，关闭 RAW/raw_event 以降低流式传输体积。

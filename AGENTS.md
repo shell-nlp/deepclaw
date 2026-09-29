@@ -21,7 +21,7 @@
   - 创建 `FastAPI` 应用
   - 初始化 checkpointer 与 store
   - 在 `create_app()` 中挂载模块级 `auth`、`agui`、`channels`、`skills`、`knowledge_bases` 路由
-  - 在应用生命周期中初始化 `AgentRegistry`，预热全部 `AgentRuntimeCache` 图与 Run 管理器，并在关闭时停止后台任务、释放 RunStore；`BACKEND_TYPE=store` 时在预热前先把本地技能目录同步进 Store（`sync_skills_store`）
+  - 在应用生命周期中初始化 `AgentRegistry`，预热全部 `AgentRuntimeCache` 图与 Run 管理器，并在关闭时停止后台任务、释放 RunStore
   - 提供 `/api/runtime-config` 运行时配置
   - 静态托管 `frontend/out`
 
@@ -49,7 +49,7 @@
   模块级统一 AG-UI 路由器，提供 `/api/agui/agents`、`/api/agui/runs/*`、`/api/agui/threads/*`。
 
 - `deepclaw/web_backend/agent/run_manager.py`
-  基于 `RunStore` 的 Run 管理器，负责 Run 执行、`Last-Event-ID` 重放、恢复、取消与事件流编排。
+  基于 `RunStore` 的 Run 管理器，负责 Run 执行、`Last-Event-ID` 重放、恢复、取消与事件流编排。每次执行前会把当前用户身份写入 LangGraph config 的 `configurable["langgraph_auth_user"]`：LangGraph 只有在该键存在时才构造 `Runtime.server_info`，Store 的 `filesystem` 命名空间才能按用户隔离；同时（`BACKEND_TYPE=store` 时）在启动图之前调用 `sync_skills_store()` 把本地技能同步进该用户命名空间，避免依赖中间件顺序。
 - `deepclaw/web_backend/agent/run_store.py`
   Run/Thread 存储抽象层，定义 Thread owner、按 Thread 查询 Run、Run 状态、事件追加/重放、过期清理和订阅接口；Run/事件按 `AGUI_RUN_RETENTION_SECONDS` 清理，Thread 索引默认不自动过期。启动时会从 LangGraph checkpoint 回填缺失的 Thread 索引；当前提供 `InMemoryRunStore` 与 PostgreSQL/SQLite `SqlRunStore`，后续可新增 Redis 实现。
 
@@ -74,7 +74,7 @@
   微信 ClawBot 专属适配器、API 客户端、运行时、生命周期、状态辅助与管理路由。
 
 - `deepclaw/web_backend/skills/`
-  技能管理路由、请求模型与服务实现。上传/删除技能后会 `await` 把本地技能目录重新同步进 LangGraph Store（仅 `BACKEND_TYPE=store` 时生效，store 由路由从 `app.state.store` 取）。
+  技能管理路由、请求模型与服务实现。
 
 - `deepclaw/web_backend/knowledge_bases/`
 知识库管理路由、请求模型、元数据存储与服务实现。上传接口先将原始文件保存到对象存储并登记独立的 `knowledge_upload_tasks` 任务，返回 202；每实例后台 worker 数由 `KNOWLEDGE_UPLOAD_WORKERS` 控制（默认 2，允许 1–8），原子领取任务，在线程中执行 PDF 解析和切片写入（只写 passage 索引，不做三元组抽取），按排队/解析/索引/成功/失败持久化阶段，前端轮询 `/api/rag/knowledge-bases/documents/upload-tasks`。进程异常中断的任务心跳过期后重新排队；部署多实例时共享元数据数据库和对象存储。知识库解析统一选择 `PDFParser`；PDF 直接解析，TXT/MD 等文本格式先生成 PDF，DOCX/PPTX/XLSX 等由 LibreOffice 转换为 PDF 后再解析。`create_document_parser()` 保留给非知识库上传场景。失败任务可由前端调用 `/api/rag/knowledge-bases/documents/upload-tasks/retry` 重新排队，或调用 `/upload-tasks/delete` 删除记录；两者都只允许操作 `failed` 状态的任务。
@@ -83,7 +83,7 @@
 ### 核心能力层
 
 - `deepclaw/agents/general/`
-  通用 Agent 组装、上下文、状态与运行时相关逻辑；`general/agent.py` 的 `GeneralAgent.build_agent` 直接承载构建实现。`general/utils.py` 承载 `user_namespace_factory`（Store 用户命名空间工厂）与 `sync_skills_store`：后者用 `StoreBackend` + `await aupload_files()` 把本地技能目录全量同步进 LangGraph Store，写入命名空间与 deep agent 读取技能时严格一致；`BACKEND_TYPE=store` 时 `agent.py` 只声明 `skills=[SKILLS_VIRTUAL_ROOT]`，由 `SkillsMiddleware` 在运行时从 Store 读取技能。
+  通用 Agent 组装、上下文、状态与运行时相关逻辑；`general/agent.py` 的 `GeneralAgent.build_agent` 直接承载构建实现。`general/utils.py` 承载 Store 用户命名空间与技能同步：`user_namespace()` / `user_namespace_factory()` 按运行时身份（`runtime.server_info.user.identity`，取不到时回退 `default`）计算 `filesystem` 命名空间，`sync_skills_store()` 用 `StoreBackend` + `await aupload_files()` 把本地技能目录写进指定用户的命名空间，并用"比较一级技能目录集合"判断是否需要同步（未变化时只做一次查询、不写入）；`BACKEND_TYPE=store` 时 `agent.py` 只声明 `skills=[SKILLS_VIRTUAL_ROOT]`，技能实际读写都落在该用户命名空间里。
 
 - `deepclaw/agents/rag/`
   RAG Agent 组装、上下文与状态定义；`rag/agent.py` 的 `RagAgent.build_agent` 直接承载构建实现。
@@ -396,6 +396,7 @@ pnpm build
   - 取消：`POST /api/agui/runs/{run_id}/cancel`
 - 新增 Agent 时只需在 `deepclaw/agents/<name>/agent.py` 中定义 `Agent` 子类，`AgentRegistry.discover()` 会自动加载；不需要修改 Web 路由或集中式 Agent 列表。
 - 运行参数（`user_id`、`internet_search`、`deep_thinking`、`mcp_config`、`index_names`、`header_info`）统一存放在 LangGraph state，不再依赖独立 context 模型；RAG 只认 `index_names`，输入框的「知识库」选择器默认全选并直接写入该列表
+- 图内的用户身份来自 config：`AgentRunManager` 把 `state.user_id` 写进 `config["configurable"]["langgraph_auth_user"]`，LangGraph 才会构造 `Runtime.server_info`，`runtime.server_info.user.identity` 即可用于按用户隔离 Store 命名空间（节点与工具内一致；取不到时回退 `("filesystem", "default")`，游客为 `guest`）
 - Human-in-the-loop 中断通过标准 `RUN_FINISHED.outcome` 暴露，恢复使用顶层 `resume[]`（`interruptId`、`status`、`payload`），不再使用 `forwardedProps.command.resume`
 - 卡片 Action 不走独立接口：`POST /api/agui/runs/{run_id}/actions` 已删除，恢复入口只有 `POST /api/agui/runs/{run_id}/resume`，客户端把决策放进顶层 `resume[].payload`（例如 `{"decisions": [...]}`）
 - Thread 资源现在记录 `thread_id -> owner_user_id + agent_id`，创建 Run 时会自动创建或校验 Thread 归属
