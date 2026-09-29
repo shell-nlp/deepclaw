@@ -289,3 +289,45 @@ def test_resume_rejects_agent_switch():
     )
 
     assert response.status_code == 409
+
+
+def test_run_manager_injects_auth_user_and_syncs_skills(monkeypatch, tmp_path):
+    """验证 Run 启动前注入认证用户，并在 store 后端下把技能同步进该用户命名空间。"""
+    from langgraph.store.memory import InMemoryStore
+
+    from deepclaw.agents.general import utils as general_utils
+    from deepclaw.settings import settings
+    from deepclaw.web_backend.agent.run_manager import (
+        LANGGRAPH_AUTH_USER_KEY,
+        AgentRunManager,
+    )
+
+    skills_dir = tmp_path / "skills"
+    (skills_dir / "demo").mkdir(parents=True)
+    (skills_dir / "demo" / "SKILL.md").write_text("# demo", encoding="utf-8")
+    monkeypatch.setattr(general_utils, "SKILLS_DIR", skills_dir)
+    monkeypatch.setattr(settings, "BACKEND_TYPE", "store")
+
+    agent_store = InMemoryStore()
+
+    async def scenario():
+        manager = AgentRunManager(
+            graph=None,
+            store=InMemoryRunStore(),
+            agent_id="agent",
+            agent_store=agent_store,
+        )
+        try:
+            config = manager._run_config("alice")
+            await manager._prepare_agent_store("alice")
+            return config
+        finally:
+            await manager.close()
+
+    config = asyncio.run(scenario())
+
+    assert config["configurable"][LANGGRAPH_AUTH_USER_KEY].identity == "alice"
+    keys = sorted(
+        item.key for item in agent_store.search(general_utils.user_namespace("alice"))
+    )
+    assert keys == [f"{general_utils.SKILLS_VIRTUAL_ROOT}/demo/SKILL.md"]

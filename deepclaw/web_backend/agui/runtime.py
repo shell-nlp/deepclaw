@@ -115,6 +115,7 @@ class AgentRuntimeCache:
                     graph,
                     store=run_store,
                     agent_id=agent.agent_id,
+                    agent_store=getattr(app.state, "store", None),
                 )
                 self._managers[cache_key] = cached
         return cached

@@ -155,7 +155,7 @@ class GeneralAgent(Agent):
             )
             logger.info("使用 LocalShellBackend 作为后端")
         elif settings.BACKEND_TYPE == "store":
-            # 技能已由 sync_skills_store 写入 store，这里只需声明 SkillsMiddleware 的读取源。
+            # 技能由运行前同步写入 store（见 AgentRunManager），这里只声明 SkillsMiddleware 的读取源。
             skills = [SKILLS_VIRTUAL_ROOT]
             logger.info("使用 StoreBackend 作为后端")
 

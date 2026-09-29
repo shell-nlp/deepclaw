@@ -149,11 +149,6 @@ def register_frontend_routes(app: FastAPI) -> None:
 async def app_lifespan(app: FastAPI):
     setup_observability()
     await init_agent_env(app)
-    if settings.BACKEND_TYPE == "store":
-        from deepclaw.agents.general.utils import SKILLS_DIR, sync_skills_store
-
-        # deep agent 通过 SkillsMiddleware 从 Store 读取技能，启动时先同步一次本地技能目录。
-        await sync_skills_store(SKILLS_DIR, app.state.store)
     app.state.agent_registry = AgentRegistry.discover()
     run_store = get_run_store()
     await run_store.initialize()
