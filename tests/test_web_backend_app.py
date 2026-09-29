@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from fastapi import APIRouter
 from fastapi.testclient import TestClient
+from langgraph.store.memory import InMemoryStore
 
 
 def _load_app_module(monkeypatch):
@@ -81,7 +82,7 @@ def test_create_app_defers_agent_env_init_to_lifespan(monkeypatch):
     app_module = _load_app_module(monkeypatch)
 
     checkpointer = object()
-    store = object()
+    store = InMemoryStore()
     init_calls = 0
 
     async def fake_init_agent_env(app):
@@ -220,7 +221,7 @@ def test_create_app_agent_route_remains_postable_with_frontend_mount(monkeypatch
 
     async def fake_init_agent_env(app):
         app.state.checkpointer = object()
-        app.state.store = object()
+        app.state.store = InMemoryStore()
         app.state.agent_store_ctx = None
 
     fake_agui_router = APIRouter()
@@ -264,7 +265,7 @@ def test_create_app_serves_exported_login_html_route(monkeypatch, tmp_path: Path
     monkeypatch.setattr(app_module, "ROOT_DIR", tmp_path)
     async def fake_init_agent_env(app):
         app.state.checkpointer = object()
-        app.state.store = object()
+        app.state.store = InMemoryStore()
         app.state.agent_store_ctx = None
 
     class ServiceSpy:

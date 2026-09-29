@@ -8,7 +8,7 @@ def test_general_agent_modules_are_importable_from_agents_package():
 
     assert hasattr(agent_module, "GeneralAgent")
     assert hasattr(state_module, "StateSchema")
-    assert hasattr(utils_module, "copy_skills_to_store")
+    assert hasattr(utils_module, "sync_skills_store")
 
 
 def test_rag_agent_modules_are_importable_from_agents_package():

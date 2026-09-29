@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Request, UploadFile
 
 from deepclaw.web_backend.auth.dependencies import get_current_actor
 from deepclaw.web_backend.skills.schemas import (
@@ -24,22 +24,28 @@ def list_skills(request: SkillListRequest, actor=Depends(get_current_actor)):
 
 @router.post("/skills/upload", response_model=SkillUploadResponse, summary="上传技能", description="上传技能包文件并保存到服务端技能目录。")
 async def upload_skill(
+    request: Request,
     file: UploadFile = File(..., description="Skill zip package"),
     _actor=Depends(get_current_actor),
 ):
     """上传技能包压缩文件。"""
     data = await file.read()
     await file.close()
-    return skill_manager.upload_skill_zip(
+    return await skill_manager.upload_skill_zip(
         file_name=file.filename or "skill.zip",
         data=data,
+        store=getattr(request.app.state, "store", None),
     )
 
 
 @router.post("/skills/delete", response_model=SkillDeleteResponse, summary="删除技能", description="删除指定技能包及其关联文件。")
-def delete_skill(
+async def delete_skill(
     request: SkillDeleteRequest,
+    http_request: Request,
     _actor=Depends(get_current_actor),
 ):
     """删除指定技能包。"""
-    return skill_manager.delete_skill(skill_name=request.skill_name)
+    return await skill_manager.delete_skill(
+        skill_name=request.skill_name,
+        store=getattr(http_request.app.state, "store", None),
+    )

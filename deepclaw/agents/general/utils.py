@@ -1,48 +1,80 @@
 from pathlib import Path
+from typing import Any
 
-from deepagents.backends.utils import create_file_data
-from langgraph.store.memory import BaseStore
 from loguru import logger
 
+from deepclaw.constant import WORKSPACE_PATH
 
-def copy_skills_to_store(skills_dir: Path, store: BaseStore):
-    """修复版：正确格式存入 store（字典对象）"""
-    skills_dir = Path(skills_dir)
+# 技能在虚拟文件系统中的挂载点，必须与 create_deep_agent 的 skills 源保持一致。
+SKILLS_VIRTUAL_ROOT = "/workspace/skills"
+# 技能在宿主机上的存放目录。
+SKILLS_DIR = WORKSPACE_PATH / "skills"
+
+
+def user_namespace_factory(runtime: Any) -> tuple[str, ...]:
+    """动态生成用户 namespace。
+
+    Args:
+        runtime: 当前 Agent 运行时，优先读取运行时身份信息。
+    """
+    server_info = getattr(runtime, "server_info", None)
+    user = getattr(server_info, "user", None)
+    identity = getattr(user, "identity", None)
+    user_id = str(identity) if identity else "default"
+    return ("filesystem", user_id)
+
+
+def _iter_skill_files(skills_dir: Path) -> list[tuple[str, bytes]]:
+    """收集技能目录下的文件并映射成虚拟路径。
+
+    Args:
+        skills_dir: 本地技能根目录。
+
+    Returns:
+        (虚拟路径, 文件内容) 列表，按虚拟路径排序。
+    """
     if not skills_dir.exists():
-        logger.error(f"❌ skills 目录不存在: {skills_dir}")
-        return
+        return []
 
-    copied_count = 0
-    copy_info = ["\n"]
-    for file_path in skills_dir.rglob("*"):
-        if "__pycache__" in str(file_path):
+    files: list[tuple[str, bytes]] = []
+    for file_path in sorted(skills_dir.rglob("*")):
+        if not file_path.is_file() or "__pycache__" in file_path.parts:
             continue
-        if file_path.is_file():
-            rel_path = file_path.relative_to(skills_dir)
-            virtual_path = f"/workspace/skills/{rel_path}"
-
-            try:
-
-                content = file_path.read_text(encoding="utf-8")
-                store.put(
-                    namespace=("filesystem",),
-                    key=virtual_path,
-                    value=create_file_data(content),
-                )
-
-                copied_count += 1
-                copy_info.append(f"已复制: {virtual_path} ({len(content)} chars)")
-
-            except Exception as e:
-                copy_info.append(f"复制失败 {virtual_path}: {e}")
-    copy_info.append(f"✅ Skills 复制完成: {copied_count} 个文件")
-    logger.info("\n".join(copy_info))
+        relative_path = file_path.relative_to(skills_dir).as_posix()
+        files.append((f"{SKILLS_VIRTUAL_ROOT}/{relative_path}", file_path.read_bytes()))
+    return files
 
 
-def sync_skills_store(skills_dir: Path, store: BaseStore):
-    """同步 store 中的 skills 文件，先删旧条目再全量复制。"""
-    existing_items = store.search(("filesystem",), limit=10000)
-    for item in existing_items:
-        if item.key.startswith("/workspace/skills/"):
-            store.delete(item.namespace, item.key)
-    copy_skills_to_store(skills_dir=skills_dir, store=store)
+async def sync_skills_store(skills_dir: Path, store: Any) -> int:
+    """把本地技能目录全量同步到 LangGraph Store。
+
+    先删除旧的技能条目再上传，保证 store 内容与本地目录一致；写入时复用
+    user_namespace_factory，与 deep agent 读取技能时的命名空间严格相同。
+
+    Args:
+        skills_dir: 本地技能根目录。
+        store: LangGraph Store 实例。
+
+    Returns:
+        成功写入的文件数量。
+    """
+    from deepagents.backends.store import StoreBackend
+
+    backend = StoreBackend(namespace=user_namespace_factory, store=store)
+    await backend.adelete(SKILLS_VIRTUAL_ROOT)
+
+    files = _iter_skill_files(skills_dir)
+    if not files:
+        logger.info("本地技能目录为空，已清空 store 中的技能条目：{}", skills_dir)
+        return 0
+
+    responses = await backend.aupload_files(files)
+    failures = [item for item in responses if item.error]
+    for item in failures:
+        logger.warning("技能写入 store 失败 {}：{}", item.path, item.error)
+    logger.info(
+        "技能已同步到 store：成功 {} 个，失败 {} 个",
+        len(responses) - len(failures),
+        len(failures),
+    )
+    return len(responses) - len(failures)

@@ -21,7 +21,7 @@
   - 创建 `FastAPI` 应用
   - 初始化 checkpointer 与 store
   - 在 `create_app()` 中挂载模块级 `auth`、`agui`、`channels`、`skills`、`knowledge_bases` 路由
-  - 在应用生命周期中初始化 `AgentRegistry`，预热全部 `AgentRuntimeCache` 图与 Run 管理器，并在关闭时停止后台任务、释放 RunStore
+  - 在应用生命周期中初始化 `AgentRegistry`，预热全部 `AgentRuntimeCache` 图与 Run 管理器，并在关闭时停止后台任务、释放 RunStore；`BACKEND_TYPE=store` 时在预热前先把本地技能目录同步进 Store（`sync_skills_store`）
   - 提供 `/api/runtime-config` 运行时配置
   - 静态托管 `frontend/out`
 
@@ -74,7 +74,7 @@
   微信 ClawBot 专属适配器、API 客户端、运行时、生命周期、状态辅助与管理路由。
 
 - `deepclaw/web_backend/skills/`
-  技能管理路由、请求模型与服务实现。
+  技能管理路由、请求模型与服务实现。上传/删除技能后会 `await` 把本地技能目录重新同步进 LangGraph Store（仅 `BACKEND_TYPE=store` 时生效，store 由路由从 `app.state.store` 取）。
 
 - `deepclaw/web_backend/knowledge_bases/`
 知识库管理路由、请求模型、元数据存储与服务实现。上传接口先将原始文件保存到对象存储并登记独立的 `knowledge_upload_tasks` 任务，返回 202；每实例后台 worker 数由 `KNOWLEDGE_UPLOAD_WORKERS` 控制（默认 2，允许 1–8），原子领取任务，在线程中执行 PDF 解析和切片写入（只写 passage 索引，不做三元组抽取），按排队/解析/索引/成功/失败持久化阶段，前端轮询 `/api/rag/knowledge-bases/documents/upload-tasks`。进程异常中断的任务心跳过期后重新排队；部署多实例时共享元数据数据库和对象存储。知识库解析统一选择 `PDFParser`；PDF 直接解析，TXT/MD 等文本格式先生成 PDF，DOCX/PPTX/XLSX 等由 LibreOffice 转换为 PDF 后再解析。`create_document_parser()` 保留给非知识库上传场景。失败任务可由前端调用 `/api/rag/knowledge-bases/documents/upload-tasks/retry` 重新排队，或调用 `/upload-tasks/delete` 删除记录；两者都只允许操作 `failed` 状态的任务。
@@ -83,7 +83,7 @@
 ### 核心能力层
 
 - `deepclaw/agents/general/`
-  通用 Agent 组装、上下文、状态与运行时相关逻辑；`general/agent.py` 的 `GeneralAgent.build_agent` 直接承载构建实现。
+  通用 Agent 组装、上下文、状态与运行时相关逻辑；`general/agent.py` 的 `GeneralAgent.build_agent` 直接承载构建实现。`general/utils.py` 承载 `user_namespace_factory`（Store 用户命名空间工厂）与 `sync_skills_store`：后者用 `StoreBackend` + `await aupload_files()` 把本地技能目录全量同步进 LangGraph Store，写入命名空间与 deep agent 读取技能时严格一致；`BACKEND_TYPE=store` 时 `agent.py` 只声明 `skills=[SKILLS_VIRTUAL_ROOT]`，由 `SkillsMiddleware` 在运行时从 Store 读取技能。
 
 - `deepclaw/agents/rag/`
   RAG Agent 组装、上下文与状态定义；`rag/agent.py` 的 `RagAgent.build_agent` 直接承载构建实现。

@@ -1,4 +1,5 @@
 from io import BytesIO
+from typing import Any
 from zipfile import ZipFile
 
 from fastapi import FastAPI
@@ -38,15 +39,22 @@ def test_guest_can_upload_skill_and_create_kb(monkeypatch):
     captured: dict[str, object] = {}
     created: dict[str, object] = {}
 
-    def fake_upload_skill_zip(*, file_name: str, data: bytes) -> SkillUploadResponse:
+    async def fake_upload_skill_zip(
+        *,
+        file_name: str,
+        data: bytes,
+        store: Any | None = None,
+    ) -> SkillUploadResponse:
         """记录上传参数并返回稳定的技能上传响应。
 
         Args:
         - file_name: 上传文件名。
         - data: 上传文件内容。
+        - store: 当前应用的 LangGraph Store。
         """
         captured["file_name"] = file_name
         captured["data"] = data
+        captured["store"] = store
         return SkillUploadResponse(
             skill=SkillRecord(
                 skill_name="demo",
