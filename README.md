@@ -274,7 +274,7 @@ VECTOR_STORE_BACKEND=pgsql
 
 # 知识库文件对象存储：默认本地，也可切换 MinIO
 OBJECT_STORAGE_PROVIDER=local
-# LOCAL_STORAGE_ROOT=.deepclaw/workspace/pdf_files
+# LOCAL_STORAGE_ROOT=.deepclaw/workspace/object_storage
 # OBJECT_STORAGE_PROVIDER=minio
 # MINIO_ENDPOINT_URL=http://localhost:9000
 # MINIO_ACCESS_KEY=minioadmin
@@ -594,7 +594,7 @@ curl http://localhost:7869/api/agui/threads/demo-thread/state -H "Authorization:
 | `ES_URL` | `VECTOR_STORE_BACKEND=elasticsearch` 时的 Elasticsearch 地址 |
 | `ES_URSR` / `ES_PWD` | Elasticsearch 用户名与密码 |
 | `OBJECT_STORAGE_PROVIDER` | 知识库文件对象存储：`local`（默认）或 `minio` |
-| `LOCAL_STORAGE_ROOT` | 本地对象存储根目录，默认 `.deepclaw/workspace/pdf_files`；实际路径为 `root/bucket_name/file_path` |
+| `LOCAL_STORAGE_ROOT` | 本地对象存储根目录，默认 `.deepclaw/workspace/object_storage`；实际路径为 `root/bucket_name/file_path` |
 | `MINIO_ENDPOINT_URL` / `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | `OBJECT_STORAGE_PROVIDER=minio` 时必填 |
 
 ### 常用可选环境变量

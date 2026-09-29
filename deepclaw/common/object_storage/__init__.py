@@ -40,7 +40,7 @@ def create_object_storage(settings: Any) -> ObjectStorage:
     if provider != "local":
         raise ValueError("OBJECT_STORAGE_PROVIDER 只能是 local 或 minio")
     root_dir = getattr(settings, "LOCAL_STORAGE_ROOT", None)
-    return LocalObjectStorage(root_dir or WORKSPACE_PATH / "pdf_files")
+    return LocalObjectStorage(root_dir or WORKSPACE_PATH / "object_storage")
 
 
 __all__ = [

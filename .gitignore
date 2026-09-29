@@ -18,7 +18,10 @@ wheels/
 .deepclaw/conversation_history/
 .deepclaw/.playwright-cli/
 .deepclaw/workspace/converted_pdf/
-.deepclaw/workspace/pdf_files/knowledge_bases/
+# 本地对象存储根目录，含知识库上传原文，禁止提交。
+.deepclaw/workspace/object_storage/
+# 旧版本的对象存储根目录名，保留忽略以避免存量数据被误提交。
+.deepclaw/workspace/pdf_files/
 .deepclaw/workspace/skills/
 .vscode/
 .trae

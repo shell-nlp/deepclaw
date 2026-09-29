@@ -279,7 +279,7 @@ VECTOR_STORE_BACKEND=pgsql
 
 # Knowledge base object storage: local by default, optionally MinIO
 OBJECT_STORAGE_PROVIDER=local
-# LOCAL_STORAGE_ROOT=.deepclaw/workspace/pdf_files
+# LOCAL_STORAGE_ROOT=.deepclaw/workspace/object_storage
 # OBJECT_STORAGE_PROVIDER=minio
 # MINIO_ENDPOINT_URL=http://localhost:9000
 # MINIO_ACCESS_KEY=minioadmin
@@ -601,7 +601,7 @@ curl http://localhost:7869/api/agui/threads/demo-thread/state -H "Authorization:
 | `ES_URL` | Elasticsearch URL when `VECTOR_STORE_BACKEND=elasticsearch` |
 | `ES_URSR` / `ES_PWD` | Elasticsearch username and password |
 | `OBJECT_STORAGE_PROVIDER` | Knowledge-base file storage: `local` (default) or `minio` |
-| `LOCAL_STORAGE_ROOT` | Local object-storage root, default `.deepclaw/workspace/pdf_files`; paths are `root/bucket_name/file_path` |
+| `LOCAL_STORAGE_ROOT` | Local object-storage root, default `.deepclaw/workspace/object_storage`; paths are `root/bucket_name/file_path` |
 | `MINIO_ENDPOINT_URL` / `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | Required when `OBJECT_STORAGE_PROVIDER=minio` |
 
 ### Common optional environment variables
