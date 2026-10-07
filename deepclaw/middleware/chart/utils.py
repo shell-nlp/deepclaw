@@ -1,15 +1,15 @@
-import time
-import uuid
-from pathlib import Path
+from io import BytesIO
 
 import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
 from loguru import logger
 
-from deepclaw.constant import WORKSPACE_PATH
+from deepclaw.middleware.chart.storage import (
+    CHART_BUCKET_NAME,
+    CHART_OBJECT_PREFIX,
+    save_chart_png,
+)
 from deepclaw.settings import settings
-
-_CHARTS_DIR: Path | None = None
 
 
 def finalize_chart_layout(
@@ -45,19 +45,6 @@ def format_number(value: float) -> str:
     return f"{float(value):.12g}"
 
 
-def _get_charts_dir() -> Path:
-    """获取图表输出目录，并在首次调用时创建。
-
-    Returns:
-        Path: 图表文件输出目录。
-    """
-    global _CHARTS_DIR
-    if _CHARTS_DIR is None:
-        _CHARTS_DIR = WORKSPACE_PATH / "charts"
-        _CHARTS_DIR.mkdir(parents=True, exist_ok=True)
-    return _CHARTS_DIR
-
-
 def setup_chinese_font() -> str:
     """自动探测可用的中文字体名称，找不到时回退到 DejaVu Sans。
 
@@ -82,34 +69,6 @@ def setup_chinese_font() -> str:
     return "DejaVu Sans"
 
 
-def cleanup_chart_files(charts_dir: Path | None = None) -> None:
-    """清理过期图表，并限制保留文件数量。
-
-    Args:
-        charts_dir: 待清理的图表目录，默认使用工作区图表目录。
-    """
-    directory = charts_dir or _get_charts_dir()
-    now = time.time()
-    retention_seconds = settings.CHART_RETENTION_HOURS * 3_600
-    retained: list[tuple[float, Path]] = []
-    for file_path in directory.glob("*.png"):
-        try:
-            modified_at = file_path.stat().st_mtime
-            if now - modified_at > retention_seconds:
-                file_path.unlink()
-                continue
-            retained.append((modified_at, file_path))
-        except OSError as error:
-            logger.warning("清理图表文件失败: path={}, error={}", file_path, repr(error))
-
-    retained.sort(key=lambda item: item[0], reverse=True)
-    for _, file_path in retained[settings.CHART_MAX_FILES:]:
-        try:
-            file_path.unlink()
-        except OSError as error:
-            logger.warning("清理超额图表文件失败: path={}, error={}", file_path, repr(error))
-
-
 def _resolve_chart_public_url() -> str:
     """解析图表公开地址前缀并兼容完整 URL 配置。
 
@@ -125,7 +84,7 @@ def _resolve_chart_public_url() -> str:
 
 
 def save_chart_to_workspace(fig: plt.Figure) -> str:
-    """将 matplotlib 图表保存到工作区，并返回可访问地址。
+    """将 matplotlib 图表保存到对象存储，并返回可访问地址。
 
     Args:
         fig: 待保存的 matplotlib 图形对象。
@@ -133,17 +92,25 @@ def save_chart_to_workspace(fig: plt.Figure) -> str:
     Returns:
         str: 图表的可访问 URL 路径。
     """
-    charts_dir = _get_charts_dir()
-    file_name = f"{uuid.uuid4().hex}.png"
-    file_path = charts_dir / file_name
+    buffer = BytesIO()
     try:
         # 统一兜底处理标题和坐标轴标签的画布边界。
         fig.tight_layout()
-        fig.savefig(file_path, dpi=150, bbox_inches="tight", facecolor="white")
+        fig.savefig(
+            buffer,
+            format="png",
+            dpi=150,
+            bbox_inches="tight",
+            facecolor="white",
+        )
     finally:
         plt.close(fig)
-    cleanup_chart_files(charts_dir)
-    logger.info("图表已保存: {}", file_path)
+    file_name = save_chart_png(buffer.getvalue())
+    logger.info(
+        "图表已保存: {}/{}",
+        CHART_BUCKET_NAME,
+        f"{CHART_OBJECT_PREFIX}/{file_name}",
+    )
     base_path = f"/charts/{file_name}"
     public_url = _resolve_chart_public_url()
     return f"{public_url}{base_path}" if public_url else base_path

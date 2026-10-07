@@ -87,7 +87,7 @@ class Settings(BaseSettings):
 
     # 图表公网访问地址前缀，例如 https://example.com；为空时返回相对路径 /charts/xxx.png
     CHART_PUBLIC_URL: str = ""
-    # 图表文件保留时长和数量上限，避免共享工作区无限增长
+    # 图表对象保留时长和数量上限，避免对象存储中的图表无限增长
     CHART_RETENTION_HOURS: int = Field(default=24, ge=1, le=720)
     CHART_MAX_FILES: int = Field(default=1_000, ge=1, le=10_000)
 

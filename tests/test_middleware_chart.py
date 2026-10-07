@@ -1,23 +1,39 @@
 import matplotlib.pyplot as plt
 
+from deepclaw.common.object_storage import LocalObjectStorage
 from deepclaw.middleware.chart import utils
+from deepclaw.middleware.chart import storage as chart_storage
 from deepclaw.middleware.chart.charts import bar, funnel, line, pie
 from deepclaw.middleware.chart.middleware import CHART_SYSTEM_PROMPT, CHART_TOOL_DESCRIPTION
 
 
 def test_save_chart_to_workspace_returns_absolute_url(tmp_path, monkeypatch):
-    monkeypatch.setattr(utils, "_CHARTS_DIR", tmp_path)
+    object_storage = LocalObjectStorage(tmp_path)
+    monkeypatch.setattr(
+        chart_storage,
+        "get_chart_object_storage",
+        lambda: object_storage,
+    )
     monkeypatch.setattr(utils.settings, "CHART_PUBLIC_URL", "https://charts.example.com/")
 
     figure = plt.figure()
     chart_url = utils.save_chart_to_workspace(figure)
 
     assert chart_url.startswith("https://charts.example.com/charts/")
-    assert (tmp_path / chart_url.rsplit("/", maxsplit=1)[-1]).is_file()
+    file_name = chart_url.rsplit("/", maxsplit=1)[-1]
+    assert object_storage.exists(
+        "chart-assets",
+        f"charts/{file_name}",
+    )
 
 
 def test_save_chart_to_workspace_returns_relative_url_without_public_url(tmp_path, monkeypatch):
-    monkeypatch.setattr(utils, "_CHARTS_DIR", tmp_path)
+    object_storage = LocalObjectStorage(tmp_path)
+    monkeypatch.setattr(
+        chart_storage,
+        "get_chart_object_storage",
+        lambda: object_storage,
+    )
     monkeypatch.setattr(utils.settings, "CHART_PUBLIC_URL", "")
 
     chart_url = utils.save_chart_to_workspace(plt.figure())

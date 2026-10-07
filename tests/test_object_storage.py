@@ -37,6 +37,19 @@ def test_local_object_storage_rejects_path_escape(tmp_path):
         storage.put_bytes("knowledge-bases", "../outside.pdf", b"bad")
 
 
+def test_local_object_storage_lists_prefixed_objects(tmp_path):
+    """本地实现按前缀列出对象键。"""
+    storage = LocalObjectStorage(tmp_path)
+    storage.put_bytes("chart-assets", "charts/a.png", b"a")
+    storage.put_bytes("chart-assets", "charts/nested/b.png", b"b")
+    storage.put_bytes("chart-assets", "other/c.png", b"c")
+
+    assert storage.list_objects("chart-assets", "charts/") == [
+        "charts/a.png",
+        "charts/nested/b.png",
+    ]
+
+
 def test_create_object_storage_defaults_to_local(tmp_path):
     """未显式选择 MinIO 时使用本地对象存储。"""
     storage = create_object_storage(

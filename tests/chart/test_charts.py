@@ -4,17 +4,17 @@ import pytest
 from pydantic import ValidationError
 
 from deepclaw.middleware.chart.engine import render_chart
+from deepclaw.middleware.chart import storage as chart_storage
 from deepclaw.settings import settings
 
 
 class TestChartBasic:
     """基础图表渲染测试"""
 
-    def test_bar_chart(self, tmp_path, monkeypatch):
-        """验证默认使用相对地址并实际写出 PNG 文件。
+    def test_bar_chart(self, monkeypatch):
+        """验证默认使用相对地址并实际写入对象存储。
 
         Args:
-            tmp_path: pytest 提供的临时目录。
             monkeypatch: pytest 提供的属性替换工具。
         """
         monkeypatch.setattr(settings, "CHART_PUBLIC_URL", "")
@@ -25,8 +25,11 @@ class TestChartBasic:
         })
         assert url.startswith("/charts/")
         assert url.endswith(".png")
-        chart_file = tmp_path / "charts" / Path(url).name
-        assert chart_file.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+        chart_data = chart_storage.get_chart_object_storage().get_bytes(
+            chart_storage.CHART_BUCKET_NAME,
+            f"{chart_storage.CHART_OBJECT_PREFIX}/{Path(url).name}",
+        )
+        assert chart_data.startswith(b"\x89PNG\r\n\x1a\n")
 
     def test_line_chart(self):
         url = render_chart({

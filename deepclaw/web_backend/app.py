@@ -5,14 +5,15 @@ from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
 from deepclaw.agent_registry import AgentRegistry
-from deepclaw.constant import ROOT_DIR, WORKSPACE_PATH
+from deepclaw.constant import ROOT_DIR
+from deepclaw.middleware.chart import storage as chart_storage
 from deepclaw.settings import settings
 from deepclaw.web_backend.agui.runtime import AgentRuntimeCache
 from deepclaw.web_backend.agui.router import router as agui_router
@@ -196,13 +197,11 @@ async def app_lifespan(app: FastAPI):
 
 
 def register_charts_static(app: FastAPI) -> None:
-    """挂载图表目录，使默认路径和自定义公网前缀都可访问图片。
+    """挂载图表对象读取路由，使默认路径和自定义前缀都可访问图片。
 
     Args:
         app: 待挂载图表静态路由的 FastAPI 应用。
     """
-    charts_dir = WORKSPACE_PATH / "charts"
-    charts_dir.mkdir(parents=True, exist_ok=True)
     chart_routes = [("/charts", "charts")]
     configured_url = settings.CHART_PUBLIC_URL.strip()
     configured_path = (
@@ -213,43 +212,36 @@ def register_charts_static(app: FastAPI) -> None:
     if configured_path and configured_path not in {"", "/", "/charts"}:
         chart_routes.append((f"{configured_path}/charts", "public_charts"))
 
-    existing_paths = {
-        route.path for route in app.routes if hasattr(route, "path")
-    }
+    existing_paths = {getattr(route, "path", None) for route in app.routes}
+
+    def serve_configured_chart(file_name: str) -> Response:
+        """从对象存储返回图表 PNG。
+
+        Args:
+            file_name: 图表文件名。
+
+        Returns:
+            Response: PNG 图片响应。
+
+        Raises:
+            HTTPException: 文件名非法或对象不存在时返回 404。
+        """
+        try:
+            chart_data = chart_storage.read_chart_png(file_name)
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail="图表不存在") from exc
+        return Response(
+            content=chart_data,
+            media_type="image/png",
+            headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        )
+
     for route_path, route_name in chart_routes:
-        if route_path in existing_paths:
+        endpoint_path = f"{route_path}/{{file_name}}"
+        if endpoint_path in existing_paths:
             continue
-        if route_path == "/charts":
-            app.mount(
-                route_path,
-                StaticFiles(directory=str(charts_dir)),
-                name=route_name,
-            )
-            continue
-
-        async def serve_configured_chart(file_name: str) -> FileResponse:
-            """返回配置前缀下的图表 PNG 文件。
-
-            Args:
-                file_name: 图表文件名，只允许 charts 目录下的 PNG 文件。
-
-            Returns:
-                FileResponse: 图表文件响应。
-
-            Raises:
-                HTTPException: 文件名非法或文件不存在时返回 404。
-            """
-            if Path(file_name).name != file_name or not file_name.lower().endswith(
-                ".png"
-            ):
-                raise HTTPException(status_code=404, detail="图表不存在")
-            file_path = charts_dir / file_name
-            if not file_path.is_file():
-                raise HTTPException(status_code=404, detail="图表不存在")
-            return FileResponse(file_path, media_type="image/png")
-
         app.add_api_route(
-            f"{route_path}/{{file_name}}",
+            endpoint_path,
             serve_configured_chart,
             methods=["GET"],
             include_in_schema=False,
