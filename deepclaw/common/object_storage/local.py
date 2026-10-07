@@ -6,6 +6,7 @@ from pathlib import Path
 from deepclaw.common.object_storage.base import (
     ObjectStorage,
     normalize_object_location,
+    normalize_object_prefix,
 )
 
 
@@ -86,6 +87,36 @@ class LocalObjectStorage(ObjectStorage):
             except OSError:
                 break
             parent = parent.parent
+
+    def list_objects(self, bucket_name: str, prefix: str = "") -> list[str]:
+        """按前缀列出本地对象键。
+
+        Args:
+            bucket_name: 存储桶名称。
+            prefix: 桶内对象键前缀。
+
+        Returns:
+            list[str]: 按对象键排序后的完整对象键列表。
+        """
+        bucket_name, prefix = normalize_object_prefix(bucket_name, prefix)
+        bucket_dir = (self.root_dir / bucket_name).resolve()
+        base_dir = (
+            (bucket_dir / Path(*prefix.split("/"))).resolve()
+            if prefix
+            else bucket_dir
+        )
+        if self.root_dir not in base_dir.parents and base_dir != self.root_dir:
+            raise ValueError("对象前缀超出本地存储根目录")
+        if not base_dir.is_dir():
+            return []
+
+        object_keys: list[str] = []
+        for file_path in base_dir.rglob("*"):
+            if not file_path.is_file():
+                continue
+            relative_path = file_path.relative_to(base_dir).as_posix()
+            object_keys.append(f"{prefix}/{relative_path}" if prefix else relative_path)
+        return sorted(object_keys)
 
     def _resolve_path(self, bucket_name: str, file_path: str) -> Path:
         """把对象地址解析为受根目录约束的本地路径。

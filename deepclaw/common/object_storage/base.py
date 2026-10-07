@@ -56,6 +56,19 @@ class ObjectStorage(ABC):
         """
         ...
 
+    @abstractmethod
+    def list_objects(self, bucket_name: str, prefix: str = "") -> list[str]:
+        """按前缀列出桶内对象键。
+
+        Args:
+            bucket_name: 存储桶名称。
+            prefix: 桶内对象键前缀，使用正斜杠分隔。
+
+        Returns:
+            list[str]: 按对象键排序后的完整对象键列表。
+        """
+        ...
+
 
 def normalize_object_location(bucket_name: str, file_path: str) -> tuple[str, str]:
     """校验并规范化对象地址。
@@ -86,3 +99,30 @@ def normalize_object_location(bucket_name: str, file_path: str) -> tuple[str, st
     ):
         raise ValueError("file_path 包含对象存储或本地文件系统不支持的字符")
     return normalized_bucket, key_path.as_posix()
+
+
+def normalize_object_prefix(bucket_name: str, prefix: str) -> tuple[str, str]:
+    """校验并规范化对象前缀。
+
+    Args:
+        bucket_name: 存储桶名称。
+        prefix: 桶内对象键前缀。
+
+    Returns:
+        规范化后的存储桶名称和不带尾斜杠的前缀。
+    """
+    normalized_bucket, _ = normalize_object_location(bucket_name, "placeholder")
+    normalized_prefix = prefix.strip().strip("/")
+    if not normalized_prefix:
+        return normalized_bucket, ""
+
+    prefix_path = PurePosixPath(normalized_prefix)
+    if prefix_path.is_absolute() or any(
+        part in {"", ".", ".."} for part in prefix_path.parts
+    ):
+        raise ValueError("prefix 必须是桶内的安全相对路径")
+    if any(
+        re.search(r'[<>:"|?*\x00-\x1f]', part) for part in prefix_path.parts
+    ):
+        raise ValueError("prefix 包含对象存储或本地文件系统不支持的字符")
+    return normalized_bucket, prefix_path.as_posix()

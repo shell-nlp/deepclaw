@@ -92,7 +92,7 @@
   Elasticsearch、向量数据库抽象、混合检索（BM25 + 向量 + RRF）、PDF 切分等通用算法实现。
 
 - `deepclaw/common/object_storage/`
-  对象存储抽象与实现。`ObjectStorage` 是 ABC 端口，`LocalObjectStorage` 用 `root/bucket_name/file_path` 模拟对象存储，`MinioObjectStorage` 使用 S3 兼容协议；`ObjectStoragePDFReader` 把对象存储适配给 PDF/Docling 解析器。知识库上传默认走本地实现，配置 `OBJECT_STORAGE_PROVIDER=minio` 后切换远端。
+  对象存储抽象与实现。`ObjectStorage` 是 ABC 端口，统一提供写入、读取、删除和前缀列举能力；`LocalObjectStorage` 用 `root/bucket_name/file_path` 模拟对象存储，`MinioObjectStorage` 使用 S3 兼容协议；`ObjectStoragePDFReader` 把对象存储适配给 PDF/Docling 解析器。知识库上传和图表资源都默认走本地实现，配置 `OBJECT_STORAGE_PROVIDER=minio` 后统一切换远端。
 
 - `deepclaw/common/docling_parser.py`
   Docling 统一文档解析适配器。按文件后缀选择 Docling 或回退解析器，将 PDF、DOCX、PPTX、XLSX、HTML、Markdown、TXT 转换为现有知识库兼容的 LangChain Document 切片，并保留标题路径、页码和 Docling 元数据。
@@ -115,7 +115,7 @@
 - `deepclaw/middleware/`
   业务开关、RAG 注入、MCP、工具搜索、计划，以及 `cron` 工具实现等中间件与运行时扩展。
   NL2SQL 相关逻辑在 `deepclaw/middleware/nl2sql/`，DDL 拉取采用可注册 fetcher 架构（`ddl/base.py` + 各数据库实现如 `ddl/pgsql.py`）。
-  图表生成在 `deepclaw/middleware/chart/`，其中 `charts/` 是基于 matplotlib 的 9 种图表渲染引擎（bar/line/pie/column/scatter/area/histogram/funnel/radar）源码包，`ChartMiddleware` 负责 Agent 工具适配；核心渲染层无 langchain 依赖，可独立发布为 MCP Server。运行时图片固定输出到 `.deepclaw/workspace/charts/`，该目录仅存放生成文件并由 Git 忽略。
+  图表生成在 `deepclaw/middleware/chart/`，其中 `charts/` 是基于 matplotlib 的 9 种图表渲染引擎（bar/line/pie/column/scatter/area/histogram/funnel/radar）源码包，`ChartMiddleware` 负责 Agent 工具适配；核心渲染层无 langchain 依赖，可独立发布为 MCP Server。`storage.py` 把生成的 PNG 写入统一对象存储的 `chart-assets` 桶，对象键为 `charts/<timestamp>_<uuid>.png`，并按 `CHART_RETENTION_HOURS` / `CHART_MAX_FILES` 清理；`GET /charts/{file_name}` 从对象存储读取并兼容本地历史工作区文件。
   消息时间不落任何镜像表：`deepclaw/web_backend/common/agui_runs.py` 的 `_collect_message_created_at()` 直接遍历 LangGraph checkpoint 历史（每个 super-step 的 `checkpoint["ts"]`，即 `StateSnapshot.created_at`）推导出 `message_id -> UTC ISO8601` 映射；它只依赖图对象与运行配置，不依赖 Agent 抽象。
 
 - `deepclaw/tools/`

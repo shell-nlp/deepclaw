@@ -5,6 +5,7 @@ from typing import Any
 from deepclaw.common.object_storage.base import (
     ObjectStorage,
     normalize_object_location,
+    normalize_object_prefix,
 )
 
 
@@ -50,8 +51,14 @@ class MinioObjectStorage(ObjectStorage):
             file_path: 桶内文件路径。
         """
         bucket_name, file_path = normalize_object_location(bucket_name, file_path)
-        response = self.client.get_object(Bucket=bucket_name, Key=file_path)
-        return response["Body"].read()
+        try:
+            response = self.client.get_object(Bucket=bucket_name, Key=file_path)
+            return response["Body"].read()
+        except self._client_error as exc:
+            error_code = str(exc.response.get("Error", {}).get("Code", ""))
+            if error_code in {"404", "NoSuchBucket", "NoSuchKey", "NotFound"}:
+                raise FileNotFoundError(f"对象不存在: {bucket_name}/{file_path}") from exc
+            raise
 
     def put_bytes(
         self,
@@ -120,6 +127,32 @@ class MinioObjectStorage(ObjectStorage):
         """
         bucket_name, file_path = normalize_object_location(bucket_name, file_path)
         self.client.delete_object(Bucket=bucket_name, Key=file_path)
+
+    def list_objects(self, bucket_name: str, prefix: str = "") -> list[str]:
+        """按前缀列出 MinIO 对象键。
+
+        Args:
+            bucket_name: 存储桶名称。
+            prefix: 桶内对象键前缀。
+
+        Returns:
+            list[str]: 按对象键排序后的完整对象键列表。
+        """
+        bucket_name, prefix = normalize_object_prefix(bucket_name, prefix)
+        try:
+            paginator = self.client.get_paginator("list_objects_v2")
+            pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix)
+            object_keys = [
+                str(item["Key"])
+                for page in pages
+                for item in page.get("Contents", [])
+            ]
+        except self._client_error as exc:
+            error_code = str(exc.response.get("Error", {}).get("Code", ""))
+            if error_code in {"404", "NoSuchBucket", "NotFound"}:
+                return []
+            raise
+        return sorted(object_keys)
 
     def _ensure_bucket(self, bucket_name: str) -> None:
         """确保目标存储桶存在。
