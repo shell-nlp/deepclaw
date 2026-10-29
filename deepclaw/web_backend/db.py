@@ -1,19 +1,8 @@
 import os
 from pathlib import Path
 
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlmodel.ext.asyncio.session import AsyncSession
-
 from deepclaw.constant import HOME_PATH
 from deepclaw.settings import settings
-
-
-def make_async_url(db_url: str) -> str:
-    if db_url.startswith("sqlite"):
-        return "sqlite+aiosqlite:" + db_url[len("sqlite:"):]
-    if db_url.startswith("postgresql"):
-        return "postgresql+asyncpg:" + db_url[len("postgresql:"):]
-    return db_url
 
 
 def build_home_sqlite_db_url(filename: str) -> str:
@@ -43,15 +32,3 @@ def should_import_home_sqlite(*, filename: str, target_db_url: str) -> Path | No
     return source_path
 
 
-def create_async_engine_from_url(db_url: str, echo: bool = False):
-    async_db_url = make_async_url(db_url)
-    connect_args = {"check_same_thread": False} if db_url.startswith("sqlite") else {}
-    engine_kwargs = {"echo": echo, "connect_args": connect_args}
-    if db_url.startswith("postgresql"):
-        engine_kwargs.update(pool_pre_ping=True, pool_recycle=1800)
-    engine = create_async_engine(async_db_url, **engine_kwargs)
-    return engine
-
-
-def build_async_sessionmaker(engine):
-    return async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

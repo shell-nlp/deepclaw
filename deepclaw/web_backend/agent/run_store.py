@@ -14,10 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Field, SQLModel, delete, select
 
 from deepclaw.settings import settings
-from deepclaw.web_backend.db import (
-    build_async_sessionmaker,
-    create_async_engine_from_url,
-)
+from deepclaw.utils.db import build_async_sessionmaker, create_async_engine_from_url
 
 
 PERSISTENT_THREAD_EXPIRES_AT = datetime(9999, 12, 30)

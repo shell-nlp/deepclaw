@@ -260,6 +260,73 @@ class AbstractVectorStore(ABC):
         """
         ...
 
+    def search_page(
+        self,
+        *,
+        index_name: str,
+        filter_conditions: dict[str, Any] | None = None,
+        k: int = 10,
+        offset: int = 0,
+        sort_field: str | None = None,
+        sort_desc: bool = False,
+        sort_value_type: str | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """分页检索并返回当前页命中与命中总数。
+
+        默认实现先统计全量命中，再取出全部记录排序后切片；后端可覆盖为原生分页。
+
+        Args:
+            index_name: 目标索引名称。
+            filter_conditions: 过滤条件字典。
+            k: 单页返回条数。
+            offset: 起始偏移量。
+            sort_field: 排序字段，支持 metadata.xxx 形式的嵌套路径。
+            sort_desc: 是否按倒序排列。
+            sort_value_type: 后端排序字段类型提示，默认实现忽略该参数。
+
+        Returns:
+            当前页命中列表与命中总数。
+        """
+        del sort_value_type
+        total = self.count(
+            filter_conditions=filter_conditions,
+            index_names=[index_name],
+        )
+        if total == 0:
+            return [], 0
+        rows = self.search(
+            index_names=[index_name],
+            k=total,
+            filter_conditions=filter_conditions,
+        )
+        if sort_field:
+            rows.sort(
+                key=lambda row: AbstractVectorStore._sort_value(row, sort_field),
+                reverse=sort_desc,
+            )
+        return rows[offset:offset + k], total
+
+    @staticmethod
+    def _sort_value(row: dict[str, Any], field: str) -> Any:
+        """提取排序字段值，兼容 metadata.segment_id 等嵌套路径。
+
+        Args:
+            row: 单条命中结果。
+            field: 点分隔字段路径。
+
+        Returns:
+            可比较的整数或字符串。
+        """
+        value: Any = row
+        for part in field.split("."):
+            if not isinstance(value, dict):
+                return 0
+            value = value.get(part, 0)
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return str(value or 0)
+
     def vector_search_by_ids(
         self, query: str, doc_ids: list[str], index_name: str, k: int
     ) -> list[dict[str, Any]]:

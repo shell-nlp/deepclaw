@@ -1,5 +1,6 @@
 import asyncio
 
+from deepclaw.common.vector_store.base import AbstractVectorStore
 from deepclaw.web_backend.knowledge_bases.service import KnowledgeBaseManager
 
 
@@ -172,26 +173,31 @@ def test_document_chunk_pagination_sorts_full_result_before_slicing():
         Args:
             无。
         """
-        manager = KnowledgeBaseManager(
-            vector_store=FakePassageStore(range(1, 21)),
-            metadata_store=FakeMetadataStore(),
-        )
-        query = {"bool": {"filter": [{"term": {"metadata.document_id": "doc001"}}]}}
-        sort = [{"metadata.segment_id": {"order": "asc"}}]
+        store = FakePassageStore(range(1, 21))
 
-        first_page, total = manager._search_with_total(
-            index_name="kb_kb001_passages", query=query, size=8, from_=0, sort=sort
+        first_page, total = AbstractVectorStore.search_page(
+            store,
+            index_name="kb_kb001_passages",
+            filter_conditions={"metadata.document_id": "doc001"},
+            k=8,
+            offset=0,
+            sort_field="metadata.segment_id",
         )
-        second_page, _ = manager._search_with_total(
-            index_name="kb_kb001_passages", query=query, size=8, from_=8, sort=sort
+        second_page, _ = AbstractVectorStore.search_page(
+            store,
+            index_name="kb_kb001_passages",
+            filter_conditions={"metadata.document_id": "doc001"},
+            k=8,
+            offset=8,
+            sort_field="metadata.segment_id",
         )
 
         assert total == 20
         assert [
-            hit["_source"]["metadata"]["segment_id"] for hit in first_page
+            hit["metadata"]["segment_id"] for hit in first_page
         ] == list(range(1, 9))
         assert [
-            hit["_source"]["metadata"]["segment_id"] for hit in second_page
+            hit["metadata"]["segment_id"] for hit in second_page
         ] == list(range(9, 17))
 
     asyncio.run(_run())
