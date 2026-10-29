@@ -19,7 +19,8 @@ test('frontend metadata and shell branding use DeepClaw', () => {
   assert.match(layoutSource, /title:\s*['"]DeepClaw['"]/)
   assert.doesNotMatch(layoutSource, /AI Agent Chat/)
 
-  assert.match(appSidebarSource, /<h1 className=\{styles\.title\}>DeepClaw<\/h1>/)
+  assert.match(appSidebarSource, /src="\/logo\.png"/)
+  assert.match(appSidebarSource, /alt="DeepClaw"/)
   assert.doesNotMatch(chatInterfaceSource, /AI Agent Chat/)
   assert.doesNotMatch(appSidebarSource, /AI Agent Chat/)
 
@@ -67,9 +68,10 @@ test('single channel management view renders a bound user section before binding
     'components/chat/management/ChannelManagementView.tsx'
   )
 
-  assert.match(channelManagementSource, /已绑定用户/)
-  assert.match(channelManagementSource, /绑定实例明细/)
-  assert.match(channelManagementSource, /selectedOwnerBindings/)
+  assert.match(channelManagementSource, /绑定列表/)
+  assert.match(channelManagementSource, /channelOwnerGroup/)
+  assert.match(channelManagementSource, /ownerListSection/)
+  assert.match(channelManagementSource, /channelDetailPanel/)
 })
 
 test('single channel management view selects one binding instance before showing details', () => {
@@ -79,5 +81,5 @@ test('single channel management view selects one binding instance before showing
 
   assert.match(channelManagementSource, /selectedBindingId/)
   assert.match(channelManagementSource, /selectedBinding/)
-  assert.match(channelManagementSource, /选择绑定实例/)
+  assert.match(channelManagementSource, /选择绑定查看详情/)
 })

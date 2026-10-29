@@ -1,133 +1,25 @@
 'use client'
 
-import {
-  ChangeEvent,
-  KeyboardEvent,
-  MouseEvent,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { KeyboardEvent, useCallback, useEffect } from 'react'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 
 import {
-  buildAuthorizationHeaders,
-  clearStoredAuthToken,
-  fetchCurrentActor,
-  getActorCapabilities,
-  getStoredAuthToken,
-  GUEST_USER_ID,
-  isUnauthorizedErrorMessage,
-  normalizeActorPayload,
-  revokeAuthToken,
-  type ActorState,
-} from '../utils/auth'
-import {
   createAgUiRunInput,
+  getAgUiAssistantSnapshotText,
   getAgUiInterrupt,
   getAgUiInterruptOutcome,
-  getAgUiAssistantSnapshotText,
   getLatestAssistantTokenUsage,
   getRecommendedQuestions,
-  getTokenUsageFromMessage,
   parseAgUiSseFrame,
   type AgUiEvent,
   type AgUiInterrupt,
 } from '../utils/agui'
-import { resolveChannelEntryPage } from '../utils/channelManagement'
 import {
-  AGUI_AGENTS_API_PATH,
   AGUI_THREAD_RUNS_API_PATH,
-  AGUI_THREADS_API_PATH,
-  AGUI_THREAD_DELETE_API_PATH,
   AGUI_THREAD_STATE_API_PATH,
-  AUTH_USERS_CREATE_API_PATH,
-  AUTH_USERS_LIST_API_PATH,
-  AUTH_USERS_RESET_PASSWORD_API_PATH,
-  AUTH_USERS_UPDATE_ROLE_API_PATH,
-  AUTH_USERS_UPDATE_STATUS_API_PATH,
-  DEFAULT_AGUI_API_PATH,
-  DEFAULT_CHANNEL_PAGE,
-  DEFAULT_KNOWLEDGE_PAGE,
-  DEFAULT_MCP_CONFIG_TEMPLATE,
-  RUNTIME_CONFIG_API_PATH,
-  DOCUMENT_CHUNK_PAGE_SIZE,
-  DOCUMENT_PAGE_SIZE,
-  KB_BULK_DELETE_API_PATH,
-  KB_CREATE_API_PATH,
-  KB_DELETE_API_PATH,
-  KB_DETAIL_API_PATH,
-  KB_DOCUMENT_BULK_DELETE_API_PATH,
-  KB_DOCUMENT_DELETE_API_PATH,
-  KB_DOCUMENT_DETAIL_API_PATH,
-  KB_DOCUMENT_LIST_API_PATH,
-  KB_DOCUMENT_UPDATE_API_PATH,
-  KB_DOCUMENT_UPLOAD_API_PATH,
-  KB_DOCUMENT_UPLOAD_TASK_DELETE_API_PATH,
-  KB_DOCUMENT_UPLOAD_TASK_RETRY_API_PATH,
-  KB_DOCUMENT_CHUNK_UPDATE_API_PATH,
-  KB_DOCUMENT_UPLOAD_TASKS_API_PATH,
-  KB_LIST_API_PATH,
-  KB_UPDATE_API_PATH,
-  KNOWLEDGE_BASE_OPTION_PAGE_SIZE,
-  KNOWLEDGE_BASE_PAGE_SIZE,
-  GENERAL_AGENT_ID,
-  KNOWLEDGE_AGENT_CAPABILITY,
   KNOWLEDGE_AGENT_ID,
-  SKILL_DELETE_API_PATH,
-  SKILL_LIST_API_PATH,
-  SKILL_UPLOAD_API_PATH,
 } from '../utils/constants'
-import type {
-  AssistantMessageItem,
-  AgentListResponse,
-  AgentSummary,
-  ChannelManagementPage,
-  AuthLoginResponse,
-  ThreadListResponse,
-  ChatHistorySession,
-  AuthUserListResponse,
-  AuthUserSummary,
-  BulkDeleteDocumentResponse,
-  BulkDeleteKnowledgeBaseResponse,
-  ChatError,
-  ChatErrorKind,
-  ChatModeOption,
-  ChatStatus,
-  InterruptData,
-  KnowledgeBase,
-  KnowledgeChunk,
-  KnowledgeDocument,
-  KnowledgeDocumentDetailResponse,
-  KnowledgeUploadTask,
-  KnowledgePage,
-  Message,
-  PaginatedKnowledgeBaseResponse,
-  PaginatedKnowledgeDocumentResponse,
-  RequestMode,
-  ReasoningBlock,
-  SkillDeleteResponse,
-  SkillListResponse,
-  SkillRecord,
-  SkillUploadResponse,
-  ThreadRunListResponse,
-  ToolData,
-  UploadResult,
-  ViewMode,
-} from '../utils/types'
-import {
-  fetchJson,
-  generateMessageId,
-  generateSessionId,
-  getApiUrl,
-  getPageTotal,
-  getRouteHash,
-  parseRouteHash,
-  parseMcpConfig,
-  stringifyToolContent,
-} from '../utils'
+import { generateMessageId, getApiUrl, stringifyToolContent } from '../utils'
 import {
   ChatRequestError,
   appendContentToken,
@@ -138,12 +30,23 @@ import {
   ensureToolItem,
   isAbortError,
   isActiveRunStatus,
-  toChatError,
   toHistoryMessages,
   type AssistantStreamKind,
   type ResumeDecision,
   type ThreadRuntime,
 } from '../utils/chatRuntime'
+import type {
+  AgentSummary,
+  ChannelManagementPage,
+  ChatStatus,
+  InterruptData,
+  KnowledgeBase,
+  KnowledgePage,
+  Message,
+  RequestMode,
+  ThreadRunListResponse,
+  ViewMode,
+} from '../utils/types'
 
 type UseChatRuntimeDeps = {
   messages: Message[]
@@ -1271,7 +1174,6 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
 
     const requestMode = requestModeRef.current
     const requestKnowledgeBase = requestKnowledgeBaseRef.current
-    const requestMcpConfig = requestMcpConfigRef.current
     const threadId = activeThreadIdRef.current
     const generation = streamGenerationRef.current + 1
     streamGenerationRef.current = generation
@@ -1408,7 +1310,6 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
 
     const requestMode = requestModeRef.current
     const requestKnowledgeBase = requestKnowledgeBaseRef.current
-    const requestMcpConfig = requestMcpConfigRef.current
     const threadId = activeThreadIdRef.current
     const generation = streamGenerationRef.current + 1
     streamGenerationRef.current = generation
