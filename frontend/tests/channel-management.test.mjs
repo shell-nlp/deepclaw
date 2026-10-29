@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import * as channelManagementPkg from '../components/chat-interface/channelManagement.ts'
+import * as channelManagementPkg from '../components/chat/utils/channelManagement.ts'
 
 test('channel management bootstrap only loads bound users on initial view', () => {
   assert.equal(

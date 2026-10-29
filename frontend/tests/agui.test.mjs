@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import * as aguiPkg from '../components/chat-interface/agui.ts'
+import * as aguiPkg from '../components/chat/utils/agui.ts'
 
 test('agui parses serialized HITL interrupt payloads', () => {
   const interrupt = aguiPkg.getAgUiInterrupt({

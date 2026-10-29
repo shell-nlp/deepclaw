@@ -5,7 +5,7 @@ import { useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 
 import styles from '../../ChatInterface.module.css'
-import type { ActorState } from '../../chat-interface/auth'
+import type { ActorState } from '../utils/auth'
 
 interface AccountPanelProps {
   actor: ActorState

@@ -1,5 +1,5 @@
 import styles from '../../ChatInterface.module.css'
-import type { ChatError } from '../../chat-interface/types'
+import type { ChatError } from '../utils/types'
 
 interface ErrorCardProps {
   error: ChatError

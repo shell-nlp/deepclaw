@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 
 import styles from '../../ChatInterface.module.css'
-import type { Message, ReasoningBlock } from '../../chat-interface/types'
-import { formatDuration } from '../../chat-interface/utils'
+import type { Message, ReasoningBlock } from '../utils/types'
+import { formatDuration } from '../utils'
 import { getAssistantMessageItems } from '../utils/assistantMessage'
 import { ReasoningCard } from './ReasoningCard'
 import { ToolCard } from './ToolCard'

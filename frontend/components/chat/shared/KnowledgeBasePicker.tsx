@@ -3,7 +3,7 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 
 import styles from '../../ChatInterface.module.css'
-import type { KnowledgeBase } from '../../chat-interface/types'
+import type { KnowledgeBase } from '../utils/types'
 
 interface KnowledgeBasePickerProps {
   open: boolean

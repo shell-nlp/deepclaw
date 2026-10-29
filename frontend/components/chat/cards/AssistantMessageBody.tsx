@@ -1,6 +1,6 @@
 import styles from '../../ChatInterface.module.css'
-import type { Message } from '../../chat-interface/types'
-import { normalizeChartMarkdown, parseMarkdown } from '../../chat-interface/utils'
+import type { Message } from '../utils/types'
+import { normalizeChartMarkdown, parseMarkdown } from '../utils'
 import { getAssistantMessageItems } from '../utils/assistantMessage'
 import { ErrorCard } from './ErrorCard'
 import { ProcessSummary } from './ProcessSummary'

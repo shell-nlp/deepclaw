@@ -1,4 +1,4 @@
-import type { AssistantMessageItem, Message } from '../../chat-interface/types'
+import type { AssistantMessageItem, Message } from './types'
 
 /**
  * 将 assistant 消息还原为按时间顺序排列的展示项。

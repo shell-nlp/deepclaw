@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react'
 
 import styles from '../../ChatInterface.module.css'
-import type { ActorState } from '../../chat-interface/auth'
-import type { AuthUserSummary } from '../../chat-interface/types'
+import type { ActorState } from '../utils/auth'
+import type { AuthUserSummary } from '../utils/types'
 
 interface UserManagementViewProps {
   actor: ActorState

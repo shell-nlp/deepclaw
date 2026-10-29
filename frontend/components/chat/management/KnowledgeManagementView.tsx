@@ -14,8 +14,8 @@ import type {
   KnowledgeDocumentDetailResponse,
   KnowledgePage,
   ViewMode,
-} from '../../chat-interface/types'
-import { formatDateTime } from '../../chat-interface/utils'
+} from '../utils/types'
+import { formatDateTime } from '../utils'
 
 const UPLOAD_TASK_STATUS_LABEL: Record<string, string> = {
   queued: '排队中',

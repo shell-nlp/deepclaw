@@ -12,6 +12,16 @@
 
 前端是一个独立的 Next.js 应用，构建后由后端静态托管。
 
+## 代码探索约定
+
+- 优先使用 `codegraph` CLI 探索代码，能大幅加快文件定位并节约 token：
+  - 改动前先执行 `codegraph sync`，确保索引最新
+  - `codegraph explore <描述>`：按语义定位相关模块与调用路径
+  - `codegraph node <符号>`：查看符号定义、调用方与被调用方
+  - `codegraph callers/callees/impact <符号>`：评估改动影响面
+- 精确字符串、文案或配置键搜索仍使用 `rg` / Grep，codegraph 不擅长字面匹配。
+- 当前环境未提供 `codegraph_explore` MCP 工具，统一通过 CLI 调用。
+
 ## 当前代码结构
 
 ### Web 应用层
@@ -266,8 +276,7 @@ pnpm build
 - 所有数据库操作必须使用 SQLModel 的原生异步功能：`async_sessionmaker` 用 `class_=AsyncSession`（`from sqlmodel.ext.asyncio.session import AsyncSession`），查询用 `await session.exec(select(...))`（`select` 从 `sqlmodel` 导入而非 `sqlalchemy`），结果直接用 `.one()/.first()/.all()` 获取模型实例（不使用 `.scalars()`），写入用 `session.add()` + `commit()` + `refresh()`。
 - 输出文档必须是中文。
 - 如果代码结构变化，必须同步更新 `AGENTS.md`。
-- 代码更改后，必须执行 `codegraph sync` 更新索引。
-- 代码修改完成后，必须运行 pytest 测试进行验证：`uv run pytest` 使用 `-q -n auto` 并行执行测试。
+- 前后端测试都必须并行执行：后端使用 `uv run pytest -q -n auto`；前端使用 `cd frontend && node --test "tests/*.test.mjs"`（Node test runner 默认按文件并行）。
 
 ## 前端交互与错误处理规范
 
@@ -348,13 +357,20 @@ frontend/components/
       CreateKnowledgeBaseModal.tsx
       Pagination.tsx
     hooks/
+      useChatPageController.ts
     utils/
+      agui.ts
+      auth.ts
+      constants.ts
+      types.ts
+      index.ts
 ```
 
 - 新组件必须放入对应的 `cards/`、`interrupt/`、`management/`、`shared/`、`hooks/` 或 `utils/` 目录，禁止继续新增到旧目录根层。
 - 只有页面编排组件可以放在业务域根层；卡片、面板、弹窗、表单块、列表项必须有独立文件和明确目录。
 - 同一个组件的样式、测试和工具函数应与其所属模块就近放置；跨模块共享后再提升到 `shared/` 或通用 `ui/`。
-- 存量 `chat-interface/` 目录中的文件必须按上述结构逐步迁移；迁移时同步更新所有引用，禁止留下重复实现或兼容副本。
+- 旧 `chat-interface/` 目录已全部迁移到 `chat/`；禁止再新建该目录或保留兼容副本。
+- 页面级状态与副作用放在 `chat/hooks/`，纯工具函数放在 `chat/utils/`；`ChatInterface.tsx` 只保留渲染编排。
 
 ## 最小验证
 
@@ -364,10 +380,15 @@ frontend/components/
 uv run ruff check .
 ```
 
-如果本次任务涉及测试补充或测试修改，使用 `pytest` 执行相关测试，例如：
+前后端测试都必须并行执行：
 
 ```bash
+# 后端
 uv run pytest tests -q -n auto
+
+# 前端（Node test runner 默认按测试文件并行）
+cd frontend
+node --test "tests/*.test.mjs"
 ```
 
 修改前端文件后，至少运行：

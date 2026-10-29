@@ -4,7 +4,7 @@ import QRCode from 'qrcode'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import styles from '../../ChatInterface.module.css'
-import type { ActorState } from '../../chat-interface/auth'
+import type { ActorState } from '../utils/auth'
 import {
   buildBindingOwnerRows,
   filterBindingsForAdminOverview,
@@ -12,7 +12,7 @@ import {
   mergeGeneratedQrcodes,
   normalizeBindingOwnerUserId,
   selectBindingsByChannelPage,
-} from '../../chat-interface/channelManagement'
+} from '../utils/channelManagement'
 import {
   CHANNEL_BINDINGS_API_PATH,
   FEISHU_BINDING_API_PATH,
@@ -21,14 +21,14 @@ import {
   WEIXIN_BINDING_QRCODE_API_PATH,
   WEIXIN_BINDING_QRCODE_STATUS_API_PATH,
   WEIXIN_BINDINGS_API_PATH,
-} from '../../chat-interface/constants'
+} from '../utils/constants'
 import type {
   ChannelManagementPage,
   ChannelBindingListResponse,
   ChannelBindingRecord,
   WeixinClawBotQrcodeStatusResponse,
-} from '../../chat-interface/types'
-import { formatDateTime } from '../../chat-interface/utils'
+} from '../utils/types'
+import { formatDateTime } from '../utils'
 
 interface ChannelManagementViewProps {
   actor: ActorState

@@ -1,15 +1,15 @@
 import type { MouseEvent } from 'react'
 
 import styles from '../../ChatInterface.module.css'
-import type { ActorState } from '../../chat-interface/auth'
-import { DEFAULT_KNOWLEDGE_PAGE } from '../../chat-interface/constants'
+import type { ActorState } from '../utils/auth'
+import { DEFAULT_KNOWLEDGE_PAGE } from '../utils/constants'
 import type {
   ChannelManagementPage,
   ChatHistorySession,
   KnowledgePage,
   ViewMode,
-} from '../../chat-interface/types'
-import { formatDateTime } from '../../chat-interface/utils'
+} from '../utils/types'
+import { formatDateTime } from '../utils'
 import { AccountPanel } from './AccountPanel'
 import { SidebarIcon } from './BrandIcons'
 

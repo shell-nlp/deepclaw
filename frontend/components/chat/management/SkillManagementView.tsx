@@ -3,8 +3,8 @@
 import { useState, type ChangeEvent, type Ref } from 'react'
 
 import styles from '../../ChatInterface.module.css'
-import type { SkillRecord } from '../../chat-interface/types'
-import { formatDateTime } from '../../chat-interface/utils'
+import type { SkillRecord } from '../utils/types'
+import { formatDateTime } from '../utils'
 
 interface SkillManagementViewProps {
   skills: SkillRecord[]

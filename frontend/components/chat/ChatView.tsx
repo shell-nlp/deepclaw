@@ -4,18 +4,18 @@ import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode, Ref } from 'react'
 
 import styles from '../ChatInterface.module.css'
-import { AssistantMessageBody } from '../chat/cards/AssistantMessageBody'
-import { AgentModeSwitcher } from '../chat/shared/AgentModeSwitcher'
+import { AssistantMessageBody } from './cards/AssistantMessageBody'
+import { AgentModeSwitcher } from './shared/AgentModeSwitcher'
 import {
   KnowledgeBasePicker,
-} from '../chat/shared/KnowledgeBasePicker'
+} from './shared/KnowledgeBasePicker'
 import type {
   ChatModeOption,
   ChatStatus,
   InterruptData,
   KnowledgeBase,
   Message,
-} from './types'
+} from './utils/types'
 import {
   getToolIcon,
   parseMarkdown,
