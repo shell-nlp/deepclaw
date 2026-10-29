@@ -144,26 +144,40 @@ import {
   type ResumeDecision,
   type ThreadRuntime,
 } from '../utils/chatRuntime'
+import { useMcpConfig } from './useMcpConfig'
+import { useSkills } from './useSkills'
+import { useAuthSession } from './useAuthSession'
+import { useKnowledgeManagement } from './useKnowledgeManagement'
+import { useChatRuntime } from './useChatRuntime'
+import { usePageRouting } from './usePageRouting'
+import { useHistorySessions } from './useHistorySessions'
 
 export function useChatPageController() {
-  const [viewMode, setViewMode] = useState<ViewMode>('chat')
-  const [channelPage, setChannelPage] =
-    useState<ChannelManagementPage>(DEFAULT_CHANNEL_PAGE)
-  const [lastChannelPage, setLastChannelPage] =
-    useState<ChannelManagementPage>(DEFAULT_CHANNEL_PAGE)
-  const [channelNavExpanded, setChannelNavExpanded] = useState(false)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [knowledgePage, setKnowledgePage] =
+  const selectedKnowledgeBaseRef = useRef<KnowledgeBase | null>(null)
+  const routing = usePageRouting(selectedKnowledgeBaseRef)
+  const {
+    viewMode,
+    setViewMode,
+    channelPage,
+    setChannelPage,
+    lastChannelPage,
+    channelNavExpanded,
+    setChannelNavExpanded,
+    sidebarCollapsed,
+    setSidebarCollapsed,
+    knowledgePage,
+    setKnowledgePage,
+    navigateTo,
+    handleChannelsNavClick,
+    toggleSidebar,
+    navigateToKnowledgeView,
+  } = routing
+
     useState<KnowledgePage>(DEFAULT_KNOWLEDGE_PAGE)
 
   const [messages, setMessages] = useState<Message[]>([])
   const [inputValue, setInputValue] = useState('')
   const [sessionId, setSessionId] = useState('')
-  const [historySessions, setHistorySessions] = useState<ChatHistorySession[]>([])
-  const [historyExpanded, setHistoryExpanded] = useState(true)
-  const [historyLoading, setHistoryLoading] = useState(false)
-  const [historyLoadingSessionId, setHistoryLoadingSessionId] = useState<string | null>(null)
-  const [historyError, setHistoryError] = useState('')
   const [status, setStatus] = useState<'ready' | 'connecting' | 'error'>('ready')
   const [aguiApiPath, setAguiApiPath] = useState(DEFAULT_AGUI_API_PATH)
   const [availableAgents, setAvailableAgents] = useState<AgentSummary[]>([])
@@ -172,88 +186,69 @@ export function useChatPageController() {
   const [internetSearch, setInternetSearch] = useState(false)
   const [deepThinking, setDeepThinking] = useState(true)
   const [isKnowledgeMode, setIsKnowledgeMode] = useState(false)
-  const [selectedKnowledgeBaseIds, setSelectedKnowledgeBaseIds] = useState<string[]>([])
-  const [knowledgeBaseOptions, setKnowledgeBaseOptions] = useState<KnowledgeBase[]>([])
-  const [knowledgePickerOpen, setKnowledgePickerOpen] = useState(false)
-  const [loadingKnowledgeBaseOptions, setLoadingKnowledgeBaseOptions] = useState(false)
   const [showInterrupt, setShowInterrupt] = useState(false)
   const [interruptData, setInterruptData] = useState<InterruptData | null>(null)
   const [toolCallDurations, setToolCallDurations] = useState<Record<string, number>>({})
+  const {
+    mcpConfigDraft,
+    setMcpConfigDraft,
+    mcpConfig,
+    mcpEnabled,
+    mcpNotice,
+    mcpError,
+    mcpDraftParseResult,
+    savedMcpParseResult,
+    mcpConfigDirty,
+    initializeMcpConfig,
+    saveMcpConfig,
+    formatMcpConfig,
+    toggleMcpEnabled,
+    loadMcpExample,
+    clearMcpConfig,
+    mcpStatusLabel,
+  } = useMcpConfig(viewMode, isKnowledgeMode)
 
-  const [actor, setActor] = useState<ActorState>(() => normalizeActorPayload(null))
-  const [authToken, setAuthToken] = useState('')
-  const [accountMenuOpen, setAccountMenuOpen] = useState(false)
-  const [adminUsers, setAdminUsers] = useState<AuthUserSummary[]>([])
-  const [loadingAdminUsers, setLoadingAdminUsers] = useState(false)
-  const [userAdminNotice, setUserAdminNotice] = useState('')
-  const [userAdminError, setUserAdminError] = useState('')
 
-  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([])
-  const [knowledgeBaseTotal, setKnowledgeBaseTotal] = useState(0)
-  const [knowledgeBasePage, setKnowledgeBasePage] = useState(1)
-  const [knowledgeBaseSearchInput, setKnowledgeBaseSearchInput] = useState('')
-  const [knowledgeBaseSearch, setKnowledgeBaseSearch] = useState('')
 
-  const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState('')
-  const [selectedKnowledgeBase, setSelectedKnowledgeBase] =
-    useState<KnowledgeBase | null>(null)
-  const [checkedKnowledgeBaseIds, setCheckedKnowledgeBaseIds] = useState<string[]>([])
 
-  const [documents, setDocuments] = useState<KnowledgeDocument[]>([])
-  const [uploadTasks, setUploadTasks] = useState<KnowledgeUploadTask[]>([])
-  const uploadTaskStatusRef = useRef<Record<string, string>>({})
-  const [documentTotal, setDocumentTotal] = useState(0)
-  const [documentPage, setDocumentPage] = useState(1)
-  const [documentSearchInput, setDocumentSearchInput] = useState('')
-  const [documentSearch, setDocumentSearch] = useState('')
-  const [checkedDocumentIds, setCheckedDocumentIds] = useState<string[]>([])
-  const [selectedDocumentId, setSelectedDocumentId] = useState('')
-  const [selectedDocumentDetail, setSelectedDocumentDetail] =
-    useState<KnowledgeDocumentDetailResponse | null>(null)
-  const [documentChunkPage, setDocumentChunkPage] = useState(1)
-  const [loadingDocumentDetail, setLoadingDocumentDetail] = useState(false)
-
-  const [knowledgeBaseName, setKnowledgeBaseName] = useState('')
-  const [knowledgeBaseDescription, setKnowledgeBaseDescription] = useState('')
-  const [showCreateKnowledgeBaseModal, setShowCreateKnowledgeBaseModal] =
-    useState(false)
-
-  const [mcpConfigDraft, setMcpConfigDraft] = useState('')
-  const [savedMcpConfigText, setSavedMcpConfigText] = useState('')
-  const [mcpConfig, setMcpConfig] = useState<Record<string, unknown> | null>(null)
-  const [mcpEnabled, setMcpEnabled] = useState(false)
-  const [mcpNotice, setMcpNotice] = useState('')
-  const [mcpError, setMcpError] = useState('')
-
-  useEffect(() => {
-    if (!mcpNotice) return
-    const timeout = window.setTimeout(() => setMcpNotice(''), 4000)
-    return () => window.clearTimeout(timeout)
-  }, [mcpNotice])
-
-  useEffect(() => {
-    if (viewMode !== 'mcp') setMcpNotice('')
-  }, [viewMode])
-
-  const [skills, setSkills] = useState<SkillRecord[]>([])
-  const [loadingSkills, setLoadingSkills] = useState(false)
-  const [uploadingSkills, setUploadingSkills] = useState(false)
-  const [skillNotice, setSkillNotice] = useState('')
-  const [skillError, setSkillError] = useState('')
 
   const [managementError, setManagementError] = useState('')
   const [managementNotice, setManagementNotice] = useState('')
-  const [loadingKnowledgeBases, setLoadingKnowledgeBases] = useState(false)
-  const [loadingDocuments, setLoadingDocuments] = useState(false)
-  const [savingKnowledgeBase, setSavingKnowledgeBase] = useState(false)
-  const [uploadingDocuments, setUploadingDocuments] = useState(false)
-  const [deletingBulk, setDeletingBulk] = useState(false)
+  const resetUserScopedStateRef = useRef<() => void>(() => {})
+  const resetKnowledgeStateRef = useRef<() => void>(() => {})
+  const {
+    actor,
+    setActor,
+    authToken,
+    setAuthToken,
+    accountMenuOpen,
+    setAccountMenuOpen,
+    adminUsers,
+    setAdminUsers,
+    loadingAdminUsers,
+    userAdminNotice,
+    userAdminError,
+    actorCapabilities,
+    currentUserId,
+    applyActorState,
+    clearAuthState,
+    withAuthHeaders,
+    requestJson,
+    loadAdminUsers,
+    handleLogout,
+    openLoginPage,
+    createAdminUser,
+    updateAdminUserRole,
+    updateAdminUserStatus,
+    resetAdminUserPassword,
+  } = useAuthSession({
+    onActorChange: () => resetUserScopedStateRef.current(),
+    setManagementNotice,
+  })
 
   const chatContainerRef = useRef<HTMLDivElement>(null)
   const isChatAtBottomRef = useRef(true)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const uploadInputRef = useRef<HTMLInputElement>(null)
-  const skillUploadInputRef = useRef<HTMLInputElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const activeThreadIdRef = useRef('')
   const threadRuntimesRef = useRef<Map<string, ThreadRuntime>>(new Map())
@@ -415,11 +410,6 @@ export function useChatPageController() {
     [setMessagesAndRef]
   )
 
-  const actorCapabilities = getActorCapabilities(actor)
-  const currentUserId = actor.userId || GUEST_USER_ID
-  const mcpDraftParseResult = parseMcpConfig(mcpConfigDraft)
-  const savedMcpParseResult = parseMcpConfig(savedMcpConfigText)
-  const mcpConfigDirty = mcpConfigDraft !== savedMcpConfigText
 
   const scrollToBottom = useCallback(() => {
     if (chatContainerRef.current && isChatAtBottomRef.current) {
@@ -474,74 +464,24 @@ export function useChatPageController() {
   }, [getThreadRuntime, resetActiveChatView])
 
   const resetUserScopedState = useCallback(() => {
-    setKnowledgeBasePage(1)
-    setKnowledgeBaseSearch('')
-    setKnowledgeBaseSearchInput('')
-    setSelectedKnowledgeBaseId('')
-    setSelectedKnowledgeBase(null)
-    setCheckedKnowledgeBaseIds([])
-    setKnowledgeBases([])
-    setKnowledgeBaseTotal(0)
-
-    setDocumentPage(1)
-    setDocumentSearch('')
-    setDocumentSearchInput('')
-    setCheckedDocumentIds([])
-    setDocuments([])
-    setDocumentTotal(0)
-    setSelectedDocumentId('')
-    setSelectedDocumentDetail(null)
-    setDocumentChunkPage(1)
-
+    resetKnowledgeStateRef.current()
     setAdminUsers([])
     resetAllRuntimesAndChat()
   }, [resetAllRuntimesAndChat])
 
-  const applyActorState = useCallback(
-    (nextActor: ActorState) => {
-      setActor(nextActor)
-      resetUserScopedState()
-    },
-    [resetUserScopedState]
-  )
+  resetUserScopedStateRef.current = resetUserScopedState
 
-  const clearAuthState = useCallback(
-    (notice = '已切换为游客模式。') => {
-      clearStoredAuthToken()
-      setAuthToken('')
-      applyActorState(normalizeActorPayload(null))
-      setAccountMenuOpen(false)
-      setUserAdminNotice('')
-      setUserAdminError('')
-      setManagementNotice(notice)
-    },
-    [applyActorState]
-  )
-
-  const withAuthHeaders = useCallback(
-    (headers?: HeadersInit) => ({
-      ...(headers || {}),
-      ...buildAuthorizationHeaders(authToken),
-    }),
-    [authToken]
-  )
-
-  const requestJson = useCallback(
-    async <T,>(path: string, init?: RequestInit): Promise<T> => {
-      try {
-        return await fetchJson<T>(getApiUrl(path), {
-          ...init,
-          headers: withAuthHeaders(init?.headers),
-        })
-      } catch (error) {
-        if (error instanceof Error && isUnauthorizedErrorMessage(error.message)) {
-          clearAuthState('登录状态已失效，已切换为游客模式。')
-        }
-        throw error
-      }
-    },
-    [clearAuthState, withAuthHeaders]
-  )
+  const {
+    skills,
+    loadingSkills,
+    uploadingSkills,
+    skillNotice,
+    skillError,
+    skillUploadInputRef,
+    openSkillUploadDialog,
+    handleUploadSkill,
+    deleteSkill,
+  } = useSkills(requestJson)
 
   const addMessage = useCallback((message: Message) => {
     setMessagesAndRef((prev) => {
@@ -634,21 +574,13 @@ export function useChatPageController() {
     const freshSessionId = generateSessionId()
     const storedMcpConfig = localStorage.getItem('rag_mcp_config') || ''
     const storedMcpEnabled = localStorage.getItem('rag_mcp_enabled') === 'true'
-    const parsedMcpConfig = parseMcpConfig(storedMcpConfig)
 
     localStorage.setItem('rag_chat_session_id', freshSessionId)
     activeThreadIdRef.current = freshSessionId
     messagesRef.current = []
     setSessionId(freshSessionId)
     getThreadRuntime(freshSessionId)
-    setMcpConfigDraft(storedMcpConfig)
-    setSavedMcpConfigText(storedMcpConfig)
-    setMcpConfig(parsedMcpConfig.config)
-    setMcpEnabled(storedMcpEnabled)
-
-    if (storedMcpConfig && parsedMcpConfig.error) {
-      setMcpError(`本地保存的 MCP 配置无效：${parsedMcpConfig.error}`)
-    }
+    initializeMcpConfig(storedMcpConfig, storedMcpEnabled)
 
     // 按后端 runtime-config 获取统一 AG-UI 路径与可用智能体
     void fetch(getApiUrl(RUNTIME_CONFIG_API_PATH))
@@ -697,185 +629,9 @@ export function useChatPageController() {
     messagesRef.current = messages
   }, [messages])
 
-  const navigateTo = useCallback(
-    (
-      nextViewMode: ViewMode,
-      nextKnowledgePage: KnowledgePage = DEFAULT_KNOWLEDGE_PAGE,
-      nextChannelPage: ChannelManagementPage = channelPage,
-      replace = false
-    ) => {
-      const safeKnowledgePage =
-        (
-          nextKnowledgePage === 'library-detail' ||
-          nextKnowledgePage === 'document-detail'
-        ) &&
-        !selectedKnowledgeBase
-          ? 'libraries'
-          : nextKnowledgePage
 
-      setViewMode(nextViewMode)
-      setKnowledgePage(safeKnowledgePage)
-      setChannelPage(nextChannelPage)
-      if (nextViewMode === 'channels') {
-        setLastChannelPage(nextChannelPage)
-        setChannelNavExpanded(true)
-      }
 
-      if (typeof window === 'undefined') return
-      const nextHash = getRouteHash(nextViewMode, safeKnowledgePage, nextChannelPage)
-      if (window.location.hash === nextHash) return
 
-      if (replace) {
-        window.history.replaceState(null, '', nextHash)
-      } else {
-        window.history.pushState(null, '', nextHash)
-      }
-    },
-    [selectedKnowledgeBase]
-  )
-
-  const loadHistorySessions = useCallback(async () => {
-    setHistoryLoading(true)
-    setHistoryError('')
-    try {
-      const response = await requestJson<ThreadListResponse>(AGUI_THREADS_API_PATH)
-      setHistorySessions(
-        response.items.map((thread) => ({
-          session_id: thread.threadId,
-          agent_id: thread.agentId,
-          updated_at: new Date(thread.updatedAt * 1000).toISOString(),
-          title: thread.title,
-        }))
-      )
-    } catch (error) {
-      setHistoryError(error instanceof Error ? error.message : '获取聊天历史失败。')
-    } finally {
-      setHistoryLoading(false)
-    }
-  }, [requestJson])
-
-  const openHistorySession = useCallback(
-    async (targetSessionId: string) => {
-      if (targetSessionId === sessionId) return
-
-      setHistoryLoadingSessionId(targetSessionId)
-      setHistoryError('')
-      try {
-        await switchToThreadRef.current(targetSessionId)
-        navigateTo('chat')
-        requestAnimationFrame(scrollToBottom)
-      } catch (error) {
-        setHistoryError(error instanceof Error ? error.message : '加载聊天历史失败。')
-      } finally {
-        setHistoryLoadingSessionId(null)
-      }
-    },
-    [navigateTo, scrollToBottom, sessionId]
-  )
-
-  const deleteHistorySession = useCallback(
-    async (targetSessionId: string, event: MouseEvent<HTMLButtonElement>) => {
-      event.stopPropagation()
-      if (runningThreadIds.includes(targetSessionId)) return
-
-      setHistoryLoadingSessionId(targetSessionId)
-      setHistoryError('')
-      try {
-        await requestJson<{ threadId: string; deleted: boolean }>(
-          AGUI_THREAD_DELETE_API_PATH(targetSessionId),
-          { method: 'DELETE' }
-        )
-
-        setHistorySessions((sessions) =>
-          sessions.filter((session) => session.session_id !== targetSessionId)
-        )
-        const runtime = threadRuntimesRef.current.get(targetSessionId)
-        runtime?.abortController?.abort()
-        threadRuntimesRef.current.delete(targetSessionId)
-        setThreadRunning(targetSessionId, false)
-        if (targetSessionId === sessionId) {
-          streamGenerationRef.current += 1
-          abortControllerRef.current?.abort()
-          abortControllerRef.current = null
-          const nextSessionId = generateSessionId()
-          resetActiveChatView(nextSessionId)
-          getThreadRuntime(nextSessionId)
-          setThreadRunning(nextSessionId, false)
-        }
-      } catch (error) {
-        setHistoryError(error instanceof Error ? error.message : '删除聊天历史失败。')
-      } finally {
-        setHistoryLoadingSessionId(null)
-      }
-    },
-    [
-      getThreadRuntime,
-      requestJson,
-      resetActiveChatView,
-      runningThreadIds,
-      sessionId,
-      setThreadRunning,
-    ]
-  )
-
-  useEffect(() => {
-    void loadHistorySessions()
-  }, [loadHistorySessions])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-
-    const syncRoute = () => {
-      const route = parseRouteHash(window.location.hash)
-      const safeKnowledgePage =
-        (
-          route.knowledgePage === 'library-detail' ||
-          route.knowledgePage === 'document-detail'
-        ) &&
-        !selectedKnowledgeBase
-          ? 'libraries'
-          : route.knowledgePage
-
-      setViewMode(route.viewMode)
-      setKnowledgePage(safeKnowledgePage)
-      setChannelPage(route.channelPage)
-      if (route.viewMode === 'channels') {
-        setLastChannelPage(route.channelPage)
-        setChannelNavExpanded(true)
-      }
-
-      const expectedHash = getRouteHash(
-        route.viewMode,
-        safeKnowledgePage,
-        route.channelPage
-      )
-      if (window.location.hash !== expectedHash) {
-        window.history.replaceState(null, '', expectedHash)
-      }
-    }
-
-    if (!window.location.hash) {
-      window.history.replaceState(
-        null,
-        '',
-        getRouteHash('chat', DEFAULT_KNOWLEDGE_PAGE, DEFAULT_CHANNEL_PAGE)
-      )
-    }
-
-    syncRoute()
-    window.addEventListener('hashchange', syncRoute)
-    return () => window.removeEventListener('hashchange', syncRoute)
-  }, [selectedKnowledgeBase])
-
-  const handleChannelsNavClick = useCallback(() => {
-    if (viewMode !== 'channels') {
-      const nextPage = resolveChannelEntryPage(undefined, lastChannelPage)
-      navigateTo('channels', DEFAULT_KNOWLEDGE_PAGE, nextPage)
-      return
-    }
-
-    setChannelNavExpanded((current) => !current)
-  }, [lastChannelPage, navigateTo, viewMode])
 
   /**
    * 切换侧边导航的展开状态，为聊天主区域腾出更多空间。
@@ -883,1097 +639,128 @@ export function useChatPageController() {
    * Args:
    * - 无。
    */
-  const toggleSidebar = useCallback(() => {
-    setSidebarCollapsed((collapsed) => !collapsed)
-  }, [])
 
-  const navigateToKnowledgeView = useCallback(
-    (
-      nextViewMode: ViewMode,
-      nextKnowledgePage: KnowledgePage = DEFAULT_KNOWLEDGE_PAGE,
-      replace = false
-    ) => {
-      navigateTo(nextViewMode, nextKnowledgePage, channelPage, replace)
-    },
-    [channelPage, navigateTo]
-  )
 
+
+
+  const history = useHistorySessions({
+    requestJson,
+    sessionId,
+    runningThreadIds,
+    switchToThreadRef,
+    navigateTo,
+    scrollToBottom,
+    threadRuntimesRef,
+    setThreadRunning,
+    streamGenerationRef,
+    abortControllerRef,
+    resetActiveChatView,
+    getThreadRuntime,
+  })
+  const {
+    historySessions,
+    setHistorySessions,
+    historyExpanded,
+    setHistoryExpanded,
+    historyLoading,
+    historyLoadingSessionId,
+    historyError,
+    loadHistorySessions,
+    openHistorySession,
+    deleteHistorySession,
+  } = history
+  const knowledge = useKnowledgeManagement({
+    requestJson,
+    currentUserId,
+    availableAgents,
+    isKnowledgeMode,
+    setIsKnowledgeMode,
+    clearChat,
+    navigateTo,
+    setViewMode,
+    setKnowledgePage,
+    setManagementNotice,
+    setManagementError,
+    knowledgePage,
+    channelPage,
+    requestKnowledgeBaseRef,
+    requestModeRef,
+    setShowInterrupt,
+    setInterruptData,
+  })
+  const {
+    selectedKnowledgeBaseIds,
+    knowledgeBaseOptions,
+    knowledgePickerOpen,
+    loadingKnowledgeBaseOptions,
+    knowledgeBases,
+    knowledgeBaseTotal,
+    knowledgeBasePage,
+    setKnowledgeBasePage,
+    knowledgeBaseSearchInput,
+    setKnowledgeBaseSearchInput,
+    setKnowledgeBaseSearch,
+    selectedKnowledgeBaseId,
+    selectedKnowledgeBase,
+    checkedKnowledgeBaseIds,
+    documents,
+    uploadTasks,
+    documentTotal,
+    documentPage,
+    setDocumentPage,
+    documentSearchInput,
+    setDocumentSearchInput,
+    setDocumentSearch,
+    checkedDocumentIds,
+    selectedDocumentDetail,
+    documentChunkPage,
+    setDocumentChunkPage,
+    loadingDocumentDetail,
+    knowledgeBaseName,
+    setKnowledgeBaseName,
+    knowledgeBaseDescription,
+    setKnowledgeBaseDescription,
+    showCreateKnowledgeBaseModal,
+    setShowCreateKnowledgeBaseModal,
+    loadingDocuments,
+    savingKnowledgeBase,
+    uploadingDocuments,
+    deletingBulk,
+    uploadInputRef,
+    handleKnowledgePickerOpenChange,
+    handleKnowledgeSelectionChange,
+    chatModeOptions,
+    activeChatModeId,
+    handleChatModeChange,
+    knowledgeIndexNames,
+    primaryKnowledgeBase,
+    openKnowledgeBaseLibrary,
+    openDocumentDetail,
+    createKnowledgeBase,
+    updateKnowledgeBase,
+    deleteKnowledgeBase,
+    bulkDeleteKnowledgeBases,
+    openUploadDialog,
+    handleUploadFiles,
+    retryUploadTask,
+    deleteUploadTask,
+    updateDocumentChunk,
+    renameDocument,
+    deleteDocument,
+    bulkDeleteDocuments,
+    toggleKnowledgeBaseChecked,
+    toggleDocumentChecked,
+    knowledgeBasePageTotal,
+    documentPageTotal,
+    documentChunkPageTotal,
+    visibleChunkTotal,
+  } = knowledge
+  selectedKnowledgeBaseRef.current = knowledge.selectedKnowledgeBase
+  resetKnowledgeStateRef.current = knowledge.resetKnowledgeState
   useEffect(() => {
     scrollToBottom()
   }, [messages, showInterrupt, interruptData, scrollToBottom])
 
-  const loadKnowledgeBases = useCallback(
-    async (page = knowledgeBasePage, search = knowledgeBaseSearch) => {
-      setLoadingKnowledgeBases(true)
-      setManagementError('')
-      try {
-        const result = await requestJson<PaginatedKnowledgeBaseResponse>(
-          KB_LIST_API_PATH,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              user_id: currentUserId,
-              search,
-              page,
-              page_size: KNOWLEDGE_BASE_PAGE_SIZE,
-            }),
-          }
-        )
-        setKnowledgeBases(result.items)
-        setKnowledgeBaseTotal(result.total)
-
-        if (selectedKnowledgeBaseId) {
-          const matched = result.items.find(
-            (item) => item.knowledge_base_id === selectedKnowledgeBaseId
-          )
-          if (matched) {
-            setSelectedKnowledgeBase(matched)
-          }
-        }
-      } catch (error) {
-        setManagementError(error instanceof Error ? error.message : '加载知识库失败。')
-        setKnowledgeBases([])
-        setKnowledgeBaseTotal(0)
-      } finally {
-        setLoadingKnowledgeBases(false)
-      }
-    },
-    [currentUserId, knowledgeBasePage, knowledgeBaseSearch, requestJson, selectedKnowledgeBaseId]
-  )
-
-  const loadKnowledgeBaseOptions = useCallback(async () => {
-    setLoadingKnowledgeBaseOptions(true)
-    try {
-      const result = await requestJson<PaginatedKnowledgeBaseResponse>(
-        KB_LIST_API_PATH,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: currentUserId,
-            search: '',
-            page: 1,
-            page_size: KNOWLEDGE_BASE_OPTION_PAGE_SIZE,
-          }),
-        }
-      )
-      setKnowledgeBaseOptions(result.items)
-      return result.items
-    } catch (error) {
-      setManagementError(
-        error instanceof Error ? error.message : '加载知识库列表失败。'
-      )
-      return [] as KnowledgeBase[]
-    } finally {
-      setLoadingKnowledgeBaseOptions(false)
-    }
-  }, [currentUserId, requestJson])
-
-  const loadKnowledgeBaseDetail = useCallback(
-    async (knowledgeBaseId: string, silent = false) => {
-      if (!knowledgeBaseId) return
-      if (!silent) setManagementError('')
-      try {
-        const result = await requestJson<KnowledgeBase>(KB_DETAIL_API_PATH, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: currentUserId,
-            knowledge_base_id: knowledgeBaseId,
-          }),
-        })
-        setSelectedKnowledgeBase(result)
-        setSelectedKnowledgeBaseId(result.knowledge_base_id)
-      } catch (error) {
-        if (!silent) {
-          setManagementError(error instanceof Error ? error.message : '加载知识库详情失败。')
-        }
-      }
-    },
-    [currentUserId, requestJson]
-  )
-
-  const loadDocuments = useCallback(
-    async (
-      knowledgeBaseId: string,
-      page = documentPage,
-      search = documentSearch,
-      silent = false
-    ) => {
-      if (!knowledgeBaseId) {
-        setDocuments([])
-        setDocumentTotal(0)
-        return
-      }
-
-      if (!silent) {
-        setLoadingDocuments(true)
-        setManagementError('')
-      }
-      try {
-        const result = await requestJson<PaginatedKnowledgeDocumentResponse>(
-          KB_DOCUMENT_LIST_API_PATH,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              user_id: currentUserId,
-              knowledge_base_id: knowledgeBaseId,
-              search,
-              page,
-              page_size: DOCUMENT_PAGE_SIZE,
-            }),
-          }
-        )
-        setDocuments(result.items)
-        setDocumentTotal(result.total)
-      } catch (error) {
-        if (!silent) {
-          setManagementError(error instanceof Error ? error.message : '加载文档失败。')
-          setDocuments([])
-          setDocumentTotal(0)
-        }
-      } finally {
-        if (!silent) setLoadingDocuments(false)
-      }
-    },
-    [currentUserId, documentPage, documentSearch, requestJson]
-  )
-
-  const loadDocumentDetail = useCallback(
-    async (knowledgeBaseId: string, documentId: string, page = documentChunkPage) => {
-      if (!knowledgeBaseId || !documentId) {
-        setSelectedDocumentDetail(null)
-        return
-      }
-
-      setManagementError('')
-      try {
-        const result = await requestJson<KnowledgeDocumentDetailResponse>(
-          KB_DOCUMENT_DETAIL_API_PATH,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              user_id: currentUserId,
-              knowledge_base_id: knowledgeBaseId,
-              document_id: documentId,
-              page,
-              page_size: DOCUMENT_CHUNK_PAGE_SIZE,
-            }),
-          }
-        )
-        setSelectedDocumentDetail(result)
-      } catch (error) {
-        setManagementError(error instanceof Error ? error.message : '加载文档详情失败。')
-        setSelectedDocumentDetail(null)
-      }
-    },
-    [currentUserId, documentChunkPage, requestJson]
-  )
-
-  const loadSkills = useCallback(async () => {
-    setLoadingSkills(true)
-    setSkillError('')
-    try {
-      const result = await requestJson<SkillListResponse>(SKILL_LIST_API_PATH, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ search: '' }),
-      })
-      setSkills(result.items)
-    } catch (error) {
-      setSkillError(error instanceof Error ? error.message : '加载技能列表失败。')
-      setSkills([])
-    } finally {
-      setLoadingSkills(false)
-    }
-  }, [requestJson])
-
-  const loadAdminUsers = useCallback(
-    async (search = '') => {
-      if (actor.isGuest || actor.role !== 'admin') {
-        setAdminUsers([])
-        return
-      }
-      setLoadingAdminUsers(true)
-      setUserAdminError('')
-      try {
-        const result = await requestJson<AuthUserListResponse>(AUTH_USERS_LIST_API_PATH, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ search }),
-        })
-        setAdminUsers(result.items)
-      } catch (error) {
-        setUserAdminError(error instanceof Error ? error.message : '加载用户列表失败。')
-      } finally {
-        setLoadingAdminUsers(false)
-      }
-    },
-    [actor.isGuest, actor.role, requestJson]
-  )
-
-  useEffect(() => {
-    void loadKnowledgeBases(knowledgeBasePage, knowledgeBaseSearch)
-  }, [currentUserId, knowledgeBasePage, knowledgeBaseSearch, loadKnowledgeBases])
-
-  useEffect(() => {
-    void loadSkills()
-  }, [loadSkills])
-
-  useEffect(() => {
-    if (!selectedKnowledgeBaseId) {
-      setSelectedKnowledgeBase(null)
-      setDocuments([])
-      setDocumentTotal(0)
-      return
-    }
-    void loadKnowledgeBaseDetail(selectedKnowledgeBaseId)
-  }, [loadKnowledgeBaseDetail, selectedKnowledgeBaseId])
-
-  useEffect(() => {
-    if (!selectedKnowledgeBaseId) return
-    void loadDocuments(selectedKnowledgeBaseId, documentPage, documentSearch)
-  }, [documentPage, documentSearch, loadDocuments, selectedKnowledgeBaseId])
-
-  useEffect(() => {
-    if (!selectedKnowledgeBaseId || knowledgePage !== 'library-detail') return
-    let active = true
-    let refreshing = false
-    const refresh = async () => {
-      if (refreshing) return
-      refreshing = true
-      try {
-        const tasks = await requestJson<KnowledgeUploadTask[]>(
-          KB_DOCUMENT_UPLOAD_TASKS_API_PATH,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              user_id: currentUserId,
-              knowledge_base_id: selectedKnowledgeBaseId,
-            }),
-          }
-        )
-        if (!active) return
-        setUploadTasks(tasks)
-        const changed = tasks.some((task) =>
-          uploadTaskStatusRef.current[task.task_id] !== task.status
-        )
-        uploadTaskStatusRef.current = Object.fromEntries(
-          tasks.map((task) => [task.task_id, task.status])
-        )
-        if (changed) {
-          await loadDocuments(selectedKnowledgeBaseId, documentPage, documentSearch, true)
-          await loadKnowledgeBaseDetail(selectedKnowledgeBaseId, true)
-        }
-      } catch {
-        // 状态轮询失败不覆盖已有文档列表与管理提示。
-      } finally {
-        refreshing = false
-      }
-    }
-    void refresh()
-    const timer = window.setInterval(() => void refresh(), 3000)
-    return () => { active = false; window.clearInterval(timer) }
-  }, [selectedKnowledgeBaseId, knowledgePage, currentUserId, requestJson, loadDocuments, documentPage, documentSearch, loadKnowledgeBaseDetail])
-
-  useEffect(() => {
-    if (!selectedKnowledgeBaseId || !selectedDocumentId || knowledgePage !== 'document-detail') {
-      return
-    }
-    void loadDocumentDetail(selectedKnowledgeBaseId, selectedDocumentId, documentChunkPage)
-  }, [
-    documentChunkPage,
-    knowledgePage,
-    loadDocumentDetail,
-    selectedDocumentId,
-    selectedKnowledgeBaseId,
-  ])
-
-  const selectKnowledgeBase = useCallback(
-    (knowledgeBase: KnowledgeBase) => {
-      if (isKnowledgeMode && knowledgeBase.knowledge_base_id !== selectedKnowledgeBaseId) {
-        clearChat()
-        setCheckedDocumentIds([])
-      }
-      setSelectedKnowledgeBaseId(knowledgeBase.knowledge_base_id)
-      setSelectedKnowledgeBase(knowledgeBase)
-      setDocumentPage(1)
-      setDocumentSearch('')
-      setDocumentSearchInput('')
-      setSelectedDocumentId('')
-      setSelectedDocumentDetail(null)
-      setDocumentChunkPage(1)
-    },
-    [clearChat, selectedKnowledgeBaseId, isKnowledgeMode]
-  )
-
-  const applyKnowledgeSelection = useCallback(
-    (ids: string[], options: KnowledgeBase[] = knowledgeBaseOptions) => {
-      const uniqueIds = Array.from(new Set(ids))
-      setSelectedKnowledgeBaseIds(uniqueIds)
-      requestKnowledgeBaseRef.current =
-        uniqueIds.length > 0
-          ? options.find((item) => item.knowledge_base_id === uniqueIds[0]) ?? null
-          : null
-    },
-    [knowledgeBaseOptions]
-  )
-
-  const handleKnowledgePickerOpenChange = useCallback(
-    (open: boolean) => {
-      setKnowledgePickerOpen(open)
-      if (!open) return
-      void (async () => {
-        const options = knowledgeBaseOptions.length
-          ? knowledgeBaseOptions
-          : await loadKnowledgeBaseOptions()
-        // 默认全选：首次打开或已清空选择时，把全部知识库选中。
-        if (selectedKnowledgeBaseIds.length === 0 && options.length > 0) {
-          applyKnowledgeSelection(
-            options.map((item) => item.knowledge_base_id),
-            options
-          )
-        }
-      })()
-    },
-    [
-      applyKnowledgeSelection,
-      knowledgeBaseOptions,
-      loadKnowledgeBaseOptions,
-      selectedKnowledgeBaseIds,
-    ]
-  )
-
-  const handleKnowledgeSelectionChange = useCallback(
-    (ids: string[]) => applyKnowledgeSelection(ids),
-    [applyKnowledgeSelection]
-  )
-
-  const chatModeOptions = useMemo<ChatModeOption[]>(() => {
-    const knowledgeAgent = availableAgents.find((agent) =>
-      agent.capabilities.includes(KNOWLEDGE_AGENT_CAPABILITY)
-    )
-    const generalAgent =
-      availableAgents.find((agent) => agent.default) ??
-      availableAgents.find(
-        (agent) => !agent.capabilities.includes(KNOWLEDGE_AGENT_CAPABILITY)
-      )
-    return [
-      {
-        id: generalAgent?.id ?? GENERAL_AGENT_ID,
-        label: generalAgent?.name ?? '通用智能体',
-        description: generalAgent?.description,
-        isKnowledge: false,
-      },
-      {
-        id: knowledgeAgent?.id ?? KNOWLEDGE_AGENT_ID,
-        label: knowledgeAgent?.name ?? '知识库问答',
-        description: knowledgeAgent?.description,
-        isKnowledge: true,
-      },
-    ]
-  }, [availableAgents])
-
-  const activeChatModeId =
-    chatModeOptions.find((option) => option.isKnowledge === isKnowledgeMode)?.id ??
-    chatModeOptions[0].id
-
-  const handleChatModeChange = useCallback(
-    (optionId: string) => {
-      const option = chatModeOptions.find((item) => item.id === optionId)
-      if (!option || option.isKnowledge === isKnowledgeMode) return
-
-      clearChat()
-      setShowInterrupt(false)
-      setInterruptData(null)
-      setKnowledgePickerOpen(false)
-      requestModeRef.current = option.isKnowledge ? 'rag' : 'agent'
-      setIsKnowledgeMode(option.isKnowledge)
-      if (!option.isKnowledge) return
-
-      // 切到知识库模式时默认全选知识库，避免必须先手动打开选择器才能提问。
-      void (async () => {
-        const options = knowledgeBaseOptions.length
-          ? knowledgeBaseOptions
-          : await loadKnowledgeBaseOptions()
-        if (selectedKnowledgeBaseIds.length === 0 && options.length > 0) {
-          applyKnowledgeSelection(
-            options.map((item) => item.knowledge_base_id),
-            options
-          )
-        }
-      })()
-    },
-    [
-      applyKnowledgeSelection,
-      chatModeOptions,
-      clearChat,
-      knowledgeBaseOptions,
-      loadKnowledgeBaseOptions,
-      selectedKnowledgeBaseIds,
-      isKnowledgeMode,
-    ]
-  )
-
-  const knowledgeIndexNames = useMemo(() => {
-    const names = selectedKnowledgeBaseIds
-      .map(
-        (id) =>
-          knowledgeBaseOptions.find((item) => item.knowledge_base_id === id)
-            ?.passage_index
-      )
-      .filter((name): name is string => Boolean(name))
-    if (names.length > 0) return names
-    return selectedKnowledgeBase ? [selectedKnowledgeBase.passage_index] : []
-  }, [knowledgeBaseOptions, selectedKnowledgeBase, selectedKnowledgeBaseIds])
-
-  const primaryKnowledgeBase = useMemo(
-    () =>
-      knowledgeBaseOptions.find(
-        (item) => item.knowledge_base_id === selectedKnowledgeBaseIds[0]
-      ) ?? selectedKnowledgeBase,
-    [knowledgeBaseOptions, selectedKnowledgeBase, selectedKnowledgeBaseIds]
-  )
-
-  const saveMcpConfig = () => {
-    const trimmed = mcpConfigDraft.trim()
-
-    if (!trimmed) {
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('rag_mcp_config')
-      }
-      setSavedMcpConfigText('')
-      setMcpConfigDraft('')
-      setMcpConfig(null)
-      setMcpNotice('MCP 配置已清空。')
-      setMcpError('')
-      return
-    }
-
-    const parsed = parseMcpConfig(trimmed)
-    if (!parsed.config || parsed.error) {
-      setMcpNotice('')
-      setMcpError(parsed.error || 'MCP 配置无效，无法保存。')
-      return
-    }
-
-    const formatted = JSON.stringify(parsed.config, null, 2)
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('rag_mcp_config', formatted)
-    }
-
-    setSavedMcpConfigText(formatted)
-    setMcpConfigDraft(formatted)
-    setMcpConfig(parsed.config)
-    setMcpNotice(`已保存 ${parsed.serverSummaries.length} 个 MCP 服务配置。`)
-    setMcpError('')
-  }
-
-  const formatMcpConfig = () => {
-    const trimmed = mcpConfigDraft.trim()
-    if (!trimmed) {
-      setMcpNotice('')
-      setMcpError('当前 MCP 草稿为空，没有可格式化的内容。')
-      return
-    }
-    const parsed = parseMcpConfig(trimmed)
-    if (!parsed.config || parsed.error) {
-      setMcpNotice('')
-      setMcpError(parsed.error || 'MCP 配置无效，无法格式化。')
-      return
-    }
-    setMcpConfigDraft(JSON.stringify(parsed.config, null, 2))
-    setMcpNotice('MCP 草稿已格式化，尚未保存到本地配置。')
-    setMcpError('')
-  }
-
-  const toggleMcpEnabled = () => {
-    if (mcpEnabled) {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('rag_mcp_enabled', 'false')
-      }
-      setMcpEnabled(false)
-      setMcpNotice('MCP 已停用。')
-      setMcpError('')
-      return
-    }
-
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('rag_mcp_enabled', 'true')
-    }
-    setMcpEnabled(true)
-    setMcpNotice(mcpConfig ? 'MCP 已启用，通用 Agent 将使用已保存的配置。' : 'MCP 已启用；当前没有配置服务，聊天不会加载 MCP 工具。')
-    setMcpError('')
-  }
-
-  const loadMcpExample = () => {
-    setMcpConfigDraft(DEFAULT_MCP_CONFIG_TEMPLATE)
-    setMcpNotice('已填入 MCP 示例配置，请按你的服务地址修改后保存。')
-    setMcpError('')
-  }
-
-  const clearMcpConfig = () => {
-    setMcpConfigDraft('')
-    setMcpNotice('已清空 MCP 草稿，点击“保存配置”后会同步清空本地配置。')
-    setMcpError('')
-  }
-
-  const handleLogout = async () => {
-    try {
-      if (authToken) {
-        await revokeAuthToken(authToken)
-      }
-    } catch {
-      // ignore logout failure
-    } finally {
-      clearAuthState('已退出登录，当前为游客模式。')
-      setAccountMenuOpen(false)
-    }
-  }
-
-  const openLoginPage = useCallback(() => {
-    if (typeof window === 'undefined') return
-    const next = `${window.location.pathname}${window.location.hash || '#/chat'}`
-    window.location.assign(`/login?next=${encodeURIComponent(next)}`)
-  }, [])
-
-  const createAdminUser = async (input: {
-    email: string
-    password: string
-    role: 'admin' | 'user'
-  }) => {
-    setUserAdminNotice('')
-    setUserAdminError('')
-    try {
-      await requestJson<AuthLoginResponse>(AUTH_USERS_CREATE_API_PATH, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-      })
-      await loadAdminUsers()
-      setUserAdminNotice(`已创建账号 ${input.email}。`)
-    } catch (error) {
-      setUserAdminError(error instanceof Error ? error.message : '创建用户失败。')
-    }
-  }
-
-  const updateAdminUserRole = async (userId: string, role: 'admin' | 'user') => {
-    setUserAdminNotice('')
-    setUserAdminError('')
-    try {
-      await requestJson<AuthLoginResponse>(AUTH_USERS_UPDATE_ROLE_API_PATH, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, role }),
-      })
-      await loadAdminUsers()
-      setUserAdminNotice('用户角色已更新。')
-    } catch (error) {
-      setUserAdminError(error instanceof Error ? error.message : '更新用户角色失败。')
-    }
-  }
-
-  const updateAdminUserStatus = async (userId: string, isActive: boolean) => {
-    setUserAdminNotice('')
-    setUserAdminError('')
-    try {
-      await requestJson<AuthLoginResponse>(AUTH_USERS_UPDATE_STATUS_API_PATH, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, is_active: isActive }),
-      })
-      await loadAdminUsers()
-      setUserAdminNotice(isActive ? '用户账号已启用。' : '用户账号已停用。')
-    } catch (error) {
-      setUserAdminError(error instanceof Error ? error.message : '更新用户状态失败。')
-    }
-  }
-
-  const resetAdminUserPassword = async (userId: string, password: string) => {
-    setUserAdminNotice('')
-    setUserAdminError('')
-    try {
-      await requestJson<AuthLoginResponse>(AUTH_USERS_RESET_PASSWORD_API_PATH, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, password }),
-      })
-      setUserAdminNotice('用户密码已重置。')
-    } catch (error) {
-      setUserAdminError(error instanceof Error ? error.message : '重置密码失败。')
-    }
-  }
-
-  const openSkillUploadDialog = () => {
-    skillUploadInputRef.current?.click()
-  }
-
-  const handleUploadSkill = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-
-    setUploadingSkills(true)
-    setSkillNotice('')
-    setSkillError('')
-
-    const formData = new FormData()
-    formData.append('file', file)
-
-    try {
-      const result = await requestJson<SkillUploadResponse>(SKILL_UPLOAD_API_PATH, {
-        method: 'POST',
-        body: formData,
-      })
-      await loadSkills()
-      setSkillNotice(
-        `技能 "${result.skill.skill_name}" 上传完成，共解压 ${result.extracted_files} 个文件。`
-      )
-    } catch (error) {
-      setSkillError(error instanceof Error ? error.message : '上传技能失败。')
-    } finally {
-      setUploadingSkills(false)
-      event.target.value = ''
-    }
-  }
-
-  const deleteSkill = async (skillName: string) => {
-    if (!window.confirm(`确认删除技能 "${skillName}" 吗？`)) return
-
-    setSkillNotice('')
-    setSkillError('')
-    try {
-      const result = await requestJson<SkillDeleteResponse>(SKILL_DELETE_API_PATH, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ skill_name: skillName }),
-      })
-      await loadSkills()
-      setSkillNotice(`技能 "${result.skill_name}" 已删除。`)
-    } catch (error) {
-      setSkillError(error instanceof Error ? error.message : '删除技能失败。')
-    }
-  }
-
-  const openKnowledgeBaseLibrary = (knowledgeBase: KnowledgeBase) => {
-    selectKnowledgeBase(knowledgeBase)
-    setViewMode('knowledge')
-    setKnowledgePage('library-detail')
-    if (typeof window !== 'undefined') {
-      window.history.pushState(null, '', getRouteHash('knowledge', 'library-detail', channelPage))
-    }
-  }
-
-  const openDocumentDetail = (document: KnowledgeDocument) => {
-    setSelectedDocumentId(document.document_id)
-    setDocumentChunkPage(1)
-    navigateTo('knowledge', 'document-detail')
-  }
-
-  const createKnowledgeBase = async () => {
-    const name = knowledgeBaseName.trim()
-    if (!name) {
-      setManagementError('知识库名称不能为空。')
-      return
-    }
-
-    setSavingKnowledgeBase(true)
-    setManagementError('')
-    setManagementNotice('')
-    try {
-      const created = await requestJson<KnowledgeBase>(KB_CREATE_API_PATH, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: currentUserId,
-          name,
-          description: knowledgeBaseDescription.trim(),
-        }),
-      })
-      setKnowledgeBasePage(1)
-      await loadKnowledgeBases(1, knowledgeBaseSearch)
-      selectKnowledgeBase(created)
-      navigateTo('knowledge', 'library-detail')
-      setKnowledgeBaseName('')
-      setKnowledgeBaseDescription('')
-      setShowCreateKnowledgeBaseModal(false)
-      setManagementNotice(`知识库 "${created.name}" 已创建。`)
-    } catch (error) {
-      setManagementError(error instanceof Error ? error.message : '创建知识库失败。')
-    } finally {
-      setSavingKnowledgeBase(false)
-    }
-  }
-
-  /**
-   * 更新指定知识库并刷新列表。
-   *
-   * Args:
-   *   knowledgeBaseId: 知识库 ID。
-   *   name: 知识库名称。
-   *   description: 知识库描述。
-   */
-  const updateKnowledgeBase = async (
-    knowledgeBaseId: string,
-    name: string,
-    description: string
-  ) => {
-    setSavingKnowledgeBase(true)
-    setManagementError('')
-    setManagementNotice('')
-    try {
-      const updated = await requestJson<KnowledgeBase>(KB_UPDATE_API_PATH, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: currentUserId,
-          knowledge_base_id: knowledgeBaseId,
-          name: name.trim(),
-          description: description.trim(),
-        }),
-      })
-      await loadKnowledgeBases(knowledgeBasePage, knowledgeBaseSearch)
-      selectKnowledgeBase(updated)
-      setManagementNotice(`知识库 "${updated.name}" 已更新。`)
-    } catch (error) {
-      setManagementError(error instanceof Error ? error.message : '更新知识库失败。')
-      throw error
-    } finally {
-      setSavingKnowledgeBase(false)
-    }
-  }
-
-  const deleteKnowledgeBase = async (knowledgeBaseId?: string) => {
-    const targetId = knowledgeBaseId || selectedKnowledgeBase?.knowledge_base_id
-    const targetName =
-      knowledgeBases.find((item) => item.knowledge_base_id === targetId)?.name ||
-      selectedKnowledgeBase?.name ||
-      '知识库'
-
-    if (!targetId) return
-    if (!window.confirm(`确认删除知识库 "${targetName}" 及其索引数据吗？`)) return
-
-    setSavingKnowledgeBase(true)
-    setManagementError('')
-    setManagementNotice('')
-    try {
-      await requestJson(KB_DELETE_API_PATH, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: currentUserId,
-          knowledge_base_id: targetId,
-        }),
-      })
-
-      if (targetId === selectedKnowledgeBaseId) {
-        setSelectedKnowledgeBaseId('')
-        setSelectedKnowledgeBase(null)
-        setSelectedDocumentId('')
-        setSelectedDocumentDetail(null)
-        setDocuments([])
-        setDocumentTotal(0)
-        navigateTo('knowledge', 'libraries')
-      }
-      setCheckedKnowledgeBaseIds((prev) => prev.filter((item) => item !== targetId))
-      await loadKnowledgeBases(knowledgeBasePage, knowledgeBaseSearch)
-      setManagementNotice(`知识库 "${targetName}" 已删除。`)
-      clearChat()
-    } catch (error) {
-      setManagementError(error instanceof Error ? error.message : '删除知识库失败。')
-    } finally {
-      setSavingKnowledgeBase(false)
-    }
-  }
-
-  const bulkDeleteKnowledgeBases = async () => {
-    if (checkedKnowledgeBaseIds.length === 0) return
-    if (!window.confirm(`确认删除选中的 ${checkedKnowledgeBaseIds.length} 个知识库吗？`)) {
-      return
-    }
-
-    setDeletingBulk(true)
-    setManagementError('')
-    setManagementNotice('')
-    try {
-      const result = await requestJson<BulkDeleteKnowledgeBaseResponse>(
-        KB_BULK_DELETE_API_PATH,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: currentUserId,
-            knowledge_base_ids: checkedKnowledgeBaseIds,
-          }),
-        }
-      )
-      if (result.deleted_ids.includes(selectedKnowledgeBaseId)) {
-        setSelectedKnowledgeBaseId('')
-        setSelectedKnowledgeBase(null)
-        setSelectedDocumentId('')
-        setSelectedDocumentDetail(null)
-        setDocuments([])
-        setDocumentTotal(0)
-        clearChat()
-        navigateTo('knowledge', 'libraries')
-      }
-      setCheckedKnowledgeBaseIds([])
-      await loadKnowledgeBases(knowledgeBasePage, knowledgeBaseSearch)
-      setManagementNotice(`已删除 ${result.deleted_ids.length} 个知识库。`)
-      if (Object.keys(result.failed).length > 0) {
-        setManagementError(
-          Object.entries(result.failed)
-            .map(([id, message]) => `${id}: ${message}`)
-            .join('\n')
-        )
-      }
-    } catch (error) {
-      setManagementError(error instanceof Error ? error.message : '批量删除知识库失败。')
-    } finally {
-      setDeletingBulk(false)
-    }
-  }
-
-  const openUploadDialog = () => {
-    uploadInputRef.current?.click()
-  }
-
-  const handleUploadFiles = async (event: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || [])
-    if (!selectedKnowledgeBase || files.length === 0) return
-
-    setUploadingDocuments(true)
-    setManagementError('')
-    setManagementNotice('')
-
-    const formData = new FormData()
-    formData.append('user_id', currentUserId)
-    formData.append('knowledge_base_id', selectedKnowledgeBase.knowledge_base_id)
-    files.forEach((file) => formData.append('files', file))
-
-    try {
-      const result = await requestJson<UploadResult>(KB_DOCUMENT_UPLOAD_API_PATH, {
-        method: 'POST',
-        body: formData,
-      })
-      setUploadTasks((previous) => [
-        ...result.tasks,
-        ...previous.filter((task) => !result.tasks.some((item) => item.task_id === task.task_id)),
-      ])
-      if (result.tasks.length) {
-        setManagementNotice(`已提交 ${result.tasks.length} 个文件，后台处理中。`)
-      }
-      if (result.errors.length) {
-        setManagementError(result.errors.map((item) => `${item.file_name}: ${item.error}`).join('\n'))
-      }
-    } catch (error) {
-      setManagementError(error instanceof Error ? error.message : '上传文件失败。')
-    } finally {
-      setUploadingDocuments(false)
-      if (uploadInputRef.current) uploadInputRef.current.value = ''
-    }
-  }
-
-  const retryUploadTask = async (task: KnowledgeUploadTask) => {
-    if (!selectedKnowledgeBase) return
-    setManagementError('')
-    setManagementNotice('')
-    try {
-      const updated = await requestJson<KnowledgeUploadTask>(
-        KB_DOCUMENT_UPLOAD_TASK_RETRY_API_PATH,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: currentUserId,
-            knowledge_base_id: selectedKnowledgeBase.knowledge_base_id,
-            task_id: task.task_id,
-          }),
-        }
-      )
-      setUploadTasks((previous) =>
-        previous.map((item) => (item.task_id === updated.task_id ? updated : item))
-      )
-      setManagementNotice(`已重新提交 ${updated.file_name}，后台处理中。`)
-    } catch (error) {
-      setManagementError(error instanceof Error ? error.message : '重试上传任务失败。')
-    }
-  }
-
-  const deleteUploadTask = async (task: KnowledgeUploadTask) => {
-    if (!selectedKnowledgeBase) return
-    if (!window.confirm(`确认删除失败的上传记录 "${task.file_name}" 吗？`)) return
-    setManagementError('')
-    setManagementNotice('')
-    try {
-      await requestJson<{ task_id: string; deleted: boolean }>(
-        KB_DOCUMENT_UPLOAD_TASK_DELETE_API_PATH,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: currentUserId,
-            knowledge_base_id: selectedKnowledgeBase.knowledge_base_id,
-            task_id: task.task_id,
-          }),
-        }
-      )
-      setUploadTasks((previous) => previous.filter((item) => item.task_id !== task.task_id))
-      setManagementNotice(`已删除上传记录 ${task.file_name}。`)
-    } catch (error) {
-      setManagementError(error instanceof Error ? error.message : '删除上传记录失败。')
-    }
-  }
-
-  const updateDocumentChunk = async (
-    chunk: KnowledgeChunk,
-    changes: { content?: string; state?: boolean }
-  ) => {
-    if (!selectedDocumentDetail) return
-    const knowledgeBaseId = selectedDocumentDetail.knowledge_base.knowledge_base_id
-    const documentId = selectedDocumentDetail.document.document_id
-    setManagementError('')
-    setManagementNotice('')
-    try {
-      await requestJson<KnowledgeChunk>(KB_DOCUMENT_CHUNK_UPDATE_API_PATH, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          knowledge_base_id: knowledgeBaseId,
-          document_id: documentId,
-          chunk_id: chunk.chunk_id,
-          ...(changes.content === undefined ? {} : { content: changes.content }),
-          ...(changes.state === undefined ? {} : { state: changes.state }),
-        }),
-      })
-      await loadDocumentDetail(knowledgeBaseId, documentId, documentChunkPage)
-      setManagementNotice(
-        changes.state === undefined
-          ? '切片内容已更新。'
-          : changes.state
-            ? '已启用该切片。'
-            : '已停用该切片。'
-      )
-    } catch (error) {
-      setManagementError(error instanceof Error ? error.message : '更新切片失败。')
-    }
-  }
-
-  const renameDocument = async (document: KnowledgeDocument) => {
-    if (!selectedKnowledgeBase) return
-    const nextName = window.prompt('请输入新的文档展示名称', document.display_name)
-    if (!nextName) return
-
-    setManagementError('')
-    setManagementNotice('')
-    try {
-      await requestJson<KnowledgeDocument>(KB_DOCUMENT_UPDATE_API_PATH, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: currentUserId,
-          knowledge_base_id: selectedKnowledgeBase.knowledge_base_id,
-          document_id: document.document_id,
-          display_name: nextName,
-        }),
-      })
-      await loadDocuments(selectedKnowledgeBase.knowledge_base_id, documentPage, documentSearch)
-      if (selectedDocumentId === document.document_id) {
-        await loadDocumentDetail(
-          selectedKnowledgeBase.knowledge_base_id,
-          document.document_id,
-          documentChunkPage
-        )
-      }
-      setManagementNotice(`文档 "${nextName}" 已更新。`)
-    } catch (error) {
-      setManagementError(error instanceof Error ? error.message : '重命名文档失败。')
-    }
-  }
-
-  const deleteDocument = async (documentId?: string, documentName?: string) => {
-    if (!selectedKnowledgeBase || !documentId) return
-    const targetName =
-      documentName ||
-      documents.find((item) => item.document_id === documentId)?.display_name ||
-      '文档'
-    if (!window.confirm(`确认删除文档 "${targetName}" 吗？`)) return
-
-    setManagementError('')
-    setManagementNotice('')
-    try {
-      await requestJson(KB_DOCUMENT_DELETE_API_PATH, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: currentUserId,
-          knowledge_base_id: selectedKnowledgeBase.knowledge_base_id,
-          document_id: documentId,
-        }),
-      })
-      setCheckedDocumentIds((prev) => prev.filter((item) => item !== documentId))
-      if (selectedDocumentId === documentId) {
-        setSelectedDocumentId('')
-        setSelectedDocumentDetail(null)
-        navigateTo('knowledge', 'library-detail')
-      }
-      await loadKnowledgeBases(knowledgeBasePage, knowledgeBaseSearch)
-      await loadKnowledgeBaseDetail(selectedKnowledgeBase.knowledge_base_id)
-      await loadDocuments(selectedKnowledgeBase.knowledge_base_id, documentPage, documentSearch)
-      setManagementNotice(`文档 "${targetName}" 已删除。`)
-    } catch (error) {
-      setManagementError(error instanceof Error ? error.message : '删除文档失败。')
-    }
-  }
-
-  const bulkDeleteDocuments = async () => {
-    if (!selectedKnowledgeBase || checkedDocumentIds.length === 0) return
-    if (!window.confirm(`确认删除选中的 ${checkedDocumentIds.length} 个文档吗？`)) {
-      return
-    }
-
-    setDeletingBulk(true)
-    setManagementError('')
-    setManagementNotice('')
-    try {
-      const result = await requestJson<BulkDeleteDocumentResponse>(
-        KB_DOCUMENT_BULK_DELETE_API_PATH,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: currentUserId,
-            knowledge_base_id: selectedKnowledgeBase.knowledge_base_id,
-            document_ids: checkedDocumentIds,
-          }),
-        }
-      )
-      setCheckedDocumentIds([])
-      if (checkedDocumentIds.includes(selectedDocumentId)) {
-        setSelectedDocumentId('')
-        setSelectedDocumentDetail(null)
-        navigateTo('knowledge', 'library-detail')
-      }
-      await loadKnowledgeBases(knowledgeBasePage, knowledgeBaseSearch)
-      await loadKnowledgeBaseDetail(selectedKnowledgeBase.knowledge_base_id)
-      await loadDocuments(selectedKnowledgeBase.knowledge_base_id, documentPage, documentSearch)
-      setManagementNotice(`已删除 ${result.deleted_ids.length} 个文档。`)
-      if (Object.keys(result.failed).length > 0) {
-        setManagementError(
-          Object.entries(result.failed)
-            .map(([id, message]) => `${id}: ${message}`)
-            .join('\n')
-        )
-      }
-    } catch (error) {
-      setManagementError(error instanceof Error ? error.message : '批量删除文档失败。')
-    } finally {
-      setDeletingBulk(false)
-    }
-  }
 
   /**
    * 将当前思考块的耗时写入对应的消息块。
@@ -1981,1288 +768,84 @@ export function useChatPageController() {
    * Args:
    * - 无。
    */
-  const finishReasoningBlock = useCallback(() => {
-    if (reasoningStartTimeRef.current === null) return
 
-    const duration = Date.now() - reasoningStartTimeRef.current
-    updateAssistantMessage((message) => {
-      const reasoningBlocks = message.reasoningBlocks
-      if (!reasoningBlocks?.length) return message
-
-      return {
-        ...message,
-        reasoningBlocks: reasoningBlocks.map((block, index) =>
-          index === reasoningBlocks.length - 1 ? { ...block, duration } : block
-        ),
-      }
-    })
-    reasoningStartTimeRef.current = null
-  }, [updateAssistantMessage])
-
-  const finishAssistantDuration = useCallback(() => {
-    const finishedAt = Date.now()
-    updateAssistantMessage((message) => {
-      if (message.duration !== undefined || message.startedAt === undefined) {
-        return message
-      }
-      return {
-        ...message,
-        duration: Math.max(0, finishedAt - message.startedAt),
-      }
-    })
-  }, [updateAssistantMessage])
-
-  const applyAgUiInterrupt = useCallback(
-    (interrupt: AgUiInterrupt) => {
-      if (lastAssistantStreamEventRef.current === 'reasoning') {
-        finishReasoningBlock()
-      }
-      const nextInterruptData: InterruptData = {
-        interrupt_id: interrupt.interrupt_id,
-        action_requests: interrupt.action_requests ?? [],
-        review_configs: interrupt.review_configs,
-      }
-      const interruptedToolNames = new Set(
-        nextInterruptData.action_requests
-          .map((action) => action.name)
-          .filter(
-            (name): name is string =>
-              Boolean(name) && name !== 'ask_user'
-          )
-      )
-      if (interruptedToolNames.size > 0) {
-        updateAssistantMessage((message) => {
-          const removedToolCallIds = new Set(
-            (message.toolData || [])
-              .filter((tool) => interruptedToolNames.has(tool.toolCall.name))
-              .map((tool) => tool.toolCall.id)
-          )
-          if (removedToolCallIds.size === 0) return message
-          return {
-            ...message,
-            toolData: (message.toolData || []).filter(
-              (tool) => !removedToolCallIds.has(tool.toolCall.id)
-            ),
-            messageItems: (message.messageItems || []).filter(
-              (item) =>
-                item.type !== 'tool' ||
-                !removedToolCallIds.has(item.toolCallId)
-            ),
-          }
-        })
-      }
-      setInterruptData(nextInterruptData)
-      setShowInterrupt(true)
-      const activeThreadId = activeThreadIdRef.current
-      if (activeThreadId) {
-        const runtime = getThreadRuntime(activeThreadId)
-        runtime.showInterrupt = true
-        runtime.interruptData = nextInterruptData
-      }
-      setIsProcessing(false)
-      setStatus('ready')
-      lastAssistantStreamEventRef.current = 'interrupt'
-    },
-    [
-      finishReasoningBlock,
-      getThreadRuntime,
-      updateAssistantMessage,
-    ]
-  )
-
-  const handleAgUiEvent = useCallback(
-    (event: AgUiEvent): 'interrupt' | 'finished' | null => {
-      const eventType = event.type
-
-      if (eventType === 'TEXT_MESSAGE_CONTENT' || eventType === 'TEXT_MESSAGE_CHUNK') {
-        const delta =
-          typeof event.delta === 'string'
-            ? event.delta
-            : typeof event.content === 'string'
-              ? event.content
-              : ''
-        if (!delta) return null
-        if (lastAssistantStreamEventRef.current === 'reasoning') {
-          finishReasoningBlock()
-        }
-        const shouldAppendToLastBlock =
-          lastAssistantStreamEventRef.current === 'content'
-        updateAssistantMessage((message) => {
-          const { contentBlocks, messageItems } = appendContentToken(
-            message.contentBlocks,
-            message.messageItems,
-            delta,
-            shouldAppendToLastBlock,
-            () => {
-              contentBlockCounterRef.current += 1
-              return `${message.id}_content_${contentBlockCounterRef.current}`
-            }
-          )
-          return {
-            ...message,
-            content: `${message.content}${delta}`,
-            contentBlocks,
-            messageItems,
-          }
-        })
-        lastAssistantStreamEventRef.current = 'content'
-        return null
-      }
-
-      if (
-        eventType === 'THINKING_TEXT_MESSAGE_CONTENT' ||
-        eventType === 'REASONING_MESSAGE_CONTENT' ||
-        eventType === 'REASONING_MESSAGE_CHUNK'
-      ) {
-        const delta = typeof event.delta === 'string' ? event.delta : ''
-        if (!delta) return null
-        const shouldStartNewBlock =
-          lastAssistantStreamEventRef.current !== 'reasoning'
-        if (shouldStartNewBlock) {
-          reasoningStartTimeRef.current = Date.now()
-        }
-        updateAssistantMessage((message) => {
-          const { reasoningBlocks, messageItems } = appendReasoningToken(
-            message.reasoningBlocks,
-            message.messageItems,
-            delta,
-            shouldStartNewBlock,
-            () => {
-              reasoningBlockCounterRef.current += 1
-              return `${message.id}_reasoning_${reasoningBlockCounterRef.current}`
-            },
-            message.reasoningContent
-          )
-          return {
-            ...message,
-            reasoningBlocks,
-            messageItems,
-            reasoningContent: `${message.reasoningContent || ''}${delta}`,
-          }
-        })
-        lastAssistantStreamEventRef.current = 'reasoning'
-        return null
-      }
-
-      if (eventType === 'MESSAGES_SNAPSHOT') {
-        const snapshotText = getAgUiAssistantSnapshotText(event)
-        if (!snapshotText) return null
-        updateAssistantMessage((message) => {
-          if (message.content === snapshotText) return message
-          if (message.content && !snapshotText.startsWith(message.content)) {
-            return message
-          }
-          const missing = snapshotText.slice(message.content.length)
-          if (!missing) return message
-          const { contentBlocks, messageItems } = appendContentToken(
-            message.contentBlocks,
-            message.messageItems,
-            missing,
-            message.content.length > 0,
-            () => {
-              contentBlockCounterRef.current += 1
-              return `${message.id}_content_${contentBlockCounterRef.current}`
-            }
-          )
-          return {
-            ...message,
-            content: snapshotText,
-            contentBlocks,
-            messageItems,
-          }
-        })
-        lastAssistantStreamEventRef.current = 'content'
-        return null
-      }
-
-      if (eventType === 'TOOL_CALL_START') {
-        const toolCallId = String(event.toolCallId || '')
-        const toolName = String(event.toolCallName || 'tool')
-        if (!toolCallId) return null
-        if (lastAssistantStreamEventRef.current === 'reasoning') {
-          finishReasoningBlock()
-        }
-        toolCallStartTimesRef.current[toolCallId] = Date.now()
-        updateAssistantMessage((message) => {
-          const tools = [...(message.toolData || [])]
-          if (!tools.some((tool) => tool.toolCall.id === toolCallId)) {
-            tools.push({
-              toolCall: { id: toolCallId, name: toolName, args: {} },
-              toolOutput: [],
-            })
-          }
-          return {
-            ...message,
-            toolData: tools,
-            messageItems: ensureToolItem(message.messageItems || [], toolCallId),
-          }
-        })
-        lastAssistantStreamEventRef.current = 'tool'
-        return null
-      }
-
-      if (eventType === 'TOOL_CALL_ARGS') {
-        const toolCallId = String(event.toolCallId || '')
-        const delta = typeof event.delta === 'string' ? event.delta : ''
-        if (!toolCallId || !delta) return null
-        const raw = `${toolCallArgsRef.current[toolCallId] || ''}${delta}`
-        toolCallArgsRef.current[toolCallId] = raw
-        let parsed: Record<string, unknown> = {}
-        try {
-          const value = JSON.parse(raw) as unknown
-          if (value && typeof value === 'object' && !Array.isArray(value)) {
-            parsed = value as Record<string, unknown>
-          }
-        } catch {
-          // 工具参数仍是流式 JSON 片段，等待后续 delta 补齐。
-        }
-        if (Object.keys(parsed).length > 0) {
-          updateAssistantMessage((message) => ({
-            ...message,
-            toolData: (message.toolData || []).map((tool) =>
-              tool.toolCall.id === toolCallId
-                ? { ...tool, toolCall: { ...tool.toolCall, args: parsed } }
-                : tool
-            ),
-          }))
-        }
-        return null
-      }
-
-      if (eventType === 'TOOL_CALL_RESULT') {
-        const toolCallId = String(event.toolCallId || '')
-        if (!toolCallId) return null
-        const now = Date.now()
-        const startTime = toolCallStartTimesRef.current[toolCallId]
-        const toolDuration = startTime ? now - startTime : undefined
-        if (toolDuration !== undefined) {
-          setToolCallDurations((prev) => ({
-            ...prev,
-            [toolCallId]: toolDuration,
-          }))
-          delete toolCallStartTimesRef.current[toolCallId]
-        }
-        if (processedToolCallIdsRef.current.has(toolCallId)) return null
-        processedToolCallIdsRef.current.add(toolCallId)
-        const normalizedOutput = {
-          tool_call_id: toolCallId,
-          content: stringifyToolContent(event.content),
-        }
-        updateAssistantMessage((message) => {
-          const tools = [...(message.toolData || [])]
-          const existingToolIndex = tools.findIndex(
-            (tool) => tool.toolCall.id === toolCallId
-          )
-          if (existingToolIndex >= 0) {
-            const existingTool = tools[existingToolIndex]
-            if (
-              existingTool.toolOutput?.some(
-                (output) => output.content === normalizedOutput.content
-              )
-            ) {
-              return message
-            }
-            tools[existingToolIndex] = {
-              ...existingTool,
-              duration: toolDuration ?? existingTool.duration,
-              toolOutput: [
-                ...(existingTool.toolOutput || []),
-                normalizedOutput,
-              ],
-            }
-          } else {
-            tools.push({
-              toolCall: { id: toolCallId, name: 'tool', args: {} },
-              duration: toolDuration,
-              toolOutput: [normalizedOutput],
-            })
-          }
-          return {
-            ...message,
-            toolData: tools,
-            messageItems: ensureToolItem(message.messageItems || [], toolCallId),
-          }
-        })
-        lastAssistantStreamEventRef.current = 'tool'
-        return null
-      }
-
-      if (eventType === 'CUSTOM') {
-        const interrupt = getAgUiInterrupt(event)
-        if (interrupt) {
-          applyAgUiInterrupt(interrupt)
-          return 'interrupt'
-        }
-
-        const recommendedQuestions = getRecommendedQuestions(event)
-        const assistantMessageId = currentAssistantMessageIdRef.current
-        if (recommendedQuestions.length > 0 && assistantMessageId) {
-          setMessagesAndRef((prev) =>
-            prev.map((message) =>
-              message.role === 'ai'
-                ? {
-                    ...message,
-                    recommendedQuestions:
-                      message.id === assistantMessageId
-                        ? recommendedQuestions
-                        : undefined,
-                  }
-                : message
-            )
-          )
-        }
-        return null
-      }
-
-      if (eventType === 'RUN_ERROR') {
-        finishAssistantDuration()
-        throw new ChatRequestError(
-          createChatError(
-            'run',
-            String(event.message || 'Agent run failed')
-          )
-        )
-      }
-
-      if (eventType === 'RUN_FINISHED') {
-        const interrupt = getAgUiInterruptOutcome(event)
-        if (interrupt) {
-          applyAgUiInterrupt(interrupt)
-          return 'interrupt'
-        }
-        finishAssistantDuration()
-        return 'finished'
-      }
-
-      return null
-    },
-    [
-      applyAgUiInterrupt,
-      finishReasoningBlock,
-      finishAssistantDuration,
-      setMessagesAndRef,
-      updateAssistantMessage,
-    ]
-  )
-
-  const isCurrentStream = useCallback(
-    (threadId: string, generation: number) =>
-      activeThreadIdRef.current === threadId &&
-      streamGenerationRef.current === generation,
-    []
-  )
-
-  const refreshAssistantTokenUsage = useCallback(
-    async (threadId: string, assistantMessageId: string) => {
-      if (!threadId || !assistantMessageId) return
-      try {
-        const response = await requestJson<{ messages?: unknown }>(
-          AGUI_THREAD_STATE_API_PATH(threadId)
-        )
-        const usage = getLatestAssistantTokenUsage(response.messages)
-        if (!usage) return
-        setMessagesAndRef((prev) =>
-          prev.map((message) =>
-            message.id === assistantMessageId
-              ? { ...message, tokenUsage: usage }
-              : message
-          )
-        )
-      } catch {
-        // Token 统计失败不能影响已经完成的回答。
-      }
-    },
-    [requestJson, setMessagesAndRef]
-  )
-
-  const readEventStream = useCallback(
-    async (response: Response, threadId: string, generation: number) => {
-      const reader = response.body?.getReader()
-      if (!reader) throw new Error('No response body')
-
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let interrupted = false
-      let completed = false
-      let stale = false
-      let finishedAssistantMessageId = ''
-
-      const processChunk = (chunk: string) => {
-        if (!isCurrentStream(threadId, generation)) {
-          stale = true
-          return
-        }
-
-        const normalized = chunk.replace(/\r\n/g, '\n')
-        const parts = normalized.split('\n\n')
-        buffer = parts.pop() || ''
-
-        for (const part of parts) {
-          if (!isCurrentStream(threadId, generation)) {
-            stale = true
-            return
-          }
-          const frame = parseAgUiSseFrame(part)
-          if (!frame) continue
-          const runtime = getThreadRuntime(threadId)
-          if (frame.id) {
-            lastEventIdRef.current = frame.id
-            runtime.lastEventId = frame.id
-          }
-          const handledEvent = handleAgUiEvent(frame.event)
-          if (handledEvent === 'interrupt') {
-            interrupted = true
-            runtime.processing = false
-            runtime.status = 'ready'
-            runtime.messages = messagesRef.current
-            setThreadRunning(threadId, false)
-          }
-          if (handledEvent === 'finished') {
-            completed = true
-            finishedAssistantMessageId =
-              currentAssistantMessageIdRef.current || ''
-            runtime.processing = false
-            runtime.status = 'ready'
-            runtime.messages = messagesRef.current
-            setThreadRunning(threadId, false)
-            setIsProcessing(false)
-            setStatus('ready')
-          }
-        }
-      }
-
-      while (true) {
-        if (!isCurrentStream(threadId, generation)) {
-          stale = true
-          break
-        }
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        processChunk(buffer)
-        if (completed || stale) {
-          await reader.cancel()
-          break
-        }
-      }
-
-      if (!stale) {
-        buffer += decoder.decode()
-        if (buffer.trim()) {
-          processChunk(`${buffer}\n\n`)
-        }
-      }
-
-      if (completed && !stale && finishedAssistantMessageId) {
-        await refreshAssistantTokenUsage(threadId, finishedAssistantMessageId)
-      }
-
-      return { interrupted, completed, stale }
-    },
-    [
-      getThreadRuntime,
-      handleAgUiEvent,
-      isCurrentStream,
-      refreshAssistantTokenUsage,
-      setThreadRunning,
-    ]
-  )
-
-  const subscribeAgUiEvents = useCallback(
-    async (
-      basePath: string,
-      runId: string,
-      threadId: string,
-      generation: number,
-      signal?: AbortSignal
-    ) => {
-      if (!runId) throw new Error('Run ID missing')
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        if (!isCurrentStream(threadId, generation)) {
-          return { interrupted: false, completed: false, stale: true }
-        }
-        const response = await fetch(
-          getApiUrl(`${basePath}/${encodeURIComponent(runId)}/events`),
-          {
-            headers: withAuthHeaders({
-              Accept: 'text/event-stream',
-              ...(lastEventIdRef.current
-                ? { 'Last-Event-ID': lastEventIdRef.current }
-                : {}),
-            }),
-            signal,
-          }
-        )
-        if (!response.ok) {
-          throw new ChatRequestError(
-            await createHttpChatError(response, 'stream')
-          )
-        }
-        const result = await readEventStream(response, threadId, generation)
-        if (result.stale || result.completed || result.interrupted) return result
-        await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)))
-      }
-      throw new ChatRequestError(
-        createChatError('stream', 'AG-UI 事件流中断，重放次数已用尽')
-      )
-    },
-    [isCurrentStream, readEventStream, withAuthHeaders]
-  )
-
-  const startAgUiRun = useCallback(
-    async (
-      basePath: string,
-      runInput: Record<string, unknown>,
-      threadId: string,
-      generation: number,
-      signal?: AbortSignal
-    ) => {
-      const createResponse = await fetch(getApiUrl(basePath), {
-        method: 'POST',
-        headers: withAuthHeaders({
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        }),
-        body: JSON.stringify(runInput),
-        signal,
-      })
-      if (!createResponse.ok) {
-        throw new ChatRequestError(
-          await createHttpChatError(createResponse, 'http')
-        )
-      }
-      const snapshot = (await createResponse.json()) as { runId?: string }
-      const runId = snapshot.runId
-      if (!runId) throw new Error('Run ID missing')
-
-      const runtime = getThreadRuntime(threadId)
-      runtime.runId = runId
-      runtime.basePath = basePath
-      runtime.runInput = runInput
-      runtime.lastEventId = null
-      runtime.processing = true
-      runtime.status = 'connecting'
-      setThreadRunning(threadId, true)
-
-      if (!isCurrentStream(threadId, generation)) {
-        return { interrupted: false, completed: false, stale: true }
-      }
-
-      currentRunIdRef.current = runId
-      lastEventIdRef.current = null
-      return subscribeAgUiEvents(basePath, runId, threadId, generation, signal)
-    },
-    [
-      getThreadRuntime,
-      isCurrentStream,
-      setThreadRunning,
-      subscribeAgUiEvents,
-      withAuthHeaders,
-    ]
-  )
-
-  const resumeAgUiRun = useCallback(
-    async (
-      basePath: string,
-      runInput: Record<string, unknown>,
-      threadId: string,
-      generation: number,
-      signal?: AbortSignal
-    ) => {
-      const runId = currentRunIdRef.current
-      if (!runId) throw new Error('当前没有可恢复的 Run')
-      const resumeResponse = await fetch(
-        getApiUrl(`${basePath}/${encodeURIComponent(runId)}/resume`),
-        {
-          method: 'POST',
-          headers: withAuthHeaders({
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          }),
-          body: JSON.stringify(runInput),
-          signal,
-        }
-      )
-      if (!resumeResponse.ok) {
-        throw new ChatRequestError(
-          await createHttpChatError(resumeResponse, 'resume')
-        )
-      }
-      setThreadRunning(threadId, true)
-      return subscribeAgUiEvents(basePath, runId, threadId, generation, signal)
-    },
-    [setThreadRunning, subscribeAgUiEvents, withAuthHeaders]
-  )
-
-  const resumeThreadStream = useCallback(
-    async (runtime: ThreadRuntime) => {
-      if (!runtime.runId || !runtime.processing) return
-
-      const controller = new AbortController()
-      runtime.abortController = controller
-      abortControllerRef.current = controller
-      const generation = streamGenerationRef.current
-
-      const refreshTerminalState = async (): Promise<boolean> => {
-        if (!runtime.runId) return false
-        try {
-          const snapshot = await requestJson<{ status?: string }>(
-            `${runtime.basePath}/${encodeURIComponent(runtime.runId)}`
-          )
-          if (!snapshot.status || isActiveRunStatus(snapshot.status)) {
-            return false
-          }
-          runtime.processing = false
-          runtime.status = snapshot.status === 'error' ? 'error' : 'ready'
-          if (activeThreadIdRef.current === runtime.threadId) {
-            setIsProcessing(false)
-            setStatus(runtime.status)
-          }
-          setThreadRunning(runtime.threadId, false)
-          return true
-        } catch {
-          return false
-        }
-      }
-
-      try {
-        const result = await subscribeAgUiEvents(
-          runtime.basePath,
-          runtime.runId,
-          runtime.threadId,
-          generation,
-          controller.signal
-        )
-        if (result.stale) return
-        if (!result.completed && !result.interrupted) {
-          if (await refreshTerminalState()) return
-          runtime.processing = false
-          runtime.status = 'error'
-          if (activeThreadIdRef.current === runtime.threadId) {
-            setIsProcessing(false)
-            setStatus('error')
-          }
-          setThreadRunning(runtime.threadId, false)
-        }
-      } catch (error) {
-        if (!isAbortError(error)) {
-          if (await refreshTerminalState()) return
-          runtime.processing = false
-          runtime.status = 'error'
-          if (activeThreadIdRef.current === runtime.threadId) {
-            setIsProcessing(false)
-            setStatus('error')
-          }
-          setThreadRunning(runtime.threadId, false)
-        }
-      } finally {
-        if (runtime.abortController === controller) {
-          runtime.abortController = null
-        }
-      }
-    },
-    [requestJson, setThreadRunning, subscribeAgUiEvents]
-  )
-
-  const switchToThread = useCallback(
-    async (targetThreadId: string) => {
-      if (targetThreadId === activeThreadIdRef.current) return
-
-      const previousRuntime = persistActiveRuntime()
-      streamGenerationRef.current += 1
-      previousRuntime?.abortController?.abort()
-      if (previousRuntime) {
-        previousRuntime.abortController = null
-      }
-      abortControllerRef.current = null
-
-      const existingRuntime = threadRuntimesRef.current.get(targetThreadId)
-      if (existingRuntime) {
-        if (existingRuntime.processing && !existingRuntime.runId) {
-          existingRuntime.processing = false
-          existingRuntime.status = 'ready'
-        }
-        syncRuntimeToView(existingRuntime)
-        setThreadRunning(targetThreadId, existingRuntime.processing)
-        if (existingRuntime.processing && existingRuntime.runId) {
-          void resumeThreadStream(existingRuntime)
-        }
-        return
-      }
-
-      const runtime = createThreadRuntime(targetThreadId)
-      runtime.basePath = aguiApiPath
-      threadRuntimesRef.current.set(targetThreadId, runtime)
-      syncRuntimeToView(runtime)
-      setThreadRunning(targetThreadId, false)
-
-      let stateMessages: unknown = []
-      let messageCreatedAt: unknown = undefined
-      try {
-        const response = await requestJson<{
-          messages?: unknown
-          message_created_at?: unknown
-        }>(AGUI_THREAD_STATE_API_PATH(targetThreadId))
-        stateMessages = response.messages
-        messageCreatedAt = response.message_created_at
-      } catch (error) {
-        if (!(error instanceof Error) || !error.message.includes('404')) {
-          throw error
-        }
-      }
-      const runsResponse = await requestJson<ThreadRunListResponse>(
-        AGUI_THREAD_RUNS_API_PATH(targetThreadId)
-      )
-      const latestRun = runsResponse.items[0]
-      const historyCreatedAt =
-        latestRun?.updatedAt != null ? latestRun.updatedAt * 1000 : undefined
-      runtime.messages = toHistoryMessages(
-        stateMessages,
-        messageCreatedAt,
-        historyCreatedAt
-      )
-      if (activeThreadIdRef.current === targetThreadId) {
-        messagesRef.current = runtime.messages
-        setMessagesAndRef(runtime.messages)
-      }
-      if (latestRun) {
-        runtime.agentId = latestRun.agentId
-      }
-      if (!latestRun || !isActiveRunStatus(latestRun.status)) return
-
-      runtime.runId = latestRun.runId
-      runtime.lastEventId = latestRun.lastEventId
-      runtime.processing = true
-      runtime.status = 'connecting'
-      if (activeThreadIdRef.current !== targetThreadId) {
-        setThreadRunning(targetThreadId, true)
-        return
-      }
-      if (activeThreadIdRef.current === targetThreadId) {
-        syncRuntimeToView(runtime)
-      }
-      setThreadRunning(targetThreadId, true)
-      void resumeThreadStream(runtime)
-    },
-    [
-      aguiApiPath,
-      persistActiveRuntime,
-      requestJson,
-      resumeThreadStream,
-      setMessagesAndRef,
-      setThreadRunning,
-      syncRuntimeToView,
-    ]
-  )
-
-  useEffect(() => {
-    switchToThreadRef.current = switchToThread
-  }, [switchToThread])
-
-  const sendMessage = async (recommendedQuestion?: string) => {
-    const query = (recommendedQuestion ?? inputValue).trim()
-    if (!query || isProcessing || !sessionId) return
-    const threadId = sessionId
-    const generation = streamGenerationRef.current + 1
-    streamGenerationRef.current = generation
-    const runtime = getThreadRuntime(threadId)
-
-    const selectedAgentId = runtime.agentId ?? activeChatModeId
-    const requestMode: RequestMode = selectedAgentId === KNOWLEDGE_AGENT_ID ? 'rag' : 'agent'
-    if (
-      availableAgents.length > 0 &&
-      !availableAgents.some((agent) => agent.id === selectedAgentId)
-    ) {
-      setManagementError(`智能体 ${selectedAgentId} 当前不可用。`)
-      return
-    }
-    const requestMcpConfig = requestMode === 'agent' && mcpEnabled ? mcpConfig : null
-    if (requestMode === 'rag' && knowledgeIndexNames.length === 0) {
-      setManagementError('启用知识库问答后，必须先选择至少一个知识库。')
-      navigateTo('knowledge', 'libraries')
-      return
-    }
-    setMessagesAndRef((prev) =>
-      prev.map((message) =>
-        message.recommendedQuestions
-          ? { ...message, recommendedQuestions: undefined }
-          : message
-      )
-    )
-    const userMessageId = generateMessageId()
-    const userMessageCreatedAt = Date.now()
-    addMessage({
-      id: userMessageId,
-      role: 'user',
-      content: query,
-      createdAt: userMessageCreatedAt,
-    })
-    setInputValue('')
-
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
-    }
-
-    setIsProcessing(true)
-    setStatus('connecting')
-    setToolCallDurations({})
-    setThreadRunning(threadId, true)
-    runtime.processing = true
-    runtime.status = 'connecting'
-    runtime.basePath = aguiApiPath
-    runtime.agentId = selectedAgentId
-
-    const assistantMessageId = generateMessageId()
-    currentAssistantMessageIdRef.current = assistantMessageId
-    processedToolCallIdsRef.current.clear()
-    lastAssistantStreamEventRef.current = null
-    reasoningStartTimeRef.current = null
-    toolCallStartTimesRef.current = {}
-    toolCallArgsRef.current = {}
-    reasoningBlockCounterRef.current = 0
-    contentBlockCounterRef.current = 0
-    requestModeRef.current = requestMode
-    requestKnowledgeBaseRef.current = primaryKnowledgeBase
-    requestMcpConfigRef.current = requestMcpConfig
-    addMessage({
-      id: assistantMessageId,
-      role: 'ai',
-      content: '',
-      createdAt: Date.now(),
-      toolData: [],
-      startedAt: Date.now(),
-    })
-    runtime.messages = messagesRef.current
-    runtime.assistantMessageId = assistantMessageId
-    runtime.requestMode = requestMode
-    runtime.requestKnowledgeBase = primaryKnowledgeBase
-    runtime.requestMcpConfig = requestMcpConfig
-
-    abortControllerRef.current = new AbortController()
-    runtime.abortController = abortControllerRef.current
-
-    try {
-      const state: Record<string, unknown> = {
-        internet_search: internetSearch,
-        deep_thinking: deepThinking,
-      }
-      if (knowledgeIndexNames.length > 0) {
-        // 知识库模式由中间件自动检索，通用模式交给 retrieve_context 工具按需检索。
-        state.index_names = knowledgeIndexNames
-      }
-      if (requestMcpConfig) {
-        state.mcp_config = requestMcpConfig
-      }
-      const runInput = createAgUiRunInput({
-        agentId: selectedAgentId,
-        threadId,
-        runId: generateMessageId(),
-        messageId: generateMessageId(),
-        query,
-        state,
-      })
-      currentRunInputRef.current = runInput as unknown as Record<string, unknown>
-      runtime.runInput = currentRunInputRef.current
-      await startAgUiRun(
-        runtime.basePath,
-        currentRunInputRef.current,
-        threadId,
-        generation,
-        abortControllerRef.current.signal
-      )
-      if (isCurrentStream(threadId, generation)) {
-        setStatus('ready')
-      }
-    } catch (error: unknown) {
-      if (!isAbortError(error)) {
-        runtime.processing = false
-        runtime.status = 'error'
-        setThreadRunning(threadId, false)
-        if (isCurrentStream(threadId, generation)) {
-          setStatus('error')
-          applyAssistantError(assistantMessageId, error)
-          registerRetryAction(assistantMessageId, async () => {
-            setMessagesAndRef((prev) =>
-              prev.filter(
-                (message) =>
-                  message.id !== userMessageId &&
-                  message.id !== assistantMessageId
-              )
-            )
-            await sendMessage(query)
-          })
-        }
-      }
-    } finally {
-      if (isCurrentStream(threadId, generation)) {
-        finishReasoningBlock()
-        setIsProcessing(false)
-        runtime.processing = false
-        runtime.status = 'ready'
-        runtime.messages = messagesRef.current
-        runtime.lastEventId = lastEventIdRef.current
-        runtime.abortController = null
-        abortControllerRef.current = null
-      }
-      void loadHistorySessions()
-    }
-  }
-
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault()
-      void sendMessage()
-    }
-  }
-
-  /**
-   * 发送用户点击的推荐问题。
-   *
-   * Args:
-   * - question: 推荐问题文本。
-   */
-  const askRecommendedQuestion = (question: string) => {
-    if (isProcessing) return
-
-    setInputValue(question)
-    void sendMessage(question)
-  }
-
-  const abortRequest = () => {
-    const runId = currentRunIdRef.current
-    const basePath = aguiApiPath
-    const threadId = activeThreadIdRef.current
-    abortControllerRef.current?.abort()
-    abortControllerRef.current = null
-    if (threadId) {
-      const runtime = getThreadRuntime(threadId)
-      runtime.processing = false
-      runtime.status = 'ready'
-      runtime.abortController = null
-      setThreadRunning(threadId, false)
-    }
-    if (runId) {
-      void fetch(getApiUrl(`${basePath}/${encodeURIComponent(runId)}/cancel`), {
-        method: 'POST',
-        headers: withAuthHeaders(),
-      })
-    }
-  }
-
-  const handleInterruptAction = async (
-    decision: 'approve' | 'reject' | 'edit',
-    editedActions?: Array<{ name: string; args: Record<string, unknown> }>,
-    options?: { skipStatusMessage?: boolean }
-  ) => {
-    if (!interruptData || !('action_requests' in interruptData)) return
-
-    const requestMode = requestModeRef.current
-    const requestKnowledgeBase = requestKnowledgeBaseRef.current
-    const requestMcpConfig = requestMcpConfigRef.current
-    const threadId = activeThreadIdRef.current
-    const generation = streamGenerationRef.current + 1
-    streamGenerationRef.current = generation
-    const runtime = getThreadRuntime(threadId)
-    if (requestMode === 'rag' && !requestKnowledgeBase) {
-      setManagementError('当前中断来自知识库问答，但未找到对应知识库，请重新发起请求。')
-      setShowInterrupt(false)
-      setInterruptData(null)
-      return
-    }
-
-    setShowInterrupt(false)
-    runtime.showInterrupt = false
-    if (!options?.skipStatusMessage) {
-      addMessage({
-        id: generateMessageId(),
-        role: 'user',
-        content:
-          decision === 'approve'
-            ? '已批准继续执行。'
-            : decision === 'reject'
-              ? '已拒绝继续执行。'
-              : '已修改参数并继续执行。',
-      })
-    }
-
-    setIsProcessing(true)
-    setStatus('connecting')
-    setThreadRunning(threadId, true)
-    runtime.processing = true
-    runtime.status = 'connecting'
-    lastAssistantStreamEventRef.current = null
-    reasoningBlockCounterRef.current = 0
-    contentBlockCounterRef.current = 0
-    abortControllerRef.current = new AbortController()
-    runtime.abortController = abortControllerRef.current
-    let receivedInterrupt = false
-
-    try {
-      const decisions: ResumeDecision[] = (interruptData.action_requests || []).map(
-        (action, index) => {
-          if (decision === 'edit' && editedActions?.[index]) {
-            return {
-              type: 'edit',
-              edited_action: editedActions[index],
-            }
-          }
-          if (decision === 'reject') {
-            return {
-              type: 'reject',
-              message: `用户拒绝执行工具 ${action.name}。`,
-            }
-          }
-          return { type: 'approve' }
-        }
-      )
-
-      const baseInput = currentRunInputRef.current
-      if (!baseInput) throw new Error('当前没有可恢复的 Run')
-      const interruptId = interruptData.interrupt_id
-      if (!interruptId) throw new Error('当前中断缺少 interruptId，无法恢复')
-      const forwardedProps = {
-        ...(baseInput.forwardedProps as Record<string, unknown> | undefined),
-      }
-      delete forwardedProps.command
-      const runInput = {
-        ...baseInput,
-        forwardedProps,
-        resume: [
-          {
-            interruptId,
-            status: 'resolved',
-            payload: { decisions },
-          },
-        ],
-      }
-      currentRunInputRef.current = runInput
-      runtime.runInput = runInput
-      const streamResult = await resumeAgUiRun(
-        aguiApiPath,
-        runInput,
-        threadId,
-        generation,
-        abortControllerRef.current.signal
-      )
-      receivedInterrupt = streamResult.interrupted
-      if (isCurrentStream(threadId, generation)) {
-        setStatus('ready')
-      }
-    } catch (error: unknown) {
-      if (!isAbortError(error)) {
-        runtime.processing = false
-        runtime.status = 'error'
-        setThreadRunning(threadId, false)
-        if (isCurrentStream(threadId, generation)) {
-          setStatus('error')
-          const assistantMessageId = currentAssistantMessageIdRef.current
-          applyAssistantError(assistantMessageId, error)
-          if (assistantMessageId) {
-            registerRetryAction(assistantMessageId, () =>
-              handleInterruptAction(decision, editedActions, {
-                skipStatusMessage: true,
-              })
-            )
-          }
-        }
-      }
-    } finally {
-      if (isCurrentStream(threadId, generation) && runtime.status !== 'error') {
-        finishReasoningBlock()
-        setIsProcessing(false)
-        runtime.processing = false
-        runtime.status = 'ready'
-        runtime.messages = messagesRef.current
-        runtime.lastEventId = lastEventIdRef.current
-        runtime.abortController = null
-        abortControllerRef.current = null
-        if (!receivedInterrupt) {
-          setInterruptData(null)
-          runtime.interruptData = null
-        }
-      }
-    }
-  }
-
-  const handleAskUserResponse = async (answer: string) => {
-    if (
-      !interruptData ||
-      interruptData.action_requests.length !== 1 ||
-      interruptData.action_requests[0].name !== 'ask_user'
-    ) {
-      return
-    }
-
-    const requestMode = requestModeRef.current
-    const requestKnowledgeBase = requestKnowledgeBaseRef.current
-    const requestMcpConfig = requestMcpConfigRef.current
-    const threadId = activeThreadIdRef.current
-    const generation = streamGenerationRef.current + 1
-    streamGenerationRef.current = generation
-    const runtime = getThreadRuntime(threadId)
-    if (requestMode === 'rag' && !requestKnowledgeBase) {
-      setManagementError('当前中断来自知识库问答，但未找到对应知识库，请重新发起请求。')
-      setShowInterrupt(false)
-      setInterruptData(null)
-      return
-    }
-
-    setShowInterrupt(false)
-    runtime.showInterrupt = false
-    updateAssistantMessage((message) => {
-      const toolIndex = [...(message.toolData || [])]
-        .map((tool, index) => ({ tool, index }))
-        .reverse()
-        .find(({ tool }) => tool.toolCall.name === 'ask_user')?.index
-      if (toolIndex === undefined) return message
-
-      const tool = message.toolData?.[toolIndex]
-      if (!tool) return message
-      const responseContent = stringifyToolContent(answer)
-      if (tool.toolOutput?.some((item) => item.content === responseContent)) {
-        return message
-      }
-
-      const toolData = [...(message.toolData || [])]
-      toolData[toolIndex] = {
-        ...tool,
-        toolOutput: [
-          ...(tool.toolOutput || []),
-          {
-            tool_call_id: tool.toolCall.id,
-            content: responseContent,
-          },
-        ],
-      }
-      return { ...message, toolData }
-    })
-    setIsProcessing(true)
-    setStatus('connecting')
-    setThreadRunning(threadId, true)
-    runtime.processing = true
-    runtime.status = 'connecting'
-    lastAssistantStreamEventRef.current = null
-    reasoningBlockCounterRef.current = 0
-    contentBlockCounterRef.current = 0
-    abortControllerRef.current = new AbortController()
-    runtime.abortController = abortControllerRef.current
-    let receivedInterrupt = false
-
-    try {
-      const baseInput = currentRunInputRef.current
-      if (!baseInput) throw new Error('当前没有可恢复的 Run')
-      const interruptId = interruptData.interrupt_id
-      if (!interruptId) throw new Error('当前中断缺少 interruptId，无法恢复')
-      const forwardedProps = {
-        ...(baseInput.forwardedProps as Record<string, unknown> | undefined),
-      }
-      delete forwardedProps.command
-      const runInput = {
-        ...baseInput,
-        forwardedProps,
-        resume: [
-          {
-            interruptId,
-            status: 'resolved',
-            payload: {
-              decisions: [{ type: 'respond', message: answer }],
-            },
-          },
-        ],
-      }
-      currentRunInputRef.current = runInput
-      runtime.runInput = runInput
-      const streamResult = await resumeAgUiRun(
-        aguiApiPath,
-        runInput,
-        threadId,
-        generation,
-        abortControllerRef.current.signal
-      )
-      receivedInterrupt = streamResult.interrupted
-      if (isCurrentStream(threadId, generation)) {
-        setStatus('ready')
-      }
-    } catch (error: unknown) {
-      if (!isAbortError(error)) {
-        runtime.processing = false
-        runtime.status = 'error'
-        setThreadRunning(threadId, false)
-        if (isCurrentStream(threadId, generation)) {
-          setStatus('error')
-          const assistantMessageId = currentAssistantMessageIdRef.current
-          applyAssistantError(assistantMessageId, error)
-          if (assistantMessageId) {
-            registerRetryAction(assistantMessageId, () =>
-              handleAskUserResponse(answer)
-            )
-          }
-        }
-      }
-    } finally {
-      if (isCurrentStream(threadId, generation) && runtime.status !== 'error') {
-        finishReasoningBlock()
-        setIsProcessing(false)
-        runtime.processing = false
-        runtime.status = 'ready'
-        runtime.messages = messagesRef.current
-        runtime.lastEventId = lastEventIdRef.current
-        runtime.abortController = null
-        abortControllerRef.current = null
-        if (!receivedInterrupt) {
-          setInterruptData(null)
-          runtime.interruptData = null
-        }
-      }
-      void loadHistorySessions()
-    }
-  }
-
-  const toggleKnowledgeBaseChecked = (
-    knowledgeBaseId: string,
-    event: MouseEvent<HTMLButtonElement | HTMLInputElement>
-  ) => {
-    event.stopPropagation()
-    setCheckedKnowledgeBaseIds((prev) =>
-      prev.includes(knowledgeBaseId)
-        ? prev.filter((item) => item !== knowledgeBaseId)
-        : [...prev, knowledgeBaseId]
-    )
-  }
-
-  const toggleDocumentChecked = (
-    documentId: string,
-    event: MouseEvent<HTMLButtonElement | HTMLInputElement>
-  ) => {
-    event.stopPropagation()
-    setCheckedDocumentIds((prev) =>
-      prev.includes(documentId)
-        ? prev.filter((item) => item !== documentId)
-        : [...prev, documentId]
-    )
-  }
-
-  const knowledgeBasePageTotal = getPageTotal(
-    knowledgeBaseTotal,
-    KNOWLEDGE_BASE_PAGE_SIZE
-  )
-  const documentPageTotal = getPageTotal(documentTotal, DOCUMENT_PAGE_SIZE)
-  const documentChunkPageTotal = selectedDocumentDetail
-    ? getPageTotal(selectedDocumentDetail.total_chunks, selectedDocumentDetail.page_size)
-    : 1
-  const visibleChunkTotal = knowledgeBases.reduce((sum, item) => sum + item.chunk_count, 0)
+  const runtime = useChatRuntime({
+    messages,
+    inputValue,
+    setInputValue,
+    sessionId,
+    setSessionId,
+    status,
+    setStatus,
+    isProcessing,
+    setIsProcessing,
+    runningThreadIds,
+    setRunningThreadIds,
+    internetSearch,
+    deepThinking,
+    showInterrupt,
+    setShowInterrupt,
+    interruptData,
+    setInterruptData,
+    toolCallDurations,
+    setToolCallDurations,
+    availableAgents,
+    aguiApiPath,
+    abortControllerRef,
+    activeThreadIdRef,
+    threadRuntimesRef,
+    messagesRef,
+    streamGenerationRef,
+    switchToThreadRef,
+    currentRunIdRef,
+    currentRunInputRef,
+    lastEventIdRef,
+    toolCallArgsRef,
+    currentAssistantMessageIdRef,
+    processedToolCallIdsRef,
+    lastAssistantStreamEventRef,
+    reasoningStartTimeRef,
+    toolCallStartTimesRef,
+    reasoningBlockCounterRef,
+    contentBlockCounterRef,
+    requestModeRef,
+    requestKnowledgeBaseRef,
+    requestMcpConfigRef,
+    retryActionsRef,
+    setMessagesAndRef,
+    setThreadRunning,
+    getThreadRuntime,
+    syncRuntimeToRefs,
+    syncRuntimeToView,
+    persistActiveRuntime,
+    resetActiveChatView,
+    scrollToBottom,
+    addMessage,
+    ensureAssistantMessage,
+    updateAssistantMessage,
+    applyAssistantError,
+    registerRetryAction,
+    requestJson,
+    withAuthHeaders,
+    navigateTo,
+    knowledgeIndexNames,
+    primaryKnowledgeBase,
+    mcpConfig,
+    mcpEnabled,
+    activeChatModeId,
+    setManagementError,
+    textareaRef,
+    loadHistorySessions,
+  })
+  const {
+    sendMessage,
+    handleKeyDown,
+    askRecommendedQuestion,
+    abortRequest,
+    handleInterruptAction,
+    handleAskUserResponse,
+  } = runtime
   const chatDisabled = isKnowledgeMode && knowledgeIndexNames.length === 0
-  const mcpStatusLabel = mcpEnabled
-    ? isKnowledgeMode
-      ? '已启用，但当前 RAG 不使用'
-      : savedMcpParseResult.serverSummaries.length > 0
-        ? `已启用 ${savedMcpParseResult.serverSummaries.length} 个服务`
-        : '已启用'
-    : savedMcpParseResult.serverSummaries.length > 0
-      ? `已配置 ${savedMcpParseResult.serverSummaries.length} 个服务`
-      : '未配置'
-
-
   return {
     viewMode,
     channelPage,

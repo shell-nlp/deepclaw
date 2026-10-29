@@ -358,6 +358,13 @@ frontend/components/
       Pagination.tsx
     hooks/
       useChatPageController.ts
+      useChatRuntime.ts
+      usePageRouting.ts
+      useHistorySessions.ts
+      useAuthSession.ts
+      useKnowledgeManagement.ts
+      useMcpConfig.ts
+      useSkills.ts
     utils/
       agui.ts
       auth.ts
