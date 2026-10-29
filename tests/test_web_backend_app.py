@@ -23,8 +23,10 @@ def _load_app_module(monkeypatch):
         monkeypatch.setitem(sys.modules, module_name, module)
 
     from deepclaw.web_backend import app as app_module
+    from deepclaw.web_backend import lifespan as lifespan_module
 
     app_module = importlib.reload(app_module)
+    lifespan_module = importlib.reload(lifespan_module)
 
     async def noop_preload(self, **kwargs):
         """跳过启动阶段智能体预热。
@@ -35,7 +37,7 @@ def _load_app_module(monkeypatch):
         """
         return None
 
-    monkeypatch.setattr(app_module.AgentRuntimeCache, "preload", noop_preload)
+    monkeypatch.setattr(lifespan_module.AgentRuntimeCache, "preload", noop_preload)
     class UploadManagerSpy:
         """隔离应用生命周期里的知识库 worker。"""
 
@@ -53,8 +55,8 @@ def _load_app_module(monkeypatch):
                 无。
             """
 
-    monkeypatch.setattr(app_module, "get_knowledge_base_manager", UploadManagerSpy)
-    return app_module
+    monkeypatch.setattr(lifespan_module, "get_knowledge_base_manager", UploadManagerSpy)
+    return app_module, lifespan_module
 
 
 def test_importing_app_module_does_not_create_app(monkeypatch):
@@ -69,7 +71,7 @@ def test_importing_app_module_does_not_create_app(monkeypatch):
 
 
 def test_app_module_does_not_export_app_instance(monkeypatch):
-    app_module = _load_app_module(monkeypatch)
+    app_module, _ = _load_app_module(monkeypatch)
 
     with pytest.raises(AttributeError):
         getattr(app_module, "app")
@@ -78,7 +80,7 @@ def test_app_module_does_not_export_app_instance(monkeypatch):
 def test_create_app_defers_agent_env_init_to_lifespan(monkeypatch):
     from contextlib import asynccontextmanager
 
-    app_module = _load_app_module(monkeypatch)
+    app_module, lifespan_module = _load_app_module(monkeypatch)
 
     checkpointer = object()
     store = object()
@@ -99,10 +101,10 @@ def test_create_app_defers_agent_env_init_to_lifespan(monkeypatch):
     async def noop_channel_lifespan():
         yield
 
-    monkeypatch.setattr(app_module, "init_agent_env", fake_init_agent_env)
-    monkeypatch.setattr(app_module, "setup_observability", lambda: None)
-    monkeypatch.setattr(app_module, "channel_lifespan", noop_channel_lifespan)
-    monkeypatch.setattr(app_module, "get_auth_service", lambda: ServiceSpy())
+    monkeypatch.setattr(lifespan_module, "init_agent_env", fake_init_agent_env)
+    monkeypatch.setattr(lifespan_module, "setup_observability", lambda: None)
+    monkeypatch.setattr(lifespan_module, "channel_lifespan", noop_channel_lifespan)
+    monkeypatch.setattr(lifespan_module, "get_auth_service", lambda: ServiceSpy())
 
     app = app_module.create_app()
 
@@ -118,7 +120,7 @@ def test_create_app_defers_agent_env_init_to_lifespan(monkeypatch):
 
 def test_init_agent_env_uses_checked_postgres_connection_pools(monkeypatch):
     """验证代理环境为检查点和长期记忆配置失效连接检查。"""
-    app_module = _load_app_module(monkeypatch)
+    _, lifespan_module = _load_app_module(monkeypatch)
 
     class FakeCheckpointer:
         def __init__(self, pool):
@@ -191,12 +193,12 @@ def test_init_agent_env_uses_checked_postgres_connection_pools(monkeypatch):
 
     monkeypatch.setitem(sys.modules, "langgraph.checkpoint.postgres.aio", checkpoint_module)
     monkeypatch.setitem(sys.modules, "langgraph.store.postgres.aio", store_module)
-    monkeypatch.setattr(app_module, "AsyncConnectionPool", FakeCheckpointerPool)
-    monkeypatch.setattr(app_module.settings, "PG_DATABASE_URL", "postgresql://example")
+    monkeypatch.setattr(lifespan_module, "AsyncConnectionPool", FakeCheckpointerPool)
+    monkeypatch.setattr(lifespan_module.settings, "PG_DATABASE_URL", "postgresql://example")
 
-    app = app_module.FastAPI()
+    app = lifespan_module.FastAPI()
 
-    asyncio.run(app_module.init_agent_env(app))
+    asyncio.run(lifespan_module.init_agent_env(app))
 
     checkpointer_pool = app.state.agent_checkpointer_pool
     assert isinstance(checkpointer_pool, FakeCheckpointerPool)
@@ -213,7 +215,7 @@ def test_init_agent_env_uses_checked_postgres_connection_pools(monkeypatch):
 def test_create_app_agent_route_remains_postable_with_frontend_mount(monkeypatch, tmp_path: Path):
     from contextlib import asynccontextmanager
 
-    app_module = _load_app_module(monkeypatch)
+    app_module, lifespan_module = _load_app_module(monkeypatch)
     frontend_out = tmp_path / "frontend" / "out"
     frontend_out.mkdir(parents=True)
     (frontend_out / "index.html").write_text("<html><body>index</body></html>", encoding="utf-8")
@@ -237,12 +239,12 @@ def test_create_app_agent_route_remains_postable_with_frontend_mount(monkeypatch
     async def noop_channel_lifespan():
         yield
 
-    monkeypatch.setattr(app_module, "ROOT_DIR", tmp_path)
-    monkeypatch.setattr(app_module, "init_agent_env", fake_init_agent_env)
+    monkeypatch.setattr(lifespan_module, "ROOT_DIR", tmp_path)
+    monkeypatch.setattr(lifespan_module, "init_agent_env", fake_init_agent_env)
     monkeypatch.setattr(app_module, "agui_router", fake_agui_router)
-    monkeypatch.setattr(app_module, "setup_observability", lambda: None)
-    monkeypatch.setattr(app_module, "channel_lifespan", noop_channel_lifespan)
-    monkeypatch.setattr(app_module, "get_auth_service", lambda: ServiceSpy())
+    monkeypatch.setattr(lifespan_module, "setup_observability", lambda: None)
+    monkeypatch.setattr(lifespan_module, "channel_lifespan", noop_channel_lifespan)
+    monkeypatch.setattr(lifespan_module, "get_auth_service", lambda: ServiceSpy())
 
     with TestClient(app_module.create_app()) as client:
         response = client.post("/api/agui/runs", json={"query": "你好"})
@@ -259,9 +261,9 @@ def test_create_app_serves_exported_login_html_route(monkeypatch, tmp_path: Path
 
     from contextlib import asynccontextmanager
 
-    app_module = _load_app_module(monkeypatch)
+    app_module, lifespan_module = _load_app_module(monkeypatch)
 
-    monkeypatch.setattr(app_module, "ROOT_DIR", tmp_path)
+    monkeypatch.setattr(lifespan_module, "ROOT_DIR", tmp_path)
     async def fake_init_agent_env(app):
         app.state.checkpointer = object()
         app.state.store = object()
@@ -275,13 +277,23 @@ def test_create_app_serves_exported_login_html_route(monkeypatch, tmp_path: Path
     async def noop_channel_lifespan():
         yield
 
-    monkeypatch.setattr(app_module, "init_agent_env", fake_init_agent_env)
-    monkeypatch.setattr(app_module, "setup_observability", lambda: None)
-    monkeypatch.setattr(app_module, "channel_lifespan", noop_channel_lifespan)
-    monkeypatch.setattr(app_module, "get_auth_service", lambda: ServiceSpy())
+    monkeypatch.setattr(lifespan_module, "init_agent_env", fake_init_agent_env)
+    monkeypatch.setattr(lifespan_module, "setup_observability", lambda: None)
+    monkeypatch.setattr(lifespan_module, "channel_lifespan", noop_channel_lifespan)
+    monkeypatch.setattr(lifespan_module, "get_auth_service", lambda: ServiceSpy())
 
     with TestClient(app_module.create_app()) as client:
         response = client.get("/login")
 
     assert response.status_code == 200
     assert "login" in response.text
+
+
+def test_validate_runtime_settings_rejects_pgsql_without_database(monkeypatch):
+    """验证选择 pgsql 但缺少 PG_DATABASE_URL 时启动快速失败。"""
+    _, lifespan_module = _load_app_module(monkeypatch)
+    monkeypatch.setattr(lifespan_module.settings, "VECTOR_STORE_BACKEND", "pgsql")
+    monkeypatch.setattr(lifespan_module.settings, "PG_DATABASE_URL", None)
+
+    with pytest.raises(RuntimeError, match="PG_DATABASE_URL"):
+        lifespan_module.validate_runtime_settings()

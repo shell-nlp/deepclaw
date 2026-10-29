@@ -16,7 +16,7 @@ from deepclaw.constant import (
     WORKSPACE_PATH,
 )
 from deepclaw.settings import settings
-from deepclaw.utils import get_chat_model
+from deepclaw.utils import count_message_tokens, get_chat_model
 
 
 class GeneralAgent(Agent):
@@ -220,7 +220,10 @@ class GeneralAgent(Agent):
             [
                 SummarizationMiddleware(
                     model=get_chat_model(),
-                    # token_counter=count_message_tokens,
+                    # 达到模型最大输入上下文的 80% 时触发；优先使用上一条
+                    # AIMessage 的 usage_metadata，缺失时回退本地 token 计数。
+                    trigger=("fraction", 0.8),
+                    token_counter=count_message_tokens,
                 ),
             ]
         )

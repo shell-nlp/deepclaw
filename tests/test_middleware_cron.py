@@ -156,3 +156,4 @@ def test_general_agent_uses_exact_token_counter_for_summarization(monkeypatch):
     agent_module.GeneralAgent.build_agent(deep_agent=False)
 
     assert captured["kwargs"]["token_counter"] is count_message_tokens
+    assert captured["kwargs"]["trigger"] == ("fraction", 0.8)

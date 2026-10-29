@@ -28,18 +28,19 @@
 
 - `deepclaw/web_backend/app.py`
   当前 FastAPI 官方装配入口。负责：
-  - 创建 `FastAPI` 应用
-  - 初始化 checkpointer 与 store
-  - 在 `create_app()` 中挂载模块级 `auth`、`agui`、`channels`、`skills`、`knowledge_bases` 路由
-  - 在应用生命周期中初始化 `AgentRegistry`，预热全部 `AgentRuntimeCache` 图与 Run 管理器，并在关闭时停止后台任务、释放 RunStore
-  - 提供 `/api/runtime-config` 运行时配置
-  - 静态托管 `frontend/out`
+  - 创建 `FastAPI` 应用并挂载模块级 `auth`、`agui`、`channels`、`skills`、`knowledge_bases` 路由
+  - 注册 CORS 与业务异常处理器
+  - 注册图表静态读取路由
+  - 通过 `lifespan.app_lifespan` 交给启动/关闭生命周期
 
 - `deepclaw/web_backend/lifespan.py`
   应用生命周期入口。负责：
-  - 可观测性初始化
-  - 管理员账号自举
-  - 渠道 runtime 生命周期接入
+  - 启动前 `validate_runtime_settings()` 配置快速失败校验
+  - checkpointer 与 store 初始化
+  - `AgentRegistry` 发现、RunStore 初始化与 Thread 回填
+  - `AgentRuntimeCache` 图预热
+  - 前端静态资源挂载、可观测性初始化、管理员账号自举、知识库 worker 启停
+  - 渠道 runtime 生命周期接入与关闭清理
 
 - `deepclaw/web_backend/db.py`
   Web 侧统一异步数据库辅助入口。负责：
@@ -93,7 +94,9 @@
 ### 核心能力层
 
 - `deepclaw/agents/general/`
-  通用 Agent 组装、上下文、状态与运行时相关逻辑；`general/agent.py` 的 `GeneralAgent.build_agent` 直接承载构建实现。`general/utils.py` 承载 Store 用户命名空间与技能同步：`user_namespace()` / `user_namespace_factory()` 按运行时身份（`runtime.server_info.user.identity`，取不到时回退 `default`）计算 `filesystem` 命名空间，`sync_skills_store()` 用 `StoreBackend` + `await aupload_files()` 把本地技能目录写进指定用户的命名空间，并用"比较一级技能目录集合"判断是否需要同步（未变化时只做一次查询、不写入）；`BACKEND_TYPE=store` 时 `agent.py` 只声明 `skills=[SKILLS_VIRTUAL_ROOT]`，技能实际读写都落在该用户命名空间里。
+  通用 Agent 组装、上下文、状态与运行时相关逻辑；`general/agent.py` 的 `GeneralAgent.build_agent` 直接承载构建实现。
+  摘要压缩使用 `SummarizationMiddleware(trigger=("fraction", 0.8))`：优先读取上一条 `AIMessage.usage_metadata.total_tokens`，缺失时回退本地 `count_message_tokens`；阈值基于 `MODEL_CONTEXT_WINDOW`。
+  `general/utils.py` 承载 Store 用户命名空间与技能同步：`user_namespace()` / `user_namespace_factory()` 按运行时身份（`runtime.server_info.user.identity`，取不到时回退 `default`）计算 `filesystem` 命名空间，`sync_skills_store()` 用 `StoreBackend` + `await aupload_files()` 把本地技能目录写进指定用户的命名空间，并用"比较一级技能目录集合"判断是否需要同步（未变化时只做一次查询、不写入）；`BACKEND_TYPE=store` 时 `agent.py` 只声明 `skills=[SKILLS_VIRTUAL_ROOT]`，技能实际读写都落在该用户命名空间里。
 
 - `deepclaw/agents/rag/`
   RAG Agent 组装、上下文与状态定义；`rag/agent.py` 的 `RagAgent.build_agent` 直接承载构建实现。
@@ -203,6 +206,7 @@ pnpm build
 - `OPENAI_API_BASE`
 - `OPENAI_API_KEY`
 - `CHAT_MODEL_NAME`
+- `MODEL_CONTEXT_WINDOW`
 - `EMBEDDING_MODEL_NAME`
 - `ES_URL`
 - `ES_URSR`

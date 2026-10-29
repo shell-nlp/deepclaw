@@ -24,6 +24,8 @@ class Settings(BaseSettings):
 
     # Chat模型配置
     OPENAI_API_KEY: str
+    # 模型上下文窗口长度，用于按 80% 阈值触发摘要；按实际部署模型调整。
+    MODEL_CONTEXT_WINDOW: int = Field(default=128000, ge=1)
 
     # Embedding模型配置
     EMBEDDING_MODEL_NAME: str

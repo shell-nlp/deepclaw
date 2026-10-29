@@ -1,54 +1,22 @@
-import os
-from contextlib import asynccontextmanager
-from pathlib import Path
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
-from fastapi.staticfiles import StaticFiles
-from loguru import logger
-from psycopg.rows import dict_row
-from psycopg_pool import AsyncConnectionPool
+from fastapi.responses import JSONResponse, Response
 
-from deepclaw.agent_registry import AgentRegistry
-from deepclaw.constant import ROOT_DIR
 from deepclaw.middleware.chart import storage as chart_storage
 from deepclaw.settings import settings
 from deepclaw.web_backend.agui.runtime import AgentRuntimeCache
 from deepclaw.web_backend.agui.router import router as agui_router
-from deepclaw.web_backend.agent.run_store import (
-    get_run_store,
-    restore_threads_from_checkpoints,
-)
 from deepclaw.web_backend.auth.router import router as auth_router
-from deepclaw.web_backend.auth.service import get_auth_service
 from deepclaw.web_backend.channels.router import router as channels_router
-from deepclaw.web_backend.channels.weixin_clawbot.lifespan import channel_lifespan
+from deepclaw.web_backend.common.agui_runs import runtime_router
 from deepclaw.web_backend.common.errors import BusinessRuleError
-from deepclaw.web_backend.common.agui_runs import (
-    get_agui_agents_path,
-    get_agui_runs_path,
-    runtime_router,
-)
 from deepclaw.web_backend.knowledge_bases.router import (
     router as knowledge_bases_router,
 )
-from deepclaw.web_backend.knowledge_bases.service import get_knowledge_base_manager
+from deepclaw.web_backend.lifespan import app_lifespan
 from deepclaw.web_backend.skills.router import router as skills_router
-
-
-def setup_observability() -> None:
-    try:
-        if os.getenv("PHOENIX_COLLECTOR_ENDPOINT"):
-            from phoenix.otel import register  # pyright: ignore[reportMissingImports]
-
-            register(
-                project_name="default",
-                auto_instrument=True,
-            )
-    except ImportError:
-        logger.warning("Phoenix 未安装，跳过可观测性初始化。")
 
 
 async def handle_business_rule_error(
@@ -65,135 +33,6 @@ async def handle_business_rule_error(
         包含 detail 字段的 JSON 响应。
     """
     return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)})
-
-
-async def init_agent_env(app: FastAPI) -> None:
-    checkpointer = None
-    store = None
-    if settings.PG_DATABASE_URL:
-        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-
-        checkpointer_pool = AsyncConnectionPool(
-            settings.PG_DATABASE_URL,
-            min_size=1,
-            max_size=10,
-            kwargs={
-                "autocommit": True,
-                "prepare_threshold": 0,
-                "row_factory": dict_row,
-            },
-            check=AsyncConnectionPool.check_connection,
-            open=False,
-        )
-        await checkpointer_pool.open(wait=True)
-        checkpointer = AsyncPostgresSaver(checkpointer_pool)
-        await checkpointer.setup()
-
-        app.state.agent_checkpointer_pool = checkpointer_pool
-        app.state.checkpointer = checkpointer
-        logger.info("使用带连接池的 AsyncPostgresSaver 作为检查点")
-        # ------------------------------------------------------
-        from langgraph.store.postgres.aio import AsyncPostgresStore
-
-        store_ctx = AsyncPostgresStore.from_conn_string(
-            settings.PG_DATABASE_URL,
-            pool_config={
-                "min_size": 1,
-                "max_size": 10,
-                "check": AsyncConnectionPool.check_connection,
-            },
-        )
-        store = await store_ctx.__aenter__()
-        await store.setup()
-        app.state.langgraph_store_ctx = store_ctx
-        app.state.store = store
-        logger.info("使用 AsyncPostgresStore 作为长期记忆")
-    else:
-        from langgraph.checkpoint.memory import InMemorySaver
-        from langgraph.store.memory import InMemoryStore
-
-        checkpointer = InMemorySaver()
-        app.state.agent_checkpointer_pool = None
-        logger.info("使用 InMemorySaver 作为检查点")
-
-        store = InMemoryStore()
-        app.state.langgraph_store_ctx = None
-        logger.info("使用 InMemoryStore 作为长期记忆")
-
-    app.state.checkpointer = checkpointer
-    app.state.store = store
-
-
-def register_frontend_routes(app: FastAPI) -> None:
-    """在 API 路由之后再挂载前端静态资源，避免吞掉 POST API 请求。"""
-
-    if getattr(app.state, "frontend_routes_registered", False):
-        return
-
-    next_frontend_path = ROOT_DIR / "frontend" / "out"
-    if not next_frontend_path.exists():
-        return
-
-    _register_exported_html_routes(app, next_frontend_path)
-    app.mount(
-        "/",
-        StaticFiles(
-            directory=next_frontend_path,
-            html=True,
-        ),
-        name="next_frontend",
-    )
-    app.state.frontend_routes_registered = True
-
-
-@asynccontextmanager
-async def app_lifespan(app: FastAPI):
-    setup_observability()
-    await init_agent_env(app)
-    app.state.agent_registry = AgentRegistry.discover()
-    run_store = get_run_store()
-    await run_store.initialize()
-    default_agent = app.state.agent_registry.resolve(None)
-    await restore_threads_from_checkpoints(
-        run_store,
-        app.state.checkpointer,
-        default_agent_id=default_agent.agent_id,
-    )
-    runtime_cache = getattr(app.state, "agent_runtime_cache", None)
-    if runtime_cache is None:
-        runtime_cache = AgentRuntimeCache()
-        app.state.agent_runtime_cache = runtime_cache
-    await runtime_cache.preload(
-        app=app,
-        agents=app.state.agent_registry.list_agents(),
-        checkpointer=app.state.checkpointer,
-        store=app.state.store,
-        run_store=run_store,
-    )
-    register_frontend_routes(app)
-    logger.info(
-        "AG-UI runs={} | agents={}",
-        get_agui_runs_path(),
-        get_agui_agents_path(),
-    )
-    await get_auth_service().bootstrap_admin_if_needed()
-    upload_manager = get_knowledge_base_manager()
-    await upload_manager.start_upload_workers()
-    try:
-        async with channel_lifespan():
-            yield
-    finally:
-        await upload_manager.stop_upload_workers()
-        runtime_cache = getattr(app.state, "agent_runtime_cache", None)
-        if runtime_cache is not None:
-            await runtime_cache.close()
-        await get_run_store().close()
-        checkpointer_pool = getattr(app.state, "agent_checkpointer_pool", None)
-        if checkpointer_pool is not None:
-            await checkpointer_pool.close()
-        store_ctx = getattr(app.state, "langgraph_store_ctx", None)
-        if store_ctx is not None:
-            await store_ctx.__aexit__(None, None, None)
 
 
 def register_charts_static(app: FastAPI) -> None:
@@ -249,20 +88,12 @@ def register_charts_static(app: FastAPI) -> None:
         )
 
 
-def _register_exported_html_routes(app: FastAPI, frontend_dir: Path) -> None:
-    for html_file in frontend_dir.glob("*.html"):
-        if html_file.name in {"index.html", "404.html"}:
-            continue
-
-        route_path = f"/{html_file.stem}"
-
-        async def serve_exported_page(file_path=html_file):
-            return FileResponse(file_path)
-
-        app.get(route_path, include_in_schema=False)(serve_exported_page)
-
-
 def create_app() -> FastAPI:
+    """创建 FastAPI 应用并完成路由装配。
+
+    Returns:
+        已完成路由与生命周期装配的应用实例。
+    """
     app = FastAPI(lifespan=app_lifespan)
     app.state.agent_runtime_cache = AgentRuntimeCache()
     app.add_exception_handler(BusinessRuleError, handle_business_rule_error)

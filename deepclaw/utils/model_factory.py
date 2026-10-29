@@ -94,7 +94,9 @@ def get_chat_model(tags: list[str] | None = None) -> ChatOpenAI:
         base_url=settings.OPENAI_API_BASE,
         api_key=settings.OPENAI_API_KEY,
         streaming=True,
+        stream_usage=True,
         tags=tags or ["agent"],
+        profile={"max_input_tokens": settings.MODEL_CONTEXT_WINDOW},
         extra_body={
             **DISABLE_THINKING_EXTRA_BODY,
             "tool_choice": "auto",
