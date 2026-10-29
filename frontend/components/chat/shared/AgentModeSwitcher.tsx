@@ -1,7 +1,7 @@
 'use client'
 
 import styles from '../../ChatInterface.module.css'
-import type { ChatModeOption } from '../../chat-interface/types'
+import type { ChatModeOption } from '../utils/types'
 
 interface AgentModeSwitcherProps {
   options: ChatModeOption[]

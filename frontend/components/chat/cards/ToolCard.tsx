@@ -3,8 +3,8 @@
 import { useState } from 'react'
 
 import styles from '../../ChatInterface.module.css'
-import type { ToolData } from '../../chat-interface/types'
-import { formatDuration, getToolPreview } from '../../chat-interface/utils'
+import type { ToolData } from '../utils/types'
+import { formatDuration, getToolPreview } from '../utils'
 
 interface ToolCardProps {
   toolData: ToolData

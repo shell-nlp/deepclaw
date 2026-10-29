@@ -1,8 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import * as utilsPkg from '../components/chat-interface/utils.ts'
-import * as channelManagementPkg from '../components/chat-interface/channelManagement.ts'
+import * as utilsPkg from '../components/chat/utils/index.ts'
+import * as channelManagementPkg from '../components/chat/utils/channelManagement.ts'
 
 test('channel routes include the selected channel page in hash', () => {
   assert.equal(utilsPkg.getRouteHash('channels', 'libraries', 'weixin'), '#/channels/weixin')

@@ -16,7 +16,7 @@ import {
   storeAuthToken,
   submitAuthRequest,
   type ActorState,
-} from '@/components/chat-interface/auth'
+} from '@/components/chat/utils/auth'
 
 function normalizeRedirectTarget(value: string | null): string {
   if (!value) {

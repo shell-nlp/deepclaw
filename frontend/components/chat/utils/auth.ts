@@ -7,7 +7,7 @@ import {
   AUTH_TOKEN_STORAGE_KEY,
 } from './constants.ts'
 import type { AuthLoginResponse, AuthUserSummary } from './types.ts'
-import { fetchJson, getApiUrl } from './utils.ts'
+import { fetchJson, getApiUrl } from './index.ts'
 
 export const GUEST_USER_ID = 'guest'
 

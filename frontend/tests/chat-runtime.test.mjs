@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import * as utilsPkg from '../components/chat-interface/utils.ts'
+import * as utilsPkg from '../components/chat/utils/index.ts'
 
 const { createClearedChatState, normalizeChartMarkdown } = utilsPkg
 

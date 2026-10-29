@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 
 import styles from '../../ChatInterface.module.css'
-import type { McpServerSummary } from '../../chat-interface/types'
+import type { McpServerSummary } from '../utils/types'
 
 interface McpManagementViewProps {
   mcpEnabled: boolean

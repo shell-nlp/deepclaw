@@ -11,9 +11,9 @@ function readFrontendFile(relativePath) {
 
 test('frontend metadata and shell branding use DeepClaw', () => {
   const layoutSource = readFrontendFile('app/layout.tsx')
-  const chatInterfaceSource = readFrontendFile('components/ChatInterface.tsx')
+  const chatInterfaceSource = readFrontendFile('components/chat/ChatInterface.tsx')
   const appSidebarSource = readFrontendFile('components/chat/shared/AppSidebar.tsx')
-  const chatViewSource = readFrontendFile('components/chat-interface/ChatView.tsx')
+  const chatViewSource = readFrontendFile('components/chat/ChatView.tsx')
   const loginPageSource = readFrontendFile('app/login/page.tsx')
 
   assert.match(layoutSource, /title:\s*['"]DeepClaw['"]/)

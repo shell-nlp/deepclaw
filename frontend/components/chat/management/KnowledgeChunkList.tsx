@@ -4,7 +4,7 @@ import { useState } from 'react'
 
 import styles from '../../ChatInterface.module.css'
 import { Pagination } from '../shared/Pagination'
-import type { KnowledgeChunk } from '../../chat-interface/types'
+import type { KnowledgeChunk } from '../utils/types'
 
 interface KnowledgeChunkListProps {
   chunks: KnowledgeChunk[]

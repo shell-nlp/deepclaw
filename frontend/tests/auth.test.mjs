@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import * as authPkg from '../components/chat-interface/auth.ts'
+import * as authPkg from '../components/chat/utils/auth.ts'
 
 test('auth helpers build bearer headers only when token exists', () => {
   assert.equal(typeof authPkg.buildAuthorizationHeaders, 'function')
