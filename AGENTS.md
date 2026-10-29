@@ -141,6 +141,7 @@
   - `model_factory.py` — `get_chat_model()` / `get_embedding_model()`
   - `time_utils.py` — `get_current_time()`
   - `token_count.py` — 基于 `tiktoken` 与 `huggingface/tokenizers` 的 token 计数
+  - `db.py` — 异步数据库 URL 转换、异步引擎与会话工厂创建，供 web 层与中间件共用
   - `__init__.py` — 统一兼容导出入口，外部继续使用 `from deepclaw.utils import ...`
 
 - `deepclaw/constant.py`

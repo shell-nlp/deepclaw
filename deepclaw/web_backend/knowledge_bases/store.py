@@ -13,12 +13,8 @@ from sqlmodel import SQLModel, delete, or_, select
 from deepclaw.web_backend.common.errors import BusinessRuleError
 from deepclaw.common.vector_store.elasticsearch import ElasticsearchVectorStore
 from deepclaw.constant import HOME_PATH
-from deepclaw.web_backend.db import (
-    build_async_sessionmaker,
-    create_async_engine_from_url,
-    resolve_metadata_db_url,
-    should_import_home_sqlite,
-)
+from deepclaw.utils.db import build_async_sessionmaker, create_async_engine_from_url
+from deepclaw.web_backend.db import resolve_metadata_db_url, should_import_home_sqlite
 from deepclaw.web_backend.knowledge_bases.models import (
     KnowledgeBaseDocumentMetadata,
     KnowledgeBaseMetadata,

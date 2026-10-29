@@ -21,7 +21,6 @@ from deepclaw.common.object_storage import (
 )
 from deepclaw.common.text_splitter import PDFParser
 from deepclaw.common.vector_store.base import AbstractVectorStore
-from deepclaw.common.vector_store.elasticsearch import ElasticsearchVectorStore
 from deepclaw.settings import settings
 from deepclaw.utils import get_embedding_model
 from deepclaw.web_backend.knowledge_bases.store import (
@@ -759,35 +758,25 @@ class KnowledgeBaseManager:
         document = KnowledgeBaseDocumentRecord(**document_source)
 
         page, page_size = self._normalize_page(page, page_size)
-        hits, total = self._search_with_total(
+        hits, total = self._vector_store.search_page(
             index_name=knowledge_base.passage_index,
-            query={
-                "bool": {
-                    "filter": [
-                        {"term": {"metadata.user_id": user_id}},
-                        {"term": {"metadata.knowledge_base_id": knowledge_base_id}},
-                        {"term": {"metadata.document_id": document_id}},
-                    ]
-                }
+            filter_conditions={
+                "metadata.user_id": user_id,
+                "metadata.knowledge_base_id": knowledge_base_id,
+                "metadata.document_id": document_id,
             },
-            size=page_size,
-            from_=(page - 1) * page_size,
-            sort=[
-                {
-                    "metadata.segment_id": {
-                        "order": "asc",
-                        "unmapped_type": "long",
-                    }
-                }
-            ],
+            k=page_size,
+            offset=(page - 1) * page_size,
+            sort_field="metadata.segment_id",
+            sort_value_type="long",
         )
         chunks = [
             KnowledgeBaseDocumentChunkRecord(
-                chunk_id=hit["_id"],
+                chunk_id=str(hit.get("es_id") or hit["id"]),
                 document_id=document_id,
-                segment_id=hit.get("_source", {}).get("metadata", {}).get("segment_id"),
-                content=hit.get("_source", {}).get("content", ""),
-                metadata=hit.get("_source", {}).get("metadata", {}),
+                segment_id=hit.get("metadata", {}).get("segment_id"),
+                content=hit.get("content", ""),
+                metadata=hit.get("metadata", {}),
             )
             for hit in hits
         ]
@@ -1158,77 +1147,20 @@ class KnowledgeBaseManager:
         )
         return KnowledgeBaseRecord(**saved)
 
-    def _search_with_total(
-        self,
-        *,
-        index_name: str,
-        query: dict[str, Any],
-        size: int,
-        from_: int = 0,
-        sort: list[dict[str, Any]] | None = None,
-    ) -> tuple[list[dict[str, Any]], int]:
-        if isinstance(self._vector_store, ElasticsearchVectorStore):
-            es = self._vector_store
-            if not es.es_client.indices.exists(index=index_name):
-                return [], 0
-            body: dict[str, Any] = {
-                "query": query,
-                "from": from_,
-                "track_total_hits": True,
-            }
-            if sort:
-                body["sort"] = sort
-            results = es.es_client.search(index=index_name, body=body, size=size)
-            total = int(results["hits"]["total"]["value"])
-            return results["hits"]["hits"], total
-
-        # PG 分支：将 ES term 查询转为 filter_conditions，手动处理排序和分页
-        filter_conditions = self._es_term_query_to_filter(query)
-        pg = self._vector_store
-        total = pg.count(index_names=[index_name], filter_conditions=filter_conditions)
-        if total == 0:
-            return [], 0
-        # search() 只按 updated_at 倒序返回前 k 条，必须先取回全部命中再排序，
-        # 否则排序只作用在被 LIMIT 截断的子集上，页码与顺序都会错乱。
-        results = pg.search(
-            index_names=[index_name],
-            filter_conditions=filter_conditions,
-            k=total,
-        )
-        if sort:
-            sort_field = list(sort[0].keys())[0] if sort else ""
-            sort_order = sort[0][sort_field]["order"] if sort and sort_field else "asc"
-            reverse = sort_order == "desc"
-            results.sort(key=lambda r: _safe_sort_key(r, sort_field), reverse=reverse)
-        page = results[from_:from_ + size]
-        # 归一化为 ES 风格 _id / _source 格式，保持 caller 兼容
-        normalized: list[dict[str, Any]] = []
-        for r in page:
-            normalized.append({
-                "_id": r["id"],
-                "_source": {
-                    "content": r.get("content", ""),
-                    "metadata": r.get("metadata", {}),
-                },
-            })
-        return normalized, total
-
     def _normalize_page(self, page: int, page_size: int) -> tuple[int, int]:
         normalized_page = max(1, int(page))
         normalized_page_size = max(1, min(100, int(page_size)))
         return normalized_page, normalized_page_size
 
     def _count_index(self, index_name: str) -> int:
-        if isinstance(self._vector_store, ElasticsearchVectorStore):
-            es = self._vector_store
-            if not es.es_client.indices.exists(index=index_name):
-                return 0
-            result = es.es_client.count(
-                index=index_name,
-                body={"query": {"match_all": {}}},
-            )
-            return int(result["count"])
+        """统计单个索引中的切片数量。
 
+        Args:
+            index_name: 目标索引名称。
+
+        Returns:
+            索引中的切片数量。
+        """
         return self._vector_store.count(index_names=[index_name])
 
     def _storage_bucket_name(self, user_id: str, knowledge_base_id: str) -> str:
@@ -1329,33 +1261,6 @@ class KnowledgeBaseManager:
     @staticmethod
     def _now() -> str:
         return datetime.now().astimezone().isoformat(timespec="seconds")
-
-    @staticmethod
-    def _es_term_query_to_filter(query: dict[str, Any]) -> dict[str, Any]:
-        """将 ES bool/term 查询结构转为扁平 filter_conditions 字典。"""
-        filters: dict[str, Any] = {}
-        bool_block = query.get("bool", {})
-        for clause in bool_block.get("filter", []):
-            if "term" in clause:
-                for field, value in clause["term"].items():
-                    filters[field] = value
-        return filters
-
-
-def _safe_sort_key(result: dict[str, Any], sort_field: str) -> Any:
-    """从点分隔的字段路径中提取排序值，兼容 metadata.segment_id 等嵌套路径。"""
-    parts = sort_field.split(".")
-    value: Any = result
-    for part in parts:
-        if isinstance(value, dict):
-            value = value.get(part, 0)
-        else:
-            return 0
-    try:
-        return int(value)
-    except (ValueError, TypeError):
-        return str(value or 0)
-
 
 knowledge_base_manager: KnowledgeBaseManager | None = None
 

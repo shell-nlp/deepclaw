@@ -6,7 +6,7 @@ from sqlmodel import select
 from sqlmodel import Field, SQLModel
 
 from deepclaw.constant import HOME_PATH
-from deepclaw.web_backend.db import build_async_sessionmaker, create_async_engine_from_url
+from deepclaw.utils.db import build_async_sessionmaker, create_async_engine_from_url
 
 
 class CronJob(SQLModel, table=True):

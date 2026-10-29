@@ -18,12 +18,8 @@ from deepclaw.web_backend.channels.models import (
     ReplyMode,
     utc_now,
 )
-from deepclaw.web_backend.db import (
-    build_async_sessionmaker,
-    create_async_engine_from_url,
-    resolve_metadata_db_url,
-    should_import_home_sqlite,
-)
+from deepclaw.utils.db import build_async_sessionmaker, create_async_engine_from_url
+from deepclaw.web_backend.db import resolve_metadata_db_url, should_import_home_sqlite
 from deepclaw.constant import HOME_PATH
 
 

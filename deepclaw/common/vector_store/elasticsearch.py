@@ -761,6 +761,9 @@ class ElasticsearchVectorStore(AbstractVectorStore):
             index_names,
             operation="count",
         )
+        for target_index in target_indexes:
+            if not self.es_client.indices.exists(index=target_index):
+                return 0
         if filter_conditions:
             must_clauses = [
                 {"term": {field: value}} for field, value in filter_conditions.items()
@@ -770,6 +773,57 @@ class ElasticsearchVectorStore(AbstractVectorStore):
             search_body = {"query": {"match_all": {}}}
         result = self.es_client.count(index=target_indexes, body=search_body)
         return result["count"]
+
+    def search_page(
+        self,
+        *,
+        index_name: str,
+        filter_conditions: dict[str, Any] | None = None,
+        k: int = 10,
+        offset: int = 0,
+        sort_field: str | None = None,
+        sort_desc: bool = False,
+        sort_value_type: str | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """使用原生 from/size 分页并返回当前页命中与命中总数。
+
+        Args:
+            index_name: 目标索引名称。
+            filter_conditions: 过滤条件字典。
+            k: 单页返回条数。
+            offset: 起始偏移量。
+            sort_field: 排序字段，支持 metadata.xxx 形式的嵌套路径。
+            sort_desc: 是否按倒序排列。
+            sort_value_type: 排序字段类型提示，用于未映射字段的兼容。
+
+        Returns:
+            当前页命中列表与命中总数。
+        """
+        target_indexes = self._resolve_required_indexes(
+            [index_name],
+            operation="search_page",
+        )
+        for target_index in target_indexes:
+            if not self.es_client.indices.exists(index=target_index):
+                return [], 0
+        must_clauses = build_es_filter_clauses(filter_conditions) if filter_conditions else []
+        search_body: Dict[str, Any] = {
+            "query": {"bool": {"must": must_clauses}} if must_clauses else {"match_all": {}},
+            "from": offset,
+            "track_total_hits": True,
+        }
+        if sort_field:
+            sort_spec: Dict[str, Any] = {"order": "desc" if sort_desc else "asc"}
+            if sort_value_type:
+                sort_spec["unmapped_type"] = sort_value_type
+            search_body["sort"] = [{sort_field: sort_spec}]
+        results = self.es_client.search(
+            index=target_indexes,
+            body=search_body,
+            size=k,
+        )
+        total = int(results["hits"]["total"]["value"])
+        return [self._hit_to_result(hit) for hit in results["hits"]["hits"]], total
 
     def raw_search(
         self,
