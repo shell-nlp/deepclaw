@@ -16,7 +16,7 @@ class FeishuClientGateway:
     def _build_client(self, binding: ChannelBinding):
         lark = self._import_lark()
         domain = getattr(lark, "LARK_DOMAIN", None) if binding.config.get("domain") == "lark" else getattr(lark, "FEISHU_DOMAIN", None)
-        builder = lark.Client.builder().app_id(binding.credentials["app_id"]).app_secret(binding.credentials["app_secret"])
+        builder = lark.Client.builder().app_id(binding.credentials["app_id"]).app_secret(binding.credentials["app_secret"]).timeout(15)
         if domain is not None:
             builder = builder.domain(domain)
         return builder.build()
@@ -36,7 +36,7 @@ class FeishuClientGateway:
             )
             .build()
         )
-        response = client.im.v1.message.reply(request)
+        response = await client.im.v1.message.areply(request)
         if not response.success():
             raise RuntimeError(f"Feishu reply failed: code={response.code}, msg={response.msg}")
 
@@ -49,6 +49,7 @@ class FeishuClientGateway:
         binding: ChannelBinding,
         message_id: str,
         text: str,
+        delivery_id: str | None = None,
     ) -> str:
         """回复一张支持 Markdown 渲染的飞书卡片。
 
@@ -56,6 +57,7 @@ class FeishuClientGateway:
             binding: 飞书渠道绑定。
             message_id: 要回复的飞书消息 ID。
             text: 卡片中的 Markdown 内容。
+            delivery_id: 固定幂等标识，补发时沿用。
         """
         from lark_oapi.api.im.v1 import ReplyMessageRequest, ReplyMessageRequestBody
 
@@ -67,11 +69,12 @@ class FeishuClientGateway:
                 ReplyMessageRequestBody.builder()
                 .content(self._markdown_card_content(text))
                 .msg_type("interactive")
+                .uuid(delivery_id)
                 .build()
             )
             .build()
         )
-        response = client.im.v1.message.reply(request)
+        response = await client.im.v1.message.areply(request)
         if not response.success():
             raise RuntimeError(f"Feishu card reply failed: code={response.code}, msg={response.msg}")
 
@@ -105,7 +108,7 @@ class FeishuClientGateway:
             )
             .build()
         )
-        response = client.im.v1.message.patch(request)
+        response = await client.im.v1.message.apatch(request)
         if not response.success():
             raise RuntimeError(f"Feishu card update failed: code={response.code}, msg={response.msg}")
 
@@ -216,7 +219,7 @@ class FeishuClientGateway:
             )
             .build()
         )
-        response = client.im.v1.message.create(request)
+        response = await client.im.v1.message.acreate(request)
         if not response.success():
             raise RuntimeError(f"Feishu send failed: code={response.code}, msg={response.msg}")
 
@@ -233,7 +236,7 @@ class FeishuClientGateway:
             .token_types({lark.AccessTokenType.APP})
             .build()
         )
-        response = client.request(request)
+        response = await client.arequest(request)
         if not response.success():
             return None
         data = json.loads(response.raw.content) if getattr(response, "raw", None) is not None else {}

@@ -1,0 +1,19 @@
+.panel { border: 1px solid #e2e7ee; border-radius: 14px; background: #fff; padding: 18px 20px; margin-bottom: 20px; }
+.heading { display: flex; justify-content: space-between; gap: 12px; align-items: center; font-size: 14px; }
+.heading > span { color: #748194; font-size: 12px; }
+.row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 14px 0; border-bottom: 1px solid #edf0f4; }
+.row:last-child { border-bottom: 0; padding-bottom: 0; }
+.details { flex: 1; min-width: 180px; font-size: 12px; color: #536176; }
+.details code { display: inline-block; max-width: 240px; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; margin-left: 10px; }
+.details p { margin: 7px 0 0; color: #8b5c27; }
+.status { display: inline-block; margin-right: 10px; padding: 3px 7px; border-radius: 5px; color: #936526; background: #fff5e4; }
+.actions { display: flex; gap: 8px; }
+.panel button { border: 1px solid #dce3ec; border-radius: 7px; padding: 7px 10px; color: #344d70; background: #fff; cursor: pointer; font: inherit; font-size: 12px; }
+.panel button:hover { border-color: #9eb4d1; background: #f6f9fd; }
+.panel button:focus-visible { outline: 2px solid #6892cc; outline-offset: 2px; }
+.panel button:disabled { opacity: .5; cursor: default; }
+.error { color: #b33636; font-size: 13px; }
+.confirm { flex-basis: 100%; padding: 10px 12px; border-radius: 8px; background: #f7f9fc; font-size: 12px; color: #526176; }
+.confirm p { margin: 0 0 10px; }
+.confirm button + button { margin-left: 8px; }
+@media (max-width: 600px) { .heading { align-items: flex-start; flex-direction: column; } .details code { max-width: 150px; } }

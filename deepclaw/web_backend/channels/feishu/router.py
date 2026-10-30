@@ -44,6 +44,7 @@ async def feishu_events(
     """接收并异步处理飞书事件。"""
     adapter = FeishuAdapter()
     message = await adapter.parse_event(payload)
+    await service.accept_message(message)
     background_tasks.add_task(service.process_message, message, adapter)
     return ChannelEventAccepted()
 

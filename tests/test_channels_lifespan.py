@@ -1,20 +1,21 @@
 import asyncio
-import importlib
 
-import pytest
 
+from deepclaw.web_backend.channels import lifespan as channel_lifespan_module
 from deepclaw.web_backend.channels.weixin_clawbot import lifespan as weixin_lifespan_module
+from deepclaw.web_backend.channels.store import ChannelStore
 
 
-def test_channels_lifespan_compat_module_is_removed():
-    with pytest.raises(ModuleNotFoundError):
-        importlib.import_module("deepclaw.web_backend.channels.lifespan")
+def test_channel_lifespan_is_owned_by_shared_channels_module():
+    """共享生命周期由渠道层统一装配。"""
+    assert callable(channel_lifespan_module.channel_lifespan)
 
 
-def test_channel_lifespan_starts_saved_weixin_user_runtimes_and_cancels_tasks(monkeypatch):
+def test_channel_lifespan_starts_saved_weixin_user_runtimes_and_cancels_tasks(monkeypatch, tmp_path):
     started = []
     cancelled = []
     captured = {}
+    ready = asyncio.Event()
 
     class FakeSettings:
         WEIXIN_CLAWBOT_PRINT_QRCODE_ON_STARTUP = True
@@ -27,7 +28,11 @@ def test_channel_lifespan_starts_saved_weixin_user_runtimes_and_cancels_tasks(mo
             self.state_key = state_key
             self.data = {"bot_token": token, "owner_user_id": state_key.removeprefix("user:")}
 
-    class FakeStore:
+    class FakeStore(ChannelStore):
+        def __init__(self):
+            """使用隔离内存数据库。"""
+            super().__init__(f"sqlite:///{tmp_path / 'channels.db'}")
+
         async def list_runtime_states(self, *, channel):
             captured["channel"] = channel
             return [
@@ -60,6 +65,8 @@ def test_channel_lifespan_starts_saved_weixin_user_runtimes_and_cancels_tasks(mo
 
         async def run_forever(self):
             started.append(True)
+            if len(started) == 2:
+                ready.set()
             try:
                 await asyncio.Event().wait()
             except asyncio.CancelledError:
@@ -68,25 +75,23 @@ def test_channel_lifespan_starts_saved_weixin_user_runtimes_and_cancels_tasks(mo
 
     fake_store = FakeStore()
     monkeypatch.setattr(weixin_lifespan_module, "weixin_clawbot_settings", FakeSettings())
-    monkeypatch.setattr(weixin_lifespan_module, "get_channel_store", lambda: fake_store)
+    monkeypatch.setattr(channel_lifespan_module, "weixin_clawbot_settings", FakeSettings())
+    monkeypatch.setattr(channel_lifespan_module, "get_channel_store", lambda: fake_store)
     monkeypatch.setattr(weixin_lifespan_module, "WeixinClawBotRuntime", FakeRuntime)
     monkeypatch.setattr(
-        weixin_lifespan_module,
+        channel_lifespan_module,
         "start_saved_feishu_runtimes",
         lambda *, store: asyncio.sleep(0),
     )
     monkeypatch.setattr(
-        weixin_lifespan_module,
+        channel_lifespan_module,
         "stop_feishu_runtimes",
         lambda: asyncio.sleep(0),
     )
 
     async def run():
-        async with weixin_lifespan_module.channel_lifespan():
-            for _ in range(10):
-                if len(started) == 2:
-                    break
-                await asyncio.sleep(0.01)
+        async with channel_lifespan_module.channel_lifespan():
+            await asyncio.wait_for(ready.wait(), timeout=3)
 
     asyncio.run(run())
 
@@ -100,14 +105,18 @@ def test_channel_lifespan_starts_saved_weixin_user_runtimes_and_cancels_tasks(mo
     assert all(item["message_poll_interval_seconds"] == 4 for item in runtimes)
 
 
-def test_channel_lifespan_starts_and_stops_saved_feishu_runtimes(monkeypatch):
+def test_channel_lifespan_starts_and_stops_saved_feishu_runtimes(monkeypatch, tmp_path):
     captured = {}
 
     class FakeSettings:
         WEIXIN_CLAWBOT_PRINT_QRCODE_ON_STARTUP = True
         WEIXIN_CLAWBOT_AUTO_POLL_ON_STARTUP = False
 
-    class FakeStore:
+    class FakeStore(ChannelStore):
+        def __init__(self):
+            """使用隔离内存数据库。"""
+            super().__init__(f"sqlite:///{tmp_path / 'channels.db'}")
+
         pass
 
     fake_store = FakeStore()
@@ -119,12 +128,13 @@ def test_channel_lifespan_starts_and_stops_saved_feishu_runtimes(monkeypatch):
         captured["stopped"] = True
 
     monkeypatch.setattr(weixin_lifespan_module, "weixin_clawbot_settings", FakeSettings())
-    monkeypatch.setattr(weixin_lifespan_module, "get_channel_store", lambda: fake_store)
-    monkeypatch.setattr(weixin_lifespan_module, "start_saved_feishu_runtimes", fake_start_saved_feishu_runtimes)
-    monkeypatch.setattr(weixin_lifespan_module, "stop_feishu_runtimes", fake_stop_feishu_runtimes)
+    monkeypatch.setattr(channel_lifespan_module, "weixin_clawbot_settings", FakeSettings())
+    monkeypatch.setattr(channel_lifespan_module, "get_channel_store", lambda: fake_store)
+    monkeypatch.setattr(channel_lifespan_module, "start_saved_feishu_runtimes", fake_start_saved_feishu_runtimes)
+    monkeypatch.setattr(channel_lifespan_module, "stop_feishu_runtimes", fake_stop_feishu_runtimes)
 
     async def run():
-        async with weixin_lifespan_module.channel_lifespan():
+        async with channel_lifespan_module.channel_lifespan():
             await asyncio.sleep(0)
 
     asyncio.run(run())

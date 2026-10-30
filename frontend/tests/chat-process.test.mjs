@@ -40,6 +40,7 @@ const { ProcessSummary } = await import('../components/chat/cards/ProcessSummary
 const { ToolCard } = await import('../components/chat/cards/ToolCard.tsx')
 const { InterruptPanel } = await import('../components/chat/interrupt/InterruptPanel.tsx')
 const { InterruptArgFields } = await import('../components/chat/interrupt/InterruptArgFields.tsx')
+const { ChannelJobList } = await import('../components/chat/management/ChannelJobPanel.tsx')
 const { isDecisionAllowedForAllActions, updateValueAtPath } = await import('../components/chat/interrupt/utils.ts')
 const require = createRequire(import.meta.url)
 const React = require('react')
@@ -55,6 +56,19 @@ const snapshot = [
   { id: 'a2', role: 'assistant', content: '北京晴天' },
 ]
 const placeholder = () => ({ id: 'local', role: 'ai', content: '', startedAt: 1000 })
+
+test('渠道任务区分执行和投递状态，只对已有结果提供补发', () => {
+  const html = renderToStaticMarkup(React.createElement(ChannelJobList, {
+    jobs: [
+      { id: 'a', channel: 'feishu', binding_id: 1, message_id: 'm1', execution_status: 'completed', delivery_status: 'failed', error: '发送失败' },
+      { id: 'b', channel: 'weixin_clawbot', binding_id: 2, message_id: 'm2', execution_status: 'uncertain', delivery_status: 'pending', error: '需要人工核对' },
+    ], error: '', busy: null, act: async () => {},
+  }))
+  assert.equal((html.match(/重试投递/g) || []).length, 1)
+  assert.match(html, /需要核对/)
+  assert.match(html, /结束异常任务/)
+  assert.doesNotMatch(html, /重新运行|重新执行工具/)
+})
 
 test('审批面板展示参数、操作层级和受限权限，并保留嵌套编辑能力', () => {
   const data = {

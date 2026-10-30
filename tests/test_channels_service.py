@@ -10,7 +10,7 @@ class FakeAgentClient:
     def __init__(self):
         self.calls: list[dict] = []
 
-    async def stream(self, *, query: str, user_id: str, session_id: str):
+    async def stream(self, *, query: str, user_id: str, session_id: str, **kwargs):
         self.calls.append(
             {
                 "query": query,
@@ -19,6 +19,7 @@ class FakeAgentClient:
             }
         )
         yield AgentEvent(event="token", data={"token": "answer"})
+        yield AgentEvent(event="run_finished")
 
 
 class FakeDispatcher:

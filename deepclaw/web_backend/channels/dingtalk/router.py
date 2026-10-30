@@ -22,5 +22,6 @@ async def dingtalk_events(
     """接收并异步处理钉钉事件。"""
     adapter = DingTalkAdapter()
     message = await adapter.parse_event(payload)
+    await service.accept_message(message)
     background_tasks.add_task(service.process_message, message, adapter)
     return ChannelEventAccepted()

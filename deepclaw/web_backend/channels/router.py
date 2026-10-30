@@ -4,6 +4,7 @@ from deepclaw.web_backend.channels.bindings_router import (
     router as bindings_router,
 )
 from deepclaw.web_backend.channels.dingtalk.router import router as dingtalk_router
+from deepclaw.web_backend.channels.jobs_router import router as jobs_router
 from deepclaw.web_backend.channels.feishu.router import router as feishu_router
 from deepclaw.web_backend.channels.session_router import router as sessions_router
 from deepclaw.web_backend.channels.weixin_clawbot.router import (
@@ -13,6 +14,7 @@ from deepclaw.web_backend.channels.weixin_clawbot.router import (
 
 router = APIRouter(prefix="/api/channels")
 router.include_router(bindings_router)
+router.include_router(jobs_router)
 router.include_router(sessions_router)
 router.include_router(feishu_router)
 router.include_router(dingtalk_router)

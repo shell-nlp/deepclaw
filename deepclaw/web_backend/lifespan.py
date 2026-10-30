@@ -18,7 +18,7 @@ from deepclaw.web_backend.agent.run_store import (
     restore_threads_from_checkpoints,
 )
 from deepclaw.web_backend.auth.service import get_auth_service
-from deepclaw.web_backend.channels.weixin_clawbot.lifespan import channel_lifespan
+from deepclaw.web_backend.channels.lifespan import channel_lifespan
 from deepclaw.web_backend.common.agui_runs import (
     get_agui_agents_path,
     get_agui_runs_path,

@@ -14,6 +14,7 @@ AgentEventType = Literal[
     "__interrupt__",
     "custom",
     "messages_snapshot",
+    "run_finished",
 ]
 MessageStatus = Literal["received", "processing", "done", "failed"]
 
@@ -125,6 +126,7 @@ class ChannelMessage(BaseModel):
 class AgentEvent(BaseModel):
     event: AgentEventType = "token"
     data: Any | None = None
+    event_id: str | None = None
 
 
 class ChannelSessionUpdate(BaseModel):

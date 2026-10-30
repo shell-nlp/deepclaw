@@ -1,6 +1,8 @@
 import json
 import uuid
+import asyncio
 from collections.abc import AsyncIterator, Callable
+from contextlib import aclosing
 
 from deepclaw.web_backend.auth.service import AuthService, get_auth_service
 from deepclaw.web_backend.channels.config import channel_gateway_settings
@@ -39,6 +41,10 @@ class AgentClient:
         query: str,
         user_id: str,
         session_id: str,
+        run_id: str | None = None,
+        message_id: str | None = None,
+        last_event_id: str | None = None,
+        recover: bool = False,
     ) -> AsyncIterator[AgentEvent]:
         """创建 AG-UI Run 并输出渠道可消费的事件。
 
@@ -46,6 +52,10 @@ class AgentClient:
             query: 用户文本。
             user_id: 渠道用户 ID。
             session_id: 渠道会话对应的 thread ID。
+            run_id: 持久化的 Run 标识，恢复时沿用。
+            message_id: 稳定的用户消息标识。
+            last_event_id: 已持久化的 SSE 游标。
+            recover: 是否仅恢复已有 Run，缺失时禁止重新执行。
 
         Yields:
             转换后的渠道 AgentEvent。
@@ -53,11 +63,11 @@ class AgentClient:
         payload = {
             "agentId": "agent",
             "threadId": session_id,
-            "runId": str(uuid.uuid4()),
+            "runId": run_id or str(uuid.uuid4()),
             "state": {"deep_thinking": True, "user_id": user_id},
             "messages": [
                 {
-                    "id": str(uuid.uuid4()),
+                    "id": message_id or str(uuid.uuid4()),
                     "role": "user",
                     "content": query,
                 }
@@ -68,11 +78,26 @@ class AgentClient:
         }
         issued_token = await self._issue_user_token(user_id)
         headers = self._build_headers(issued_token.token if issued_token else None)
+        if last_event_id:
+            headers["Last-Event-ID"] = last_event_id
+        if recover:
+            headers["X-Deepclaw-Recover"] = "true"
+        cursor = last_event_id
+        finished = False
         try:
-            async for line in self.sender(payload, headers):
-                event = self._parse_sse_line(line)
-                if event is not None:
-                    yield event
+            async with aclosing(self.sender(payload, headers)) as lines:
+                async for line in lines:
+                    if line.strip().startswith("id:"):
+                        cursor = line.strip().removeprefix("id:").strip()
+                    event = self._parse_sse_line(line)
+                    if event is not None:
+                        event.event_id = cursor
+                        finished = event.event in {"run_finished", "__interrupt__"}
+                        yield event
+                        if finished:
+                            return
+            if not finished:
+                raise ConnectionError("Agent 事件流提前结束，尚未收到运行结束事件")
         finally:
             if issued_token is not None:
                 await self.auth_service.revoke_token(issued_token.token)
@@ -87,7 +112,7 @@ class AgentClient:
             渠道 AgentEvent；忽略无数据行和结束事件。
 
         Raises:
-            ValueError: Agent 返回 RUN_ERROR 时抛出。
+            AgentRunError: Agent 返回 RUN_ERROR 时抛出。
         """
         stripped = line.strip()
         if not stripped.startswith("data:"):
@@ -148,8 +173,9 @@ class AgentClient:
                             event="__interrupt__",
                             data={"__interrupt__": raw},
                         )
+            return AgentEvent(event="run_finished")
         if event_type == "RUN_ERROR":
-            raise ValueError(str(payload.get("message") or "Agent Run failed"))
+            raise AgentRunError("Agent 本次运行失败")
         return None
 
     async def _issue_user_token(self, user_id: str):
@@ -192,20 +218,70 @@ class AgentClient:
         """
         import httpx
 
-        async with httpx.AsyncClient(timeout=None) as client:
-            response = await client.post(
-                self.agent_api_url,
-                json=payload,
-                headers={**headers, "Accept": "application/json"},
-            )
+        request_headers = {key: value for key, value in headers.items() if key != "X-Deepclaw-Recover"}
+        run_id = payload["runId"]
+        run_url = f"{self.agent_api_url.rstrip('/')}/{run_id}"
+        timeout = httpx.Timeout(connect=channel_gateway_settings.CHANNEL_AGENT_CONNECT_TIMEOUT_SECONDS,
+                                read=channel_gateway_settings.CHANNEL_AGENT_READ_TIMEOUT_SECONDS, write=30, pool=10)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            if headers.get("X-Deepclaw-Recover") == "true":
+                response = await client.get(run_url, headers=request_headers)
+                if response.status_code == 404:
+                    raise RunRecoveryError("原 Run 已不存在，需要人工核对，已阻止重新执行")
+            else:
+                response = await client.post(
+                    self.agent_api_url, json=payload,
+                    headers={**request_headers, "Accept": "application/json"},
+                )
             response.raise_for_status()
-            run_id = response.json()["runId"]
+            cursor = headers.get("Last-Event-ID")
             events_url = f"{self.agent_api_url.rstrip('/')}/{run_id}/events"
-            async with client.stream(
-                "GET",
-                events_url,
-                headers={**headers, "Accept": "text/event-stream"},
-            ) as event_response:
-                event_response.raise_for_status()
-                async for line in event_response.aiter_lines():
-                    yield line
+            retries = channel_gateway_settings.CHANNEL_AGENT_STREAM_RETRIES
+            for attempt in range(retries + 1):
+                try:
+                    event_headers = {**request_headers, "Accept": "text/event-stream"}
+                    if cursor:
+                        event_headers["Last-Event-ID"] = cursor
+                    async with client.stream("GET", events_url, headers=event_headers) as event_response:
+                        if event_response.status_code == 404:
+                            raise RunRecoveryError("原 Run 已过期，已阻止重新执行")
+                        event_response.raise_for_status()
+                        frame_id = None
+                        data_lines = []
+                        async for line in event_response.aiter_lines():
+                            if line.startswith("id:"):
+                                frame_id = line[3:].strip()
+                            elif line.startswith("data:"):
+                                data_lines.append(line[5:].lstrip())
+                            elif not line and data_lines:
+                                data = "\n".join(data_lines)
+                                event = json.loads(data)
+                                if frame_id and frame_id == cursor:
+                                    data_lines = []
+                                    continue
+                                if frame_id:
+                                    yield f"id: {frame_id}"
+                                yield f"data: {data}"
+                                cursor = frame_id or cursor
+                                frame_id, data_lines = None, []
+                                if event.get("type") in {"RUN_FINISHED", "RUN_ERROR"}:
+                                    return
+                    raise ConnectionError("Agent SSE 在终止事件前断开")
+                except (httpx.TransportError, ConnectionError):
+                    if attempt == retries:
+                        raise
+                    await asyncio.sleep(min(2 ** attempt, 8))
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code not in {408, 429} and exc.response.status_code < 500:
+                        raise
+                    if attempt == retries:
+                        raise
+                    await asyncio.sleep(min(2 ** attempt, 8))
+
+
+class RunRecoveryError(RuntimeError):
+    """原 Run 已过期或丢失，禁止自动创建新的执行。"""
+
+
+class AgentRunError(RuntimeError):
+    """Agent 已报告终止错误，不能自动重新运行工具。"""

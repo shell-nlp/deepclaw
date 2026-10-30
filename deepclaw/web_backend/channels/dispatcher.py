@@ -54,7 +54,7 @@ class ResponseDispatcher:
             if token:
                 parts.append(str(token))
 
-        await adapter.send_message(message, "".join(parts) or snapshot_text or EMPTY_REPLY)
+        await adapter.send_message(message, self.resolve_text("".join(parts), snapshot_text))
 
     async def _dispatch_streaming(
         self,
@@ -103,7 +103,7 @@ class ResponseDispatcher:
                 last_text = text
                 last_edit_at = time.monotonic()
 
-        final_text = "".join(parts) or snapshot_text or EMPTY_REPLY
+        final_text = self.resolve_text("".join(parts), snapshot_text)
         if final_text != last_text:
             await adapter.edit_message(reply_message_id, final_text)
         finish_message = getattr(adapter, "finish_message", None)
@@ -139,11 +139,23 @@ class ResponseDispatcher:
 
             await adapter.send_message(
                 message,
-                "".join(parts) or snapshot_text or EMPTY_REPLY,
+                self.resolve_text("".join(parts), snapshot_text),
             )
         finally:
             if stop_typing is not None:
                 await stop_typing(message)
+
+    @staticmethod
+    def resolve_text(partial: str, snapshot: str) -> str:
+        """优先采用能补齐已收到正文的完整快照，避免发送半截回复。
+
+        Args:
+            partial: 已收到的文本增量。
+            snapshot: 本轮最后一条助手快照。
+        """
+        if snapshot and snapshot.startswith(partial):
+            return snapshot
+        return partial or snapshot or EMPTY_REPLY
 
     def _should_edit(self, text: str, last_text: str, last_edit_at: float) -> bool:
         new_chars = len(text) - len(last_text)
@@ -167,6 +179,8 @@ class ResponseDispatcher:
         if not isinstance(messages, list):
             return None
         for item in reversed(messages):
+            if isinstance(item, dict) and item.get("role") == "user":
+                break
             if not isinstance(item, dict) or item.get("role") != "assistant":
                 continue
             content = item.get("content")

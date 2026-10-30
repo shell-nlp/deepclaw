@@ -15,6 +15,14 @@ class FakeService:
     def __init__(self):
         self.calls = []
 
+    async def accept_message(self, message):
+        """模拟消息持久化。
+
+        Args:
+            message: 规范化消息。
+        """
+        return None
+
     async def process_message(self, message, adapter):
         self.calls.append((message, adapter))
         return ChannelMessageRecord(channel=message.channel, message_id=message.message_id, channel_conversation_id=message.channel_conversation_id, channel_user_id=message.channel_user_id, status='done')

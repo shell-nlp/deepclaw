@@ -1,4 +1,5 @@
 import uuid
+import hashlib
 from typing import Any
 
 from loguru import logger
@@ -40,7 +41,7 @@ class WeixinClawBotAdapter:
             raw.get("message_id")
             or raw.get("msg_id")
             or raw.get("client_id")
-            or f"{from_user_id}:{context_token}:{hash(text)}"
+            or hashlib.sha256(f"{from_user_id}:{context_token}:{text}".encode()).hexdigest()
         )
 
         normalized_raw = dict(raw)
@@ -75,6 +76,16 @@ class WeixinClawBotAdapter:
             text,
             message_state=MESSAGE_STATE_FINISH,
         )
+
+    async def send_message_once(self, message: ChannelMessage, text: str, delivery_id: str) -> str:
+        """补发时使用稳定的微信客户端消息标识。
+
+        Args:
+            message: 入站消息。
+            text: 回复正文。
+            delivery_id: 持久化投递标识。
+        """
+        return await self._send_channel_message(message, text, client_id=f"deepclaw-{delivery_id[:32]}")
 
     async def start_message(self, message: ChannelMessage, text: str) -> str:
         client_id = f"deepclaw-weixin-{uuid.uuid4().hex}"
