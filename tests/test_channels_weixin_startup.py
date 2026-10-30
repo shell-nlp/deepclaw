@@ -66,6 +66,14 @@ class FakeService:
     def __init__(self):
         self.messages = []
 
+    async def accept_message(self, message):
+        """模拟消息持久化。
+
+        Args:
+            message: 规范化消息。
+        """
+        return None
+
     async def process_message(self, message, adapter):
         self.messages.append((message, adapter))
 

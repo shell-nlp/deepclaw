@@ -1,12 +1,14 @@
 ﻿import json
 import sqlite3
 import uuid
+import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from sqlmodel import or_, select, text
 
+from deepclaw.web_backend.channels.jobs import ensure_current_lease
 from deepclaw.web_backend.channels.models import (
     ChannelBinding,
     ChannelMessage,
@@ -63,6 +65,7 @@ class ChannelStore:
         self.engine = create_async_engine_from_url(db_url)
         self.async_session = build_async_sessionmaker(self.engine)
         self._init_done = False
+        self._init_lock = asyncio.Lock()
         self._sqlite_import_path = (
             should_import_home_sqlite(
                 filename="channels.db",
@@ -74,8 +77,23 @@ class ChannelStore:
         self._sqlite_import_marker = Path(HOME_PATH) / CHANNELS_METADATA_IMPORT_MARKER
 
     async def _ensure_init(self):
+        """串行初始化元数据表，避免同进程并发建表。
+
+        Args:
+            无。
+        """
         if self._init_done:
             return
+        async with self._init_lock:
+            if not self._init_done:
+                await self._initialize_schema()
+
+    async def _initialize_schema(self):
+        """建立缺失表并兼容历史元数据。
+
+        Args:
+            无。
+        """
         from sqlmodel import SQLModel
         async with self.engine.begin() as conn:
             await conn.run_sync(SQLModel.metadata.create_all)
@@ -306,6 +324,7 @@ class ChannelStore:
     ) -> ChannelBinding:
         await self._ensure_init()
         async with self.async_session() as session:
+            await ensure_current_lease(session)
             result = await session.exec(
                 select(ChannelBinding).where(
                     ChannelBinding.channel == channel,
@@ -400,6 +419,7 @@ class ChannelStore:
     ) -> ChannelBinding:
         await self._ensure_init()
         async with self.async_session() as session:
+            await ensure_current_lease(session)
             binding = await session.get(ChannelBinding, binding_id)
             if binding is None:
                 raise ValueError("Channel binding not found")
@@ -434,6 +454,7 @@ class ChannelStore:
     ) -> ChannelBinding:
         await self._ensure_init()
         async with self.async_session() as session:
+            await ensure_current_lease(session)
             binding = await session.get(ChannelBinding, binding_id)
             if binding is None:
                 raise ValueError("Channel binding not found")
@@ -543,6 +564,7 @@ class ChannelStore:
     ) -> ChannelRuntimeState:
         await self._ensure_init()
         async with self.async_session() as session:
+            await ensure_current_lease(session)
             result = await session.exec(
                 select(ChannelRuntimeState).where(
                     ChannelRuntimeState.channel == channel,

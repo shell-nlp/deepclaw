@@ -1,6 +1,5 @@
 import asyncio
 
-import pytest
 
 
 class FakeFeishuGateway:
@@ -210,86 +209,16 @@ def test_feishu_runtime_allows_p2p_message_even_when_policy_is_mention():
     assert should_process is True
 
 
-def test_feishu_runtime_starts_only_one_websocket_client():
-    """飞书 runtime 不会在 SDK start 返回后重复创建连接。"""
-    from deepclaw.web_backend.channels.feishu.runtime import FeishuRuntime
-    from deepclaw.web_backend.channels.models import ChannelBinding
+def test_feishu_normalizes_message_mentions_from_message_object():
+    """群聊提及信息从消息对象读取，能够匹配当前机器人。"""
+    from types import SimpleNamespace as NS
+    from deepclaw.web_backend.channels.feishu.connection import normalize_event
 
-    class FakeGateway:
-        """记录 WebSocket 客户端创建次数的网关。"""
-
-        def __init__(self):
-            """初始化连接创建次数。"""
-            self.build_count = 0
-
-        def build_ws_client(self, *, binding, event_handler):
-            """构造会立即返回的假 WebSocket 客户端。
-
-            Args:
-                binding: 飞书绑定。
-                event_handler: 飞书事件处理器。
-            """
-            self.build_count += 1
-            if self.build_count == 2:
-                runtime._running = False
-
-            class FakeWsClient:
-                """模拟 SDK WebSocket 客户端。"""
-
-                def start(self):
-                    """模拟 SDK 长连接入口返回。"""
-                    return None
-
-            return FakeWsClient()
-
-    binding = ChannelBinding(
-        id=1,
-        channel="feishu",
-        owner_user_id="user_1",
-        manager_user_id="user_1",
-        credentials={"app_id": "cli_x", "app_secret": "sec_x"},
-    )
-    gateway = FakeGateway()
-    runtime = FeishuRuntime(binding=binding, gateway=gateway)
-
-    def build_event_handler():
-        """返回测试用的空事件处理器。"""
-        return None
-
-    runtime._build_event_handler = build_event_handler
-    runtime._configure_sdk_event_loop = lambda: None
-    runtime._running = True
-
-    runtime._run_ws_loop()
-
-    assert gateway.build_count == 1
-
-
-@pytest.mark.xfail(reason="lark_oapi.ws.client import triggers WebSocket in thread, causing hang")
-def test_feishu_runtime_configures_sdk_event_loop_for_websocket_thread(monkeypatch):
-    """飞书 SDK 的 WebSocket 事件循环必须由连接线程独占。"""
-    from deepclaw.web_backend.channels.feishu.runtime import FeishuRuntime
-    from deepclaw.web_backend.channels.models import ChannelBinding
-    import lark_oapi.ws.client as lark_ws_client
-
-    previous_loop = lark_ws_client.loop
-    binding = ChannelBinding(
-        id=1,
-        channel="feishu",
-        owner_user_id="user_1",
-        manager_user_id="user_1",
-        credentials={"app_id": "cli_x", "app_secret": "sec_x"},
-    )
-    runtime = FeishuRuntime(binding=binding)
-
-    try:
-        runtime._configure_sdk_event_loop()
-
-        assert lark_ws_client.loop is not previous_loop
-        assert asyncio.get_event_loop() is lark_ws_client.loop
-    finally:
-        lark_ws_client.loop.close()
-        monkeypatch.setattr(lark_ws_client, "loop", previous_loop)
+    result = normalize_event(NS(event=NS(
+        message=NS(message_id="m", mentions=[NS(id=NS(open_id="bot"))]),
+        sender=NS(sender_id=NS(open_id="sender")),
+    )))
+    assert result["mentions"] == [{"id": {"open_id": "bot"}}]
 
 
 def test_feishu_runtime_passes_normalized_event_to_adapter():
@@ -385,22 +314,29 @@ def test_feishu_runtime_mention_policy_requires_current_bot_open_id():
     ) is True
 
 
-def test_feishu_runtime_syncs_binding_runtime_state_on_start_and_stop():
+def test_feishu_runtime_syncs_binding_runtime_state_on_start_and_stop(tmp_path):
     from deepclaw.web_backend.channels.feishu.runtime import FeishuRuntime
     from deepclaw.web_backend.channels.store import ChannelStore
+
+    connected = asyncio.Event()
 
     class FakeGateway:
         async def fetch_bot_open_id(self, *, binding):
             return "ou_bot_1"
 
-        def build_ws_client(self, *, binding, event_handler):
-            class FakeWsClient:
-                def start(self):
-                    return None
+        async def run_connection(self, binding, on_event, on_status):
+            """模拟持续连接并报告真实连接状态。
 
-            return FakeWsClient()
+            Args:
+                binding: 渠道绑定。
+                on_event: 入站事件回调。
+                on_status: 连接状态回调。
+            """
+            await on_status("connected")
+            connected.set()
+            await asyncio.Event().wait()
 
-    store = ChannelStore("sqlite:///:memory:")
+    store = ChannelStore(f"sqlite:///{tmp_path / 'channels.db'}")
     binding = asyncio.run(store.create_binding(
         channel="feishu",
         owner_user_id="user_1",
@@ -409,14 +345,14 @@ def test_feishu_runtime_syncs_binding_runtime_state_on_start_and_stop():
         config={"group_policy": "mention"},
     ))
     runtime = FeishuRuntime(binding=binding, store=store, gateway=FakeGateway())
-    runtime._configure_sdk_event_loop = lambda: None
-    runtime._build_event_handler = lambda: None
 
     async def run():
         task = asyncio.create_task(runtime.run_forever())
-        await asyncio.sleep(0.05)
-        await runtime.stop()
-        await asyncio.wait_for(task, timeout=1)
+        try:
+            await asyncio.wait_for(connected.wait(), timeout=3)
+        finally:
+            await runtime.stop()
+            await asyncio.wait_for(task, timeout=3)
 
     asyncio.run(run())
 
@@ -426,22 +362,29 @@ def test_feishu_runtime_syncs_binding_runtime_state_on_start_and_stop():
     assert updated.runtime_state["bot_open_id"] == "ou_bot_1"
 
 
-def test_feishu_runtime_updates_only_target_binding_for_same_owner():
+def test_feishu_runtime_updates_only_target_binding_for_same_owner(tmp_path):
     from deepclaw.web_backend.channels.feishu.runtime import FeishuRuntime
     from deepclaw.web_backend.channels.store import ChannelStore
+
+    connected = asyncio.Event()
 
     class FakeGateway:
         async def fetch_bot_open_id(self, *, binding):
             return "ou_bot_2"
 
-        def build_ws_client(self, *, binding, event_handler):
-            class FakeWsClient:
-                def start(self):
-                    return None
+        async def run_connection(self, binding, on_event, on_status):
+            """模拟持续连接并报告真实连接状态。
 
-            return FakeWsClient()
+            Args:
+                binding: 渠道绑定。
+                on_event: 入站事件回调。
+                on_status: 连接状态回调。
+            """
+            await on_status("connected")
+            connected.set()
+            await asyncio.Event().wait()
 
-    store = ChannelStore("sqlite:///:memory:")
+    store = ChannelStore(f"sqlite:///{tmp_path / 'channels.db'}")
     first = asyncio.run(store.create_binding(
         channel="feishu",
         owner_user_id="user_1",
@@ -463,14 +406,14 @@ def test_feishu_runtime_updates_only_target_binding_for_same_owner():
         store=store,
         gateway=FakeGateway(),
     )
-    runtime._configure_sdk_event_loop = lambda: None
-    runtime._build_event_handler = lambda: None
 
     async def run():
         task = asyncio.create_task(runtime.run_forever())
-        await asyncio.sleep(0.05)
-        await runtime.stop()
-        await asyncio.wait_for(task, timeout=1)
+        try:
+            await asyncio.wait_for(connected.wait(), timeout=3)
+        finally:
+            await runtime.stop()
+            await asyncio.wait_for(task, timeout=3)
 
     asyncio.run(run())
 

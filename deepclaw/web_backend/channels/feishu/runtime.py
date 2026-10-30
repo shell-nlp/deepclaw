@@ -1,5 +1,4 @@
 import asyncio
-import threading
 from contextlib import suppress
 from typing import Any
 
@@ -8,6 +7,7 @@ from loguru import logger
 from deepclaw.web_backend.channels.feishu.adapter import FeishuAdapter
 from deepclaw.web_backend.channels.feishu.client import FeishuClientGateway
 from deepclaw.web_backend.channels.feishu.settings import feishu_settings
+from deepclaw.web_backend.channels.feishu.connection import run_connection, normalize_event
 from deepclaw.web_backend.channels.models import ChannelBinding
 from deepclaw.web_backend.channels.runtime_manager import get_channel_runtime_manager
 from deepclaw.web_backend.channels.service import ChannelService
@@ -26,13 +26,14 @@ class FeishuRuntime:
         gateway: FeishuClientGateway | None = None,
     ):
         self.binding = binding
-        self.service = service or ChannelService()
+        self.service = service or ChannelService(store=store)
         self.store = store
         self.gateway = gateway or FeishuClientGateway()
         self.adapter = FeishuAdapter(binding=binding, gateway=self.gateway)
         self._running = False
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._ws_thread: threading.Thread | None = None
+        self._stop_event = asyncio.Event()
+        self._message_tasks: set[asyncio.Task] = set()
         self._bot_open_id: str | None = None
 
     def should_process_event(self, event: dict[str, Any]) -> bool:
@@ -58,88 +59,80 @@ class FeishuRuntime:
         await self.service.process_message(message, self.adapter)
 
     async def run_forever(self) -> None:
-        self._running = True
-        self._loop = asyncio.get_running_loop()
-        await self._sync_binding_state(runtime_state={"status": "starting"})
-        self._bot_open_id = await self.gateway.fetch_bot_open_id(binding=self.binding)
-        await self._sync_binding_state(
-            runtime_state={
-                "status": "connected",
-                "bot_open_id": self._bot_open_id,
-            }
-        )
-        self._start_ws_thread()
-        while self._running:
-            await asyncio.sleep(0.1)
-
-    async def stop(self) -> None:
-        self._running = False
-        await self._sync_binding_state(runtime_state={"status": "stopped", "bot_open_id": self._bot_open_id})
-
-    def _start_ws_thread(self) -> None:
-        if self._ws_thread is not None and self._ws_thread.is_alive():
-            return
-
-        def run_ws():
-            try:
-                self._run_ws_loop()
-            except Exception:
-                return
-
-        self._ws_thread = threading.Thread(target=run_ws, daemon=True)
-        self._ws_thread.start()
-
-    def _run_ws_loop(self) -> None:
-        if not self._running:
-            return
-        try:
-            self._configure_sdk_event_loop()
-            ws_client = self.gateway.build_ws_client(
-                binding=self.binding,
-                event_handler=self._build_event_handler(),
-            )
-            ws_client.start()
-        except Exception as exc:
-            logger.exception("飞书 WebSocket 运行失败: binding_id={}, error={}", self.binding.id, exc)
-
-    def _configure_sdk_event_loop(self) -> None:
-        """为飞书 SDK 的 WebSocket 客户端配置线程专属事件循环。
+        """运行独立连接进程并同步真实连接状态。
 
         Args:
             无。
         """
-        import lark_oapi.ws.client as lark_ws_client
+        self._running = True
+        self._stop_event = asyncio.Event()
+        await self._sync_binding_state(runtime_state={"status": "starting"})
+        connection_task = None
+        stop_task = None
+        failed = False
+        try:
+            if self.store is not None and self.binding.id is not None:
+                latest = await self.store.get_binding(self.binding.id)
+                if latest is None:
+                    return
+                self.binding = latest
+                self.adapter.binding = latest
+            self._bot_open_id = await self.gateway.fetch_bot_open_id(binding=self.binding)
+            runner = getattr(self.gateway, "run_connection", run_connection)
+            connection_task = asyncio.create_task(runner(self.binding, self._accept_event, self._connection_status))
+            stop_task = asyncio.create_task(self._stop_event.wait())
+            done, _ = await asyncio.wait([connection_task, stop_task], return_when=asyncio.FIRST_COMPLETED)
+            if connection_task in done:
+                await connection_task
+                raise ConnectionError("飞书连接已退出")
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            failed = True
+            await self._connection_status("error")
+            raise
+        finally:
+            self._running = False
+            tasks = [task for task in [connection_task, stop_task, *self._message_tasks] if task is not None]
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            self._message_tasks.clear()
+            if not failed:
+                await self._connection_status("stopped")
 
-        ws_loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(ws_loop)
-        lark_ws_client.loop = ws_loop
+    async def stop(self) -> None:
+        """请求结束运行，连接进程由运行协程统一回收。
 
-    def _build_event_handler(self):
-        lark = self.gateway._import_lark()
-        builder = lark.EventDispatcherHandler.builder("", "")
-        register = getattr(builder, "register_p2_im_message_receive_v1", None)
-        if callable(register):
-            builder = register(self._on_message_sync)
-        return builder.build()
+        Args:
+            无。
+        """
+        self._stop_event.set()
 
-    def _on_message_sync(self, data) -> None:
-        if not self._running:
+    async def _connection_status(self, status: str) -> None:
+        """保存 SDK 真实连接状态。
+
+        Args:
+            status: 连接状态。
+        """
+        await self._sync_binding_state(runtime_state={"status": status, "bot_open_id": self._bot_open_id})
+
+    async def _accept_event(self, event) -> None:
+        """先持久化消息，再异步处理，避免 Agent 阻塞连接状态接收。
+
+        Args:
+            event: 规范化消息事件。
+        """
+        if not self.should_process_event(event):
             return
-        event = self._normalize_message_event(data)
-        if event is None:
-            logger.warning("飞书收到无法识别的消息事件: binding_id={}", self.binding.id)
-            return
-        if self._loop is None:
-            logger.warning("飞书消息未处理，主事件循环不可用: binding_id={}", self.binding.id)
-            return
-        logger.info(
-            "飞书收到消息: binding_id={}, message_id={}, chat_type={}",
-            self.binding.id,
-            event.get("message_id"),
-            event.get("chat_type"),
-        )
-        future = asyncio.run_coroutine_threadsafe(self.handle_event(event), self._loop)
-        future.add_done_callback(self._log_event_processing_error)
+        message = await self.adapter.parse_event(event)
+        message.user_id = self.binding.owner_user_id
+        message.manager_user_id = self.binding.manager_user_id
+        await self.service.accept_message(message)
+        task = asyncio.create_task(self.service.process_message(message, self.adapter))
+        self._message_tasks.add(task)
+        task.add_done_callback(self._message_tasks.discard)
+        task.add_done_callback(self._log_event_processing_error)
 
     def _log_event_processing_error(self, future) -> None:
         """记录飞书入站消息转交后端处理时发生的异常。
@@ -155,29 +148,12 @@ class FeishuRuntime:
             logger.exception("飞书消息处理失败: binding_id={}", self.binding.id)
 
     def _normalize_message_event(self, data: Any) -> dict[str, Any] | None:
-        event = getattr(getattr(data, "event", None), "message", None)
-        root = getattr(data, "event", None)
-        if root is None:
-            if isinstance(data, dict):
-                return data
-            return None
+        """把 SDK 对象转换成普通渠道事件。
 
-        sender = getattr(getattr(root, "sender", None), "sender_id", None)
-        mentions = getattr(root, "mentions", None) or []
-        return {
-            "message_id": getattr(event, "message_id", None),
-            "chat_id": getattr(event, "chat_id", None),
-            "chat_type": getattr(event, "chat_type", None),
-            "message_type": getattr(event, "message_type", None),
-            "content": getattr(event, "content", None),
-            "sender": {
-                "sender_id": {
-                    "open_id": getattr(sender, "open_id", None),
-                    "user_id": getattr(sender, "user_id", None),
-                }
-            },
-            "mentions": mentions,
-        }
+        Args:
+            data: SDK 对象或事件字典。
+        """
+        return normalize_event(data)
 
     async def _sync_binding_state(
         self,
@@ -188,13 +164,12 @@ class FeishuRuntime:
         if self.store is None:
             return
         if self.binding.id is not None:
+            if await self.store.get_binding(self.binding.id) is None:
+                return
             binding = await self.store.update_binding(
                 self.binding.id,
-                display_name=self.binding.display_name,
                 credentials=credentials,
-                config=self.binding.config,
                 runtime_state=runtime_state,
-                status="active",
             )
         else:
             binding = await self.store.upsert_binding(
@@ -240,7 +215,7 @@ async def start_feishu_runtime(
         _feishu_runtimes[binding_id] = runtime
 
     manager = get_channel_runtime_manager()
-    return await manager.start(f"feishu:{binding_id}", runtime.run_forever())
+    return await manager.start(f"feishu:{binding_id}", factory=runtime.run_forever, store=store)
 
 
 async def stop_feishu_runtime(binding_id: int) -> None:

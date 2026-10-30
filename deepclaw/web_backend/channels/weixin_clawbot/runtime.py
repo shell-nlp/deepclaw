@@ -53,7 +53,7 @@ class WeixinClawBotRuntime:
     ):
         self.qrcode = qrcode
         self.client = client or WeixinClawBotClient()
-        self.service = service or ChannelService()
+        self.service = service or ChannelService(store=store)
         self.store = store
         self.binding_id = binding_id
         self.state_key = (
@@ -131,31 +131,41 @@ class WeixinClawBotRuntime:
             self.get_updates_buf = ""
             await self._save_runtime_state()
             return False
-        self.get_updates_buf = updates.get("get_updates_buf") or self.get_updates_buf
-        await self._save_runtime_state()
-        for message in adapter.iter_text_messages(updates):
+        messages = adapter.iter_text_messages(updates)
+        for message in messages:
             message.user_id = self.owner_user_id
             message.manager_user_id = self.manager_user_id or self.owner_user_id
             message.binding_id = self.binding_id
+            await self.service.accept_message(message)
+        self.get_updates_buf = updates.get("get_updates_buf") or self.get_updates_buf
+        await self._save_runtime_state()
+        for message in messages:
             await self.service.process_message(message, adapter)
         return True
 
     async def run_forever(self) -> None:
-        while True:
-            try:
-                has_token = await self.run_once()
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                logger.warning("微信 ClawBot 轮询失败：{}", exc)
-                has_token = self.bot_token is not None
+        """轮询消息，失败时指数退避并同步连接状态，退出时清理状态。
 
-            interval = (
-                self.message_poll_interval_seconds
-                if has_token
-                else self.login_poll_interval_seconds
-            )
-            await asyncio.sleep(interval)
+        Args:
+            无。
+        """
+        attempts = 0
+        try:
+            while True:
+                try:
+                    has_token = await self.run_once()
+                    attempts = 0
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    attempts = min(attempts + 1, 6)
+                    has_token = self.bot_token is not None
+                    await self._save_binding_state(status="error")
+                    logger.exception("微信 ClawBot 轮询失败，将退避重试")
+                interval = self.message_poll_interval_seconds if has_token else self.login_poll_interval_seconds
+                await asyncio.sleep(max(interval, min(2 ** attempts, 60) if attempts else 0))
+        finally:
+            await self._save_binding_state(status="stopped")
 
     async def _load_runtime_state(self) -> dict[str, Any]:
         if self.store is None:
@@ -207,11 +217,12 @@ class WeixinClawBotRuntime:
             "get_updates_buf": self.get_updates_buf,
         }
         if self.binding_id is not None:
+            if await self.store.get_binding(self.binding_id) is None:
+                return
             await self.store.update_binding(
                 self.binding_id,
                 credentials=credentials,
                 runtime_state=runtime_state,
-                status="active",
             )
             return
         await self.store.upsert_binding(

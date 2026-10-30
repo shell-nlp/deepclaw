@@ -1,5 +1,3 @@
-import uuid
-
 from deepclaw.web_backend.channels.models import ChannelMessage
 
 
@@ -18,7 +16,19 @@ class DingTalkAdapter:
         )
 
     async def send_message(self, message: ChannelMessage, text: str) -> str:
-        return f"dingtalk_reply_{uuid.uuid4().hex}"
+        """明确报告尚未接入的钉钉发送，禁止伪造投递成功。
+
+        Args:
+            message: 入站消息。
+            text: 待发送正文。
+        """
+        raise NotImplementedError("钉钉消息发送尚未接入")
 
     async def edit_message(self, reply_message_id: str, text: str) -> None:
-        return None
+        """明确报告钉钉消息更新尚未接入。
+
+        Args:
+            reply_message_id: 回复标识。
+            text: 更新正文。
+        """
+        raise NotImplementedError("钉钉消息更新尚未接入")

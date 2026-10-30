@@ -74,6 +74,8 @@
 
 - `deepclaw/web_backend/channels/`
   渠道共享模型、会话存储、消息处理服务、共享会话接口与总装配入口。
+  `jobs.py` 定义独立的 `channel_jobs` 持久化任务表、`channel_leases` 数据库租约表及存储；消息按渠道、绑定、消息 ID 去重，同一会话在所有服务实例之间通过租约串行执行。`service.py` 编排执行与投递，`delivery.py` 隔离渠道发送故障，`recovery.py` 恢复原 Run 或补发已完成结果；流式进度按约 0.5 秒或终止事件保存，不逐 token 写库。`jobs_router.py` 提供任务查询及只补发/人工结束操作，接口响应不包含原始消息、正文或凭据。
+  `lifespan.py` 是所有渠道共享生命周期入口，负责启动消息恢复器与连接监管；`runtime_manager.py` 统一提供绑定租约、失败退避和停止清理。飞书 SDK 的模块级事件循环通过 `feishu/connection.py` 的每绑定独立子进程隔离；父进程持久化消息后才确认 SDK 回调，取消运行时会回收连接进程和队列。
 
 - `deepclaw/web_backend/channels/feishu/`
   飞书渠道适配与事件路由。
@@ -244,6 +246,9 @@ pnpm build
 `deepclaw/web_backend/channels/config.py` 当前识别：
 
 - `CHANNEL_AGENT_API_URL`
+- `CHANNEL_AGENT_CONNECT_TIMEOUT_SECONDS`（默认 10）
+- `CHANNEL_AGENT_READ_TIMEOUT_SECONDS`（默认 90）
+- `CHANNEL_AGENT_STREAM_RETRIES`（默认 3）
 
 `deepclaw/web_backend/channels/weixin_clawbot/settings.py` 当前识别：
 
@@ -460,7 +465,7 @@ pnpm build
 - `deepclaw/web_backend/channels/runtime_manager.py` 是统一 runtime task 管理入口；长连接或轮询型渠道优先接这里。
 - `deepclaw/web_backend/channels/feishu/` 现在已包含 `settings.py`、`client.py`、`adapter.py`、`runtime.py`、`router.py`，并以多用户 long connection 为主。
 - `deepclaw/web_backend/channels/weixin_clawbot/` 仍保留二维码登录和轮询实现，但绑定信息会同步写入统一 `ChannelBinding`，后续扩展应优先面向 binding。
-- `deepclaw/web_backend/channels/weixin_clawbot/lifespan.py` 现在会在应用启动时一并拉起已保存的 Feishu runtime 与 Weixin runtime。
+- `deepclaw/web_backend/channels/lifespan.py` 统一启动已保存的 Feishu / Weixin runtime 和待处理消息恢复器；`weixin_clawbot/lifespan.py` 只提供微信启停函数，微信不再单独维护 task 表。
 - 渠道层的多用户边界现在以 `binding_id` 为核心；涉及会话隔离时必须把 binding 维度带上，避免不同绑定实例复用同一条渠道会话。
 ## 2026-06-10 IM 绑定中心补充事实
 
@@ -482,3 +487,14 @@ pnpm build
   - `管理员总览`
   - 微信多绑定管理
   - 飞书多绑定管理
+
+## 渠道消息可靠性约束
+
+- `channel_jobs` 是新消息执行与投递状态的事实来源；历史 `channel_message_records` 仅用于升级后的保守去重，不能从旧记录猜测 Run ID 后重跑。
+- 创建 Run 前持久化随机 `run_id` 和稳定消息标识；断流、进程重启均恢复同一 Run。缺少原 Run 时标为 `uncertain`，禁止自动创建替代 Run，以免重复工具副作用。
+- Agent 的 `RUN_FINISHED` / 中断 / `RUN_ERROR` 必须显式识别；SSE EOF 不代表执行成功。`completed` 结果的投递重试不得调用 Agent。
+- 任务租约默认 60 秒，每 20 秒续租；续租失败取消旧处理，恢复器每 5 秒扫描，最多同时处理 8 个不同会话。绑定删除或停用会被连接监管器感知；多实例必须共享元数据数据库及 Runs/检查点存储。
+- 渠道发送使用稳定投递标识或更新已有回复；无安全重试依据的发送结果标为 `uncertain`，由用户在渠道管理页核对后结束。远端平台的幂等有效期仍是能力边界。
+- `GET /api/channels/jobs?scope=my|all` 查询任务；`POST /api/channels/jobs/{job_id}/actions` 接收 `retry_delivery` 或 `close`。后者只结束异常任务并记录核对者，不重新执行工具。前端 `ChannelJobPanel.tsx` / `useChannelJobs.ts` 负责展示和操作。
+- 钉钉发送仍未实现，适配器必须显式失败，禁止返回随机消息 ID 伪造投递成功。
+- 上线、回退及故障核对流程见 `docs/channel-reliability.md`；本次新增两张独立表，不修改已有绑定和会话表结构。

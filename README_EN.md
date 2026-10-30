@@ -446,6 +446,8 @@ user's tokens immediately.
 | `GET` | `/api/channels/weixin-clawbot/bindings/{binding_id}/qrcode/status` | REST | Query binding QR code status |
 | `DELETE` | `/api/channels/weixin-clawbot/bindings/{binding_id}` | REST | Delete a WeChat ClawBot binding |
 | `POST` | `/api/channels/weixin-clawbot/poll` | REST | Poll pending WeChat ClawBot messages |
+| `GET` | `/api/channels/jobs` | REST | List pending and failed messages (`scope=my\|all`) |
+| `POST` | `/api/channels/jobs/{job_id}/actions` | REST | Redeliver existing results or close a manually reviewed failed task |
 | `GET` | `/api/channels/sessions` | REST | List channel sessions |
 | `PATCH` | `/api/channels/sessions/{session_id}` | REST | Update session reply mode |
 
@@ -626,6 +628,9 @@ curl http://localhost:7869/api/agui/threads/demo-thread/state -H "Authorization:
 | `CHART_PUBLIC_URL` | Public URL prefix for charts; empty returns a relative `/charts/xxx.png` |
 | `CHART_RETENTION_HOURS` / `CHART_MAX_FILES` | Chart file retention and count limits |
 | `CHANNEL_AGENT_API_URL` | Full URL channels use to reach the agent; when empty the current service's `/api/agui/runs` is used |
+| `CHANNEL_AGENT_CONNECT_TIMEOUT_SECONDS` | Agent connection timeout; defaults to 10 seconds |
+| `CHANNEL_AGENT_READ_TIMEOUT_SECONDS` | SSE read timeout; defaults to 90 seconds |
+| `CHANNEL_AGENT_STREAM_RETRIES` | SSE reconnection retries; defaults to 3 and resumes the same Run |
 | `WEIXIN_CLAWBOT_*` | WeChat ClawBot settings |
 
 ## Sandbox Mode (Multi-User Work Isolation)
@@ -699,3 +704,5 @@ allowed_host_paths = ["/path/to/deepclaw"]
 ## License
 
 Apache-2.0
+
+Channel management also displays pending and failed messages, supports redelivery of existing results, and lets users close abnormal tasks after manual review. See [channel reliability and recovery (Chinese)](docs/channel-reliability.md).

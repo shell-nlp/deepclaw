@@ -64,6 +64,20 @@ class FeishuAdapter:
             text=text,
         )
 
+    async def send_message_once(self, message: ChannelMessage, text: str, delivery_id: str) -> str:
+        """使用固定幂等标识回复飞书消息，补发时复用相同标识。
+
+        Args:
+            message: 入站消息。
+            text: 回复正文。
+            delivery_id: 持久化投递标识。
+        """
+        if self.binding is None:
+            raise ValueError("飞书消息缺少有效绑定，不能确认已发送")
+        return await self.gateway.reply_markdown_card(
+            binding=self.binding, message_id=message.message_id, text=text,
+            delivery_id=delivery_id[:32])
+
     def _reply_mode(self) -> str:
         """根据飞书绑定配置确定当前消息的回复模式。
 

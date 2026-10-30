@@ -1,6 +1,7 @@
 'use client'
 
 import QRCode from 'qrcode'
+import { ChannelJobPanel } from './ChannelJobPanel'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import styles from '../../ChatInterface.module.css'
@@ -500,6 +501,8 @@ export function ChannelManagementView({
         {notice ? <div className={styles.managementNotice}>{notice}</div> : null}
         {error ? <div className={styles.managementError}>{error}</div> : null}
       </div>
+
+      <ChannelJobPanel requestJson={requestJson} scope={scope} channel={currentChannel} />
 
       {createOpen && (
         <div className={styles.extensionDialogOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setCreateOpen(false) }}>

@@ -92,6 +92,7 @@ def test_stream_keeps_text_after_unknown_custom_event():
         """
         yield 'data: {"type": "CUSTOM", "name": "recommended_questions", "value": {"recommended_questions": []}}\n\n'
         yield 'data: {"type": "TEXT_MESSAGE_CONTENT", "delta": "answer"}\n\n'
+        yield 'data: {"type": "RUN_FINISHED"}\n\n'
 
     client = AgentClient(sender=sender, auth_service=auth_service)
 
@@ -107,7 +108,7 @@ def test_stream_keeps_text_after_unknown_custom_event():
 
     result = asyncio.run(collect())
 
-    assert ["token"] == [item.event for item in result]
+    assert ["token", "run_finished"] == [item.event for item in result]
     assert result[0].data["token"] == "answer"
 
 
@@ -127,6 +128,7 @@ def test_stream_maps_messages_snapshot_to_channel_event():
             '{"id": "m1", "role": "user", "content": "hello"}, '
             '{"id": "m2", "role": "assistant", "content": "快照回复"}]}\n\n'
         )
+        yield 'data: {"type": "RUN_FINISHED"}\n\n'
 
     client = AgentClient(sender=sender, auth_service=auth_service)
 
@@ -150,5 +152,5 @@ def test_stream_maps_messages_snapshot_to_channel_event():
 
     result = asyncio.run(collect())
 
-    assert [item.event for item in result] == ["messages_snapshot"]
+    assert [item.event for item in result] == ["messages_snapshot", "run_finished"]
     assert result[0].data["messages"][-1]["content"] == "快照回复"
