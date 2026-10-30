@@ -29,9 +29,13 @@ export function ProcessSummary({
   toolCallDurations,
   isProcessing,
 }: ProcessSummaryProps) {
-  const [expanded, setExpanded] = useState(false)
   const processItems = getAssistantMessageItems(msg).filter(
     (item) => item.type === 'reasoning' || item.type === 'tool'
+  )
+  // 处理中默认展开，便于实时查看思考/工具过程；已有过程内容（历史消息）也默认展开，
+  // 避免思考内容被折叠隐藏导致“看不到思考内容”。
+  const [expanded, setExpanded] = useState(
+    () => isProcessing || processItems.length > 0
   )
   const reasoningCount = processItems.filter(
     (item) => item.type === 'reasoning'
@@ -53,9 +57,22 @@ export function ProcessSummary({
     ? `总耗时 ${formatDuration(totalDuration)}`
     : ''
   const processMeta = [summary, durationSummary].filter(Boolean).join(' · ')
-  const getToolDuration = (toolCallId: string) =>
-    msg.toolData?.find((data) => data.toolCall.id === toolCallId)?.duration ??
-    toolCallDurations?.[toolCallId]
+  /**
+   * 使用浏览器时钟显示工具执行耗时，人工等待期间不计时。
+   *
+   * Args:
+   *   toolCallId: 工具调用标识。
+   */
+  const getToolDuration = (toolCallId: string) => {
+    const tool = msg.toolData?.find((data) => data.toolCall.id === toolCallId)
+    if (!tool || tool.approvalStatus === 'pending' || tool.approvalStatus === 'rejected') return undefined
+    if (tool.duration !== undefined) return tool.duration
+    const hasResult = tool.toolOutput?.some((output) => output.kind !== 'decision')
+    if (isProcessing && !hasResult && tool.startedAt !== undefined) {
+      return Math.max(0, now - tool.startedAt)
+    }
+    return undefined
+  }
 
   const activitySteps = processItems.map((item) => {
     if (item.type === 'reasoning') return '正在思考中...'
@@ -69,7 +86,7 @@ export function ProcessSummary({
   const [activityIndex, setActivityIndex] = useState(0)
 
   useEffect(() => {
-    if (!isProcessing || msg.startedAt === undefined) return
+    if (!isProcessing) return
     setNow(Date.now())
     const timer = window.setInterval(() => {
       setNow(Date.now())
@@ -88,11 +105,16 @@ export function ProcessSummary({
     return () => window.clearInterval(timer)
   }, [activitySteps.length, isProcessing])
 
+  // 进入处理中（含中断恢复）时自动展开，保证实时思考过程可见。
+  useEffect(() => {
+    if (isProcessing) setExpanded(true)
+  }, [isProcessing])
+
   const activityLabel = isProcessing
     ? activitySteps[activityIndex % activitySteps.length] || '正在处理中...'
     : '已完成'
 
-  if (processItems.length === 0 && !isProcessing) return null
+  if (!isProcessing && processItems.length === 0) return null
 
   return (
     <section className={styles.processSummary}>
@@ -126,7 +148,7 @@ export function ProcessSummary({
           {expanded ? '收起' : '查看'}
         </span>
       </button>
-      {expanded && (
+      {expanded && processItems.length > 0 && (
         <div className={styles.processSummaryDetails}>
           {processItems.map((item) => {
             if (item.type === 'reasoning') {
@@ -135,7 +157,9 @@ export function ProcessSummary({
                   reasoningBlock.id === item.reasoningBlockId
               )
               return block ? (
-                <ReasoningCard key={item.id} block={block} />
+                <ReasoningCard key={item.id} block={block}
+                  duration={block.duration ?? (isProcessing && block.startedAt !== undefined
+                    ? Math.max(0, now - block.startedAt) : undefined)} />
               ) : null
             }
 

@@ -87,6 +87,7 @@ export interface ChatModeOption {
 export interface ReasoningBlock {
   id: string
   content: string
+  startedAt?: number
   duration?: number
 }
 
@@ -114,7 +115,9 @@ export type AssistantMessageItem =
     }
 
 export interface ToolData {
+  startedAt?: number
   duration?: number
+  approvalStatus?: 'pending' | 'approved' | 'rejected' | 'edited'
   toolCall: {
     id: string
     name: string
@@ -124,6 +127,7 @@ export interface ToolData {
   toolOutput?: Array<{
     tool_call_id: string
     content: string
+    kind?: 'decision'
   }>
 }
 

@@ -176,6 +176,7 @@ function getHistoryMessageContent(content: unknown): string {
       if (
         item &&
         typeof item === 'object' &&
+        (!('type' in item) || item.type === 'text' || item.type === 'output_text') &&
         'text' in item &&
         typeof item.text === 'string'
       ) {
@@ -186,7 +187,13 @@ function getHistoryMessageContent(content: unknown): string {
     .join('')
 }
 
-function getHistoryReasoningContent(message: Record<string, unknown>): string {
+/**
+ * 提取消息中的思考文本，兼容元数据和结构化内容块。
+ *
+ * Args:
+ *   message: 后端历史消息或 AG-UI 消息。
+ */
+export function getHistoryReasoningContent(message: Record<string, unknown>): string {
   const additionalKwargs = message.additional_kwargs
   const responseMetadata = message.response_metadata
   const candidates = [
@@ -204,15 +211,34 @@ function getHistoryReasoningContent(message: Record<string, unknown>): string {
     const content = getHistoryMessageContent(candidate)
     if (content) return content
   }
-  return ''
+  if (!Array.isArray(message.content)) return ''
+  return message.content.map((item) => {
+    if (!item || typeof item !== 'object') return ''
+    const block = item as Record<string, unknown>
+    if (block.type === 'thinking') return String(block.thinking || '')
+    if (block.type === 'reasoning_content') {
+      const value = block.reasoning_content
+      return value && typeof value === 'object'
+        ? String((value as Record<string, unknown>).text || '') : ''
+    }
+    if (block.type !== 'reasoning') return ''
+    return typeof block.reasoning === 'string'
+      ? block.reasoning : Array.isArray(block.summary) ? block.summary.map((part) =>
+        part && typeof part === 'object' && typeof part.text === 'string' ? part.text : ''
+      ).join('') : ''
+  }).join('')
 }
 
 function getHistoryToolData(message: Record<string, unknown>): ToolData[] {
-  if (!Array.isArray(message.tool_calls)) return []
+  const calls = message.tool_calls ?? message.toolCalls
+  if (!Array.isArray(calls)) return []
 
-  return message.tool_calls.flatMap((item) => {
+  return calls.flatMap((item) => {
     if (!item || typeof item !== 'object') return []
-    const toolCall = item as Record<string, unknown>
+    const raw = item as Record<string, unknown>
+    const toolCall = raw.function && typeof raw.function === 'object'
+      ? { ...raw, ...(raw.function as Record<string, unknown>), args: (raw.function as Record<string, unknown>).arguments }
+      : raw
     if (typeof toolCall.id !== 'string' || typeof toolCall.name !== 'string') {
       return []
     }
@@ -307,7 +333,8 @@ export function toHistoryMessages(
       index
     )
     const createdAt = itemCreatedAt ?? fallbackCreatedAt
-    if (message.type === 'human') {
+    const role = message.type || message.role
+    if (role === 'human' || role === 'user') {
       historyMessages.push({
         id: messageId,
         role: 'user',
@@ -319,7 +346,7 @@ export function toHistoryMessages(
       return
     }
 
-    if (message.type === 'ai') {
+    if (role === 'ai' || role === 'assistant' || role === 'reasoning') {
       if (!activeAssistant) {
         activeAssistant = createHistoryAssistantMessage(
           `${messageId}_assistant`,
@@ -327,7 +354,8 @@ export function toHistoryMessages(
         )
         historyMessages.push(activeAssistant)
       }
-      const reasoningContent = getHistoryReasoningContent(message)
+      const reasoningContent = role === 'reasoning'
+        ? getHistoryMessageContent(message.content) : getHistoryReasoningContent(message)
       const toolData = getHistoryToolData(message)
       const tokenUsage = getTokenUsageFromMessage(message)
       const assistant = activeAssistant
@@ -342,7 +370,7 @@ export function toHistoryMessages(
           reasoningBlockId: block.id,
         })
       }
-      if (content) {
+      if (content && role !== 'reasoning') {
         const block = { id: `${messageId}_content`, content }
         assistant.content = `${assistant.content}${content}`
         assistant.contentBlocks = [...(assistant.contentBlocks || []), block]
@@ -367,9 +395,8 @@ export function toHistoryMessages(
       return
     }
 
-    if (message.type !== 'tool' || typeof message.tool_call_id !== 'string') return
-
-    const toolCallId = message.tool_call_id
+    const toolCallId = message.tool_call_id ?? message.toolCallId
+    if (role !== 'tool' || typeof toolCallId !== 'string') return
     const assistant = toolOwnerMessages.get(toolCallId) || activeAssistant
     if (!assistant) {
       const newAssistant = createHistoryAssistantMessage(
@@ -397,10 +424,127 @@ export function toHistoryMessages(
       toolOwnerMessages.set(toolCallId, assistant)
       return
     }
-    tool.toolOutput?.push(toolOutput)
+    tool.toolOutput = [...(tool.toolOutput || []), toolOutput]
   })
 
   return historyMessages
+}
+
+/**
+ * 用当前轮次的快照补齐过程，保留流式数据、消息标识和浏览器计时。
+ *
+ * Args:
+ *   message: 正在展示的 assistant 消息。
+ *   state_messages: 完整历史或 AG-UI 消息快照。
+ *   user_message_id: 本轮用户消息 ID，防止起始快照串入上一轮。
+ */
+export function mergeAssistantProcessSnapshot(
+  message: Message,
+  state_messages: unknown,
+  user_message_id: string | undefined
+): Message {
+  if (!user_message_id) return message
+  const history = toHistoryMessages(state_messages)
+  const user_index = history.findLastIndex((item) => item.role === 'user')
+  if (user_index < 0 || history[user_index].id !== user_message_id) return message
+  const snapshot = history[user_index + 1]
+  if (!snapshot || snapshot.role !== 'ai') return message
+
+  const next = { ...message, messageItems: [...(message.messageItems || [])] }
+  const live_reasoning = message.reasoningContent || ''
+  const snapshot_reasoning = snapshot.reasoningContent || ''
+  if (snapshot_reasoning && !live_reasoning && !message.reasoningBlocks?.length) {
+    next.reasoningContent = snapshot_reasoning
+    next.reasoningBlocks = snapshot.reasoningBlocks
+    next.messageItems.push(...(snapshot.messageItems || []).filter((item) => item.type === 'reasoning'))
+  } else if (live_reasoning && snapshot_reasoning.startsWith(live_reasoning) && snapshot_reasoning.length > live_reasoning.length) {
+    const blocks = message.reasoningBlocks || [{ id: `${message.id}_reasoning_legacy`, content: live_reasoning }]
+    next.reasoningContent = snapshot_reasoning
+    next.reasoningBlocks = blocks.map((block, index) => index === blocks.length - 1
+      ? { ...block, content: block.content + snapshot_reasoning.slice(live_reasoning.length) }
+      : block)
+  }
+  next.toolData = [...(message.toolData || [])]
+  for (const tool of snapshot.toolData || []) {
+    const index = next.toolData.findIndex((item) => item.toolCall.id === tool.toolCall.id)
+    if (index < 0) {
+      next.toolData.push(tool)
+      next.messageItems = ensureToolItem(next.messageItems, tool.toolCall.id)
+    } else {
+      const live = next.toolData[index]
+      next.toolData[index] = {
+        ...tool, ...live,
+        toolCall: { ...tool.toolCall, ...live.toolCall,
+          name: live.toolCall.name === 'tool' ? tool.toolCall.name : live.toolCall.name,
+          args: Object.keys(live.toolCall.args).length ? live.toolCall.args : tool.toolCall.args },
+        toolOutput: live.toolOutput?.some((output) => output.kind !== 'decision')
+          ? live.toolOutput
+          : [...(live.toolOutput || []), ...(tool.toolOutput || [])],
+      }
+    }
+  }
+  return next
+}
+
+/**
+ * 将人工审批决定记录在对应工具的输出中，保留同名工具的历史执行记录。
+ *
+ * Args:
+ *   message: 当前 assistant 消息。
+ *   actions: 本次待审批的工具请求。
+ *   decisions: 按请求顺序排列的审批决定。
+ */
+export function recordToolDecisions(
+  message: Message,
+  actions: InterruptData['action_requests'],
+  decisions: ResumeDecision[]
+): Message {
+  const tools = [...(message.toolData || [])]
+  const matched = new Set<number>()
+  actions.forEach((action, action_index) => {
+    const decision = decisions[action_index]
+    if (!decision) return
+    const index = tools.findLastIndex((tool, tool_index) =>
+      !matched.has(tool_index) && tool.toolCall.name === action.name &&
+      !tool.toolOutput?.some((output) => output.kind !== 'decision')
+    )
+    if (index < 0) return
+    matched.add(index)
+    const tool = tools[index]
+    const status = decision.type === 'reject' ? 'rejected'
+      : decision.type === 'edit' ? 'edited' : 'approved'
+    const content = decision.type === 'reject' ? decision.message || '用户已拒绝执行。'
+      : decision.type === 'edit' ? `用户已修改参数并批准执行：${JSON.stringify(decision.edited_action.args)}`
+        : decision.type === 'respond' ? decision.message : '用户已批准执行。'
+    tools[index] = {
+      ...tool,
+      approvalStatus: status,
+      toolCall: decision.type === 'edit'
+        ? { ...tool.toolCall, name: decision.edited_action.name, args: decision.edited_action.args }
+        : tool.toolCall,
+      toolOutput: [
+        ...(tool.toolOutput || []).filter((output) => output.kind !== 'decision'),
+        { tool_call_id: tool.toolCall.id, content, kind: 'decision' },
+      ],
+    }
+  })
+  return { ...message, toolData: tools }
+}
+
+/**
+ * 恢复原 assistant 消息并继续浏览器计时，排除等待人工输入的时间。
+ *
+ * Args:
+ *   message: 待恢复的 assistant 消息。
+ *   now: 浏览器开始恢复请求的时间。
+ */
+export function resumeAssistantMessage(message: Message, now: number): Message {
+  return {
+    ...message,
+    startedAt: now - (message.duration || 0),
+    duration: undefined,
+    error: undefined,
+  }
 }
 
 export function appendReasoningToken(
@@ -511,6 +655,7 @@ export function ensureToolItem(
 
 export type ResumeDecision =
   | { type: 'approve' }
+  | { type: 'respond'; message: string }
   | { type: 'reject'; message: string }
   | {
       type: 'edit'

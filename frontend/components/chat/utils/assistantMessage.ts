@@ -10,8 +10,6 @@ import type { AssistantMessageItem, Message } from './types'
  *   推理、工具和正文展示项列表。
  */
 export function getAssistantMessageItems(msg: Message): AssistantMessageItem[] {
-  if (msg.messageItems?.length) return msg.messageItems
-
   const reasoningItems = (
     msg.reasoningBlocks?.length
       ? msg.reasoningBlocks
@@ -28,15 +26,27 @@ export function getAssistantMessageItems(msg: Message): AssistantMessageItem[] {
     type: 'tool' as const,
     toolCallId: toolData.toolCall.id,
   }))
-  const contentItems = msg.content
-    ? [
-        {
-          id: `${msg.id}_content_legacy_item`,
-          type: 'content' as const,
-          contentBlockId: `${msg.id}_content_legacy`,
-        },
-      ]
-    : []
-
-  return [...reasoningItems, ...toolItems, ...contentItems]
+  const contentItems = (
+    msg.contentBlocks?.length ? msg.contentBlocks
+      : msg.content ? [{ id: `${msg.id}_content_legacy`, content: msg.content }] : []
+  ).map((block) => ({
+    id: `content_item_${block.id}`,
+    type: 'content' as const,
+    contentBlockId: block.id,
+  }))
+  const items = [...(msg.messageItems || [])]
+  for (const item of [...reasoningItems, ...toolItems, ...contentItems]) {
+    const exists = items.some((current) =>
+      current.type === item.type && (
+        current.type === 'reasoning' && item.type === 'reasoning'
+          ? current.reasoningBlockId === item.reasoningBlockId
+          : current.type === 'tool' && item.type === 'tool'
+            ? current.toolCallId === item.toolCallId
+            : current.type === 'content' && item.type === 'content'
+              && current.contentBlockId === item.contentBlockId
+      )
+    )
+    if (!exists) items.push(item)
+  }
+  return items
 }

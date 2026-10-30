@@ -185,6 +185,7 @@ export function getAgUiAssistantSnapshotText(event: AgUiEvent): string | null {
     const message = messages[index]
     if (!message || typeof message !== 'object') continue
     const record = message as Record<string, unknown>
+    if (record.role === 'user' || record.role === 'human') break
     if (record.role !== 'assistant') continue
     const content = record.content
     if (typeof content === 'string' && content.length > 0) return content

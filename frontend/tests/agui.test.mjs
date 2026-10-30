@@ -3,6 +3,17 @@ import assert from 'node:assert/strict'
 
 import * as aguiPkg from '../components/chat/utils/agui.ts'
 
+test('等待审批的快照不能把上一轮回答补进本轮', () => {
+  assert.equal(aguiPkg.getAgUiAssistantSnapshotText({
+    type: 'MESSAGES_SNAPSHOT', messages: [
+      { role: 'user', content: '今天是周几' },
+      { role: 'assistant', content: '今天星期四' },
+      { role: 'user', content: '南阳天气怎么样' },
+      { role: 'assistant', content: '', toolCalls: [{ id: 't1' }] },
+    ],
+  }), null)
+})
+
 test('agui parses serialized HITL interrupt payloads', () => {
   const interrupt = aguiPkg.getAgUiInterrupt({
     type: 'CUSTOM',

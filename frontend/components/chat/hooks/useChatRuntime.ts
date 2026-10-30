@@ -28,6 +28,9 @@ import {
   createHttpChatError,
   createThreadRuntime,
   ensureToolItem,
+  mergeAssistantProcessSnapshot,
+  recordToolDecisions,
+  resumeAssistantMessage,
   isAbortError,
   isActiveRunStatus,
   toHistoryMessages,
@@ -200,7 +203,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
   const finishReasoningBlock = useCallback(() => {
     if (reasoningStartTimeRef.current === null) return
 
-    const duration = Date.now() - reasoningStartTimeRef.current
+    const duration = Math.max(0, Date.now() - reasoningStartTimeRef.current)
     updateAssistantMessage((message) => {
       const reasoningBlocks = message.reasoningBlocks
       if (!reasoningBlocks?.length) return message
@@ -208,7 +211,8 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
       return {
         ...message,
         reasoningBlocks: reasoningBlocks.map((block, index) =>
-          index === reasoningBlocks.length - 1 ? { ...block, duration } : block
+          index === reasoningBlocks.length - 1 && block.startedAt !== undefined && block.duration === undefined
+            ? { ...block, duration } : block
         ),
       }
     })
@@ -238,35 +242,20 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
         action_requests: interrupt.action_requests ?? [],
         review_configs: interrupt.review_configs,
       }
-      const interruptedToolNames = new Set(
-        nextInterruptData.action_requests
-          .map((action) => action.name)
-          .filter(
-            (name): name is string =>
-              Boolean(name) && name !== 'ask_user'
-          )
-      )
-      if (interruptedToolNames.size > 0) {
-        updateAssistantMessage((message) => {
-          const removedToolCallIds = new Set(
-            (message.toolData || [])
-              .filter((tool) => interruptedToolNames.has(tool.toolCall.name))
-              .map((tool) => tool.toolCall.id)
-          )
-          if (removedToolCallIds.size === 0) return message
-          return {
-            ...message,
-            toolData: (message.toolData || []).filter(
-              (tool) => !removedToolCallIds.has(tool.toolCall.id)
-            ),
-            messageItems: (message.messageItems || []).filter(
-              (item) =>
-                item.type !== 'tool' ||
-                !removedToolCallIds.has(item.toolCallId)
-            ),
-          }
-        })
-      }
+      finishAssistantDuration()
+      const pendingToolIds = new Set(messagesRef.current
+        .find((message) => message.id === currentAssistantMessageIdRef.current)?.toolData
+        ?.filter((tool) => nextInterruptData.action_requests.some((action) => action.name === tool.toolCall.name)
+          && !tool.toolOutput?.some((output) => output.kind !== 'decision'))
+        .map((tool) => tool.toolCall.id))
+      pendingToolIds.forEach((toolCallId) => { delete toolCallStartTimesRef.current[toolCallId] })
+      updateAssistantMessage((message) => ({
+        ...message,
+        toolData: (message.toolData || []).map((tool) => {
+          if (!pendingToolIds.has(tool.toolCall.id)) return tool
+          return { ...tool, startedAt: undefined, duration: undefined, approvalStatus: 'pending' }
+        }),
+      }))
       setInterruptData(nextInterruptData)
       setShowInterrupt(true)
       const activeThreadId = activeThreadIdRef.current
@@ -281,6 +270,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
     },
     [
       finishReasoningBlock,
+      finishAssistantDuration,
       getThreadRuntime,
       updateAssistantMessage,
     ]
@@ -330,13 +320,15 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
         eventType === 'REASONING_MESSAGE_CONTENT' ||
         eventType === 'REASONING_MESSAGE_CHUNK'
       ) {
-        const delta = typeof event.delta === 'string' ? event.delta : ''
+        const delta = typeof event.delta === 'string' ? event.delta
+          : typeof event.content === 'string' ? event.content : ''
         if (!delta) return null
         const shouldStartNewBlock =
           lastAssistantStreamEventRef.current !== 'reasoning'
         if (shouldStartNewBlock) {
-          reasoningStartTimeRef.current = Date.now()
+          reasoningStartTimeRef.current ??= Date.now()
         }
+        const reasoningStartedAt = reasoningStartTimeRef.current
         updateAssistantMessage((message) => {
           const { reasoningBlocks, messageItems } = appendReasoningToken(
             message.reasoningBlocks,
@@ -351,13 +343,25 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
           )
           return {
             ...message,
-            reasoningBlocks,
+            reasoningBlocks: reasoningBlocks.map((block, index) =>
+              index === reasoningBlocks.length - 1 && block.startedAt === undefined
+                ? { ...block, startedAt: reasoningStartedAt ?? undefined } : block
+            ),
             messageItems,
             reasoningContent: `${message.reasoningContent || ''}${delta}`,
           }
         })
         lastAssistantStreamEventRef.current = 'reasoning'
         return null
+      }
+
+      if (eventType === 'STATE_SNAPSHOT' || eventType === 'MESSAGES_SNAPSHOT') {
+        const snapshot = event.snapshot as Record<string, unknown> | undefined
+        const snapshotMessages = eventType === 'STATE_SNAPSHOT' ? snapshot?.messages : event.messages
+        updateAssistantMessage((message) => mergeAssistantProcessSnapshot(
+          message, snapshotMessages, (currentRunInputRef.current?.messages as Array<{ id: string }> | undefined)?.[0]?.id
+        ))
+        if (eventType === 'STATE_SNAPSHOT') return null
       }
 
       if (eventType === 'MESSAGES_SNAPSHOT') {
@@ -398,14 +402,22 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
         if (lastAssistantStreamEventRef.current === 'reasoning') {
           finishReasoningBlock()
         }
-        toolCallStartTimesRef.current[toolCallId] = Date.now()
+        const existingTool = messagesRef.current.find((message) => message.id === currentAssistantMessageIdRef.current)
+          ?.toolData?.find((tool) => tool.toolCall.id === toolCallId)
+        if (existingTool?.toolOutput?.some((output) => output.kind !== 'decision')) return null
+        toolCallStartTimesRef.current[toolCallId] ??= Date.now()
+        const toolStartedAt = toolCallStartTimesRef.current[toolCallId]
         updateAssistantMessage((message) => {
           const tools = [...(message.toolData || [])]
           if (!tools.some((tool) => tool.toolCall.id === toolCallId)) {
             tools.push({
               toolCall: { id: toolCallId, name: toolName, args: {} },
               toolOutput: [],
+              startedAt: toolStartedAt,
             })
+          } else {
+            const index = tools.findIndex((tool) => tool.toolCall.id === toolCallId)
+            tools[index] = { ...tools[index], startedAt: toolStartedAt }
           }
           return {
             ...message,
@@ -448,9 +460,10 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
       if (eventType === 'TOOL_CALL_RESULT') {
         const toolCallId = String(event.toolCallId || '')
         if (!toolCallId) return null
+        if (processedToolCallIdsRef.current.has(toolCallId)) return null
         const now = Date.now()
         const startTime = toolCallStartTimesRef.current[toolCallId]
-        const toolDuration = startTime ? now - startTime : undefined
+        const toolDuration = startTime !== undefined ? Math.max(0, now - startTime) : undefined
         if (toolDuration !== undefined) {
           setToolCallDurations((prev) => ({
             ...prev,
@@ -458,7 +471,6 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
           }))
           delete toolCallStartTimesRef.current[toolCallId]
         }
-        if (processedToolCallIdsRef.current.has(toolCallId)) return null
         processedToolCallIdsRef.current.add(toolCallId)
         const normalizedOutput = {
           tool_call_id: toolCallId,
@@ -476,7 +488,9 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
                 (output) => output.content === normalizedOutput.content
               )
             ) {
-              return message
+              if (toolDuration === undefined) return message
+              tools[existingToolIndex] = { ...existingTool, duration: toolDuration }
+              return { ...message, toolData: tools }
             }
             tools[existingToolIndex] = {
               ...existingTool,
@@ -530,7 +544,14 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
         return null
       }
 
+      if (eventType === 'REASONING_MESSAGE_END' || eventType === 'REASONING_END' || eventType === 'THINKING_TEXT_MESSAGE_END') {
+        finishReasoningBlock()
+        lastAssistantStreamEventRef.current = null
+        return null
+      }
+
       if (eventType === 'RUN_ERROR') {
+        finishReasoningBlock()
         finishAssistantDuration()
         throw new ChatRequestError(
           createChatError(
@@ -541,6 +562,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
       }
 
       if (eventType === 'RUN_FINISHED') {
+        finishReasoningBlock()
         const interrupt = getAgUiInterruptOutcome(event)
         if (interrupt) {
           applyAgUiInterrupt(interrupt)
@@ -568,24 +590,26 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
     []
   )
 
-  const refreshAssistantTokenUsage = useCallback(
+  const refreshAssistantSnapshot = useCallback(
     async (threadId: string, assistantMessageId: string) => {
       if (!threadId || !assistantMessageId) return
+      const userMessageId = (currentRunInputRef.current?.messages as Array<{ id: string }> | undefined)?.[0]?.id
       try {
         const response = await requestJson<{ messages?: unknown }>(
           AGUI_THREAD_STATE_API_PATH(threadId)
         )
         const usage = getLatestAssistantTokenUsage(response.messages)
-        if (!usage) return
         setMessagesAndRef((prev) =>
           prev.map((message) =>
             message.id === assistantMessageId
-              ? { ...message, tokenUsage: usage }
+              ? { ...mergeAssistantProcessSnapshot(
+                  message, response.messages, userMessageId
+                ), ...(usage ? { tokenUsage: usage } : {}) }
               : message
           )
         )
       } catch {
-        // Token 统计失败不能影响已经完成的回答。
+        // 快照补齐失败不能影响已经完成的回答和已有流式过程。
       }
     },
     [requestJson, setMessagesAndRef]
@@ -670,7 +694,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
       }
 
       if (completed && !stale && finishedAssistantMessageId) {
-        await refreshAssistantTokenUsage(threadId, finishedAssistantMessageId)
+        await refreshAssistantSnapshot(threadId, finishedAssistantMessageId)
       }
 
       return { interrupted, completed, stale }
@@ -679,7 +703,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
       getThreadRuntime,
       handleAgUiEvent,
       isCurrentStream,
-      refreshAssistantTokenUsage,
+      refreshAssistantSnapshot,
       setThreadRunning,
     ]
   )
@@ -787,6 +811,20 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
     ) => {
       const runId = currentRunIdRef.current
       if (!runId) throw new Error('当前没有可恢复的 Run')
+      const resumedAt = Date.now()
+      const resumedToolIds = new Set(messagesRef.current
+        .find((message) => message.id === currentAssistantMessageIdRef.current)?.toolData
+        ?.filter((tool) => ['approved', 'edited'].includes(tool.approvalStatus || '')
+          && !tool.toolOutput?.some((output) => output.kind !== 'decision'))
+        .map((tool) => tool.toolCall.id))
+      resumedToolIds.forEach((toolCallId) => { toolCallStartTimesRef.current[toolCallId] = resumedAt })
+      updateAssistantMessage((message) => ({
+        ...message,
+        toolData: message.toolData?.map((tool) => {
+          if (!resumedToolIds.has(tool.toolCall.id)) return tool
+          return { ...tool, startedAt: resumedAt, duration: undefined }
+        }),
+      }))
       const resumeResponse = await fetch(
         getApiUrl(`${basePath}/${encodeURIComponent(runId)}/resume`),
         {
@@ -807,7 +845,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
       setThreadRunning(threadId, true)
       return subscribeAgUiEvents(basePath, runId, threadId, generation, signal)
     },
-    [setThreadRunning, subscribeAgUiEvents, withAuthHeaders]
+    [setThreadRunning, subscribeAgUiEvents, updateAssistantMessage, withAuthHeaders]
   )
 
   const resumeThreadStream = useCallback(
@@ -1168,7 +1206,6 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
   const handleInterruptAction = async (
     decision: 'approve' | 'reject' | 'edit',
     editedActions?: Array<{ name: string; args: Record<string, unknown> }>,
-    options?: { skipStatusMessage?: boolean }
   ) => {
     if (!interruptData || !('action_requests' in interruptData)) return
 
@@ -1187,27 +1224,13 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
 
     setShowInterrupt(false)
     runtime.showInterrupt = false
-    if (!options?.skipStatusMessage) {
-      addMessage({
-        id: generateMessageId(),
-        role: 'user',
-        content:
-          decision === 'approve'
-            ? '已批准继续执行。'
-            : decision === 'reject'
-              ? '已拒绝继续执行。'
-              : '已修改参数并继续执行。',
-      })
-    }
-
+    updateAssistantMessage((message) => resumeAssistantMessage(message, Date.now()))
     setIsProcessing(true)
     setStatus('connecting')
     setThreadRunning(threadId, true)
     runtime.processing = true
     runtime.status = 'connecting'
     lastAssistantStreamEventRef.current = null
-    reasoningBlockCounterRef.current = 0
-    contentBlockCounterRef.current = 0
     abortControllerRef.current = new AbortController()
     runtime.abortController = abortControllerRef.current
     let receivedInterrupt = false
@@ -1235,6 +1258,9 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
       if (!baseInput) throw new Error('当前没有可恢复的 Run')
       const interruptId = interruptData.interrupt_id
       if (!interruptId) throw new Error('当前中断缺少 interruptId，无法恢复')
+      updateAssistantMessage((message) => recordToolDecisions(
+        message, interruptData.action_requests, decisions
+      ))
       const forwardedProps = {
         ...(baseInput.forwardedProps as Record<string, unknown> | undefined),
       }
@@ -1274,19 +1300,18 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
           applyAssistantError(assistantMessageId, error)
           if (assistantMessageId) {
             registerRetryAction(assistantMessageId, () =>
-              handleInterruptAction(decision, editedActions, {
-                skipStatusMessage: true,
-              })
+              handleInterruptAction(decision, editedActions)
             )
           }
         }
       }
     } finally {
-      if (isCurrentStream(threadId, generation) && runtime.status !== 'error') {
+      if (isCurrentStream(threadId, generation)) {
         finishReasoningBlock()
         setIsProcessing(false)
         runtime.processing = false
-        runtime.status = 'ready'
+        if (runtime.status !== 'error') runtime.status = 'ready'
+        setThreadRunning(threadId, false)
         runtime.messages = messagesRef.current
         runtime.lastEventId = lastEventIdRef.current
         runtime.abortController = null
@@ -1323,41 +1348,13 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
 
     setShowInterrupt(false)
     runtime.showInterrupt = false
-    updateAssistantMessage((message) => {
-      const toolIndex = [...(message.toolData || [])]
-        .map((tool, index) => ({ tool, index }))
-        .reverse()
-        .find(({ tool }) => tool.toolCall.name === 'ask_user')?.index
-      if (toolIndex === undefined) return message
-
-      const tool = message.toolData?.[toolIndex]
-      if (!tool) return message
-      const responseContent = stringifyToolContent(answer)
-      if (tool.toolOutput?.some((item) => item.content === responseContent)) {
-        return message
-      }
-
-      const toolData = [...(message.toolData || [])]
-      toolData[toolIndex] = {
-        ...tool,
-        toolOutput: [
-          ...(tool.toolOutput || []),
-          {
-            tool_call_id: tool.toolCall.id,
-            content: responseContent,
-          },
-        ],
-      }
-      return { ...message, toolData }
-    })
+    updateAssistantMessage((message) => resumeAssistantMessage(message, Date.now()))
     setIsProcessing(true)
     setStatus('connecting')
     setThreadRunning(threadId, true)
     runtime.processing = true
     runtime.status = 'connecting'
     lastAssistantStreamEventRef.current = null
-    reasoningBlockCounterRef.current = 0
-    contentBlockCounterRef.current = 0
     abortControllerRef.current = new AbortController()
     runtime.abortController = abortControllerRef.current
     let receivedInterrupt = false
@@ -1367,6 +1364,9 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
       if (!baseInput) throw new Error('当前没有可恢复的 Run')
       const interruptId = interruptData.interrupt_id
       if (!interruptId) throw new Error('当前中断缺少 interruptId，无法恢复')
+      updateAssistantMessage((message) => recordToolDecisions(
+        message, interruptData.action_requests, [{ type: 'respond', message: answer }]
+      ))
       const forwardedProps = {
         ...(baseInput.forwardedProps as Record<string, unknown> | undefined),
       }
@@ -1414,11 +1414,12 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
         }
       }
     } finally {
-      if (isCurrentStream(threadId, generation) && runtime.status !== 'error') {
+      if (isCurrentStream(threadId, generation)) {
         finishReasoningBlock()
         setIsProcessing(false)
         runtime.processing = false
-        runtime.status = 'ready'
+        if (runtime.status !== 'error') runtime.status = 'ready'
+        setThreadRunning(threadId, false)
         runtime.messages = messagesRef.current
         runtime.lastEventId = lastEventIdRef.current
         runtime.abortController = null

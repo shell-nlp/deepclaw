@@ -382,6 +382,7 @@ frontend/components/
 - 同一个组件的样式、测试和工具函数应与其所属模块就近放置；跨模块共享后再提升到 `shared/` 或通用 `ui/`。
 - 旧 `chat-interface/` 目录已全部迁移到 `chat/`；禁止再新建该目录或保留兼容副本。
 - 页面级状态与副作用放在 `chat/hooks/`，纯工具函数放在 `chat/utils/`；`ChatInterface.tsx` 只保留渲染编排。
+- 人工确认与提问界面由 `chat/interrupt/InterruptPanel.tsx` 独立编排，递归参数字段位于 `InterruptArgFields.tsx`，参数转换及审批权限判断位于同目录 `utils.ts`，审批视觉样式由 `InterruptPanel.module.css` 管理。`ChatView.tsx` 只传入中断数据与提交回调。
 
 ## 最小验证
 
