@@ -1,0 +1,69 @@
+.interruptPanel {
+  --approval-ink: #26344b;
+  --approval-muted: #707e92;
+  --approval-line: #e5eaf2;
+  --approval-blue: #5268ed;
+  --approval-surface: #f6f8fc;
+  width: min(100%, 880px);
+  box-sizing: border-box;
+  margin: 24px 0;
+  overflow: hidden;
+  border: 1px solid #dde4f0;
+  border-radius: 16px;
+  background: #fff;
+  color: var(--approval-ink);
+  font-family: inherit;
+  box-shadow: 0 8px 28px -18px rgba(39, 59, 102, .22);
+}
+
+.interruptHeader { display: flex; align-items: center; gap: 13px; padding: 23px 24px 21px; }
+.approvalIcon { display: grid; place-items: center; flex: 0 0 40px; height: 40px; border-radius: 12px; background: #eef1ff; color: var(--approval-blue); }
+.headerCopy { flex: 1; min-width: 0; }
+.headerCopy h3 { margin: 0; font-size: 16px; line-height: 1.5; font-weight: 650; letter-spacing: -.25px; }
+.headerCopy p { margin: 4px 0 0; font-size: 12px; line-height: 1.6; color: var(--approval-muted); }
+.pendingBadge { display: flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 11px; color: #8a651b; }
+.pendingBadge::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: #d49a35; }
+.interruptContent { padding: 0 24px; }
+.interruptAction { padding: 18px 0 22px; border-top: 1px solid var(--approval-line); }
+.interruptActionHeader { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.toolGlyph { display: inline-flex; color: #8794ab; }
+.interruptToolName { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.actionCount { margin-left: auto; white-space: nowrap; color: var(--approval-muted); font-size: 11px; }
+.interruptDescription { margin: 9px 0 0; color: var(--approval-muted); line-height: 1.7; font-size: 13px; overflow-wrap: anywhere; }
+.interruptArgsSection { margin-top: 17px; padding: 14px 16px 4px; background: var(--approval-surface); border-radius: 10px; }
+.parameterHeading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; color: var(--approval-muted); font-size: 11px; }
+.editingBadge { color: var(--approval-blue); }
+.interruptArgGroup { display: grid; min-width: 0; }
+.interruptArgGroup .interruptArgGroup { padding: 9px 0 9px 12px; border-left: 2px solid var(--approval-line); margin-bottom: 8px; }
+.interruptArgGroupLabel { color: var(--approval-muted); font-size: 12px; padding: 5px 0; overflow-wrap: anywhere; }
+.interruptFormField { display: grid; grid-template-columns: minmax(88px, 24%) minmax(0, 1fr); align-items: baseline; gap: 12px; padding: 10px 0; border-top: 1px solid var(--approval-line); }
+.interruptFieldLabel { font-size: 12px; color: var(--approval-muted); overflow-wrap: anywhere; }
+.interruptReadValue { font-size: 13px; font-weight: 500; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.interruptInput { width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid #ccd5e6; border-radius: 6px; padding: 7px 10px; background: #fff; color: var(--approval-ink); font: inherit; font-size: 13px; }
+.interruptInput:focus { outline: 2px solid #5268ed; outline-offset: 2px; }
+.interruptInput:disabled { background: transparent; border-color: transparent; opacity: 1; }
+textarea.interruptInput { min-height: 88px; resize: vertical; line-height: 1.6; }
+.interruptCheckbox { width: 16px; height: 16px; accent-color: var(--approval-blue); }
+.interruptArgEmpty { color: var(--approval-muted); font-size: 12px; padding: 8px 0 14px; }
+.interruptButtons { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 24px; border-top: 1px solid var(--approval-line); background: #fcfdff; }
+.primaryActions { display: flex; align-items: center; gap: 9px; }
+.interruptBtn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid transparent; border-radius: 8px; padding: 9px 15px; min-height: 38px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; transition: background .15s, border-color .15s; }
+.approve { background: var(--approval-blue); color: #fff; border-color: var(--approval-blue); }
+.approve:hover:not(:disabled) { background: #4055d8; border-color: #4055d8; }
+.edit { background: #fff; border-color: #dce2ee; color: #4f5c71; }
+.edit:hover:not(:disabled) { background: #f3f5fb; border-color: #bec9df; }
+.reject { background: transparent; color: #7f6670; padding-left: 0; }
+.reject:hover:not(:disabled) { color: #b33c51; }
+.interruptBtn:focus-visible { outline: 2px solid var(--approval-blue); outline-offset: 3px; }
+.interruptBtn:disabled { opacity: .4; cursor: not-allowed; }
+@media (max-width: 560px) {
+  .interruptPanel { margin: 16px 0; border-radius: 12px; }
+  .interruptHeader { padding: 18px 16px; gap: 10px; flex-wrap: wrap; }
+  .pendingBadge { margin-left: 50px; }
+  .interruptContent { padding: 0 16px; }
+  .interruptArgsSection { padding-left: 12px; padding-right: 12px; }
+  .interruptButtons { padding: 14px 16px; flex-wrap: wrap; }
+  .interruptBtn { padding: 9px 11px; }
+  .interruptFormField { grid-template-columns: minmax(64px, 30%) minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) { .interruptBtn { transition: none; } }

@@ -8,9 +8,17 @@ import { formatDuration } from '../utils'
 
 interface ReasoningCardProps {
   block: ReasoningBlock
+  duration?: number
 }
 
-export function ReasoningCard({ block }: ReasoningCardProps) {
+/**
+ * 展示思考正文及浏览器记录的耗时。
+ *
+ * Args:
+ *   block: 思考分段。
+ *   duration: 当前实时耗时，结束后使用分段保存值。
+ */
+export function ReasoningCard({ block, duration = block.duration }: ReasoningCardProps) {
   const [expanded, setExpanded] = useState(false)
 
   return (
@@ -22,8 +30,8 @@ export function ReasoningCard({ block }: ReasoningCardProps) {
         onClick={() => setExpanded((current) => !current)}
       >
         <span>思考</span>
-        {block.duration !== undefined && (
-          <span className={styles.reasoningDuration}>{formatDuration(block.duration)}</span>
+        {duration !== undefined && (
+          <span className={styles.reasoningDuration}>{formatDuration(duration)}</span>
         )}
         <span className={styles.reasoningToggleIcon}>
           {expanded ? '−' : '+'}

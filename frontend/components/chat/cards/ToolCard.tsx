@@ -21,7 +21,12 @@ export function ToolCard({ toolData, duration }: ToolCardProps) {
     : ''
 
   const preview = getToolPreview(toolData)
-  const hasResult = (toolData.toolOutput?.length ?? 0) > 0
+  const hasResult = toolData.toolOutput?.some((output) => output.kind !== 'decision') ?? false
+  const statusLabel = toolData.approvalStatus === 'pending' && !hasResult ? '等待审批'
+    : toolData.approvalStatus === 'rejected' ? '已拒绝'
+      : hasResult ? '工具执行完成'
+        : toolData.approvalStatus === 'approved' || toolData.approvalStatus === 'edited'
+          ? '已批准，等待工具结果' : '工具执行中'
 
   return (
     <div className={styles.toolCard}>
@@ -36,9 +41,10 @@ export function ToolCard({ toolData, duration }: ToolCardProps) {
             hasResult ? styles.toolStatusSuccess : styles.toolStatusRunning
           }`}
           role="img"
-          aria-label={hasResult ? '工具执行成功' : '工具执行中'}
+          aria-label={statusLabel}
         />
         <span className={styles.toolName}>{toolName}</span>
+        {toolData.approvalStatus && <span className={styles.toolPreview}>{statusLabel}</span>}
         {preview && <span className={styles.toolPreview}>{preview}</span>}
         {duration !== undefined && (
           <span className={styles.toolDuration}>{formatDuration(duration)}</span>
