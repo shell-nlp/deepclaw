@@ -82,6 +82,6 @@ class DeviceEventRequest(BaseModel):
     type: Literal["task_event"] = "task_event"
     task_id: str
     sequence: int = Field(ge=1)
-    status: Literal["awaiting_approval", "running", "succeeded", "failed", "cancelled", "rejected", "uncertain"]
+    status: Literal["queued", "awaiting_approval", "running", "succeeded", "failed", "cancelled", "rejected", "uncertain"]
     output: str = Field(default="", max_length=16384)
     result: dict | None = None

@@ -1,0 +1,11 @@
+.update-panel{margin:0 0 22px;padding:17px 19px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.update-panel[data-available=true]{border-color:#b3c8ed;background:#f7faff}
+.update-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
+.update-heading h3{font-size:13px;font-weight:600;margin:0 0 6px}
+.update-heading p{margin:0;color:var(--muted);font-size:11px;line-height:1.8}
+.update-version{font-size:10px;color:var(--muted);white-space:nowrap;line-height:2}
+.update-actions{display:flex;justify-content:space-between;align-items:center;gap:15px;margin-top:13px}
+.update-actions>span{color:#718099;font-size:10px;line-height:1.8;max-width:420px}
+.update-progress{display:flex;gap:12px;align-items:center;margin-top:13px;font-size:11px;color:var(--blue)}
+.update-progress progress{flex:1;height:6px;accent-color:var(--blue)}
+@media(max-width:820px){.update-heading{flex-wrap:wrap;gap:5px}.update-actions{align-items:flex-start}}

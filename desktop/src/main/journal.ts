@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite'
 import type { ExecuteTask, LocalTask, Policy, TaskEvent, TaskStatus } from '../shared/protocol'
+import { isApprovalMode } from '../shared/approval'
 
 export const terminal = new Set<TaskStatus>(['succeeded', 'failed', 'cancelled', 'rejected', 'uncertain'])
 
@@ -19,9 +20,9 @@ export class Journal {
   /** 获取最近任务；Args: 无。 */
   tasks(): LocalTask[] { return this.db.prepare('SELECT body FROM tasks ORDER BY rowid DESC LIMIT 50').all().map(row => JSON.parse(String(row.body))) }
   /** 获取所有未结束任务，不受界面分页影响；Args: 无。 */
-  active(): LocalTask[] { return this.db.prepare('SELECT body FROM tasks').all().map(row => JSON.parse(String(row.body)) as LocalTask).filter(task => !terminal.has(task.status)) }
-  /** 先登记再审批，同一 ID 永远不能二次启动；Args: task 服务端任务。 */
-  insert(task: ExecuteTask): boolean { return this.db.prepare('INSERT OR IGNORE INTO tasks(id,body) VALUES (?,?)').run(task.task_id, JSON.stringify({ ...task, status: 'awaiting_approval', output: '', result: null })).changes > 0 }
+  active(): LocalTask[] { return this.db.prepare('SELECT body FROM tasks ORDER BY rowid').all().map(row => JSON.parse(String(row.body)) as LocalTask).filter(task => !terminal.has(task.status)) }
+  /** 先登记再审批，同一 ID 永远不能二次启动；Args: task 服务端任务, automatic 是否由本机策略自动批准。 */
+  insert(task: ExecuteTask, automatic = false): boolean { return this.db.prepare('INSERT OR IGNORE INTO tasks(id,body) VALUES (?,?)').run(task.task_id, JSON.stringify({ ...task, status: automatic ? 'queued' : 'awaiting_approval', approval: automatic ? 'automatic' : 'manual', output: '', result: null })).changes > 0 }
   /** 原子记录状态及待确认事件；Args: id 任务, status 状态, output 新增输出, result 结果。 */
   event(id: string, status: TaskStatus, output = '', result: Record<string, unknown> | null = null): TaskEvent {
     const task = this.task(id)
@@ -43,7 +44,8 @@ export class Journal {
   ack(id: string, sequence: number) { this.db.prepare('DELETE FROM events WHERE task_id=? AND seq<=?').run(id, sequence) }
   /** 每次启动关闭权限，并隔离重启前的任务；Args: 无。 */
   boot(): Policy {
-    const policy = this.get<Policy>('policy', { enabled: false, revision: 0, capabilities: ['files.read'], roots: [] })
+    const policy = this.get<Policy>('policy', { enabled: false, revision: 0, capabilities: ['files.read'], roots: [], approvalMode: 'confirm' })
+    policy.approvalMode = isApprovalMode(policy.approvalMode) ? policy.approvalMode : 'confirm'
     policy.enabled = false; policy.revision += 1; this.set('policy', policy)
     for (const task of this.active()) this.event(task.task_id, task.status === 'running' ? 'uncertain' : 'cancelled', '', { message: '客户端已重启，未重新执行，请核对已有操作结果' })
     return policy

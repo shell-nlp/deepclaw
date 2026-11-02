@@ -1,0 +1,26 @@
+.approval-mode-picker{border:0;border-top:1px solid var(--line);margin:0;padding:20px 26px 18px;min-width:0}
+.approval-mode-picker legend{float:left;padding:0;margin:0 0 7px;font-size:13px;font-weight:600;width:100%}
+.approval-mode-intro{clear:both;font-size:11px;line-height:1.8;color:var(--muted);margin:0 0 13px}
+.approval-mode-options{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.approval-mode-option{position:relative;display:flex;align-items:flex-start;gap:11px;border:1px solid #dce3ef;border-radius:9px;background:#fff;padding:15px 13px;cursor:pointer;min-width:0}
+.approval-mode-option:hover{border-color:#a9bcdd;background:#fafcff}
+.approval-mode-option[data-selected=true]{border-color:#7e9ee5;background:#f5f8ff}
+.approval-mode-option[data-mode=auto][data-selected=true]{border-color:#d2a478;background:#fffbf5;color:#976022}
+.approval-mode-option input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
+.approval-mode-option:has(input:focus-visible){outline:3px solid #95b5ff;outline-offset:3px}
+.approval-mode-picker:disabled .approval-mode-option{opacity:.55;cursor:wait}
+.approval-mode-icon{width:22px;height:22px;color:#6e7e94;margin-top:1px}
+.approval-mode-option[data-selected=true] .approval-mode-icon{color:var(--blue)}
+.approval-mode-option[data-mode=auto][data-selected=true] .approval-mode-icon{color:#ac702d}
+.approval-mode-copy{display:grid;gap:7px;flex:1;min-width:0}
+.approval-mode-copy strong{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;line-height:1.6;flex-wrap:wrap}
+.approval-mode-copy small{font-size:10px;font-weight:400;color:#72839c;background:#edf1f7;border-radius:4px;padding:0 5px}
+.approval-mode-copy>span{font-size:11px;line-height:1.8;color:var(--muted)}
+.approval-mode-check{width:17px;height:17px;margin-top:2px;border:1px solid #cdd7e7;border-radius:50%;flex-shrink:0;color:transparent}
+.approval-mode-check svg{width:15px;height:15px;vertical-align:top}
+.approval-mode-option[data-selected=true] .approval-mode-check{background:var(--blue);border-color:var(--blue);color:#fff}
+.approval-mode-option[data-mode=auto][data-selected=true] .approval-mode-check{background:#ac702d;border-color:#ac702d}
+.approval-mode-boundary{font-size:11px;color:#65758c;line-height:1.9;margin:13px 0 0}
+.approval-mode-boundary strong{font-weight:600;color:#976022}
+.approval-mode-footnote{font-size:10px;line-height:1.8;color:#7a8697;margin:5px 0 0}
+@media(max-width:900px){.approval-mode-options{grid-template-columns:1fr}}

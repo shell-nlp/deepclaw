@@ -44,6 +44,8 @@ const { ChannelJobList } = await import('../components/chat/management/ChannelJo
 const { DevicePicker } = await import('../components/chat/shared/DevicePicker.tsx')
 const { DeviceDetail } = await import('../components/chat/management/devices/DeviceDetail.tsx')
 const { DeviceDownload } = await import('../components/chat/management/devices/DeviceDownload.tsx')
+const { DeviceConnectionPanel } = await import('../components/chat/management/devices/DeviceConnectionPanel.tsx')
+const { DeviceCopyField } = await import('../components/chat/management/devices/DeviceCopyField.tsx')
 const { isDecisionAllowedForAllActions, updateValueAtPath } = await import('../components/chat/interrupt/utils.ts')
 const require = createRequire(import.meta.url)
 const React = require('react')
@@ -59,6 +61,27 @@ const snapshot = [
   { id: 'a2', role: 'assistant', content: '北京晴天' },
 ]
 const placeholder = () => ({ id: 'local', role: 'ai', content: '', startedAt: 1000 })
+
+test('本机连接信息常驻，配对码独立展示，过期后只能重新生成', () => {
+  const render = props => renderToStaticMarkup(React.createElement(DeviceConnectionPanel, { remaining: 0, onCollapse() {}, ...props }))
+  const initial = render({})
+  assert.match(initial, /服务器地址/)
+  assert.match(initial, /复制服务器地址/)
+  assert.match(initial, /点击「连接新设备」生成配对码/)
+  const pairing = render({ code: 'pairing-once', remaining: 200 })
+  assert.match(pairing, /value="pairing-once"/)
+  assert.match(pairing, /复制配对码/)
+  assert.match(pairing, /200 秒后失效/)
+  assert.match(pairing, /收起配对码/)
+  const expired = render({ code: 'pairing-once' })
+  assert.match(expired, /配对码已过期/)
+  assert.doesNotMatch(expired, /value="pairing-once"/)
+  assert.match(expired, /disabled="" aria-label="复制配对码"/)
+  const field = renderToStaticMarkup(React.createElement(DeviceCopyField, { label: '服务器地址', value: 'https://claw.example.org:8443' }))
+  assert.match(field, /value="https:\/\/claw.example.org:8443"/)
+  assert.match(field, /readOnly=""/)
+  assert.doesNotMatch(field, /disabled=""/)
+})
 
 test('安装包发布后提供真实附件链接，未发布或加载失败时展示原因与重试', () => {
   const render = installer => renderToStaticMarkup(React.createElement(DeviceDownload, { installer, onRetry() {} }))

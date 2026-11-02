@@ -1,4 +1,6 @@
-"""本机助手安装包的受控分发入口。"""
+"""本机助手安装包与更新清单的受控分发入口。"""
+
+import re
 
 from fastapi import APIRouter, HTTPException, Response
 from fastapi.responses import FileResponse
@@ -48,3 +50,31 @@ async def download_installer():
     except OSError:
         pass
     raise HTTPException(404, "本机助手安装包暂未发布，请联系管理员。")
+
+
+@router.get("/updates/latest.yml")
+async def update_manifest():
+    """分发最新版本清单，不允许缓存过期发布状态。
+
+    Args:
+        无。
+    """
+    path = INSTALLER_PATH.parent / "updates" / "latest.yml"
+    if not path.is_file():
+        raise HTTPException(404, "本机助手更新清单暂未发布。")
+    return FileResponse(path, media_type="application/yaml", headers={"Cache-Control": "no-store"})
+
+
+@router.get("/updates/{file_name}")
+async def update_artifact(file_name: str):
+    """仅分发符合固定命名规则的 Windows 更新包与差分映射。
+
+    Args:
+        file_name: 无目录的版本文件名。
+    """
+    if not re.fullmatch(r"DeepClaw-Setup-x64-\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?\.exe(?:\.blockmap)?", file_name):
+        raise HTTPException(404, "更新文件不存在。")
+    path = INSTALLER_PATH.parent / "updates" / file_name
+    if not path.is_file():
+        raise HTTPException(404, "更新文件不存在。")
+    return FileResponse(path, media_type="application/octet-stream", headers={"Cache-Control": "no-cache"})

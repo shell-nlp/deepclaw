@@ -1,5 +1,7 @@
 """安装包发布状态与公开下载链路测试。"""
 
+import json
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -59,3 +61,28 @@ def test_installer_download_and_range_without_login(installer_client):
     response = installer_client.get("/api/devices/installer/windows-x64", headers={"Range": "bytes=0-1"})
     assert response.status_code == 206
     assert response.content == b"MZ"
+
+
+def test_update_manifest_and_versioned_files(installer_client):
+    """公开更新清单和版本附件支持范围读取，禁止任意文件路径。
+
+    Args:
+        installer_client: 隔离 HTTP 客户端。
+    """
+    assert installer_client.get("/api/devices/updates/latest.yml").status_code == 404
+    updates = installer.INSTALLER_PATH.parent / "updates"
+    updates.mkdir()
+    manifest = {"version": "0.1.2", "files": [{"url": "DeepClaw-Setup-x64-0.1.2.exe"}]}
+    (updates / "latest.yml").write_text(json.dumps(manifest), encoding="utf-8")
+    (updates / "DeepClaw-Setup-x64-0.1.2.exe").write_bytes(b"MZ-update")
+    (updates / "DeepClaw-Setup-x64-0.1.2.exe.blockmap").write_bytes(b"blockmap")
+    (updates / "credentials.json").write_bytes(b"private")
+    response = installer_client.get("/api/devices/updates/latest.yml")
+    assert response.json() == manifest
+    assert response.headers["cache-control"] == "no-store"
+    response = installer_client.get("/api/devices/updates/DeepClaw-Setup-x64-0.1.2.exe", headers={"Range": "bytes=0-1"})
+    assert response.status_code == 206
+    assert response.content == b"MZ"
+    assert installer_client.get("/api/devices/updates/DeepClaw-Setup-x64-0.1.2.exe.blockmap").content == b"blockmap"
+    assert installer_client.get("/api/devices/updates/credentials.json").status_code == 404
+    assert installer_client.get("/api/devices/updates/DeepClaw-Setup-x64-0.1.3.exe").status_code == 404
