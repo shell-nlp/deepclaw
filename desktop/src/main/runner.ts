@@ -1,7 +1,8 @@
 import WebSocket from 'ws'
 import type { DesktopState, ExecuteTask, Policy, TaskEvent } from '../shared/protocol'
 import { Journal, terminal } from './journal'
-import { assertPermission, serverUrl } from './permissions'
+import { assertPermission, requiresApproval, serverUrl } from './permissions'
+import { isApprovalMode } from '../shared/approval'
 import { execute } from './executor'
 
 export interface Credentials { server: string; device_id: string; token: string; name: string }
@@ -84,6 +85,7 @@ export class Runner {
 
   /** 变更权限先落本机并中止旧任务，再通知服务端；Args: change 授权变更。 */
   updatePolicy(change: Partial<Policy>) {
+    if (change.approvalMode !== undefined && !isApprovalMode(change.approvalMode)) throw new Error('审批模式不合法')
     const old = this.policy
     this.policy = { ...old, ...change, revision: old.revision + 1 }
     if (this.policy.enabled && (!this.connected || !this.policy.roots.length)) { this.policy.enabled = false; this.error = '请先连接服务器并选择授权目录' }
@@ -93,22 +95,25 @@ export class Runner {
   }
 
   /** 发布当前完整权限快照；Args: 无。 */
-  private sendPolicy() { if (this.connected) this.send({ type: 'policy', ...this.policy }) }
+  private sendPolicy() {
+    const { enabled, revision, capabilities, roots } = this.policy
+    if (this.connected) this.send({ type: 'policy', enabled, revision, capabilities, roots })
+  }
 
   /** 先持久化接收记录，再决定是否进入本机确认；Args: task 原始任务。 */
   private accept(task: ExecuteTask) {
-    if (!this.journal.insert(task)) { this.flush(); return }
+    const automatic = !requiresApproval(task.operation, this.policy.approvalMode)
+    if (!this.journal.insert(task, automatic)) { this.flush(); return }
     try { assertPermission(task, this.policy) }
     catch (error) { this.record(task.task_id, 'rejected', '', { message: (error as Error).message }); return }
-    // 读取授权目录无需逐次确认；写入和任意命令必须在本机确认。
-    this.record(task.task_id, 'awaiting_approval')
-    if (!this.working && ['read_file', 'list_files'].includes(task.operation)) void this.decide(task.task_id, true)
+    this.record(task.task_id, automatic ? 'queued' : 'awaiting_approval')
+    if (!this.working && automatic) void this.decide(task.task_id, true)
   }
 
   /** 对不可变任务作出本机审批；Args: id 任务标识, approve 是否批准。 */
   async decide(id: string, approve: boolean) {
     const task = this.journal.task(id)
-    if (!task || task.status !== 'awaiting_approval') return
+    if (!task || !['awaiting_approval', 'queued'].includes(task.status)) return
     if (!approve) { this.record(id, 'rejected', '', { message: '用户在本机拒绝了此操作' }); return }
     if (this.working) throw new Error('请等待当前任务结束后再批准')
     try { assertPermission(task, this.policy) }
@@ -131,8 +136,8 @@ export class Runner {
       this.record(id, controller.signal.aborted ? 'cancelled' : 'failed', '', { message: (error as Error).message })
     } finally {
       clearInterval(timer); this.controllers.delete(id); this.working = false; this.changed()
-      // 自动读取按到达顺序继续，审批操作始终等待用户动作。
-      const next = this.journal.active().find(item => item.status === 'awaiting_approval' && ['read_file', 'list_files'].includes(item.operation))
+      // 自动任务按到达顺序继续；权限变更会先取消旧版本任务。
+      const next = this.journal.active().find(item => item.status === 'queued')
       if (next) void this.decide(next.task_id, true)
     }
   }

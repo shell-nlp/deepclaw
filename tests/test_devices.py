@@ -127,6 +127,32 @@ def test_connection_lease_and_event_replay_cannot_overwrite(tmp_path):
     asyncio.run(run())
 
 
+def test_automatic_queue_event_is_persisted(tmp_path):
+    """设备自动执行排队事件经过协议校验后可保存并读取。
+
+    Args:
+        tmp_path: 隔离测试数据库。
+    """
+    async def run():
+        """通过真实存储验证排队与运行状态转换。
+
+        Args:
+            无。
+        """
+        store = DeviceStore(f"sqlite:///{tmp_path / 'devices.db'}")
+        try:
+            device_id, _ = await paired(store)
+            task = await store.create_task(device_id=device_id, user_id="alice", operation="run_command",
+                arguments={"cwd": "D:\\工作", "program": "node", "argv": []}, tool_call_id="auto-call", thread_id="thread")
+            await store.event(device_id, "connection-a", DeviceEventRequest(task_id=task.id, sequence=1, status="queued"))
+            assert (await store.task(task.id)).status == "queued"
+            await store.event(device_id, "connection-a", DeviceEventRequest(task_id=task.id, sequence=2, status="running"))
+            assert (await store.task(task.id)).status == "running"
+        finally:
+            await store.engine.dispose()
+    asyncio.run(run())
+
+
 def test_device_api_ownership_and_real_websocket(tmp_path):
     """通过真实 ASGI WebSocket 验证连接、授权、凭据与管理 API。
 

@@ -1,6 +1,6 @@
 {
   "name": "deepclaw-desktop",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "private": true,
   "description": "DeepClaw 本机助手",
   "author": "DeepClaw",
@@ -11,21 +11,47 @@
     "start": "electron .",
     "test": "node --test \"tests/*.test.mjs\"",
     "package:dir": "pnpm build && electron-builder --dir",
-    "package:win": "pnpm build && electron-builder --win nsis && node scripts/publish-installer.mjs"
+    "package:win": "pnpm build && electron-builder --win nsis --publish never && node scripts/publish-installer.mjs"
   },
-  "dependencies": { "ws": "^8.18.0" },
+  "dependencies": {
+    "electron-updater": "6.8.11",
+    "ws": "^8.18.0"
+  },
   "devDependencies": {
-    "electron": "45.1.0", "electron-builder": "26.18.0",
-    "react": "^19.0.0", "react-dom": "^19.0.0", "vite": "^7.0.0",
-    "typescript": "^5.9.0", "@types/node": "^24.0.0", "@types/ws": "^8.18.0",
-    "@types/react": "^19.0.0", "@types/react-dom": "^19.0.0"
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/ws": "^8.18.0",
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.0.0"
   },
   "build": {
-    "appId": "com.deepclaw.assistant", "productName": "DeepClaw 本机助手",
+    "artifactName": "DeepClaw-Setup-x64-${version}.${ext}",
+    "publish": { "provider": "generic", "url": "https://updates.invalid" },
+    "appId": "com.deepclaw.assistant",
+    "productName": "DeepClaw 本机助手",
     "electronDist": "node_modules/electron/dist",
-    "directories": { "output": "release" },
-    "files": ["dist/**/*", "ui/**/*", "assets/**/*", "package.json"],
-    "win": { "target": "nsis", "icon": "assets/icon.ico" },
-    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "perMachine": false }
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "ui/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
+    }
   }
 }

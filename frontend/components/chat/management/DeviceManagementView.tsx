@@ -6,6 +6,7 @@ import type { useDevices, DeviceRequest, ClientDeviceTask } from '../hooks/useDe
 import { DeviceDetail } from './devices/DeviceDetail'
 import { DeviceTaskList } from './devices/DeviceTaskList'
 import { DeviceDownload } from './devices/DeviceDownload'
+import { DeviceConnectionPanel } from './devices/DeviceConnectionPanel'
 import { useDeviceInstaller } from '../hooks/useDeviceInstaller'
 import styles from './devices/Devices.module.css'
 
@@ -56,7 +57,7 @@ export function DeviceManagementView({ actor, state, requestJson, onLogin }: { a
   return <div className={styles.page}><header className={styles.header}><div><h1>我的设备</h1><p>把工作交给智能体，把本机控制权留在自己手里。</p></div><div className={styles.headerActions}>{(actor.isGuest || state.devices.length > 0) && <DeviceDownload installer={installer} onRetry={retry}/>}<div>{!actor.isGuest && <button className={styles.primary} disabled={!!busy} onClick={() => void act('pair', async () => { setPairing(await requestJson('/api/devices/pairings', { method: 'POST' })); setNow(Date.now()) })}>连接新设备</button>}</div></div></header>
     {(error || state.error) && <div className={styles.error} role="alert">{error || state.error}<button onClick={state.refresh}>刷新</button></div>}
     {actor.isGuest ? <div className={styles.empty}><DeviceOutline/><h2>登录后，连接你的电脑</h2><p>设备只归属于你的账户。每台电脑独立授权，随时关闭。</p><button className={styles.primary} onClick={onLogin}>前往登录</button></div> : <>
-      {pairing && <section className={styles.pairing} aria-label="设备配对"><div><h2>在本机助手中完成配对</h2><p>输入当前服务器地址，再粘贴下面的配对码。配对后访问默认关闭。</p></div><div className={styles.pairingCode}><input aria-label="一次性设备配对码" readOnly value={remaining ? pairing.code : '配对码已过期，请重新生成'}/><button disabled={!remaining} onClick={() => void act('copy', () => navigator.clipboard.writeText(pairing.code))}>复制</button></div><span>{remaining ? `${remaining} 秒后失效，只能使用一次` : '已过期'}</span><button className={styles.textButton} onClick={() => setPairing(null)}>收起</button></section>}
+      <DeviceConnectionPanel code={pairing?.code} remaining={remaining} onCollapse={() => setPairing(null)}/>
       {!state.devices.length ? <div className={styles.empty}><DeviceOutline/><h2>{state.loading ? '正在查询设备…' : '连接第一台电脑'}</h2><p>安装并打开 DeepClaw 本机助手，然后点击「连接新设备」生成配对码。</p><DeviceDownload installer={installer} onRetry={retry}/><div className={styles.steps}><span>下载安装</span><b>›</b><span>配对账户</span><b>›</b><span>在本机开启访问</span></div></div> : <div className={styles.layout}><nav className={styles.deviceList} aria-label="我的设备列表">{state.devices.map(item => <button key={item.id} aria-current={deviceId === item.id ? 'true' : undefined} onClick={() => setActiveId(item.id)}><DeviceOutline/><span><strong>{item.name}</strong><small>{item.enabled ? '允许访问' : item.online ? '访问已关闭' : '离线'}</small></span><i data-online={item.online}/></button>)}</nav><div className={styles.content}>{device && <DeviceDetail key={device.id} device={device} busy={!!busy} onRevoke={() => void act('revoke', () => requestJson(`/api/devices/${device.id}`, { method: 'DELETE' }))}/>}<DeviceTaskList tasks={tasks} busy={busy} onCancel={id => void act(id, () => requestJson(`/api/devices/${deviceId}/tasks/${id}/cancel`, { method: 'POST' }))}/></div></div>}
     </>}
   </div>

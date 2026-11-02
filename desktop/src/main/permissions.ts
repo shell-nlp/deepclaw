@@ -1,8 +1,30 @@
 import path from 'node:path'
 import fs from 'node:fs/promises'
-import type { ExecuteTask, Policy } from '../shared/protocol'
+import type { ApprovalMode, ExecuteTask, Operation, Policy, PolicyChange } from '../shared/protocol'
+import { isApprovalMode } from '../shared/approval'
 
 const capabilities = { list_files: 'files.read', read_file: 'files.read', write_file: 'files.write', run_command: 'command.run' }
+
+/** 校验来自本机界面的权限修改，禁止未知字段和非法模式。
+ * Args:
+ *   change: IPC 提交的权限修改。
+ */
+export function validatePolicyChange(change: unknown): PolicyChange {
+  if (!change || typeof change !== 'object' || Array.isArray(change) || Object.entries(change).some(([key, value]) =>
+    key === 'approvalMode' ? !isApprovalMode(value) : !['enabled', 'allowWrite', 'allowCommand'].includes(key) || typeof value !== 'boolean')) throw new Error('授权参数不合法')
+  return change as PolicyChange
+}
+
+/** 根据本机模式判定是否逐次询问，不改变能力和目录校验。
+ * Args:
+ *   operation: 待执行操作。
+ *   mode: 本机保存的审批模式。
+ */
+export function requiresApproval(operation: Operation, mode: ApprovalMode): boolean {
+  if (operation === 'list_files' || operation === 'read_file') return false
+  if (operation === 'write_file') return mode !== 'auto'
+  return operation !== 'run_command' || mode !== 'auto'
+}
 
 /** 校验本机开关、权限版本和任务期限；Args: task 原始任务, policy 本机授权。 */
 export function assertPermission(task: ExecuteTask, policy: Policy) {

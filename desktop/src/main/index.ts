@@ -4,15 +4,19 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Journal } from './journal'
 import { Runner, type Credentials } from './runner'
-import { serverUrl } from './permissions'
+import { serverUrl, validatePolicyChange } from './permissions'
+import { autoUpdater } from 'electron-updater'
+import { DesktopUpdates } from './updates'
 
 let window: BrowserWindow | null = null
 let tray: Tray | null = null
 let exiting = false
 let runner: Runner
 let journal: Journal
+let updates: DesktopUpdates
 const page = path.join(__dirname, '../../ui/index.html')
 const notified = new Set<string>()
+const updateNotified = new Set<string>()
 const profile = app.commandLine.getSwitchValue('user-data-dir')
 if (profile && path.isAbsolute(profile)) app.setPath('userData', profile)
 
@@ -39,6 +43,16 @@ async function start() {
   app.setAppUserModelId('com.deepclaw.assistant')
   journal = new Journal(path.join(app.getPath('userData'), 'device.db'))
   runner = new Runner(journal, changed)
+  updates = new DesktopUpdates(autoUpdater, app.getVersion(), app.isPackaged && process.platform === 'win32', state => {
+    if (window && !window.isDestroyed()) window.webContents.send('device:update-changed', state)
+    if (state.status === 'available' && state.latestVersion && !updateNotified.has(state.latestVersion)) {
+      updateNotified.add(state.latestVersion)
+      if (Notification.isSupported()) {
+        const notice = new Notification({ title: `DeepClaw ${state.latestVersion} 已发布`, body: '打开本机助手查看。仅在点击“更新并重启”后下载和安装。' })
+        notice.on('click', show); notice.show()
+      }
+    }
+  }, async () => { await runner.shutdown() })
   window = new BrowserWindow({ width: 1050, height: 790, minWidth: 760, minHeight: 620, title: 'DeepClaw 本机助手', backgroundColor: '#f3f5f8', show: false,
     webPreferences: { preload: path.join(__dirname, '../preload/index.js'), contextIsolation: true, nodeIntegration: false, sandbox: true } })
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
@@ -54,7 +68,11 @@ async function start() {
     })
   }
   handle('device:state', () => ({ ...runner.state(), name: runner.state().name || hostname() }))
+  handle('device:update-state', () => updates.snapshot())
+  handle('device:check-update', () => updates.check())
+  handle('device:install-update', () => updates.install())
   handle('device:pair', async (server: string, code: string, name: string) => {
+    if (updates.busy) throw new Error('正在更新，请完成后再配对')
     if (runner.credentials) throw new Error('请先解绑当前设备')
     if (typeof server !== 'string' || typeof code !== 'string' || typeof name !== 'string' || code.length > 128 || !name.trim() || name.length > 80) throw new Error('请填写服务器地址、配对码和设备名称')
     if (!safeStorage.isEncryptionAvailable()) throw new Error('系统凭据加密不可用，无法安全保存设备凭据')
@@ -65,16 +83,16 @@ async function start() {
     if (typeof data.device_id !== 'string' || typeof data.token !== 'string') throw new Error('服务器返回的配对信息不完整')
     const credentials: Credentials = { server: origin, name: name.trim(), ...data }
     journal.set('credentials', safeStorage.encryptString(JSON.stringify(credentials)).toString('base64'))
-    runner.start(credentials); changed()
+    runner.start(credentials); updates.setServer(origin); changed()
   })
-  handle('device:policy', (change: { enabled?: boolean; allowWrite?: boolean; allowCommand?: boolean }) => {
-    if (!change || typeof change !== 'object' || Object.entries(change).some(([key, value]) => !['enabled', 'allowWrite', 'allowCommand'].includes(key) || typeof value !== 'boolean')) throw new Error('授权参数不合法')
+  handle('device:policy', (input: unknown) => {
+    const change = validatePolicyChange(input)
     const capabilities = new Set(runner.policy.capabilities)
     for (const [key, capability] of [['allowWrite', 'files.write'], ['allowCommand', 'command.run']] as const) {
       if (change[key] === true) capabilities.add(capability)
       if (change[key] === false) capabilities.delete(capability)
     }
-    runner.updatePolicy({ ...(change.enabled === undefined ? {} : { enabled: change.enabled }), capabilities: [...capabilities] })
+    runner.updatePolicy({ ...(change.enabled === undefined ? {} : { enabled: change.enabled }), ...(change.approvalMode === undefined ? {} : { approvalMode: change.approvalMode }), capabilities: [...capabilities] })
   })
   handle('device:add-root', async () => {
     const result = await dialog.showOpenDialog(window!, { title: '选择允许智能体访问的目录', properties: ['openDirectory'] })
@@ -86,7 +104,7 @@ async function start() {
     void runner.decide(id, approve).catch(error => { runner.error = error.message; changed() })
   })
   handle('device:cancel', (id: string) => { if (typeof id !== 'string') throw new Error('任务参数不合法'); runner.cancel(id) })
-  handle('device:unpair', () => { runner.stop(); journal.set('credentials', null); runner.credentials = null; changed() })
+  handle('device:unpair', () => { updates.setServer(null); runner.stop(); journal.set('credentials', null); runner.credentials = null; changed() })
   await window.loadFile(page)
   // 托盘图标由应用自身绘制，不引入远程资源。
   const icon = nativeImage.createFromPath(path.join(__dirname, '../../assets/icon.png'))
@@ -98,6 +116,7 @@ async function start() {
   if (encrypted) {
     try {
       runner.start(JSON.parse(safeStorage.decryptString(Buffer.from(encrypted, 'base64'))))
+      updates.setServer(runner.credentials!.server)
     }
     catch { runner.error = '设备凭据无法读取，请重新配对'; changed() }
   }
@@ -110,8 +129,10 @@ else {
   app.on('before-quit', event => {
     if (exiting) return
     event.preventDefault()
+    updates?.dispose()
     exiting = true
-    void (runner?.shutdown() ?? Promise.resolve()).finally(() => { journal?.close(); tray?.destroy(); app.quit() })
+    void (runner?.shutdown() ?? Promise.resolve()).finally(() => app.quit())
   })
+  app.on('will-quit', () => { updates?.dispose(); journal?.close(); tray?.destroy() })
   app.on('window-all-closed', () => { /* 托盘应用保持运行，由退出操作结束。 */ })
 }

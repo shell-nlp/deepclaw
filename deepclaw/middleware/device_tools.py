@@ -49,8 +49,8 @@ async def device_tool_placeholder(**kwargs):
 DEFINITIONS = {
     "list_files": (DevicePathRequest, "列出已授权客户端设备目录中的文件"),
     "read_file": (DevicePathRequest, "读取已授权客户端设备上的 UTF-8 文本文件"),
-    "write_file": (DeviceWriteRequest, "在客户端设备授权目录中写入 UTF-8 文本，等待本机确认"),
-    "run_command": (DeviceCommandRequest, "在客户端设备执行程序，必须等待本机确认，返回输出和退出码"),
+    "write_file": (DeviceWriteRequest, "在客户端设备授权目录中写入 UTF-8 文本，是否逐次确认由本机审批模式决定"),
+    "run_command": (DeviceCommandRequest, "在客户端设备执行程序，遵循本机审批模式，返回输出和退出码"),
 }
 
 

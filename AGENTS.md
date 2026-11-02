@@ -99,8 +99,10 @@
 
 - `deepclaw/web_backend/devices/`：设备配对、用户归属管理、WSS 连接和共享数据库任务队列。`store.py` 使用 SQLModel 原生异步会话，只延迟创建 `devices`、`device_pairings`、`device_tasks`；默认优先 PG，否则 `.deepclaw/devices.db`。应用关闭释放已创建连接池。
 - `deepclaw/middleware/device_tools.py`：每次模型调用按可信用户身份、在线授权和本轮 `device_id` 动态注入设备工具；执行再次校验，禁止回退服务端操作客户端路径。网页 `device_id=null` 禁用本轮设备工具。
-- `desktop/`：Electron + React + TypeScript 本机助手。`src/main` 承载连接、SQLite 去重、权限和进程执行，`src/preload` 只暴露固定 IPC，`src/renderer` 为控制台。总开关由本机控制，重启、断线后关闭；修改和命令必须在本机逐次批准。命令拥有当前账户权限，授权工作目录不是进程沙箱。
+- `desktop/`：Electron + React + TypeScript 本机助手。`src/main` 承载连接、SQLite 去重、权限和进程执行，`src/preload` 只暴露固定 IPC，`src/renderer` 为控制台。总开关由本机控制，重启、断线后关闭。操作审批只有「请求批准」（默认，修改与命令逐次确认）和「完全访问权限」（已开启能力自动执行）两档，由 `src/renderer/components/ApprovalModePicker.tsx` 展示，类型及文案位于 `src/shared/approval.ts`，主进程独立校验并执行。模式保存在本机，不从服务端指令读取；旧配置回退请求批准。切换模式先取消旧任务，自动任务以 `queued` 状态串行执行，保留去重与终止保护。命令拥有当前账户权限，授权工作目录不是进程沙箱。
 - 前端 `chat/management/DeviceManagementView.tsx` 编排设备管理，子组件位于 `management/devices/`；`hooks/useDevices.ts` 管理当前账号设备与选择，`shared/DevicePicker.tsx` 供聊天选择设备。网页仅展示权限和撤销凭据，不提供远程开启接口。
+- `management/devices/DeviceConnectionPanel.tsx` 在设备列表上方常驻展示当前网页 origin 作为服务器地址，生成配对码后在同一区域展示；`DeviceCopyField.tsx` 复用地址和配对码的复制、反馈及手动选择能力。地址只在浏览器挂载后获取，不包含路径、查询参数和哈希。
+- `desktop/src/main/updates.ts`：基于 electron-updater 每小时检查已配对服务器，只在本机用户点击后下载、停止任务并安装；禁止自动下载、退出自动安装和降级。`UpdatePanel.tsx` 独立展示版本与进度，preload 仅提供固定检查/安装 IPC。`devices/installer.py` 公开 `/api/devices/updates/latest.yml` 和固定命名的版本包、blockmap；发布器先分发版本文件，最后原子替换清单，禁止不同内容覆盖同一版本。需整体挂载 `.deepclaw/downloads`，不新增数据库迁移。
 - `/api/devices` 提供设备列表；`POST /pairings` 创建登录用户配对码，`POST /pairings/claim` 单次消费配对码；`DELETE /{device_id}` 撤销，`GET /{device_id}/tasks` 查询，`POST /{device_id}/tasks/{task_id}/cancel` 请求取消；`/connect` 是设备专用令牌鉴权的 WebSocket。
 - 稳定任务 ID 和客户端执行前持久化阻止重复执行；事件序号去重，终止状态不回退；未知任务的取消也必须持久化。不得对 `uncertain` 自动重新执行。
 - 设备部署、权限边界和回退见 `docs/local-devices.md`。桌面验证：`cd desktop` 后执行 `pnpm build`、`pnpm test`；后端、网页测试仍遵守本文件原有并行约定。
