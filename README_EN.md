@@ -73,9 +73,13 @@ It fits these situations:
 
 The "My devices" page pairs multiple computers and shows permissions and task records. Install the [desktop assistant](desktop/README.md), select local directories, enable access locally, then select the device in chat. Local approval has two modes: request approval before writes and commands, or automatically execute enabled capabilities. The installed assistant checks for updates hourly and only downloads and installs when the user clicks to update. Access turns off after disconnect or exit. The desktop uses Electron and TypeScript with the existing Python server. See [deployment and permission boundaries](docs/local-devices.md).
 
+![Web device management](assets/img/devices-web.png)
+
+![Desktop access, approval modes and updates](assets/img/devices-desktop.png)
+
 These cover the main workflows: chat with streaming tool calls, human approval, knowledge bases, skills,
-MCP management, the channel binding center and user management. Images live in `assets/img/` and can be
-replaced after UI changes.
+MCP management, the channel binding center and user management. Screenshots show the current UI as of
+November 2, 2026, using isolated demo data. Images live in `assets/img/`.
 
 ### Chat
 
