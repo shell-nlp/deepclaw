@@ -8,6 +8,8 @@ class StateSchema(AgentState):
 
     # 当前用户标识，由路由层写入可信值。
     user_id: NotRequired[str]
+    # 用户本轮选中的客户端设备，实际权限始终由服务端与本机再次校验。
+    device_id: NotRequired[str | None]
     # 是否启用联网搜索。
     internet_search: NotRequired[bool]
     # 是否启用深度思考。

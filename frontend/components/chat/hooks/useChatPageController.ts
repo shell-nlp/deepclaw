@@ -29,6 +29,7 @@ import { useKnowledgeManagement } from './useKnowledgeManagement'
 import { useChatRuntime } from './useChatRuntime'
 import { usePageRouting } from './usePageRouting'
 import { useHistorySessions } from './useHistorySessions'
+import { useDevices } from './useDevices'
 
 export function useChatPageController() {
   const selectedKnowledgeBaseRef = useRef<KnowledgeBase | null>(null)
@@ -115,6 +116,8 @@ export function useChatPageController() {
     onActorChange: () => resetUserScopedStateRef.current(),
     setManagementNotice,
   })
+
+  const deviceState = useDevices(requestJson, actor)
 
   const chatContainerRef = useRef<HTMLDivElement>(null)
   const isChatAtBottomRef = useRef(true)
@@ -652,6 +655,7 @@ export function useChatPageController() {
     setRunningThreadIds,
     internetSearch,
     deepThinking,
+    selectedDeviceId: deviceState.selectedDeviceId,
     showInterrupt,
     setShowInterrupt,
     interruptData,
@@ -716,6 +720,7 @@ export function useChatPageController() {
   } = runtime
   const chatDisabled = isKnowledgeMode && knowledgeIndexNames.length === 0
   return {
+    deviceState,
     viewMode,
     channelPage,
     channelNavExpanded,

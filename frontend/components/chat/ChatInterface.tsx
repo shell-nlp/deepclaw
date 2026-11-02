@@ -9,9 +9,11 @@ import { McpManagementView } from './management/McpManagementView'
 import { SkillManagementView } from './management/SkillManagementView'
 import { UserManagementView } from './management/UserManagementView'
 import { useChatPageController } from './hooks/useChatPageController'
+import { DeviceManagementView } from './management/DeviceManagementView'
 
 export default function ChatInterface() {
   const {
+    deviceState,
     viewMode,
     channelPage,
     channelNavExpanded,
@@ -202,6 +204,9 @@ export default function ChatInterface() {
         <main className={styles.mainContent}>
           {viewMode === 'chat' ? (
             <ChatView
+              devices={deviceState.available}
+              selectedDeviceId={deviceState.selectedDeviceId}
+              onDeviceChange={deviceState.setSelectedDeviceId}
               messages={messages}
               sessionId={sessionId}
               chatModeOptions={chatModeOptions}
@@ -241,6 +246,10 @@ export default function ChatInterface() {
               onRecommendedQuestion={askRecommendedQuestion}
               onRetryMessage={handleRetryMessage}
             />
+          ) : viewMode === 'devices' ? (
+            <div className={styles.managementViewport}>
+              <DeviceManagementView key={actor.userId} actor={actor} state={deviceState} requestJson={requestJson} onLogin={openLoginPage}/>
+            </div>
           ) : viewMode === 'skills' ? (
             <div className={styles.managementViewport}>
               <SkillManagementView

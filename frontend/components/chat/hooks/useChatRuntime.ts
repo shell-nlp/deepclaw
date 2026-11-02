@@ -65,6 +65,7 @@ type UseChatRuntimeDeps = {
   setRunningThreadIds: Dispatch<SetStateAction<string[]>>
   internetSearch: boolean
   deepThinking: boolean
+  selectedDeviceId?: string
   showInterrupt: boolean
   setShowInterrupt: Dispatch<SetStateAction<boolean>>
   interruptData: InterruptData | null
@@ -145,6 +146,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
     setRunningThreadIds,
     internetSearch,
     deepThinking,
+    selectedDeviceId,
     showInterrupt,
     setShowInterrupt,
     interruptData,
@@ -1099,6 +1101,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
       const state: Record<string, unknown> = {
         internet_search: internetSearch,
         deep_thinking: deepThinking,
+        device_id: selectedDeviceId || null,
       }
       if (knowledgeIndexNames.length > 0) {
         // 知识库模式由中间件自动检索，通用模式交给 retrieve_context 工具按需检索。

@@ -232,7 +232,7 @@ export interface BulkDeleteDocumentResponse {
   knowledge_base?: KnowledgeBase | null
 }
 
-export type ViewMode = 'chat' | 'knowledge' | 'mcp' | 'skills' | 'channels'
+export type ViewMode = 'chat' | 'knowledge' | 'mcp' | 'skills' | 'channels' | 'devices'
 export type ChannelManagementPage = 'weixin' | 'feishu'
 export type KnowledgePage =
   | 'libraries'
