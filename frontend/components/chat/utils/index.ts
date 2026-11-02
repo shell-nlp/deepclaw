@@ -43,6 +43,7 @@ export function getRouteHash(
   if (viewMode === 'chat') return '#/chat'
   if (viewMode === 'mcp') return '#/mcp'
   if (viewMode === 'skills') return '#/skills'
+  if (viewMode === 'devices') return '#/devices'
   if (viewMode === 'channels') return `#/channels/${channelPage}`
   return `#/knowledge/${knowledgePage}`
 }
@@ -54,6 +55,10 @@ export function parseRouteHash(hash: string): {
 } {
   const normalized = hash.replace(/^#/, '').replace(/^\/+/, '')
   const parts = normalized.split('/').filter(Boolean)
+
+  if (parts[0] === 'devices') {
+    return { viewMode: 'devices', knowledgePage: DEFAULT_KNOWLEDGE_PAGE, channelPage: DEFAULT_CHANNEL_PAGE }
+  }
 
   if (parts[0] === 'mcp') {
     return {

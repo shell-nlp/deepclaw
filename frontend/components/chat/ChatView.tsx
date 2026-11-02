@@ -7,6 +7,8 @@ import { InterruptPanel } from './interrupt/InterruptPanel'
 import type { InterruptEditedAction } from './interrupt/utils'
 import { AssistantMessageBody } from './cards/AssistantMessageBody'
 import { AgentModeSwitcher } from './shared/AgentModeSwitcher'
+import { DevicePicker } from './shared/DevicePicker'
+import type { ClientDevice } from './hooks/useDevices'
 import {
   KnowledgeBasePicker,
 } from './shared/KnowledgeBasePicker'
@@ -101,6 +103,9 @@ function ComposerToggle({ label, iconName, checked, onChange }: ComposerTogglePr
 }
 
 interface ChatViewProps {
+  devices?: ClientDevice[]
+  selectedDeviceId?: string
+  onDeviceChange?: (id: string) => void
   messages: Message[]
   sessionId: string
   chatModeOptions: ChatModeOption[]
@@ -145,6 +150,9 @@ interface ChatViewProps {
 }
 
 export function ChatView({
+  devices = [],
+  selectedDeviceId = '',
+  onDeviceChange,
   messages,
   sessionId,
   chatModeOptions,
@@ -303,6 +311,7 @@ export function ChatView({
           />
           <div className={styles.composerFooter}>
             <div className={styles.toggles}>
+              {!isKnowledgeMode && onDeviceChange && <DevicePicker devices={devices} value={selectedDeviceId} disabled={isProcessing} onChange={onDeviceChange}/>}
               <KnowledgeBasePicker
                 open={knowledgePickerOpen}
                 options={knowledgeBaseOptions}

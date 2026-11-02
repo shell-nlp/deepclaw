@@ -227,6 +227,8 @@ async def app_lifespan(app: FastAPI):
         if runtime_cache is not None:
             await runtime_cache.close()
         await get_run_store().close()
+        from deepclaw.web_backend.devices.store import close_device_store
+        await close_device_store()
         checkpointer_pool = getattr(app.state, "agent_checkpointer_pool", None)
         if checkpointer_pool is not None:
             await checkpointer_pool.close()

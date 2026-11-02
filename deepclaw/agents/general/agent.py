@@ -27,7 +27,7 @@ class GeneralAgent(Agent):
     description = "通用工具调用、MCP 与深度思考"
     capabilities = frozenset({"mcp", "deep_thinking", "internet_search"})
     allowed_state_keys = frozenset(
-        {"internet_search", "deep_thinking", "mcp_config", "index_names"}
+        {"internet_search", "deep_thinking", "mcp_config", "index_names", "device_id"}
     )
     is_default = True
 
@@ -51,6 +51,7 @@ class GeneralAgent(Agent):
             RecommendedQuestionsMiddleware,
         )
         from deepclaw.middleware.chart import ChartMiddleware
+        from deepclaw.middleware.device_tools import DeviceToolsMiddleware
 
         def when_get_weather(request) -> bool:
             """判断天气工具调用是否需要人工审批。
@@ -65,6 +66,7 @@ class GeneralAgent(Agent):
             RecommendedQuestionsMiddleware(),
             BusinessMiddleware(),
             MCPMiddleware(),
+            DeviceToolsMiddleware(),
             HumanInTheLoopMiddleware(
                 interrupt_on={
                     "get_weather": {
@@ -172,7 +174,10 @@ class GeneralAgent(Agent):
         if settings.USE_TOOL_SEARCH:
             from deepclaw.middleware.tool_search import DeferredToolMiddleware
 
-            middleware.append(DeferredToolMiddleware())
+            # 设备权限按每次请求刷新，不进入延迟工具的持久化缓存。
+            device_index = next(index for index, item in enumerate(middleware)
+                                if type(item).__name__ == "DeviceToolsMiddleware")
+            middleware.insert(device_index, DeferredToolMiddleware())
 
         if deep_agent:
             from deepclaw.middleware.deep_agent_prompt import (

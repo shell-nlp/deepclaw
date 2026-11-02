@@ -41,6 +41,9 @@ const { ToolCard } = await import('../components/chat/cards/ToolCard.tsx')
 const { InterruptPanel } = await import('../components/chat/interrupt/InterruptPanel.tsx')
 const { InterruptArgFields } = await import('../components/chat/interrupt/InterruptArgFields.tsx')
 const { ChannelJobList } = await import('../components/chat/management/ChannelJobPanel.tsx')
+const { DevicePicker } = await import('../components/chat/shared/DevicePicker.tsx')
+const { DeviceDetail } = await import('../components/chat/management/devices/DeviceDetail.tsx')
+const { DeviceDownload } = await import('../components/chat/management/devices/DeviceDownload.tsx')
 const { isDecisionAllowedForAllActions, updateValueAtPath } = await import('../components/chat/interrupt/utils.ts')
 const require = createRequire(import.meta.url)
 const React = require('react')
@@ -56,6 +59,34 @@ const snapshot = [
   { id: 'a2', role: 'assistant', content: '北京晴天' },
 ]
 const placeholder = () => ({ id: 'local', role: 'ai', content: '', startedAt: 1000 })
+
+test('安装包发布后提供真实附件链接，未发布或加载失败时展示原因与重试', () => {
+  const render = installer => renderToStaticMarkup(React.createElement(DeviceDownload, { installer, onRetry() {} }))
+  const available = render({ status: 'available', sizeBytes: 121480938 })
+  assert.match(available, /href="\/api\/devices\/installer\/windows-x64"/)
+  assert.match(available, /download="DeepClaw-Setup-x64.exe"/)
+  assert.match(available, /Windows x64 · 115.9 MB/)
+  for (const status of ['loading', 'error', 'unavailable']) {
+    const markup = render({ status })
+    assert.doesNotMatch(markup, /href=/)
+    assert.match(markup, /disabled=""/)
+    if (status !== 'loading') assert.match(markup, /重新检查/)
+  }
+  assert.match(render({ status: 'unavailable' }), /请联系管理员/)
+  assert.match(render({ status: 'error' }), /请检查网络后重试/)
+})
+
+test('设备选择默认不启用，网页仅展示授权并引导本机开启', () => {
+  const device = { id: 'device-a', name: '办公电脑', online: true, enabled: false, platform: 'win32', roots: ['D:\\工作'], capabilities: ['files.read'] }
+  assert.equal(renderToStaticMarkup(React.createElement(DevicePicker, { devices: [], value: '', onChange() {} })), '')
+  const picker = renderToStaticMarkup(React.createElement(DevicePicker, { devices: [{ ...device, enabled: true }], value: '', onChange() {} }))
+  assert.match(picker, /selected="">不使用本机设备/)
+  assert.match(picker, /办公电脑/)
+  const detail = renderToStaticMarkup(React.createElement(DeviceDetail, { device, busy: false, onRevoke() {} }))
+  assert.match(detail, /网页无法代为开启/)
+  assert.doesNotMatch(detail, /role="switch"|已授权/)
+  assert.match(detail, /D:\\工作/)
+})
 
 test('渠道任务区分执行和投递状态，只对已有结果提供补发', () => {
   const html = renderToStaticMarkup(React.createElement(ChannelJobList, {

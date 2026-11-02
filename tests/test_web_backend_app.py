@@ -38,6 +38,9 @@ def _load_app_module(monkeypatch):
         return None
 
     monkeypatch.setattr(lifespan_module.AgentRuntimeCache, "preload", noop_preload)
+    from deepclaw.web_backend.agent.run_store import InMemoryRunStore
+    run_store = InMemoryRunStore()
+    monkeypatch.setattr(lifespan_module, "get_run_store", lambda: run_store)
     class UploadManagerSpy:
         """隔离应用生命周期里的知识库 worker。"""
 

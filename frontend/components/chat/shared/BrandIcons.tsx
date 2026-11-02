@@ -9,6 +9,7 @@ export type SidebarIconName =
   | 'mcp'
   | 'channels'
   | 'users'
+  | 'devices'
 
 /**
  * 渲染侧边栏导航图标。
@@ -18,6 +19,7 @@ export type SidebarIconName =
  */
 export function SidebarIcon({ name }: { name: SidebarIconName }) {
   const paths: Record<SidebarIconName, React.ReactNode> = {
+    devices: <><rect x="3.5" y="4" width="17" height="12" rx="1.5"/><path d="M8 20h8m-4-4v4"/></>,
     chat: (
       <>
         <path d="M5.5 6.5h13v8.8h-8.1L7 18.8v-3.5H5.5z" />

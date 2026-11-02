@@ -241,6 +241,10 @@ export function AppSidebar({
           <span className={styles.sidebarButtonLabel}>知识库</span>
         </button>
         <p className={styles.sidebarSectionLabel}>能力与连接</p>
+        <button className={`${styles.sidebarButton} ${viewMode === 'devices' ? styles.sidebarButtonActive : ''}`} onClick={() => onNavigate('devices')}>
+          <SidebarIcon name="devices" />
+          <span className={styles.sidebarButtonLabel}>我的设备</span>
+        </button>
         <button
           className={`${styles.sidebarButton} ${
             viewMode === 'skills' ? styles.sidebarButtonActive : ''

@@ -31,6 +31,9 @@ class UploadManagerSpy:
 
 
 def test_app_lifespan_bootstraps_admin(monkeypatch):
+    from deepclaw.web_backend.agent.run_store import InMemoryRunStore
+    run_store = InMemoryRunStore()
+    monkeypatch.setattr(lifespan_module, "get_run_store", lambda: run_store)
     class ServiceSpy:
         def __init__(self):
             self.calls = 0

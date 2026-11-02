@@ -15,6 +15,7 @@ wheels/
 .env.*
 !.env.example
 .deepclaw/*.db
+.deepclaw/downloads/
 .deepclaw/conversation_history/
 .deepclaw/.playwright-cli/
 .deepclaw/workspace/converted_pdf/

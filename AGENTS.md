@@ -93,6 +93,18 @@
 知识库管理路由、请求模型、元数据存储与服务实现。上传接口先将原始文件保存到对象存储并登记独立的 `knowledge_upload_tasks` 任务，返回 202；每实例后台 worker 数由 `KNOWLEDGE_UPLOAD_WORKERS` 控制（默认 2，允许 1–8），原子领取任务，在线程中执行 PDF 解析和切片写入（只写 passage 索引，不做三元组抽取），按排队/解析/索引/成功/失败持久化阶段，前端轮询 `/api/rag/knowledge-bases/documents/upload-tasks`。进程异常中断的任务心跳过期后重新排队；部署多实例时共享元数据数据库和对象存储。知识库解析统一选择 `PDFParser`；PDF 直接解析，TXT/MD 等文本格式先生成 PDF，DOCX/PPTX/XLSX 等由 LibreOffice 转换为 PDF 后再解析。`create_document_parser()` 保留给非知识库上传场景。失败任务可由前端调用 `/api/rag/knowledge-bases/documents/upload-tasks/retry` 重新排队，或调用 `/upload-tasks/delete` 删除记录；两者都只允许操作 `failed` 状态的任务。
 切片写入时附带 `state`（默认 `true`）与 `tenant_id`（多租户预留，当前统一为空）两个元数据字段；`POST /api/rag/knowledge-bases/documents/chunks/update` 支持修改单个切片的正文（会重新生成向量）或切换 `state`。RAG 检索用 `filter_conditions={"metadata.state": {"$ne": False}}` 排除停用切片：PG 走 `metadata ->> 'state' IS DISTINCT FROM 'false'`，ES 走 `must_not term`，因此缺少 `state` 的历史切片仍视为开启，无需先回填。
 
+### 客户端设备执行
+
+- `deepclaw/web_backend/devices/installer.py`：公开安装包发布状态 `/api/devices/installer` 与 Windows x64 附件下载 `/api/devices/installer/windows-x64`，只分发 `.deepclaw/downloads/DeepClaw-Setup-x64.exe`。`desktop/scripts/publish-installer.mjs` 在 `pnpm package:win` 完成后自动发布；Docker 需只读挂载下载目录，详见 `docs/local-devices.md`。网页下载组件位于 `management/devices/DeviceDownload.tsx`，状态查询由 `hooks/useDeviceInstaller.ts` 承载。
+
+- `deepclaw/web_backend/devices/`：设备配对、用户归属管理、WSS 连接和共享数据库任务队列。`store.py` 使用 SQLModel 原生异步会话，只延迟创建 `devices`、`device_pairings`、`device_tasks`；默认优先 PG，否则 `.deepclaw/devices.db`。应用关闭释放已创建连接池。
+- `deepclaw/middleware/device_tools.py`：每次模型调用按可信用户身份、在线授权和本轮 `device_id` 动态注入设备工具；执行再次校验，禁止回退服务端操作客户端路径。网页 `device_id=null` 禁用本轮设备工具。
+- `desktop/`：Electron + React + TypeScript 本机助手。`src/main` 承载连接、SQLite 去重、权限和进程执行，`src/preload` 只暴露固定 IPC，`src/renderer` 为控制台。总开关由本机控制，重启、断线后关闭；修改和命令必须在本机逐次批准。命令拥有当前账户权限，授权工作目录不是进程沙箱。
+- 前端 `chat/management/DeviceManagementView.tsx` 编排设备管理，子组件位于 `management/devices/`；`hooks/useDevices.ts` 管理当前账号设备与选择，`shared/DevicePicker.tsx` 供聊天选择设备。网页仅展示权限和撤销凭据，不提供远程开启接口。
+- `/api/devices` 提供设备列表；`POST /pairings` 创建登录用户配对码，`POST /pairings/claim` 单次消费配对码；`DELETE /{device_id}` 撤销，`GET /{device_id}/tasks` 查询，`POST /{device_id}/tasks/{task_id}/cancel` 请求取消；`/connect` 是设备专用令牌鉴权的 WebSocket。
+- 稳定任务 ID 和客户端执行前持久化阻止重复执行；事件序号去重，终止状态不回退；未知任务的取消也必须持久化。不得对 `uncertain` 自动重新执行。
+- 设备部署、权限边界和回退见 `docs/local-devices.md`。桌面验证：`cd desktop` 后执行 `pnpm build`、`pnpm test`；后端、网页测试仍遵守本文件原有并行约定。
+
 ### 核心能力层
 
 - `deepclaw/agents/general/`
