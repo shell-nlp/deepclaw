@@ -70,7 +70,7 @@ checkpoint 统一持久化，前端构建产物由同一个进程静态托管。
 
 ### 客户端设备
 
-网页「我的设备」可配对多台电脑并查看授权和执行记录。安装 [本机助手](desktop/README.md) 后，在电脑上选择目录并打开开关，聊天中选择设备即可使用本机文件和命令工具。本机可选择「请求批准」或「完全访问权限」：前者对修改与命令逐次询问，后者自动执行已开启能力；退出或断线后自动关闭访问。桌面端使用 Electron + TypeScript，服务端沿用现有 Python。部署和权限边界见 [客户端设备执行](docs/local-devices.md)。
+网页「我的设备」可配对多台电脑并查看授权和执行记录。安装 [本机助手](desktop/README.md) 后，在电脑上选择目录并打开开关，聊天中选择设备即可使用本机文件和命令工具。本机可选择「请求批准」或「完全访问权限」：前者对修改与命令逐次询问，后者自动执行已开启能力；退出或断线后自动关闭访问。桌面端使用 Electron + TypeScript，服务端沿用现有 Python。部署和权限边界见 [客户端设备执行](docs/local-devices.md)，实现链路见下文[客户端设备执行架构](#客户端设备执行架构)。
 
 **网页设备管理**：查看在线设备、授权范围与执行记录。
 
@@ -221,6 +221,73 @@ deepclaw/
 │   Phoenix         分布式追踪（可选）                                 │
 └───────────────────────────────────────────────────────────────────┘
 ```
+
+### 客户端设备执行架构
+
+设备能力横跨网页/IM、FastAPI 服务端与 Electron 本机助手三层：网页不直接连接本机，所有指令经服务端任务队列中转；服务端只负责配对、任务排队和状态流转，设备原始凭据、文件读写、命令执行与审批都留在本机。实线表示一次 `device_*` 工具调用的主链路，虚线表示心跳和安装包/更新检查等辅助路径。
+
+```mermaid
+flowchart TB
+  subgraph CLIENT["网页与 IM"]
+    WEB["我的设备<br/>配对码 · 设备列表 · 任务记录 · 解绑 · 下载"]
+    CHAT["聊天 / IM<br/>state.device_id"]
+  end
+
+  subgraph SERVER["FastAPI 服务端"]
+    API["设备 API<br/>/api/devices/*"]
+    WS["设备 WebSocket<br/>/api/devices/connect"]
+    DS["DeviceStore<br/>配对码 · 连接租约 · 任务队列"]
+    MW["DeviceToolsMiddleware<br/>动态注入 device_* 工具"]
+    AGENT["通用 Agent<br/>LangGraph 工具调用"]
+    PKG["安装包 / 更新分发<br/>/api/devices/installer<br/>/api/devices/updates/*"]
+  end
+
+  DB[("共享数据库<br/>PostgreSQL 或 .deepclaw/devices.db")]
+
+  subgraph LOCAL["Electron 本机助手（主进程）"]
+    PAIR["配对<br/>一次性码 → dd_ 令牌 → safeStorage"]
+    RUNNER["Runner<br/>WSS · 心跳 · 重连 · revision"]
+    JOURNAL["Journal（SQLite）<br/>任务去重 · 事件序号 · 待确认事件"]
+    PERM["本机权限<br/>总开关 · 目录 · 能力 · 审批模式"]
+    EXEC["Executor<br/>读文件 / 写文件 / 命令"]
+    PANEL["渲染进程<br/>授权 · 审批 · 任务列表"]
+    UPD["electron-updater<br/>每小时检查，点击才安装"]
+  end
+
+  WEB -->|"登录令牌：生成配对码 / 轮询 / 取消 / 解绑"| API
+  PAIR -->|"POST /pairings/claim"| API
+  PAIR --> RUNNER
+  CHAT -->|"本轮 device_id，空值禁用"| AGENT
+  AGENT --> MW
+  MW -->|"① 校验归属、在线、能力；稳定任务 ID 落库"| DS
+  API --> DS
+  DS <--> DB
+  DS -->|"② 约 1 秒轮询未结束任务"| WS
+  WS -->|"③ execute / cancel"| RUNNER
+  RUNNER -->|"④ 先写本机 SQLite，再判定审批"| JOURNAL
+  RUNNER --> PERM
+  PERM -->|"请求批准：逐次确认"| PANEL
+  PANEL -->|"批准 / 拒绝"| RUNNER
+  PERM -->|"完全访问：自动执行"| EXEC
+  RUNNER -->|"批准后执行"| EXEC
+  EXEC -->|"⑤ 输出与终态"| JOURNAL
+  JOURNAL -->|"⑥ 未确认事件按序号重传"| RUNNER
+  RUNNER -->|"task_event"| WS
+  WS -->|"事件落库 + event_ack"| DS
+  DS -->|"⑦ 工具轮询到终态，返回 ToolMessage"| MW
+  WS -.->|"心跳续租，30 秒离线"| DS
+  WEB -.->|"下载安装包 / 查询发布状态"| PKG
+  UPD -.->|"检查 latest.yml"| PKG
+```
+
+1. **配对与凭据**：网页生成 5 分钟有效的一次性配对码（服务端只存哈希），桌面端调用 `POST /api/devices/pairings/claim` 换取 `dd_` 设备令牌，再用系统 `safeStorage` 加密保存在本机。
+2. **连接与在线**：桌面端主动建立 `WSS /api/devices/connect`，数据库原子租约保证同一设备只有一个活动连接；每 10 秒心跳，30 秒无续租视为离线；连接断开后本机自动关闭访问。登录后网页每 10 秒刷新设备状态。
+3. **本机授权**：总开关默认关闭、重启后仍关闭；授权目录、能力（`files.read` / `files.write` / `command.run`）和审批模式只由本机设置，并以单调递增的 `revision` 上报。目录、能力或开关变化会取消旧版本未完成任务。
+4. **工具注入**：`DeviceToolsMiddleware` 在每次模型调用前按可信用户、在线开启状态和本轮 `device_id` 动态注入工具；游客、设备关闭或本轮显式传空 `device_id` 时不注入，模型不能回退到服务端执行同名路径。
+5. **任务与事件**：工具调用按「用户 + 设备 + 会话 + 工具调用 ID」生成稳定任务 ID；桌面端先写本机 SQLite 再审批或执行，输出和终态带单调序号确认重传；服务端拒绝状态回退，断线重连不重放已执行命令。取消先持久化意图，运行中的进程等实际退出后才报告取消；客户端重启时把未结束任务标为 `cancelled` 或 `uncertain`，禁止自动重跑。
+6. **存储与分发**：`devices`、`device_pairings`、`device_tasks` 三张独立表随元数据库走 PostgreSQL 或 `.deepclaw/devices.db`；Windows 安装包与 `latest.yml` 由只读路由分发，桌面端每小时检查、用户点击后才下载安装。
+
+更细的权限边界、审批模式和部署方式见 [客户端设备执行](docs/local-devices.md)。
 
 ## 快速开始
 
