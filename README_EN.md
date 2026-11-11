@@ -71,7 +71,7 @@ It fits these situations:
 
 ### Client devices
 
-The "My devices" page pairs multiple computers and shows permissions and task records. Install the [desktop assistant](desktop/README.md), select local directories, enable access locally, then select the device in chat. Local approval has two modes: request approval before writes and commands, or automatically execute enabled capabilities. The installed assistant checks for updates hourly and only downloads and installs when the user clicks to update. Access turns off after disconnect or exit. The desktop uses Electron and TypeScript with the existing Python server. See [deployment and permission boundaries](docs/local-devices.md).
+The "My devices" page pairs multiple computers and shows permissions and task records. Install the [desktop assistant](desktop/README.md), select local directories, enable access locally, then select the device in chat. Local approval has two modes: request approval before writes and commands, or automatically execute enabled capabilities. The installed assistant checks for updates hourly and only downloads and installs when the user clicks to update. Access turns off after disconnect or exit. The desktop uses Electron and TypeScript with the existing Python server. See [deployment and permission boundaries](docs/local-devices.md) and [client device execution architecture](#client-device-execution-architecture) for the implementation flow.
 
 ![Web device management](assets/img/devices-web.png)
 
@@ -221,6 +221,73 @@ Browser  ·  Feishu  ·  DingTalk  ·  WeChat ClawBot
 │   Phoenix         Distributed tracing (optional)                   │
 └───────────────────────────────────────────────────────────────────┘
 ```
+
+### Client Device Execution Architecture
+
+Device support spans three layers: the browser/IM, the FastAPI server, and the Electron desktop assistant. The browser never connects to the desktop directly; every command goes through the server-side task queue. The server only handles pairing, task queuing and state transitions, while the raw device credentials, file access, command execution and approvals stay on the local machine. Solid arrows show the main path of one `device_*` tool call; dotted arrows show heartbeat and installer/update checks.
+
+```mermaid
+flowchart TB
+  subgraph CLIENT["Browser and IM"]
+    WEB["My devices<br/>pairing code · device list · task records · revoke · download"]
+    CHAT["Chat / IM<br/>state.device_id"]
+  end
+
+  subgraph SERVER["FastAPI server"]
+    API["Device API<br/>/api/devices/*"]
+    WS["Device WebSocket<br/>/api/devices/connect"]
+    DS["DeviceStore<br/>pairing codes · connection lease · task queue"]
+    MW["DeviceToolsMiddleware<br/>injects device_* tools"]
+    AGENT["General agent<br/>LangGraph tool calls"]
+    PKG["Installer / updates<br/>/api/devices/installer<br/>/api/devices/updates/*"]
+  end
+
+  DB[("Shared database<br/>PostgreSQL or .deepclaw/devices.db")]
+
+  subgraph LOCAL["Electron desktop assistant (main process)"]
+    PAIR["Pairing<br/>one-time code → dd_ token → safeStorage"]
+    RUNNER["Runner<br/>WSS · heartbeat · reconnect · revision"]
+    JOURNAL["Journal (SQLite)<br/>task dedupe · event sequence · pending events"]
+    PERM["Local policy<br/>master switch · roots · capabilities · approval mode"]
+    EXEC["Executor<br/>read / write / command"]
+    PANEL["Renderer<br/>permissions · approval · tasks"]
+    UPD["electron-updater<br/>hourly check, install on click"]
+  end
+
+  WEB -->|"login token: pairing code / polling / cancel / revoke"| API
+  PAIR -->|"POST /pairings/claim"| API
+  PAIR --> RUNNER
+  CHAT -->|"device_id for this run, empty disables"| AGENT
+  AGENT --> MW
+  MW -->|"1. check owner, online state, capabilities, then persist stable task ID"| DS
+  API --> DS
+  DS <--> DB
+  DS -->|"2. poll unfinished tasks about every second"| WS
+  WS -->|"3. execute / cancel"| RUNNER
+  RUNNER -->|"4. persist locally first, then decide approval"| JOURNAL
+  RUNNER --> PERM
+  PERM -->|"request approval: confirm each time"| PANEL
+  PANEL -->|"approve / reject"| RUNNER
+  PERM -->|"full access: run automatically"| EXEC
+  RUNNER -->|"run after approval"| EXEC
+  EXEC -->|"5. output and terminal state"| JOURNAL
+  JOURNAL -->|"6. resend unacked events by sequence"| RUNNER
+  RUNNER -->|"task_event"| WS
+  WS -->|"persist event + event_ack"| DS
+  DS -->|"7. tool polls until terminal, returns ToolMessage"| MW
+  WS -.->|"heartbeat lease, offline after 30s"| DS
+  WEB -.->|"download installer / check release"| PKG
+  UPD -.->|"check latest.yml"| PKG
+```
+
+1. **Pairing and credentials**: the web page issues a one-time code valid for five minutes (only its hash is stored). The desktop calls `POST /api/devices/pairings/claim` to exchange it for a `dd_` device token, then stores the credentials locally with the OS `safeStorage`.
+2. **Connection and presence**: the desktop opens `WSS /api/devices/connect`. An atomic database lease keeps one active connection per device; a heartbeat runs every 10 seconds, a device with no lease renewal for 30 seconds is offline, and a lost connection switches local access off. The web page refreshes device state every 10 seconds.
+3. **Local policy**: the master switch is off by default and stays off after a restart. Authorized roots, capabilities (`files.read` / `files.write` / `command.run`) and the approval mode are controlled only on the local machine and reported with a monotonically increasing `revision`. Changing roots, capabilities or the switch cancels unfinished tasks from the previous revision.
+4. **Tool injection**: `DeviceToolsMiddleware` injects `device_*` tools before each model call based on the trusted user, online/enabled state and the run's `device_id`. Guests, disabled devices, or a run with an explicitly empty `device_id` get no device tools; the model cannot fall back to executing the same path on the server.
+5. **Tasks and events**: a stable task ID is derived from user, device, thread and tool-call ID. The desktop persists the task in local SQLite before approval or execution, and output plus terminal state are acknowledged by sequence. The server never moves a terminal task backwards, and reconnects do not replay already executed commands. Cancellation is persisted as intent first; a running process reports `cancelled` only after it actually exits. On client restart, unfinished tasks become `cancelled` or `uncertain` and are never retried automatically.
+6. **Storage and distribution**: `devices`, `device_pairings` and `device_tasks` are three standalone tables stored with the metadata database in PostgreSQL or `.deepclaw/devices.db`. The Windows installer and `latest.yml` are served by read-only routes; the desktop checks hourly and downloads only after the user clicks.
+
+See [client device execution](docs/local-devices.md) for the detailed permission boundary, approval modes and deployment guidance.
 
 ## Quick Start
 
