@@ -2,7 +2,6 @@ import asyncio
 from types import SimpleNamespace
 
 from langchain_core.messages import SystemMessage
-from mcp.types import LoggingMessageNotificationParams
 
 
 def test_mcp_middleware_uses_settings_config():
@@ -41,29 +40,41 @@ def test_mcp_middleware_prepares_request_headers_without_mutating_context():
     assert header_info == {"authorization": "Bearer request-token", "X-Request": "keep"}
 
 
-def test_mcp_middleware_forwards_logging_notifications_to_stream_writer():
-    """验证 MCP 日志通知会转换为 Agent 自定义流事件。
+def test_mcp_middleware_dispatches_progress_as_custom_event(monkeypatch):
+    """验证 MCP 进度通知绑定工具调用并转成标准 AG-UI 自定义事件。
 
     Args:
-        无。
+        monkeypatch: pytest 提供的依赖替换工具。
     """
-    from deepclaw.middleware.mcp import MCPMiddleware
+    from deepclaw.middleware import mcp as mcp_module
 
     streamed_events = []
-    runtime = SimpleNamespace(stream_writer=streamed_events.append)
-    callback = MCPMiddleware()._build_logging_callback(runtime)
 
-    asyncio.run(
-        callback(
-            LoggingMessageNotificationParams(
-                level="info",
-                logger="demo",
-                data="正在处理 step 1/5",
-            )
+    async def fake_dispatch(name, data):
+        """记录待发送的自定义事件。
+
+        Args:
+            name: 自定义事件名称。
+            data: 自定义事件数据。
+        """
+        streamed_events.append((name, data))
+
+    monkeypatch.setattr(mcp_module, "adispatch_custom_event", fake_dispatch)
+    callback = mcp_module.MCPMiddleware()._build_progress_callback("tool-call-1")
+
+    asyncio.run(callback(2.0, 5.0, "计算中 2/5"))
+
+    assert streamed_events == [
+        (
+            "mcp_progress",
+            {
+                "tool_call_id": "tool-call-1",
+                "progress": 2.0,
+                "total": 5.0,
+                "message": "计算中 2/5",
+            },
         )
-    )
-
-    assert streamed_events == [{"mcp_info": "正在处理 step 1/5"}]
+    ]
 
 
 def test_mcp_middleware_injects_dynamic_tool_descriptions_once():
@@ -302,4 +313,4 @@ def test_mcp_middleware_uses_cached_tools_for_tool_call():
     assert result.content == "handled"
     assert result.tool_call_id == "call-1"
     assert captured_config["metadata"]["mcp_meta"] == {"userId": "user-42"}
-    assert callable(captured_config["metadata"]["mcp_logging_callback"])
+    assert callable(captured_config["metadata"]["mcp_progress_callback"])

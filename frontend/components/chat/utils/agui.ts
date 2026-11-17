@@ -21,6 +21,13 @@ export type AgUiInterrupt = {
   [key: string]: unknown
 }
 
+export type McpProgressEvent = {
+  toolCallId: string
+  progress: number
+  total?: number
+  message?: string
+}
+
 export type AgUiResumeEntry = {
   interruptId: string
   status: 'resolved' | 'cancelled'
@@ -159,6 +166,30 @@ function parseAgUiValue(value: unknown): unknown {
     return JSON.parse(value) as unknown
   } catch {
     return null
+  }
+}
+
+export function getMcpProgress(event: AgUiEvent): McpProgressEvent | null {
+  if (event.type !== 'CUSTOM' || event.name !== 'mcp_progress') return null
+  const value = asRecord(parseAgUiValue(event.value))
+  if (!value) return null
+
+  const toolCallId = value.tool_call_id
+  const progress = value.progress
+  const total = value.total
+  const message = value.message
+  if (typeof toolCallId !== 'string' || !toolCallId.trim()) return null
+  if (typeof progress !== 'number' || !Number.isFinite(progress)) return null
+  if (total !== undefined && (typeof total !== 'number' || !Number.isFinite(total))) {
+    return null
+  }
+  if (message !== undefined && typeof message !== 'string') return null
+
+  return {
+    toolCallId,
+    progress,
+    total,
+    message: message?.trim() || undefined,
   }
 }
 

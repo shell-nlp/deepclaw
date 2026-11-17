@@ -363,6 +363,43 @@ test('浏览器时钟记录恢复工具与思考耗时，重复事件不能重�
   }
 })
 
+test('MCP 进度更新对应工具卡片并在完成前展示服务端状态', async () => {
+  const originalFetch = globalThis.fetch
+  const originalWindow = globalThis.window
+  globalThis.window = { location: { origin: 'http://localhost' } }
+  try {
+    const harness = createResumeHarness()
+    globalThis.fetch = async (url) => {
+      if (url.endsWith('/resume')) return Response.json({ runId: 'run' })
+      const events = [
+        { type: 'TOOL_CALL_START', toolCallId: 't1', toolCallName: 'slow_calculation' },
+        {
+          type: 'CUSTOM', name: 'mcp_progress', value: {
+            tool_call_id: 't1', progress: 2, total: 5, message: '计算中 2/5',
+          },
+        },
+        { type: 'RUN_FINISHED' },
+      ]
+      return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''))
+    }
+
+    await harness.actions.handleInterruptAction('approve')
+
+    const progress = harness.deps.messagesRef.current[1].toolData[0].progress
+    assert.deepEqual(progress, { value: 2, total: 5, message: '计算中 2/5' })
+    const html = renderToStaticMarkup(React.createElement(ToolCard, {
+      toolData: harness.deps.messagesRef.current[1].toolData[0],
+    }))
+    assert.match(html, /计算中 2\/5/)
+    assert.match(html, /aria-valuenow="2"/)
+    assert.match(html, /aria-valuemax="5"/)
+    assert.match(html, />40%<\/span>/)
+  } finally {
+    globalThis.fetch = originalFetch
+    globalThis.window = originalWindow
+  }
+})
+
 test('批准后即使没有工具开始事件也用前端时间计时，拒绝不生成执行耗时', async () => {
   const originalFetch = globalThis.fetch
   const originalWindow = globalThis.window

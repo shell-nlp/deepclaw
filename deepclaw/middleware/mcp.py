@@ -10,10 +10,10 @@ from langchain.agents.middleware import (
     ModelRequest,
     ToolCallRequest,
 )
+from langchain_core.callbacks import adispatch_custom_event
 from langchain_core.messages import SystemMessage, ToolMessage
 from langgraph.types import Command
 from loguru import logger
-from mcp.types import LoggingMessageNotificationParams
 
 from deepclaw.agents.general.state import StateSchema
 from deepclaw.middleware.common import get_request_header_info
@@ -41,27 +41,39 @@ class MCPMiddleware(AgentMiddleware):
         super().__init__()
         self._mcp_resources_by_thread_id: dict[str, tuple[dict[str, Any], list[Any]]] = {}
 
-    def _build_logging_callback(self, runtime: Any):
-        """创建将 MCP 日志通知转发到当前 Agent 流的回调。
+    def _build_progress_callback(self, tool_call_id: str):
+        """创建将 MCP 进度通知绑定到当前工具卡片的回调。
 
         Args:
-            runtime: 当前 Agent 运行时，需提供 stream_writer。
+            tool_call_id: 当前 LangChain 工具调用标识。
 
         Returns:
-            接收 MCP 日志通知的异步回调。
+            接收 MCP 进度通知并发送 AG-UI 自定义事件的异步回调。
         """
-        stream_writer = getattr(runtime, "stream_writer", None)
 
-        async def logging_callback(params: LoggingMessageNotificationParams) -> None:
-            """将 MCP 日志通知写入 Agent 自定义流事件。
+        async def progress_callback(
+            progress: float,
+            total: float | None,
+            message: str | None,
+        ) -> None:
+            """发送结构化 MCP 进度事件。
 
             Args:
-                params: MCP 服务发送的日志通知参数。
+                progress: 当前已完成进度。
+                total: 可选的总进度。
+                message: 可选的用户可见状态说明。
             """
-            if callable(stream_writer):
-                stream_writer({"mcp_info": params.data})
+            await adispatch_custom_event(
+                "mcp_progress",
+                {
+                    "tool_call_id": tool_call_id,
+                    "progress": progress,
+                    "total": total,
+                    "message": message,
+                },
+            )
 
-        return logging_callback
+        return progress_callback
 
     def _override_system_message(self, request: ModelRequest, tools: list[Any]) -> SystemMessage | None:
         """向系统消息注入本次动态加载 MCP 工具的名称和描述。
@@ -380,7 +392,7 @@ class MCPMiddleware(AgentMiddleware):
         handler,
     ):
         thread_id = request.runtime.execution_info.thread_id
-        logging_callback = self._build_logging_callback(request.runtime)
+        progress_callback = self._build_progress_callback(request.tool_call["id"])
         cached_resources = self._mcp_resources_by_thread_id.get(thread_id)
         if cached_resources is not None:
             _, tools = cached_resources
@@ -395,7 +407,7 @@ class MCPMiddleware(AgentMiddleware):
                         config={
                             "metadata": {
                                 "mcp_meta": {"userId": (getattr(request, "state", {}) or {}).get("user_id", "default")},
-                                "mcp_logging_callback": logging_callback,
+                                "mcp_progress_callback": progress_callback,
                             }
                         },
                     )
@@ -422,7 +434,7 @@ class MCPMiddleware(AgentMiddleware):
                     config={
                         "metadata": {
                             "mcp_meta": {"userId": (getattr(request, "state", {}) or {}).get("user_id", "default")},
-                            "mcp_logging_callback": logging_callback,
+                            "mcp_progress_callback": progress_callback,
                         }
                     },
                 )

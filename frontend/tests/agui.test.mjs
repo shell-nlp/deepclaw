@@ -93,6 +93,30 @@ test('agui ignores malformed interrupt values', () => {
   assert.equal(interrupt, null)
 })
 
+test('agui parses MCP progress custom events and rejects malformed payloads', () => {
+  assert.deepEqual(aguiPkg.getMcpProgress({
+    type: 'CUSTOM',
+    name: 'mcp_progress',
+    value: {
+      tool_call_id: 'tool-1',
+      progress: 2,
+      total: 5,
+      message: '计算中 2/5',
+    },
+  }), {
+    toolCallId: 'tool-1',
+    progress: 2,
+    total: 5,
+    message: '计算中 2/5',
+  })
+
+  assert.equal(aguiPkg.getMcpProgress({
+    type: 'CUSTOM',
+    name: 'mcp_progress',
+    value: { tool_call_id: '', progress: '2' },
+  }), null)
+})
+
 test('agui reads token usage from LangChain message metadata', () => {
   const usage = aguiPkg.getTokenUsageFromMessage({
     type: 'ai',

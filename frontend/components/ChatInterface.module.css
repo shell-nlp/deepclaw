@@ -1565,6 +1565,7 @@ textarea.interruptInput {
   .processSummaryStatusActive,
   .processSummaryLabelActive,
   .toolStatusRunning,
+  .toolProgressIndeterminate,
   .welcomeIcon,
   .welcome h2 {
     animation: none;
@@ -1771,6 +1772,63 @@ textarea.interruptInput {
   font-variant-numeric: tabular-nums;
 }
 
+.toolProgress {
+  display: grid;
+  gap: 6px;
+  padding: 0 14px 12px 32px;
+}
+
+.toolProgressMeta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.toolProgressMessage {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolProgressPercent {
+  flex-shrink: 0;
+  color: var(--accent-primary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.toolProgressTrack {
+  position: relative;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: rgba(77, 107, 254, 0.12);
+}
+
+.toolProgressValue,
+.toolProgressIndeterminate {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent-primary);
+}
+
+.toolProgressValue {
+  transition: width 180ms ease-out;
+}
+
+.toolProgressIndeterminate {
+  width: 32%;
+  animation: toolProgressIndeterminate 1.2s ease-in-out infinite;
+}
+
 .toolCardDetails {
   padding: 0 14px 14px;
   border-top: 1px solid rgba(15, 23, 42, 0.06);
@@ -1807,6 +1865,16 @@ textarea.interruptInput {
   background: rgba(77, 107, 254, 0.06);
   color: #4d6bfe;
   border: 1px solid rgba(77, 107, 254, 0.14);
+}
+
+@keyframes toolProgressIndeterminate {
+  0% {
+    transform: translateX(-110%);
+  }
+
+  100% {
+    transform: translateX(330%);
+  }
 }
 
 @keyframes toolStatusPulse {

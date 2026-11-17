@@ -22,6 +22,16 @@ export function ToolCard({ toolData, duration }: ToolCardProps) {
 
   const preview = getToolPreview(toolData)
   const hasResult = toolData.toolOutput?.some((output) => output.kind !== 'decision') ?? false
+  const progress = hasResult ? undefined : toolData.progress
+  const progressTotal = progress?.total !== undefined && progress.total > 0
+    ? progress.total
+    : undefined
+  const progressValue = progressTotal !== undefined && progress
+    ? Math.min(Math.max(progress.value, 0), progressTotal)
+    : undefined
+  const progressPercent = progressValue !== undefined && progressTotal !== undefined
+    ? Math.round((progressValue / progressTotal) * 100)
+    : undefined
   const statusLabel = toolData.approvalStatus === 'pending' && !hasResult ? '等待审批'
     : toolData.approvalStatus === 'rejected' ? '已拒绝'
       : hasResult ? '工具执行完成'
@@ -68,6 +78,40 @@ export function ToolCard({ toolData, duration }: ToolCardProps) {
           <polyline points="2 3.5 5 6.5 8 3.5" />
         </svg>
       </button>
+      {progress && (
+        <div className={styles.toolProgress} aria-live="polite">
+          <div className={styles.toolProgressMeta}>
+            <span className={styles.toolProgressMessage}>
+              {progress.message || '工具执行中'}
+            </span>
+            {progressPercent !== undefined && (
+              <span className={styles.toolProgressPercent}>{progressPercent}%</span>
+            )}
+          </div>
+          <div
+            className={styles.toolProgressTrack}
+            role="progressbar"
+            aria-label={progress.message || '工具执行进度'}
+            aria-valuemin={progressValue !== undefined ? 0 : undefined}
+            aria-valuenow={progressValue}
+            aria-valuemax={progressTotal}
+            aria-valuetext={progress.message || undefined}
+          >
+            <span
+              className={
+                progressPercent === undefined
+                  ? styles.toolProgressIndeterminate
+                  : styles.toolProgressValue
+              }
+              style={
+                progressPercent === undefined
+                  ? undefined
+                  : { width: `${progressPercent}%` }
+              }
+            />
+          </div>
+        </div>
+      )}
       {expanded && (
         <div className={styles.toolCardDetails}>
           {toolData.toolCall && (

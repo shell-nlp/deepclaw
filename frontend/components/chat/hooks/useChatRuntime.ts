@@ -9,6 +9,7 @@ import {
   getAgUiInterrupt,
   getAgUiInterruptOutcome,
   getLatestAssistantTokenUsage,
+  getMcpProgress,
   getRecommendedQuestions,
   parseAgUiSseFrame,
   type AgUiEvent,
@@ -520,6 +521,44 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
       }
 
       if (eventType === 'CUSTOM') {
+        const mcpProgress = getMcpProgress(event)
+        if (mcpProgress) {
+          updateAssistantMessage((message) => {
+            const tools = [...(message.toolData || [])]
+            const index = tools.findIndex(
+              (tool) => tool.toolCall.id === mcpProgress.toolCallId
+            )
+            const progress = {
+              value: mcpProgress.progress,
+              total: mcpProgress.total,
+              message: mcpProgress.message,
+            }
+            if (index >= 0) {
+              tools[index] = { ...tools[index], progress }
+            } else {
+              tools.push({
+                toolCall: {
+                  id: mcpProgress.toolCallId,
+                  name: 'tool',
+                  args: {},
+                },
+                toolOutput: [],
+                progress,
+              })
+            }
+            return {
+              ...message,
+              toolData: tools,
+              messageItems: ensureToolItem(
+                message.messageItems || [],
+                mcpProgress.toolCallId
+              ),
+            }
+          })
+          lastAssistantStreamEventRef.current = 'tool'
+          return null
+        }
+
         const interrupt = getAgUiInterrupt(event)
         if (interrupt) {
           applyAgUiInterrupt(interrupt)

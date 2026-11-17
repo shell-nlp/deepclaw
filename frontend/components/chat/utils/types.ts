@@ -117,6 +117,11 @@ export type AssistantMessageItem =
 export interface ToolData {
   startedAt?: number
   duration?: number
+  progress?: {
+    value: number
+    total?: number
+    message?: string
+  }
   approvalStatus?: 'pending' | 'approved' | 'rejected' | 'edited'
   toolCall: {
     id: string

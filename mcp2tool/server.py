@@ -19,7 +19,7 @@ async def add(a: int, b: int, ctx: Context) -> int:
 
     steps = 5
     for i in range(1, steps + 1):
-        await ctx.info(f"正在计算 step {i}/{steps}, user={user_id}")
+        logger.info("正在计算 step {}/{}, user={}", i, steps, user_id)
         # 客户端 call_tool 传入 progress_callback 时才会真正发出
         await ctx.report_progress(
             progress=i,
@@ -28,7 +28,7 @@ async def add(a: int, b: int, ctx: Context) -> int:
         )
         await asyncio.sleep(0.5)
 
-    await ctx.info("计算完成")
+    logger.info("计算完成")
     return a + b
 
 
