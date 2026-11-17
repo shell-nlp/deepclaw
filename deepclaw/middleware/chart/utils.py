@@ -1,4 +1,5 @@
 from io import BytesIO
+from textwrap import fill
 
 import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
@@ -12,6 +13,96 @@ from deepclaw.middleware.chart.storage import (
 from deepclaw.settings import settings
 
 
+def wrap_chart_label(value: object, width: int = 12) -> str:
+    """按可读宽度换行文本，避免长类目挤占绘图区。
+
+    Args:
+        value: 待换行的标签内容。
+        width: 每行最多保留的字符数。
+
+    Returns:
+        str: 保留完整文本的换行标签。
+    """
+    return fill(str(value), width=width, break_long_words=True, break_on_hyphens=False)
+
+
+def place_chart_legend(
+    axis: plt.Axes,
+    *,
+    handles=None,
+    labels=None,
+    offset: float = 1.02,
+) -> None:
+    """将图例移到绘图区右侧，并按图例行数扩展画布。
+
+    Args:
+        axis: 需要放置图例的坐标轴。
+        handles: 图例图元；省略时取自坐标轴。
+        labels: 图例文本；省略时取自坐标轴。
+        offset: 图例相对绘图区右边缘的横向偏移。
+    """
+    if handles is None or labels is None:
+        handles, labels = axis.get_legend_handles_labels()
+    if not labels:
+        return
+    labels = [wrap_chart_label(label, 20) for label in labels]
+    fig = axis.figure
+    width, height = fig.get_size_inches()
+    legend_width = max(len(line) for label in labels for line in label.splitlines()) * 0.12 + 0.8
+    legend_rows = sum(len(label.splitlines()) for label in labels)
+    fig.set_size_inches(
+        min(24, max(6, width) + legend_width),
+        max(height, min(18, 1.4 + legend_rows * 0.23)),
+    )
+    axis.legend(
+        handles,
+        labels,
+        title=None,
+        loc="upper left",
+        bbox_to_anchor=(offset, 1),
+        borderaxespad=0,
+    )
+
+
+def fit_category_ticks(axis: plt.Axes, *, time_axis: bool = False) -> None:
+    """类别刻度换行；密集时间轴只抽稀刻度，保留全部数据点。
+
+    Args:
+        axis: 需要调整刻度显示方式的坐标轴。
+        time_axis: 是否为时间轴；为真时按序抽稀，否则换行显示类目。
+    """
+    ticks = axis.get_xticks()
+    labels = [label.get_text() for label in axis.get_xticklabels()]
+    if not labels:
+        return
+    if time_axis:
+        data_min, data_max = axis.dataLim.intervalx
+        pairs = [(tick, label) for tick, label in zip(ticks, labels) if data_min <= tick <= data_max]
+        if pairs:
+            ticks, labels = zip(*pairs)
+        stride = max(1, (len(labels) + 11) // 12)
+        indices = list(range(0, len(labels), stride))
+        if indices[-1] != len(labels) - 1:
+            indices[-1] = len(labels) - 1
+        axis.set_xticks(
+            [ticks[index] for index in indices],
+            [labels[index] for index in indices],
+            rotation=45,
+            ha="right",
+        )
+        spacing = 0.65
+        count = len(indices)
+    else:
+        axis.set_xticks(ticks, [wrap_chart_label(label, 6) for label in labels], rotation=0)
+        spacing = 0.8
+        count = len(labels)
+    fig = axis.figure
+    fig.set_size_inches(
+        max(fig.get_figwidth(), min(24, 2 + count * spacing)),
+        max(fig.get_figheight(), 4.5),
+    )
+
+
 def finalize_chart_layout(
     fig: plt.Figure,
     *,
@@ -19,6 +110,9 @@ def finalize_chart_layout(
     horizontal_label_axes: tuple[plt.Axes, ...] = (),
 ) -> None:
     """为数据标签预留坐标轴空间并完成画布布局。
+
+    统一负责最小可读画布、标题换行、最终布局和数值标签碰撞处理。
+    碰撞时只隐藏重复的数值标注，图元与原始数据保持不变。
 
     Args:
         fig: 待调整布局的 Matplotlib 图形对象。
@@ -29,8 +123,27 @@ def finalize_chart_layout(
         axis.margins(y=0.15)
     for axis in horizontal_label_axes:
         axis.margins(x=0.15)
+    fig.set_size_inches(max(6, fig.get_figwidth()), max(4, fig.get_figheight()))
+    for axis in fig.axes:
+        axis.title.set_text(wrap_chart_label(axis.get_title(), max(12, int(fig.get_figwidth() * 7))))
     fig.tight_layout()
-    fig.subplots_adjust(top=0.92)
+    # 静态图密集标注允许省略，曲线、点和饼图图元始终保留。
+    labels = [
+        label
+        for axis in fig.axes
+        for label in axis.texts
+        if label.get_gid() == "chart-value-label"
+    ]
+    if labels:
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        occupied = []
+        for label in labels:
+            box = label.get_window_extent(renderer).expanded(1.08, 1.15)
+            visible = not any(box.overlaps(other) for other in occupied)
+            label.set_visible(visible)
+            if visible:
+                occupied.append(box)
 
 
 def format_number(value: float) -> str:
@@ -94,8 +207,7 @@ def save_chart_to_workspace(fig: plt.Figure) -> str:
     """
     buffer = BytesIO()
     try:
-        # 统一兜底处理标题和坐标轴标签的画布边界。
-        fig.tight_layout()
+        # 渲染器已完成最终布局与碰撞处理，保存时不再移动图元。
         fig.savefig(
             buffer,
             format="png",

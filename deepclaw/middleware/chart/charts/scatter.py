@@ -3,6 +3,7 @@ import pandas as pd
 
 from deepclaw.middleware.chart.utils import (
     finalize_chart_layout,
+    place_chart_legend,
     save_chart_to_workspace,
 )
 
@@ -21,7 +22,7 @@ def render(params: dict) -> str:
     if "group" in df.columns:
         for g, grp in df.groupby("group"):
             ax.scatter(grp["x"], grp["y"], label=g, alpha=0.7)
-        ax.legend()
+        place_chart_legend(ax)
     else:
         ax.scatter(df["x"], df["y"], alpha=0.7)
     ax.set_xlabel(params.get("axisXTitle", ""))

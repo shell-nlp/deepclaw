@@ -3,6 +3,8 @@ import pandas as pd
 
 from deepclaw.middleware.chart.utils import (
     finalize_chart_layout,
+    fit_category_ticks,
+    place_chart_legend,
     save_chart_to_workspace,
 )
 
@@ -27,6 +29,9 @@ def render(params: dict) -> str:
         ax.plot(range(len(sorted_df)), sorted_df["value"], marker="o")
         ax.set_xticks(range(len(sorted_df)))
         ax.set_xticklabels(sorted_df["time"])
+    fit_category_ticks(ax, time_axis=True)
+    if "group" in df.columns:
+        place_chart_legend(ax)
     ax.set_xlabel(params.get("axisXTitle", ""))
     ax.set_ylabel(params.get("axisYTitle", ""))
     ax.set_title(params.get("title", ""))

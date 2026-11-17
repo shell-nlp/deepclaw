@@ -3,6 +3,8 @@ import pandas as pd
 
 from deepclaw.middleware.chart.utils import (
     finalize_chart_layout,
+    fit_category_ticks,
+    place_chart_legend,
     save_chart_to_workspace,
 )
 
@@ -24,6 +26,9 @@ def render(params: dict) -> str:
         pivot.plot(kind="bar", ax=ax, stacked=stacked)
     else:
         ax.bar(df["category"], df["value"])
+    fit_category_ticks(ax)
+    if "group" in df.columns:
+        place_chart_legend(ax)
     ax.set_xlabel(params.get("axisXTitle", ""))
     ax.set_ylabel(params.get("axisYTitle", ""))
     ax.set_title(params.get("title", ""))
