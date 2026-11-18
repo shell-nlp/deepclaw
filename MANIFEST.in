@@ -1,0 +1,7 @@
+include README.md README_EN.md LICENSE
+include .env.example
+include .sandbox.toml
+# 前端静态导出目录随 sdist 分发，供 build_py 复制进 wheel。
+graft frontend/out
+prune frontend/node_modules
+global-exclude *.py[cod] __pycache__

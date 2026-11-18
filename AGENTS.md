@@ -177,15 +177,18 @@
 
 - `deepclaw/constant.py`
   定义：
-  - `ROOT_DIR`
-  - `HOME_PATH = .deepclaw`
-  - `WORKSPACE_PATH = .deepclaw/workspace`
-  模块级常量统一使用全大写命名；新增常量必须沿用该约定。
+  - `PACKAGE_DIR` / `ROOT_DIR`
+  - `is_source_checkout()` / `resolve_home_path()`
+  - `HOME_PATH`（源码检出为仓库 `.deepclaw`，pip 安装为 `~/.deepclaw`，`DEEPCLAW_HOME` 可覆盖）
+  - `WORKSPACE_PATH = HOME_PATH/workspace`
+  - `BUNDLED_FRONTEND_PATH` / `resolve_frontend_path()`（源码检出取 `frontend/out`，wheel 安装取包内 `web_static/frontend`）
+  模块级常量统一使用全大写命名；新增常量必须沿用该约定。运行期数据目录禁止写进 `site-packages`，新增路径一律走这里的解析函数。
 
 ### 启动入口
 
 - `deepclaw/main.py`
   当前对外统一从这里启动。修改启动装配逻辑时，优先改 `web_backend/app.py` 与 `web_backend/lifespan.py`。
+  既支持 `python -m deepclaw.main`，也通过 `[project.scripts]` 暴露为 `deepclaw` 命令。
 
 ## 启动与运行
 
@@ -211,6 +214,25 @@ pnpm build
 - 开发态前端地址是 `http://localhost:3000`
 - 后端 `/` 只会托管 `frontend/out`
 - 修改前端后如果要通过后端访问，必须重新 `pnpm build`
+
+### 打包与 pip 安装
+
+`pyproject.toml` 已配置标准打包（`[build-system]` 用 setuptools），源码检出与安装态共用同一份代码：
+
+- `pip install .` 装 wheel，`pip install -e .` 可编辑安装；两者都暴露 `deepclaw` 命令（`[project.scripts]` → `deepclaw.main:run`）
+- `[tool.setuptools.packages.find]` 只包含 `deepclaw*` 与 `mcp2tool*`；`mcp2tool` 是 `deepclaw.middleware.mcp` 的运行时依赖，漏掉会导致启动直接 ImportError
+- `[tool.setuptools.package-data]` 把 RBAC 的 `model.conf` / `policy.csv` 带进 wheel；新增运行期数据文件必须同步登记
+- 根目录 `setup.py` 用 `build_py` 钩子把 `frontend/out` 复制到 wheel 内的 `deepclaw/web_static/frontend`，因此安装态不需要 Node.js；`MANIFEST.in` 把同一目录 `graft` 进 sdist
+- `frontend/out` 更新后必须重新构建 wheel，否则 wheel 内仍是旧前端
+- SQLAlchemy 异步扩展依赖 `greenlet`，必须在 `dependencies` 显式声明，不能依赖传递解析
+
+打包自检（不需要联网安装全部依赖）：
+
+```bash
+uv build --wheel --out-dir .tmpbuild
+# 或在干净环境里验证
+uv venv .tmpvenv && uv pip install --python .tmpvenv/Scripts/python.exe .
+```
 
 ## 环境变量边界
 

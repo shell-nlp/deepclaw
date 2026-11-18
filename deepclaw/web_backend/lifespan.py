@@ -10,7 +10,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
 from deepclaw.agent_registry import AgentRegistry
-from deepclaw.constant import ROOT_DIR
+from deepclaw.constant import resolve_frontend_path
 from deepclaw.settings import settings
 from deepclaw.web_backend.agui.runtime import AgentRuntimeCache
 from deepclaw.web_backend.agent.run_store import (
@@ -153,8 +153,8 @@ def register_frontend_routes(app: FastAPI) -> None:
     if getattr(app.state, "frontend_routes_registered", False):
         return
 
-    next_frontend_path = ROOT_DIR / "frontend" / "out"
-    if not next_frontend_path.exists():
+    next_frontend_path = resolve_frontend_path()
+    if next_frontend_path is None:
         return
 
     _register_exported_html_routes(app, next_frontend_path)

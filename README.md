@@ -300,7 +300,9 @@ flowchart TB
 
 如果仓库里的 `frontend/out` 已经存在，且你不修改前端代码，可以直接跳过前端安装和构建步骤。
 
-### 2. 初始化后端
+### 2. 安装依赖
+
+#### 方式 A：uv 源码运行（推荐开发）
 
 ```bash
 cp .env.example .env
@@ -324,6 +326,37 @@ uv sync --dev --extra object-storage # MinIO / S3 对象存储
 
 > 知识库上传文档依赖 `pdf` extra。缺少时上传会返回
 > `PDF 解析需要 PyMuPDF，请执行 uv sync --extra pdf 安装`。
+
+#### 方式 B：pip 安装（推荐部署，不需要仓库源码）
+
+项目已经配置为标准 Python 包，wheel 内同时打包了 `frontend/out` 静态资源，
+因此安装后不需要 Node.js / pnpm，也不需要单独构建前端。
+
+```bash
+python -m venv .venv            # 建议使用独立虚拟环境
+pip install .                   # 从当前目录安装；也可以直接装构建好的 wheel
+pip install -e .                # 开发用：可编辑安装，改 Python 代码立即生效
+
+pip install ".[pdf,elasticsearch]"   # 按需安装可选能力（extras 名同下文的 uv --extra）
+```
+
+安装完成后会提供 `deepclaw` 命令，等价于 `python -m deepclaw.main`：
+
+```bash
+deepclaw
+```
+
+配置读取顺序不变：在当前工作目录（或其上级目录）放置 `.env`，或用环境变量注入；
+运行期数据目录按以下顺序解析，可用 `DEEPCLAW_HOME` 显式覆盖：
+
+| 运行方式 | 数据目录 |
+|------|------|
+| 源码检出（仓库根目录存在 `pyproject.toml`） | `<仓库>/.deepclaw` |
+| pip 安装（包位于 `site-packages`） | `~/.deepclaw` |
+| 设置了 `DEEPCLAW_HOME` | `$DEEPCLAW_HOME` |
+
+> `sandbox` 执行模式额外需要 `.sandbox.toml`（仓库自带的会随安装包分发）；
+> 找不到时会回退到数据目录下的同名文件。
 
 ### 3. 配置 `.env`
 

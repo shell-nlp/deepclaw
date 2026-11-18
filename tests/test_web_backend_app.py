@@ -242,7 +242,7 @@ def test_create_app_agent_route_remains_postable_with_frontend_mount(monkeypatch
     async def noop_channel_lifespan():
         yield
 
-    monkeypatch.setattr(lifespan_module, "ROOT_DIR", tmp_path)
+    monkeypatch.setattr(lifespan_module, "resolve_frontend_path", lambda: frontend_out)
     monkeypatch.setattr(lifespan_module, "init_agent_env", fake_init_agent_env)
     monkeypatch.setattr(app_module, "agui_router", fake_agui_router)
     monkeypatch.setattr(lifespan_module, "setup_observability", lambda: None)
@@ -266,7 +266,7 @@ def test_create_app_serves_exported_login_html_route(monkeypatch, tmp_path: Path
 
     app_module, lifespan_module = _load_app_module(monkeypatch)
 
-    monkeypatch.setattr(lifespan_module, "ROOT_DIR", tmp_path)
+    monkeypatch.setattr(lifespan_module, "resolve_frontend_path", lambda: frontend_out)
     async def fake_init_agent_env(app):
         app.state.checkpointer = object()
         app.state.store = object()

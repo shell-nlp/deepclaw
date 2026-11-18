@@ -300,7 +300,9 @@ See [client device execution](docs/local-devices.md) for the detailed permission
 
 If `frontend/out` already exists and you are not changing frontend code, you can skip the frontend steps.
 
-### 2. Initialize the backend
+### 2. Install dependencies
+
+#### Option A: run from source with uv (recommended for development)
 
 ```bash
 cp .env.example .env
@@ -325,6 +327,37 @@ uv sync --dev --extra object-storage # MinIO / S3 object storage
 > Knowledge base uploads require the `pdf` extra. Without it the API returns
 > `PDF 解析需要 PyMuPDF，请执行 uv sync --extra pdf 安装`.
 
+#### Option B: install with pip (recommended for deployment, no source tree needed)
+
+The project is configured as a standard Python package, and the wheel bundles `frontend/out`,
+so no Node.js or pnpm is required after installation.
+
+```bash
+python -m venv .venv            # an isolated virtual environment is recommended
+pip install .                   # install from the current directory, or from a built wheel
+pip install -e .                # development: editable install, Python changes apply immediately
+
+pip install ".[pdf,elasticsearch]"   # optional extras, same names as the uv --extra values below
+```
+
+Installation also provides the `deepclaw` command, equivalent to `python -m deepclaw.main`:
+
+```bash
+deepclaw
+```
+
+Configuration loading is unchanged: put `.env` in the working directory (or any parent of it)
+or inject environment variables. The runtime data directory is resolved in this order, and
+`DEEPCLAW_HOME` always wins:
+
+| Run mode | Data directory |
+|------|------|
+| Source checkout (repo root contains `pyproject.toml`) | `<repo>/.deepclaw` |
+| pip install (package in `site-packages`) | `~/.deepclaw` |
+| `DEEPCLAW_HOME` is set | `$DEEPCLAW_HOME` |
+
+> The `sandbox` execution mode additionally needs `.sandbox.toml`; the repository copy ships with
+> the installed package, and the loader falls back to the same filename in the data directory.
 ### 3. Configure `.env`
 
 Required values (everything else has a default):

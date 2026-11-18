@@ -1,4 +1,4 @@
-﻿import hashlib
+import hashlib
 import re
 import tomllib
 from datetime import timedelta
@@ -21,15 +21,49 @@ from opensandbox.models.execd import (
 )
 from opensandbox.models.sandboxes import Host, Volume
 
-from deepclaw.constant import ROOT_DIR, WORKSPACE_PATH
+from deepclaw.constant import HOME_PATH, ROOT_DIR, WORKSPACE_PATH, is_source_checkout
 from deepclaw.settings import settings
 
-with open(ROOT_DIR / ".sandbox.toml", "rb") as f:
+
+def resolve_sandbox_config_path() -> Path:
+    """定位 opensandbox 配置文件。
+
+    源码检出优先仓库根目录的 .sandbox.toml，安装态回退到运行期数据目录。
+
+    Args:
+        无。
+
+    Returns:
+        .sandbox.toml 路径；都不存在时返回仓库根下的默认路径以便明确报错。
+    """
+
+    for candidate in (ROOT_DIR / ".sandbox.toml", HOME_PATH / ".sandbox.toml"):
+        if candidate.is_file():
+            return candidate
+    return ROOT_DIR / ".sandbox.toml"
+
+
+def resolve_user_workspace_path() -> Path:
+    """定位沙箱用户工作区根目录。
+
+    Args:
+        无。
+
+    Returns:
+        源码检出时返回仓库下 user_workspace，安装态返回运行期数据目录下 user_workspace。
+    """
+
+    if is_source_checkout():
+        return ROOT_DIR / "user_workspace"
+    return HOME_PATH / "user_workspace"
+
+
+with open(resolve_sandbox_config_path(), "rb") as f:
     config = tomllib.load(f)
 
 DOMAIN = config["server"]["host"] + ":" + str(config["server"]["port"])
 
-user_workspace_path = ROOT_DIR / "user_workspace"
+user_workspace_path = resolve_user_workspace_path()
 
 _SANDBOX_NAME_MAX_LENGTH = 63
 _SANDBOX_NAME_HASH_LENGTH = 8

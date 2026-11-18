@@ -1,8 +1,14 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "deepclaw"
 version = "0.1.0"
-description = "Add your description here"
+description = "统一智能体服务：Agent / RAG / Channels 三类能力的 FastAPI 后端与静态前端"
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
     "deepagents[quickjs]>=0.7.15",
@@ -30,6 +36,8 @@ dependencies = [
     "neo4j>=6.2.0",
     "matplotlib>=3.11.0",
     "casbin>=1.43.0",
+    # SQLAlchemy 异步扩展的必需运行时依赖，不声明时 pip 安装会直接 ImportError。
+    "greenlet>=3.0.0",
 ]
 # uv add pypdf2 --optional pdf
 # uv sync --extra pdf 才会安装
@@ -71,6 +79,21 @@ object-storage = [
 # uv sync --no-dev  dev 组默认安装，可排除  
 # uv sync --group lint   安装特定组 
 # uv sync --all-groups 安装所有组  
+
+[project.scripts]
+deepclaw = "deepclaw.main:run"
+
+# 只打包运行期需要的顶层包，避免把 frontend、desktop、tests 等目录当成包。
+# mcp2tool 是 deepclaw.middleware.mcp 的运行时依赖，必须一起分发。
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.packages.find]
+include = ["deepclaw*", "mcp2tool*"]
+
+# RBAC 的模型与基础策略是运行期必需的数据文件，必须随 wheel 一起分发。
+[tool.setuptools.package-data]
+"deepclaw.web_backend.auth.rbac" = ["*.conf", "*.csv"]
 
 [[tool.uv.index]]
 url = "https://mirrors.cloud.tencent.com/pypi/simple"
