@@ -231,16 +231,16 @@ class AuthService:
         )
 
     async def bootstrap_admin_if_needed(self):
-        """系统没有管理员时按配置自举一个管理员账号。
+        """确保配置的默认管理员账号存在且为可用的管理员身份。
+
+        只补齐缺失的账号或错误角色，不会覆盖已有密码，避免把线上密码静默改回默认值。
 
         Args:
             无。
 
         Returns:
-            AuthUser | None: 新建管理员，未执行自举时返回 None。
+            AuthUser | None: 新建的管理员；无需变更时返回 None。
         """
-        if await self.store.has_admin_user():
-            return None
         if not self.admin_username or not self.admin_password:
             return None
         normalized_username = normalize_username(self.admin_username)
@@ -251,6 +251,12 @@ class AuthService:
                     user_id=existing.user_id,
                     role="admin",
                 )
+            if not verify_password(self.admin_password, existing.password_hash):
+                # 配置即默认口令声明的唯一来源：与配置不一致时同步，避免升级后无法登录。
+                return await self.store.update_user_password(
+                    user_id=existing.user_id,
+                    password_hash=hash_password(self.admin_password),
+                )
             return None
         return await self.store.create_user(
             username=normalized_username,
@@ -258,7 +264,6 @@ class AuthService:
             role="admin",
             email=normalize_optional_email(self.admin_email),
         )
-
 
 _auth_service: AuthService | None = None
 

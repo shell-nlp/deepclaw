@@ -424,6 +424,13 @@ class AuthStore:
         await self._ensure_init()
         async with self.async_session() as session:
             now = utc_now()
+            if email is not None:
+                email_taken = (
+                    await session.exec(select(AuthUser).where(AuthUser.email == email))
+                ).first()
+                # 邮箱已不是登录标识，重复时不再阻止建号，直接不写入该可选字段。
+                if email_taken is not None:
+                    email = None
             user = AuthUser(
                 user_id=f"user_{uuid.uuid4().hex}",
                 username=username,
