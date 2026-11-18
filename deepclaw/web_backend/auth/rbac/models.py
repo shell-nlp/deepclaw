@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 
+from sqlalchemy import DateTime
 from sqlmodel import Field, SQLModel
 
 
@@ -32,7 +33,7 @@ class RbacPolicyRule(SQLModel, table=True):
     subject: str = Field(index=True)
     path: str = Field(index=True)
     action: str = Field(index=True)
-    created_at: datetime = Field(default_factory=utc_now)
+    created_at: datetime = Field(default_factory=utc_now, sa_type=DateTime)
 
 
 class RbacRoleRule(SQLModel, table=True):
@@ -50,4 +51,4 @@ class RbacRoleRule(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     child: str = Field(index=True)
     parent: str = Field(index=True)
-    created_at: datetime = Field(default_factory=utc_now)
+    created_at: datetime = Field(default_factory=utc_now, sa_type=DateTime)

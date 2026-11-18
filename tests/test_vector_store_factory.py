@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from deepclaw.common.vector_store import factory
 
 
@@ -66,3 +68,21 @@ def test_create_default_vector_store_uses_configured_pgsql_backend(monkeypatch):
         "embedding_model": "emb",
         "embedding_dimensions": 1536,
     }
+
+def test_create_default_vector_store_rejects_disabled_backend(monkeypatch):
+    """验证 VECTOR_STORE_BACKEND=none 时显式失败并说明原因。"""
+
+    monkeypatch.setattr(
+        factory,
+        "settings",
+        SimpleNamespace(
+            VECTOR_STORE_BACKEND="none",
+            ES_URL=None,
+            ES_URSR=None,
+            ES_PWD=None,
+            PG_DATABASE_URL=None,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="VECTOR_STORE_BACKEND=none"):
+        factory.create_default_vector_store(embedding_model="emb")

@@ -1275,10 +1275,15 @@ def get_knowledge_base_manager() -> KnowledgeBaseManager:
         使用当前向量库配置创建的知识库管理器。
 
     Raises:
-        ValueError: 向量库连接地址未配置时抛出。
+        BusinessRuleError: 未启用向量库或向量库连接地址未配置时抛出。
     """
     global knowledge_base_manager
     if knowledge_base_manager is None:
+        if settings.VECTOR_STORE_BACKEND == "none":
+            raise BusinessRuleError(
+                "当前未启用向量库（VECTOR_STORE_BACKEND=none），知识库功能不可用；"
+                "如需知识库请配置 pgsql 或 elasticsearch。"
+            )
         embeddings = get_embedding_model()
         knowledge_base_manager = KnowledgeBaseManager(
             create_default_vector_store(embedding_model=embeddings),

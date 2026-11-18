@@ -705,13 +705,39 @@ curl http://localhost:7869/api/agui/threads/demo-thread/state -H "Authorization:
 | 变量 | 说明 |
 |------|------|
 | `PG_DATABASE_URL` | PostgreSQL 连接串。配置后 Run/Thread、检查点、长期记忆、认证、渠道与知识库元数据统一落库，多实例可共享 |
-| `VECTOR_STORE_BACKEND` | 向量库后端：`pgsql`（PostgreSQL + pgvector）或 `elasticsearch`，默认 `elasticsearch` |
+| `VECTOR_STORE_BACKEND` | 向量库后端：`pgsql`（PostgreSQL + pgvector）、`elasticsearch`，或 `none`（不启用知识库），默认 `pgsql` |
 | `ES_URL` | `VECTOR_STORE_BACKEND=elasticsearch` 时的 Elasticsearch 地址 |
 | `ES_URSR` / `ES_PWD` | Elasticsearch 用户名与密码 |
 | `OBJECT_STORAGE_PROVIDER` | 知识库文件对象存储：`local`（默认）或 `minio` |
 | `LOCAL_STORAGE_ROOT` | 本地对象存储根目录，默认 `.deepclaw/workspace/object_storage`；实际路径为 `root/bucket_name/file_path` |
 | `MINIO_ENDPOINT_URL` / `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | `OBJECT_STORAGE_PROVIDER=minio` 时必填 |
 
+### 无中间件模式（最小依赖）
+
+不装 PostgreSQL / Elasticsearch / MinIO / Docker 也能跑：把向量库显式关掉即可，
+其余数据自动落到本地 SQLite 与本地对象存储目录（`HOME_PATH`，见上文安装方式）。
+
+```dotenv
+OPENAI_API_BASE=http://localhost:8082/v1
+OPENAI_API_KEY=your-api-key
+CHAT_MODEL_NAME=qwen3
+
+# 关掉向量库；不关的话 pgsql/elasticsearch 缺连接串会启动失败
+VECTOR_STORE_BACKEND=none
+BACKEND_TYPE=local_shell
+```
+
+| 能力 | 无中间件时 |
+|------|------|
+| 通用对话、工具调用、图表、技能、MCP | 可用 |
+| 登录鉴权、RBAC、用户管理 | 可用（`.deepclaw/auth.db` + `.deepclaw/rbac.db`） |
+| 渠道绑定、设备配对、定时任务 | 可用（各自 SQLite） |
+| 会话历史与 Thread | 仅进程内内存，重启即丢失；要持久化才需要 `PG_DATABASE_URL` |
+| 知识库 / RAG | 不可用，接口返回“当前未启用向量库”的业务错误 |
+| 沙箱隔离执行 | 不可用，需 OpenSandbox（`BACKEND_TYPE=sandbox`） |
+
+> 想保留会话历史但不装 PostgreSQL 时，可以把 `PG_DATABASE_URL` 指向任意一个 PostgreSQL 实例；
+> 只要它是 PG，检查点、Run/Thread 与元数据都会自动落库，不需要额外服务。
 ### 常用可选环境变量
 
 | 变量 | 说明 |

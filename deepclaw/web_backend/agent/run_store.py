@@ -9,7 +9,7 @@ from typing import Any, AsyncIterator, Protocol
 
 from ag_ui.core import RunAgentInput
 from loguru import logger
-from sqlalchemy import JSON, Column, Index, UniqueConstraint, inspect, text
+from sqlalchemy import JSON, Column, DateTime, Index, UniqueConstraint, inspect, text
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Field, SQLModel, delete, select
 
@@ -1011,9 +1011,9 @@ class AgUiRunRecord(SQLModel, table=True):
     status: str = Field(default="queued", index=True)
     input_json: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     last_event_id: int = 0
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now)
-    expires_at: datetime = Field(default_factory=utc_now, index=True)
+    created_at: datetime = Field(default_factory=utc_now, sa_type=DateTime)
+    updated_at: datetime = Field(default_factory=utc_now, sa_type=DateTime)
+    expires_at: datetime = Field(default_factory=utc_now, sa_type=DateTime, index=True)
     error: str | None = None
 
 
@@ -1029,8 +1029,8 @@ class AgUiRunEventRecord(SQLModel, table=True):
     run_id: str = Field(index=True)
     event_id: int = Field(index=True)
     frame: str
-    created_at: datetime = Field(default_factory=utc_now)
-    expires_at: datetime = Field(default_factory=utc_now, index=True)
+    created_at: datetime = Field(default_factory=utc_now, sa_type=DateTime)
+    expires_at: datetime = Field(default_factory=utc_now, sa_type=DateTime, index=True)
 
 
 class AgUiThreadRecord(SQLModel, table=True):
@@ -1046,9 +1046,9 @@ class AgUiThreadRecord(SQLModel, table=True):
     owner_user_id: str = Field(index=True)
     agent_id: str = Field(default="agent", index=True)
     title: str | None = None
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now)
-    expires_at: datetime = Field(default_factory=utc_now, index=True)
+    created_at: datetime = Field(default_factory=utc_now, sa_type=DateTime)
+    updated_at: datetime = Field(default_factory=utc_now, sa_type=DateTime)
+    expires_at: datetime = Field(default_factory=utc_now, sa_type=DateTime, index=True)
 
 
 class AgUiCheckpointRecord(SQLModel, table=True):

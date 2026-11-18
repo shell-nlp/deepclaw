@@ -6,7 +6,7 @@ from deepclaw.common.vector_store.base import AbstractVectorStore
 from deepclaw.common.vector_store.elasticsearch import ElasticsearchVectorStore
 from deepclaw.settings import settings
 
-VectorStoreBackend = Literal["elasticsearch", "pgsql"]
+VectorStoreBackend = Literal["elasticsearch", "pgsql", "none"]
 
 
 def _load_pg_vector_store():
@@ -21,7 +21,26 @@ def create_vector_store(
     embedding_model=None,
     embedding_dimensions: int | None = None,
 ) -> AbstractVectorStore:
-    """统一创建向量库实例，减少业务侧直接依赖具体实现。"""
+    """统一创建向量库实例，减少业务侧直接依赖具体实现。
+
+    Args:
+        backend: 向量库后端标识。
+        embedding_model: 写入与检索使用的嵌入模型。
+        embedding_dimensions: 向量维度；为空时由实现自行推断。
+
+    Returns:
+        AbstractVectorStore: 对应后端的向量库实例。
+
+    Raises:
+        ValueError: 后端未启用，或缺少该后端必需的连接配置时抛出。
+    """
+
+    if backend == "none":
+        raise ValueError(
+            "VECTOR_STORE_BACKEND=none 未启用向量库，知识库功能不可用；"
+            "如需知识库请配置 pgsql 或 elasticsearch。"
+        )
+
     if backend == "elasticsearch":
         if not settings.ES_URL:
             raise ValueError("未配置 ES_URL，无法创建 ElasticsearchVectorStore")

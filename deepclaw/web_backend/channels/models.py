@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field as PydanticField
-from sqlalchemy import JSON, Column, UniqueConstraint
+from sqlalchemy import JSON, Column, DateTime, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -34,8 +34,8 @@ class ChannelUser(SQLModel, table=True):
     channel_user_id: str = Field(index=True)
     user_id: str = Field(index=True)
     display_name: str | None = None
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now)
+    created_at: datetime = Field(default_factory=utc_now, sa_type=DateTime)
+    updated_at: datetime = Field(default_factory=utc_now, sa_type=DateTime)
 
 
 class ChannelSession(SQLModel, table=True):
@@ -58,8 +58,8 @@ class ChannelSession(SQLModel, table=True):
     binding_id: int | None = Field(default=None, index=True)
     session_id: str = Field(index=True, unique=True)
     reply_mode: str = Field(default="final")
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now)
+    created_at: datetime = Field(default_factory=utc_now, sa_type=DateTime)
+    updated_at: datetime = Field(default_factory=utc_now, sa_type=DateTime)
 
 
 class ChannelMessageRecord(SQLModel, table=True):
@@ -75,8 +75,8 @@ class ChannelMessageRecord(SQLModel, table=True):
     channel_user_id: str = Field(index=True)
     status: str = Field(default="received")
     error: str | None = None
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now)
+    created_at: datetime = Field(default_factory=utc_now, sa_type=DateTime)
+    updated_at: datetime = Field(default_factory=utc_now, sa_type=DateTime)
 
 
 class ChannelRuntimeState(SQLModel, table=True):
@@ -89,8 +89,8 @@ class ChannelRuntimeState(SQLModel, table=True):
     channel: str = Field(index=True)
     state_key: str = Field(default="default", index=True)
     data: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now)
+    created_at: datetime = Field(default_factory=utc_now, sa_type=DateTime)
+    updated_at: datetime = Field(default_factory=utc_now, sa_type=DateTime)
 
 
 class ChannelBinding(SQLModel, table=True):
@@ -105,8 +105,8 @@ class ChannelBinding(SQLModel, table=True):
     credentials: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     config: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     runtime_state: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now)
+    created_at: datetime = Field(default_factory=utc_now, sa_type=DateTime)
+    updated_at: datetime = Field(default_factory=utc_now, sa_type=DateTime)
 
 
 class ChannelMessage(BaseModel):

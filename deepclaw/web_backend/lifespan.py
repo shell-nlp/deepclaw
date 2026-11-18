@@ -36,9 +36,15 @@ def validate_runtime_settings() -> None:
     problems: list[str] = []
 
     if settings.VECTOR_STORE_BACKEND == "pgsql" and not settings.PG_DATABASE_URL:
-        problems.append("VECTOR_STORE_BACKEND=pgsql 时必须配置 PG_DATABASE_URL。")
+        problems.append(
+            "VECTOR_STORE_BACKEND=pgsql 时必须配置 PG_DATABASE_URL；"
+            "不启用知识库时请设置 VECTOR_STORE_BACKEND=none。"
+        )
     if settings.VECTOR_STORE_BACKEND == "elasticsearch" and not settings.ES_URL:
-        problems.append("VECTOR_STORE_BACKEND=elasticsearch 时必须配置 ES_URL。")
+        problems.append(
+            "VECTOR_STORE_BACKEND=elasticsearch 时必须配置 ES_URL；"
+            "不启用知识库时请设置 VECTOR_STORE_BACKEND=none。"
+        )
     if settings.OBJECT_STORAGE_PROVIDER == "minio":
         missing_minio = [
             name
@@ -225,13 +231,17 @@ async def app_lifespan(app: FastAPI):
         get_agui_agents_path(),
     )
     await get_auth_service().bootstrap_admin_if_needed()
-    upload_manager = get_knowledge_base_manager()
-    await upload_manager.start_upload_workers()
+    # 未启用向量库时跳过知识库初始化，保证无中间件也能启动
+    upload_manager = None
+    if settings.VECTOR_STORE_BACKEND != "none":
+        upload_manager = get_knowledge_base_manager()
+        await upload_manager.start_upload_workers()
     try:
         async with channel_lifespan():
             yield
     finally:
-        await upload_manager.stop_upload_workers()
+        if upload_manager is not None:
+            await upload_manager.stop_upload_workers()
         runtime_cache = getattr(app.state, "agent_runtime_cache", None)
         if runtime_cache is not None:
             await runtime_cache.close()

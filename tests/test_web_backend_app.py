@@ -292,6 +292,58 @@ def test_create_app_serves_exported_login_html_route(monkeypatch, tmp_path: Path
     assert "login" in response.text
 
 
+def test_validate_runtime_settings_allows_disabled_vector_store(monkeypatch):
+    """验证 VECTOR_STORE_BACKEND=none 时无中间件也能通过启动校验。"""
+
+    _, lifespan_module = _load_app_module(monkeypatch)
+    monkeypatch.setattr(lifespan_module.settings, "VECTOR_STORE_BACKEND", "none")
+    monkeypatch.setattr(lifespan_module.settings, "PG_DATABASE_URL", None)
+    monkeypatch.setattr(lifespan_module.settings, "ES_URL", None)
+
+    lifespan_module.validate_runtime_settings()
+
+
+def test_create_app_starts_without_vector_store(monkeypatch, tmp_path: Path):
+    """验证关闭向量库后启动不初始化知识库，静态页面仍可访问。"""
+
+    from contextlib import asynccontextmanager
+
+    app_module, lifespan_module = _load_app_module(monkeypatch)
+    frontend_out = tmp_path / "frontend" / "out"
+    frontend_out.mkdir(parents=True)
+    (frontend_out / "index.html").write_text("<html><body>index</body></html>", encoding="utf-8")
+
+    async def fake_init_agent_env(app):
+        app.state.checkpointer = object()
+        app.state.store = object()
+        app.state.langgraph_store_ctx = None
+
+    class ServiceSpy:
+        async def bootstrap_admin_if_needed(self):
+            return None
+
+    @asynccontextmanager
+    async def noop_channel_lifespan():
+        yield
+
+    def fail_manager():
+        raise AssertionError("VECTOR_STORE_BACKEND=none 时不应初始化知识库")
+
+    monkeypatch.setattr(lifespan_module.settings, "VECTOR_STORE_BACKEND", "none")
+    monkeypatch.setattr(lifespan_module, "resolve_frontend_path", lambda: frontend_out)
+    monkeypatch.setattr(lifespan_module, "get_knowledge_base_manager", fail_manager)
+    monkeypatch.setattr(lifespan_module, "init_agent_env", fake_init_agent_env)
+    monkeypatch.setattr(lifespan_module, "setup_observability", lambda: None)
+    monkeypatch.setattr(lifespan_module, "channel_lifespan", noop_channel_lifespan)
+    monkeypatch.setattr(lifespan_module, "get_auth_service", lambda: ServiceSpy())
+
+    with TestClient(app_module.create_app()) as client:
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert "index" in response.text
+
+
 def test_validate_runtime_settings_rejects_pgsql_without_database(monkeypatch):
     """验证选择 pgsql 但缺少 PG_DATABASE_URL 时启动快速失败。"""
     _, lifespan_module = _load_app_module(monkeypatch)

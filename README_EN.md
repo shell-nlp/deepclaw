@@ -707,13 +707,40 @@ curl http://localhost:7869/api/agui/threads/demo-thread/state -H "Authorization:
 | Variable | Description |
 |----------|-------------|
 | `PG_DATABASE_URL` | PostgreSQL connection string. When set, runs/threads, checkpoints, long-term memory, auth, channels and knowledge base metadata all share one database and multiple instances can share state |
-| `VECTOR_STORE_BACKEND` | Vector store backend: `pgsql` (PostgreSQL + pgvector) or `elasticsearch`; defaults to `elasticsearch` |
+| `VECTOR_STORE_BACKEND` | Vector store backend: `pgsql` (PostgreSQL + pgvector), `elasticsearch`, or `none` (knowledge base disabled); defaults to `pgsql` |
 | `ES_URL` | Elasticsearch URL when `VECTOR_STORE_BACKEND=elasticsearch` |
 | `ES_URSR` / `ES_PWD` | Elasticsearch username and password |
 | `OBJECT_STORAGE_PROVIDER` | Knowledge-base file storage: `local` (default) or `minio` |
 | `LOCAL_STORAGE_ROOT` | Local object-storage root, default `.deepclaw/workspace/object_storage`; paths are `root/bucket_name/file_path` |
 | `MINIO_ENDPOINT_URL` / `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | Required when `OBJECT_STORAGE_PROVIDER=minio` |
 
+### Minimal dependency mode (no middleware)
+
+You do not need PostgreSQL, Elasticsearch, MinIO or Docker to run the service: disable the
+vector store explicitly and everything else falls back to local SQLite files and a local
+object-storage directory under `HOME_PATH`.
+
+```dotenv
+OPENAI_API_BASE=http://localhost:8082/v1
+OPENAI_API_KEY=your-api-key
+CHAT_MODEL_NAME=qwen3
+
+# Disable the vector store; otherwise pgsql/elasticsearch without a URL fails startup
+VECTOR_STORE_BACKEND=none
+BACKEND_TYPE=local_shell
+```
+
+| Capability | Without middleware |
+|------|------|
+| Chat, tool calls, charts, skills, MCP | Available |
+| Authentication, RBAC, user management | Available (`.deepclaw/auth.db` + `.deepclaw/rbac.db`) |
+| Channel bindings, device pairing, cron jobs | Available (one SQLite file each) |
+| Chat history and threads | In-process memory only, lost on restart; set `PG_DATABASE_URL` to persist |
+| Knowledge base / RAG | Unavailable; the API returns a business error saying the vector store is disabled |
+| Sandbox-isolated execution | Unavailable; requires OpenSandbox (`BACKEND_TYPE=sandbox`) |
+
+> To keep chat history without installing anything else, point `PG_DATABASE_URL` at any
+> PostgreSQL instance you already have; checkpoints, runs/threads and metadata all move there.
 ### Common optional environment variables
 
 | Variable | Description |

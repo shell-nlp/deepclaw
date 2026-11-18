@@ -1,12 +1,26 @@
 import os
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional
 
+from sqlalchemy import DateTime
 from sqlmodel import select
 from sqlmodel import Field, SQLModel
 
 from deepclaw.constant import HOME_PATH
 from deepclaw.utils.db import build_async_sessionmaker, create_async_engine_from_url
+
+
+def _utc_now() -> datetime:
+    """返回不带时区的 UTC 当前时间。
+
+    Args:
+        无。
+
+    Returns:
+        datetime: UTC 当前时间，与既有 SQLite 数据保持同一存储格式。
+    """
+
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class CronJob(SQLModel, table=True):
@@ -18,8 +32,8 @@ class CronJob(SQLModel, table=True):
     command: str
     description: Optional[str] = None
     enabled: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utc_now, sa_type=DateTime)
+    updated_at: datetime = Field(default_factory=_utc_now, sa_type=DateTime)
 
 
 class CronManager:

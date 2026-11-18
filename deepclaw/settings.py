@@ -43,7 +43,8 @@ class Settings(BaseSettings):
 
     # postgres数据库配置
     PG_DATABASE_URL: str | None = None
-    VECTOR_STORE_BACKEND: Literal["elasticsearch", "pgsql"] = "pgsql"
+    # none 表示不启用向量库：通用对话/工具/渠道可用，知识库相关能力显式失败
+    VECTOR_STORE_BACKEND: Literal["elasticsearch", "pgsql", "none"] = "pgsql"
     LANGSMITH_API_KEY: str | None = None
 
     # 对象存储配置：默认本地，显式选择 minio 时才连接远端

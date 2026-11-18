@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from sqlalchemy import DateTime
 from sqlmodel import Field, SQLModel
 
 
@@ -23,17 +24,17 @@ class AuthUser(SQLModel, table=True):
     password_hash: str
     role: str = Field(default="user")
     is_active: bool = True
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now)
+    created_at: datetime = Field(default_factory=utc_now, sa_type=DateTime)
+    updated_at: datetime = Field(default_factory=utc_now, sa_type=DateTime)
 
 
 class AccessTokenRecord(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     user_id: str = Field(index=True)
     token_hash: str = Field(index=True, unique=True)
-    expires_at: datetime
-    last_used_at: datetime | None = None
-    created_at: datetime = Field(default_factory=utc_now)
+    expires_at: datetime = Field(sa_type=DateTime)
+    last_used_at: datetime | None = Field(default=None, sa_type=DateTime)
+    created_at: datetime = Field(default_factory=utc_now, sa_type=DateTime)
 
 
 @dataclass(slots=True)
