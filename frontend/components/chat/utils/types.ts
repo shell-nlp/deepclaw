@@ -325,6 +325,21 @@ export interface AuthUserListResponse {
   total: number
 }
 
+export interface RbacPolicyItem {
+  subject: string
+  path: string
+  action: string
+}
+
+export interface RbacRoleItem {
+  child: string
+  parent: string
+}
+
+export interface RbacPolicyListResponse {
+  policies: RbacPolicyItem[]
+  roles: RbacRoleItem[]
+}
 export interface ChannelBindingRecord {
   id: number
   channel: string

@@ -46,6 +46,7 @@ const { DeviceDetail } = await import('../components/chat/management/devices/Dev
 const { DeviceDownload } = await import('../components/chat/management/devices/DeviceDownload.tsx')
 const { DeviceConnectionPanel } = await import('../components/chat/management/devices/DeviceConnectionPanel.tsx')
 const { DeviceCopyField } = await import('../components/chat/management/devices/DeviceCopyField.tsx')
+const { RbacManagementView } = await import('../components/chat/management/RbacManagementView.tsx')
 const { isDecisionAllowedForAllActions, updateValueAtPath } = await import('../components/chat/interrupt/utils.ts')
 const require = createRequire(import.meta.url)
 const React = require('react')
@@ -592,4 +593,27 @@ test('处理中及结束后都保留真实思考和工具，无过程时结束�
   }))
   assert.match(waitingHtml, /正在处理中/)
   assert.doesNotMatch(waitingHtml, /等待模型返回|未返回思考|processSummaryDetails/)
+})
+
+
+test('角色权限页对非管理员只展示说明，对管理员展示策略编辑入口', () => {
+  const baseProps = {
+    policies: [{ subject: 'user', path: '/api/rag/*', action: 'read' }],
+    roles: [{ child: 'admin', parent: 'user' }],
+    loading: false, busy: false, notice: '', error: '',
+    policyDraft: { subject: '', path: '', action: 'read' },
+    roleDraft: { child: '', parent: '' },
+    onPolicyDraftChange() {}, onRoleDraftChange() {},
+    onLoadPolicies() {}, onCreatePolicy() {}, onDeletePolicy() {},
+    onCreateRole() {}, onDeleteRole() {},
+  }
+  const restricted = renderToStaticMarkup(React.createElement(RbacManagementView, { ...baseProps, canManage: false }))
+  assert.match(restricted, /仅管理员/)
+  assert.doesNotMatch(restricted, /添加策略/)
+
+  const admin = renderToStaticMarkup(React.createElement(RbacManagementView, { ...baseProps, canManage: true }))
+  assert.match(admin, /角色继承/)
+  assert.match(admin, /添加策略/)
+  assert.match(admin, /\/api\/rag\/\*/)
+  assert.match(admin, /admin/)
 })

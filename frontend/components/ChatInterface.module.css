@@ -451,6 +451,18 @@
     #f7f8fa;
 }
 
+.managementSectionDivider {
+  height: 1px;
+  margin: 4px 0 0;
+  background: linear-gradient(
+    90deg,
+    rgba(15, 23, 42, 0) 0%,
+    rgba(15, 23, 42, 0.08) 18%,
+    rgba(15, 23, 42, 0.08) 82%,
+    rgba(15, 23, 42, 0) 100%
+  );
+}
+
 .sessionBar {
   position: relative;
   z-index: 1;

@@ -83,6 +83,12 @@ class Settings(BaseSettings):
         "sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/code-interpreter:v1.0.2"
     )
 
+    # RBAC 授权模型与策略文件；都留空时使用包内默认策略，配置时两者必须同时提供
+    RBAC_MODEL_PATH: str = ""
+    RBAC_POLICY_PATH: str = ""
+    # 是否把策略存到数据库；关闭时直接读取策略文件
+    RBAC_STORE_ENABLED: bool = True
+
     AUTH_ADMIN_EMAIL: str | None = None
     AUTH_ADMIN_PASSWORD: str | None = None
     AUTH_TOKEN_EXPIRE_DAYS: int = 1

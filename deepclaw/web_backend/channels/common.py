@@ -3,6 +3,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from deepclaw.web_backend.auth.dependencies import CurrentActor
+from deepclaw.web_backend.auth.rbac import is_allowed
 from deepclaw.web_backend.channels.models import ChannelBinding, ChannelSession
 from deepclaw.web_backend.channels.store import ChannelStore
 from deepclaw.web_backend.channels.weixin_clawbot.state import (
@@ -11,10 +12,24 @@ from deepclaw.web_backend.channels.weixin_clawbot.state import (
 
 
 GUEST_MANAGER_USER_ID = "guest"
+# 用于探测管理员能力的策略路径，对应 policy.csv 中 admin 专有规则。
+ADMIN_PROBE_PATH = "/api/auth/users/list"
 
 
 def is_admin(actor: CurrentActor) -> bool:
-    return not actor.is_guest and actor.role == "admin"
+    """判断主体是否具备管理员能力。
+
+    能力由 Casbin 策略决定，不再硬编码角色名；策略调整后判定随之变化。
+
+    Args:
+        actor: 当前鉴权主体。
+
+    Returns:
+        bool: 主体拥有管理员专属权限时返回真。
+    """
+    if actor.is_guest:
+        return False
+    return is_allowed(actor, path=ADMIN_PROBE_PATH, action="write")
 
 
 def manager_user_id_from_actor(actor: CurrentActor) -> str:

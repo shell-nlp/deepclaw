@@ -7,8 +7,10 @@ import { ChannelManagementView } from './management/ChannelManagementView'
 import { KnowledgeManagementView } from './management/KnowledgeManagementView'
 import { McpManagementView } from './management/McpManagementView'
 import { SkillManagementView } from './management/SkillManagementView'
+import { RbacManagementView } from './management/RbacManagementView'
 import { UserManagementView } from './management/UserManagementView'
 import { useChatPageController } from './hooks/useChatPageController'
+import { useRbacPolicies } from './hooks/useRbacPolicies'
 import { DeviceManagementView } from './management/DeviceManagementView'
 
 export default function ChatInterface() {
@@ -166,6 +168,10 @@ export default function ChatInterface() {
     mcpStatusLabel,
   } = useChatPageController()
 
+  const rbacPolicies = useRbacPolicies({
+    requestJson,
+    canManage: actorCapabilities.canManageUsers,
+  })
   return (
     <div className={styles.container}>
       <div className={styles.backgroundGrid} />
@@ -296,6 +302,7 @@ export default function ChatInterface() {
               />
             </div>
           ) : knowledgePage === 'users' ? (
+            <>
             <div className={styles.managementViewport}>
               <UserManagementView
                 actor={actor}
@@ -311,6 +318,28 @@ export default function ChatInterface() {
                 onResetUserPassword={resetAdminUserPassword}
               />
             </div>
+            <div className={styles.managementViewport}>
+              <div className={styles.managementSectionDivider} />
+              <RbacManagementView
+                canManage={actorCapabilities.canManageUsers}
+                policies={rbacPolicies.policies}
+                roles={rbacPolicies.roles}
+                loading={rbacPolicies.loading}
+                busy={rbacPolicies.busy}
+                notice={rbacPolicies.notice}
+                error={rbacPolicies.error}
+                policyDraft={rbacPolicies.policyDraft}
+                roleDraft={rbacPolicies.roleDraft}
+                onPolicyDraftChange={rbacPolicies.setPolicyDraft}
+                onRoleDraftChange={rbacPolicies.setRoleDraft}
+                onLoadPolicies={rbacPolicies.loadPolicies}
+                onCreatePolicy={rbacPolicies.createPolicy}
+                onDeletePolicy={rbacPolicies.deletePolicy}
+                onCreateRole={rbacPolicies.createRole}
+                onDeleteRole={rbacPolicies.deleteRole}
+              />
+            </div>
+            </>
           ) : (
             <div className={styles.managementViewport}>
               <KnowledgeManagementView

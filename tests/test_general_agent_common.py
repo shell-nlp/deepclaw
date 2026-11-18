@@ -8,24 +8,29 @@ from deepclaw.agents.general.agent import GeneralAgent
 def test_general_agent_exposes_common_middleware() -> None:
     """验证通用中间件包含运行时所需的基础能力。
 
+    HumanInTheLoopMiddleware 属于公共中间件：南阳天气与 ask_user 需要走标准
+    HITL 中断，由 RUN_FINISHED.outcome 暴露给前端审批。
+
     Args:
         无。
     """
-    common_names = {
+    common_names = [
         type(middleware).__name__
         for middleware in GeneralAgent.get_common_middleware()
-    }
+    ]
 
     assert {
         "RecommendedQuestionsMiddleware",
         "BusinessMiddleware",
         "MCPMiddleware",
-    }.issubset(common_names)
-    assert "HumanInTheLoopMiddleware" not in common_names
+        "DeviceToolsMiddleware",
+        "HumanInTheLoopMiddleware",
+        "ChartMiddleware",
+    } == set(common_names)
 
 
 def test_general_agent_exposes_common_tools() -> None:
-    """验证通用工具与调用方额外工具可以分开组合。
+    """验证通用工具集合覆盖天气、抓取、提问与知识库检索。
 
     Args:
         无。
@@ -34,16 +39,20 @@ def test_general_agent_exposes_common_tools() -> None:
         getattr(tool, "name", "") for tool in GeneralAgent.get_common_tools()
     }
 
-    class ExtraTool:
-        """测试用额外工具。"""
+    assert {"get_weather", "web_fetch", "ask_user", "retrieve_context"} == common_tool_names
 
-        name = "extra_tool"
 
-    extra_tools = GeneralAgent.get_agent_tools([ExtraTool()])
+def test_general_agent_build_agent_accepts_extra_tools() -> None:
+    """验证额外工具通过 build_agent 的 tools 参数独立组合。
 
-    assert {"get_weather", "web_fetch", "ask_user"}.issubset(common_tool_names)
-    assert len(extra_tools) == 1
-    assert extra_tools[0].name == "extra_tool"
+    Args:
+        无。
+    """
+    signature = __import__("inspect").signature(GeneralAgent.build_agent)
+
+    assert "tools" in signature.parameters
+    assert signature.parameters["tools"].default is None
+    assert not hasattr(GeneralAgent, "get_agent_tools")
 
 
 def test_general_agent_exposes_knowledge_retrieval_tool() -> None:

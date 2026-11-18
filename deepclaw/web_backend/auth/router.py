@@ -3,9 +3,9 @@ from fastapi import APIRouter, Depends, Header
 from deepclaw.web_backend.auth.dependencies import (
     CurrentActor,
     get_current_actor,
-    require_admin_actor,
     require_authenticated_actor,
 )
+from deepclaw.web_backend.auth.rbac import require_permission
 from deepclaw.web_backend.auth.schemas import (
     AdminCreateUserRequest,
     AdminListUsersRequest,
@@ -79,7 +79,7 @@ async def me(actor: CurrentActor = Depends(get_current_actor)):
 @router.post("/users/create", summary="创建用户", description="管理员创建指定角色和初始状态的用户账号。")
 async def create_user(
     request: AdminCreateUserRequest,
-    actor: CurrentActor = Depends(require_admin_actor),
+    actor: CurrentActor = Depends(require_permission("/api/auth/users/create", "write")),
     service: AuthService = Depends(get_auth_service),
 ):
     """由管理员创建用户。"""
@@ -101,7 +101,7 @@ async def create_user(
 @router.post("/users/list", summary="查询用户列表", description="管理员分页查询系统用户及其角色、状态信息。")
 async def list_users(
     request: AdminListUsersRequest,
-    actor: CurrentActor = Depends(require_admin_actor),
+    actor: CurrentActor = Depends(require_permission("/api/auth/users/list", "read")),
     service: AuthService = Depends(get_auth_service),
 ):
     """由管理员查询用户列表。"""
@@ -123,7 +123,7 @@ async def list_users(
 @router.post("/users/update-role", summary="修改用户角色", description="管理员更新指定用户的角色。")
 async def update_user_role(
     request: AdminUpdateUserRoleRequest,
-    actor: CurrentActor = Depends(require_admin_actor),
+    actor: CurrentActor = Depends(require_permission("/api/auth/users/update-role", "write")),
     service: AuthService = Depends(get_auth_service),
 ):
     """由管理员更新用户角色。"""
@@ -144,7 +144,7 @@ async def update_user_role(
 @router.post("/users/update-status", summary="修改用户状态", description="管理员启用或禁用指定用户。")
 async def update_user_status(
     request: AdminUpdateUserStatusRequest,
-    actor: CurrentActor = Depends(require_admin_actor),
+    actor: CurrentActor = Depends(require_permission("/api/auth/users/update-status", "write")),
     service: AuthService = Depends(get_auth_service),
 ):
     """由管理员更新用户启用状态。"""
@@ -165,7 +165,7 @@ async def update_user_status(
 @router.post("/users/reset-password", summary="重置用户密码", description="管理员为指定用户设置新的登录密码。")
 async def reset_user_password(
     request: AdminResetUserPasswordRequest,
-    actor: CurrentActor = Depends(require_admin_actor),
+    actor: CurrentActor = Depends(require_permission("/api/auth/users/reset-password", "write")),
     service: AuthService = Depends(get_auth_service),
 ):
     """由管理员重置用户密码。"""

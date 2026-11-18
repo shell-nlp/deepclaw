@@ -1,0 +1,19 @@
+# 默认策略：内置角色 user / admin，admin 继承 user 的全部权限。
+# 资源归属由 r.obj.owner 与 r.sub.uid 比较，管理员通过 r.sub.is_admin 旁路归属限制。
+# 路径按 Casbin keyMatch 匹配，修改后需要重启服务让策略重新加载。
+p, user, /api/rag/*, read
+p, user, /api/rag/*, write
+p, user, /api/agui/*, read
+p, user, /api/agui/*, write
+p, user, /api/agent/*, read
+p, user, /api/agent/*, write
+p, user, /api/channels/*, read
+p, user, /api/channels/*, write
+p, user, /api/devices/*, read
+p, user, /api/devices/*, write
+p, admin, /api/auth/rbac/*, read
+p, admin, /api/auth/rbac/*, write
+p, admin, /api/auth/users/*, read
+p, admin, /api/auth/users/*, write
+
+g, admin, user

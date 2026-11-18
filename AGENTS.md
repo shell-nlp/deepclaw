@@ -72,6 +72,8 @@
 - `deepclaw/web_backend/auth/`
   认证相关路由、请求模型、SQLModel、存储、服务与 FastAPI 依赖。
 
+- `deepclaw/web_backend/auth/rbac/`
+  基于 Casbin 的 RBAC + ABAC 授权层。`model.conf` 定义「角色继承 + 资源归属」匹配规则，`policy.csv` 是基础策略（内置 user、admin，admin 继承 user）；`enforcer.py` 提供进程级单例、主体/资源属性对象与 `is_allowed()`，`dependencies.py` 提供 `require_permission(path, action, owner=...)` 依赖，`store.py` + `models.py` 把策略落到 `rbac_policy_rules` / `rbac_role_rules` 两张表（默认 `.deepclaw/rbac.db`，随 `PG_DATABASE_URL` 走统一 PG），`adapter.py` 负责首次启动播种，`bootstrap.py` 在建表后写入基础策略，`router.py` 提供 `/api/auth/rbac/*` 策略管理接口。前端策略管理位于 `management/RbacManagementView.tsx`，由 `hooks/useRbacPolicies.ts` 承载数据，作为「用户管理」页的第二个区块渲染，仅管理员可见。`RBAC_STORE_ENABLED=True` 时从数据库装载策略，失败回退策略文件；`RBAC_MODEL_PATH` / `RBAC_POLICY_PATH` 可外部覆盖模型与基础策略（需同时配置）。启动时在 `validate_runtime_settings()` 中加载，策略损坏直接启动失败。管理员专属接口、渠道 `scope=all` 与 RBAC 管理接口均走策略判定；资源归属仍由各模块的 owner 判断保留。注意 Casbin 的 `Enforcer(model)` 不会重建 g 规则链接，必须用 adapter 构造，否则角色继承静默失效。
 - `deepclaw/web_backend/channels/`
   渠道共享模型、会话存储、消息处理服务、共享会话接口与总装配入口。
   `jobs.py` 定义独立的 `channel_jobs` 持久化任务表、`channel_leases` 数据库租约表及存储；消息按渠道、绑定、消息 ID 去重，同一会话在所有服务实例之间通过租约串行执行。`service.py` 编排执行与投递，`delivery.py` 隔离渠道发送故障，`recovery.py` 恢复原 Run 或补发已完成结果；流式进度按约 0.5 秒或终止事件保存，不逐 token 写库。`jobs_router.py` 提供任务查询及只补发/人工结束操作，接口响应不包含原始消息、正文或凭据。
@@ -251,6 +253,9 @@ pnpm build
 - `CHART_PUBLIC_URL`
 - `CHART_RETENTION_HOURS`
 - `CHART_MAX_FILES`
+- `RBAC_MODEL_PATH`
+- `RBAC_POLICY_PATH`
+- `RBAC_STORE_ENABLED`
 - `AUTH_ADMIN_EMAIL`
 - `AUTH_ADMIN_PASSWORD`
 - `AUTH_TOKEN_EXPIRE_DAYS`

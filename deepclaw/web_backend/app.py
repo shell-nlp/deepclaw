@@ -8,6 +8,7 @@ from deepclaw.middleware.chart import storage as chart_storage
 from deepclaw.settings import settings
 from deepclaw.web_backend.agui.runtime import AgentRuntimeCache
 from deepclaw.web_backend.agui.router import router as agui_router
+from deepclaw.web_backend.auth.rbac.router import router as rbac_router
 from deepclaw.web_backend.auth.router import router as auth_router
 from deepclaw.web_backend.channels.router import router as channels_router
 from deepclaw.web_backend.common.agui_runs import runtime_router
@@ -106,6 +107,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(auth_router)
+    app.include_router(rbac_router)
     app.include_router(agui_router)
     app.include_router(channels_router)
     app.include_router(skills_router)

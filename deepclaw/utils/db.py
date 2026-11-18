@@ -20,7 +20,7 @@ def make_async_url(db_url: str) -> str:
     return db_url
 
 
-def create_async_engine_from_url(db_url: str, echo: bool = False):
+def create_async_engine_from_url(db_url: str, echo: bool = False, poolclass=None):
     """按数据库类型创建异步 SQLAlchemy 引擎。
 
     Args:
@@ -33,6 +33,8 @@ def create_async_engine_from_url(db_url: str, echo: bool = False):
     async_db_url = make_async_url(db_url)
     connect_args = {"check_same_thread": False} if db_url.startswith("sqlite") else {}
     engine_kwargs = {"echo": echo, "connect_args": connect_args}
+    if poolclass is not None:
+        engine_kwargs["poolclass"] = poolclass
     if db_url.startswith("postgresql"):
         engine_kwargs.update(pool_pre_ping=True, pool_recycle=1800)
     engine = create_async_engine(async_db_url, **engine_kwargs)

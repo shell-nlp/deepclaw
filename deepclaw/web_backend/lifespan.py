@@ -17,6 +17,7 @@ from deepclaw.web_backend.agent.run_store import (
     get_run_store,
     restore_threads_from_checkpoints,
 )
+from deepclaw.web_backend.auth.rbac import bootstrap_rbac_policy, get_enforcer
 from deepclaw.web_backend.auth.service import get_auth_service
 from deepclaw.web_backend.channels.lifespan import channel_lifespan
 from deepclaw.web_backend.common.agui_runs import (
@@ -54,6 +55,14 @@ def validate_runtime_settings() -> None:
                 + "、".join(missing_minio)
                 + "。"
             )
+
+    # RBAC 策略必须在服务可用前加载成功，策略损坏时直接失败而不是静默放行或拒绝。
+    try:
+        if settings.RBAC_STORE_ENABLED:
+            bootstrap_rbac_policy()
+        get_enforcer()
+    except RuntimeError as exc:
+        problems.append(str(exc))
 
     if problems:
         raise RuntimeError("运行时配置校验失败：\n- " + "\n- ".join(problems))
