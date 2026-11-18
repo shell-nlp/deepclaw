@@ -379,7 +379,7 @@ uv run python -m deepclaw.main
 - AG-UI Agents：`GET /api/agui/agents`
 - Channels API：`/api/channels/*`
 
-首次启动时，如果配置了 `AUTH_ADMIN_EMAIL` / `AUTH_ADMIN_PASSWORD` 且系统中还没有管理员，
+首次启动时，如果配置了 `AUTH_ADMIN_USERNAME` / `AUTH_ADMIN_PASSWORD` 且系统中还没有管理员，
 会自动创建这个管理员账号。未登录访问会自动降级为游客身份，技能管理与知识库管理对游客开放。
 
 ### 5. 启动依赖服务（可选，但推荐）
@@ -691,7 +691,7 @@ curl http://localhost:7869/api/agui/threads/demo-thread/state -H "Authorization:
 | `USE_COPILOTKIT` | 启用 CopilotKit 中间件 |
 | `MCP_CONFIG` | 默认 MCP 服务配置（JSON） |
 | `PHOENIX_COLLECTOR_ENDPOINT` | 启用 Phoenix tracing |
-| `AUTH_ADMIN_EMAIL` / `AUTH_ADMIN_PASSWORD` | 首次启动时自举的管理员账号 |
+| `AUTH_ADMIN_USERNAME` / `AUTH_ADMIN_PASSWORD` | 首次启动时自举的管理员账号 |
 | `AUTH_TOKEN_EXPIRE_DAYS` | 访问令牌有效期天数，默认 `1` |
 | `AGUI_RUN_RETENTION_SECONDS` | Run 与事件的保留时长，默认 `3600` |
 | `AGUI_THREAD_RETENTION_SECONDS` | Thread 索引保留时长；默认 `0` 表示不自动过期 |

@@ -17,6 +17,7 @@ test('auth helpers normalize guest and authenticated actors', () => {
   assert.deepEqual(authPkg.normalizeActorPayload(null), {
     isGuest: true,
     userId: 'guest',
+    username: null,
     email: null,
     role: 'guest',
   })
@@ -25,13 +26,15 @@ test('auth helpers normalize guest and authenticated actors', () => {
     authPkg.normalizeActorPayload({
       is_guest: false,
       user_id: 'user_123',
-      email: 'user@example.com',
+      username: 'user',
+      email: null,
       role: 'admin',
     }),
     {
       isGuest: false,
       userId: 'user_123',
-      email: 'user@example.com',
+      username: 'user',
+      email: null,
       role: 'admin',
     }
   )
@@ -43,13 +46,14 @@ test('auth helpers expose guest capabilities and admin flag', () => {
   const guest = authPkg.getActorCapabilities({
     isGuest: true,
     userId: 'guest',
+    username: null,
     email: null,
     role: 'guest',
   })
   const admin = authPkg.getActorCapabilities({
     isGuest: false,
     userId: 'user_1',
-    email: 'admin@example.com',
+    username: 'admin',
     role: 'admin',
   })
 
@@ -70,19 +74,20 @@ test('auth helpers expose channel binding admin capability only to admins', () =
   const guest = authPkg.getActorCapabilities({
     isGuest: true,
     userId: 'guest',
+    username: null,
     email: null,
     role: 'guest',
   })
   const user = authPkg.getActorCapabilities({
     isGuest: false,
     userId: 'user_1',
-    email: 'user@example.com',
+    username: 'user',
     role: 'user',
   })
   const admin = authPkg.getActorCapabilities({
     isGuest: false,
     userId: 'admin_1',
-    email: 'admin@example.com',
+    username: 'admin',
     role: 'admin',
   })
 

@@ -1,420 +1,427 @@
+/* 登录页沿用主应用的设计令牌，视觉语言与侧栏 + 内容区保持一致。 */
+
 .page {
   position: relative;
-  min-height: 100vh;
-  overflow: auto;
-  background:
-    radial-gradient(circle at top left, rgba(35, 93, 73, 0.18), transparent 26%),
-    radial-gradient(circle at top right, rgba(196, 139, 38, 0.16), transparent 20%),
-    linear-gradient(180deg, #f5f4ee 0%, #ebe6da 100%);
-}
-
-.grid {
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(31, 41, 55, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(31, 41, 55, 0.05) 1px, transparent 1px);
-  background-size: 36px 36px;
-  opacity: 0.45;
-  pointer-events: none;
-}
-
-.glowPrimary,
-.glowSecondary {
-  position: absolute;
-  border-radius: 999px;
-  filter: blur(40px);
-  pointer-events: none;
-}
-
-.glowPrimary {
-  top: 12%;
-  left: 6%;
-  width: 24rem;
-  height: 24rem;
-  background: radial-gradient(circle, rgba(15, 118, 110, 0.18), transparent 65%);
-}
-
-.glowSecondary {
-  right: 8%;
-  bottom: 12%;
-  width: 22rem;
-  height: 22rem;
-  background: radial-gradient(circle, rgba(180, 83, 9, 0.14), transparent 62%);
-}
-
-.shell {
-  position: relative;
-  z-index: 1;
-  min-height: 100vh;
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(360px, 460px);
-  gap: 2rem;
-  align-items: center;
-  padding: 2rem;
-}
-
-.brandPanel,
-.card {
-  border: 1px solid rgba(56, 67, 54, 0.12);
-  border-radius: 32px;
-  background: rgba(255, 255, 255, 0.82);
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.08);
-  backdrop-filter: blur(18px);
-}
-
-.brandPanel {
-  position: relative;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  height: 100vh;
   overflow: hidden;
+  background: var(--bg-primary);
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* 左侧品牌栏：与主应用侧栏同底色、同分隔线，不做渐变装饰。 */
+.brandPanel {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
-  min-height: 560px;
-  padding: 2.5rem;
-}
-
-.brandPanel::after {
-  content: '';
-  position: absolute;
-  inset: auto -8% -18% auto;
-  width: 18rem;
-  height: 18rem;
-  border-radius: 999px;
-  background: radial-gradient(circle, rgba(35, 93, 73, 0.12), transparent 68%);
+  gap: 28px;
+  padding: 28px 24px;
+  overflow-y: auto;
+  border-right: 1px solid var(--sidebar-line);
+  background: var(--sidebar-bg);
 }
 
 .brandBadge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 4rem;
-  height: 4rem;
-  border-radius: 1.4rem;
-  background: linear-gradient(135deg, #235d49 0%, #0f766e 100%);
-  color: #f8fafc;
-  font-size: 1.2rem;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-md);
+  background: var(--accent-primary);
+  color: #ffffff;
+  font-family: 'Bricolage Grotesque', 'Manrope', sans-serif;
+  font-size: 18px;
   font-weight: 700;
-  letter-spacing: 0.12em;
-  box-shadow: 0 18px 35px rgba(15, 118, 110, 0.22);
+  letter-spacing: -0.03em;
 }
 
 .brandCopy {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  max-width: 40rem;
-}
-
-.kicker,
-.cardEyebrow {
-  margin: 0;
-  font-size: 0.82rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  gap: 10px;
 }
 
 .kicker {
-  color: #0f766e;
+  margin: 0;
+  color: var(--sidebar-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .brandCopy h1 {
   margin: 0;
-  font-size: clamp(2.4rem, 4vw, 4rem);
-  line-height: 1.05;
-  color: #1f2937;
+  font-family: 'Bricolage Grotesque', 'Manrope', sans-serif;
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.045em;
+  line-height: 1.1;
+  color: var(--text-primary);
 }
 
 .description {
   margin: 0;
-  max-width: 34rem;
-  color: #5b6473;
-  font-size: 1rem;
-  line-height: 1.8;
+  max-width: 34ch;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.7;
 }
 
+/* 能力清单用列表分隔线表达层级，而不是卡片堆叠。 */
 .featureList {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--sidebar-line);
 }
 
 .featureCard {
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
-  padding: 1.1rem 1rem;
-  border-radius: 22px;
-  background: rgba(248, 250, 246, 0.92);
-  border: 1px solid rgba(56, 67, 54, 0.1);
+  gap: 3px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--sidebar-line);
 }
 
 .featureCard strong {
-  color: #1f2937;
-  font-size: 0.96rem;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .featureCard span {
-  color: #5b6473;
-  font-size: 0.88rem;
-  line-height: 1.7;
+  color: var(--sidebar-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.brandFooter {
+  margin-top: auto;
+  padding-top: 18px;
+}
+
+/* 右侧内容区：表单居中但不做营销页排版。 */
+.content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 32px;
+  overflow-y: auto;
 }
 
 .card {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  padding: 2rem;
+  gap: 20px;
+  width: min(100%, 420px);
+  padding: 32px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-md);
 }
 
 .cardHeader {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.cardHeader h2 {
-  margin: 0.35rem 0 0;
-  font-size: 1.9rem;
-  color: #1f2937;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .cardEyebrow {
-  color: #8b5e1a;
-}
-
-.ghostButton,
-.modeTab,
-.primaryButton,
-.secondaryButton,
-.dangerButton {
-  border: none;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
-}
-
-.ghostButton,
-.modeTab,
-.secondaryButton {
-  border: 1px solid rgba(56, 67, 54, 0.12);
-  background: rgba(255, 255, 255, 0.88);
-  color: #243041;
-}
-
-.ghostButton,
-.primaryButton,
-.secondaryButton,
-.dangerButton {
-  border-radius: 999px;
-  padding: 0.8rem 1.15rem;
-  cursor: pointer;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
   font-weight: 600;
 }
 
-.modeTab:hover,
-.ghostButton:hover,
-.primaryButton:hover,
-.secondaryButton:hover,
-.dangerButton:hover {
-  transform: translateY(-1px);
-}
-
-.ghostButton,
-.secondaryButton {
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
-}
-
-.primaryButton {
-  background: linear-gradient(135deg, #235d49 0%, #0f766e 100%);
-  color: #f8fafc;
-  box-shadow: 0 18px 30px rgba(15, 118, 110, 0.2);
-}
-
-.dangerButton {
-  background: rgba(185, 28, 28, 0.08);
-  color: #b91c1c;
-  box-shadow: 0 8px 20px rgba(185, 28, 28, 0.08);
+.cardHeader h2 {
+  margin: 0;
+  font-family: 'Bricolage Grotesque', 'Manrope', sans-serif;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.2;
+  color: var(--text-primary);
 }
 
 .modeTabs {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
 }
 
 .modeTab {
-  border-radius: 16px;
-  padding: 0.85rem 1rem;
-  cursor: pointer;
+  flex: 1;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 13px;
   font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.modeTab:hover {
+  color: var(--text-primary);
 }
 
 .modeTabActive {
-  background: linear-gradient(135deg, #235d49 0%, #0f766e 100%);
-  border-color: transparent;
-  color: #f8fafc;
-  box-shadow: 0 16px 26px rgba(15, 118, 110, 0.18);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
 }
 
-.form,
-.accountCard {
+.form {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 14px;
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
+  gap: 6px;
 }
 
 .field span {
-  color: #374151;
-  font-size: 0.92rem;
+  color: var(--text-secondary);
+  font-size: 12px;
   font-weight: 600;
 }
 
 .field input {
   width: 100%;
-  border: 1px solid rgba(56, 67, 54, 0.16);
-  border-radius: 18px;
-  padding: 0.95rem 1rem;
-  background: rgba(250, 250, 248, 0.96);
-  color: #1f2937;
-  outline: none;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 14px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.field input::placeholder {
+  color: var(--text-muted);
 }
 
 .field input:focus {
-  border-color: rgba(15, 118, 110, 0.55);
-  box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.12);
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px var(--border-glow);
 }
 
 .rememberRow {
   display: inline-flex;
   align-items: center;
-  gap: 0.65rem;
-  color: #374151;
-  font-size: 0.92rem;
-  font-weight: 600;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
   cursor: pointer;
 }
 
 .rememberRow input {
-  width: 1rem;
-  height: 1rem;
-  accent-color: #0f766e;
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+
+.primaryButton {
+  width: 100%;
+  padding: 11px 16px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--accent-primary);
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: var(--accent-secondary);
+}
+
+.primaryButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.secondaryButton,
+.ghostButton,
+.dangerButton {
+  padding: 9px 14px;
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.secondaryButton {
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.secondaryButton:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-secondary);
+}
+
+.ghostButton {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  padding: 6px 0;
+}
+
+.ghostButton:hover {
+  color: var(--accent-primary);
+}
+
+.dangerButton {
+  border: 1px solid rgba(201, 80, 80, 0.32);
+  background: transparent;
+  color: var(--error);
+}
+
+.dangerButton:hover:not(:disabled) {
+  background: rgba(201, 80, 80, 0.06);
+}
+
+.dangerButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .notice,
-.error,
-.sessionPlaceholder {
-  padding: 0.95rem 1rem;
-  border-radius: 18px;
-  font-size: 0.92rem;
-  line-height: 1.7;
+.error {
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .notice {
-  background: rgba(15, 118, 110, 0.08);
-  border: 1px solid rgba(15, 118, 110, 0.15);
-  color: #115e59;
+  border: 1px solid rgba(22, 134, 111, 0.24);
+  background: rgba(22, 134, 111, 0.06);
+  color: var(--success);
 }
 
 .error {
-  background: rgba(185, 28, 28, 0.08);
-  border: 1px solid rgba(185, 28, 28, 0.14);
-  color: #b91c1c;
+  border: 1px solid rgba(201, 80, 80, 0.24);
+  background: rgba(201, 80, 80, 0.06);
+  color: var(--error);
 }
 
 .sessionPlaceholder {
-  background: rgba(255, 255, 255, 0.86);
-  border: 1px dashed rgba(56, 67, 54, 0.14);
-  color: #5b6473;
+  padding: 14px 0;
+  color: var(--text-muted);
+  font-size: 13px;
 }
 
 .helperText {
   margin: 0;
-  color: #5b6473;
-  font-size: 0.9rem;
-  line-height: 1.8;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.accountCard {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .accountMeta {
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
-  padding: 1.25rem;
-  border-radius: 24px;
-  background: rgba(248, 250, 246, 0.92);
-  border: 1px solid rgba(56, 67, 54, 0.1);
+  gap: 4px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .accountMeta strong {
-  font-size: 1.1rem;
-  color: #1f2937;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
 }
 
 .accountMeta span {
-  color: #5b6473;
-  font-size: 0.92rem;
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 .accountRole {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  padding: 0.35rem 0.7rem;
-  border-radius: 999px;
-  background: rgba(15, 118, 110, 0.1);
-  color: #0f766e;
-  font-size: 0.8rem;
-  font-weight: 700;
+  align-self: flex-start;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  color: var(--accent-primary) !important;
+  font-size: 11px !important;
+  font-weight: 600;
 }
 
 .actionRow {
   display: flex;
-  gap: 0.85rem;
+  gap: 10px;
 }
 
-@media (max-width: 1120px) {
-  .shell {
-    grid-template-columns: 1fr;
-    padding: 1.5rem;
+.actionRow > button {
+  flex: 1;
+}
+
+@media (max-width: 900px) {
+  .page {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .brandPanel {
-    min-height: unset;
+    flex-direction: row;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px;
+    border-right: 0;
+    border-bottom: 1px solid var(--sidebar-line);
+    overflow: visible;
   }
 
-  .featureList {
-    grid-template-columns: 1fr;
+  .brandCopy h1 {
+    font-size: 20px;
+  }
+
+  .description,
+  .featureList,
+  .brandFooter {
+    display: none;
+  }
+
+  .content {
+    padding: 24px 20px;
+    align-items: flex-start;
   }
 }
 
-@media (max-width: 720px) {
-  .shell {
-    gap: 1rem;
-    padding: 1rem;
-  }
-
-  .brandPanel,
-  .card {
-    padding: 1.35rem;
-    border-radius: 24px;
-  }
-
-  .cardHeader,
-  .actionRow {
-    flex-direction: column;
-  }
-
-  .ghostButton,
+@media (prefers-reduced-motion: reduce) {
+  .modeTab,
+  .field input,
   .primaryButton,
   .secondaryButton,
+  .ghostButton,
   .dangerButton {
-    width: 100%;
-    justify-content: center;
+    transition: none;
   }
 }

@@ -309,7 +309,8 @@ export interface SkillDeleteResponse {
 }
 
 export interface AuthUserSummary {
-  email: string
+  username: string
+  email: string | null
   role: 'admin' | 'user'
   is_active: boolean
   user_id: string

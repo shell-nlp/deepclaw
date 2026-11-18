@@ -31,6 +31,7 @@ export default function LoginPage() {
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [actor, setActor] = useState<ActorState>(() => normalizeActorPayload(null))
   const [token, setToken] = useState('')
+  const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [rememberPassword, setRememberPassword] = useState(false)
@@ -52,7 +53,7 @@ export default function LoginPage() {
   useEffect(() => {
     const rememberedLogin = getRememberedLogin()
     if (rememberedLogin) {
-      setEmail(rememberedLogin.email)
+      setUsername(rememberedLogin.username)
       setPassword(rememberedLogin.password)
       setRememberPassword(true)
     }
@@ -87,11 +88,11 @@ export default function LoginPage() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
-    const normalizedEmail = email.trim().toLowerCase()
+    const normalizedUsername = username.trim().toLowerCase()
     const normalizedPassword = password.trim()
-    if (!normalizedEmail || !normalizedPassword) {
+    if (!normalizedUsername || !normalizedPassword) {
       setNotice('')
-      setError('请输入邮箱和密码。')
+      setError('请输入用户名和密码。')
       return
     }
 
@@ -99,10 +100,15 @@ export default function LoginPage() {
     setNotice('')
     setError('')
     try {
-      const result = await submitAuthRequest(mode, normalizedEmail, normalizedPassword)
+      const result = await submitAuthRequest(
+        mode,
+        normalizedUsername,
+        normalizedPassword,
+        email
+      )
       if (rememberPassword) {
         storeRememberedLogin({
-          email: normalizedEmail,
+          username: normalizedUsername,
           password: normalizedPassword,
         })
       } else {
@@ -146,51 +152,50 @@ export default function LoginPage() {
 
   return (
     <main className={styles.page}>
-      <div className={styles.grid} />
-      <div className={styles.glowPrimary} />
-      <div className={styles.glowSecondary} />
+      <aside className={styles.brandPanel}>
+        <span className={styles.brandBadge} aria-hidden="true">D</span>
 
-      <section className={styles.shell}>
-        <div className={styles.brandPanel}>
-          <span className={styles.brandBadge}>AI</span>
-          <div className={styles.brandCopy}>
-            <p className={styles.kicker}>DeepClaw Access</p>
-            <h1>DeepClaw</h1>
-            <p className={styles.description}>
-              统一的智能体工作台，支持聊天问答、MCP 工具接入、知识库管理和图检索
-              RAG。游客可直接进入系统，登录后可解锁上传与管理能力。
-            </p>
-          </div>
-
-          <div className={styles.featureList}>
-            <article className={styles.featureCard}>
-              <strong>游客模式</strong>
-              <span>无需注册即可进入，适合先体验聊天和浏览能力。</span>
-            </article>
-            <article className={styles.featureCard}>
-              <strong>用户账号</strong>
-              <span>登录后可上传知识库、上传技能，并隔离个人聊天数据。</span>
-            </article>
-            <article className={styles.featureCard}>
-              <strong>管理员账号</strong>
-              <span>除普通能力外，还可创建用户、调整角色和管理账号状态。</span>
-            </article>
-          </div>
+        <div className={styles.brandCopy}>
+          <p className={styles.kicker}>DeepClaw Access</p>
+          <h1>DeepClaw</h1>
+          <p className={styles.description}>
+            统一的智能体工作台：聊天问答、MCP 工具、知识库与 RAG 检索都在同一个界面里。
+          </p>
         </div>
 
+        <div className={styles.featureList}>
+          <article className={styles.featureCard}>
+            <strong>游客模式</strong>
+            <span>无需注册即可聊天和浏览。</span>
+          </article>
+          <article className={styles.featureCard}>
+            <strong>用户账号</strong>
+            <span>登录后隔离个人数据，可上传知识库与技能。</span>
+          </article>
+          <article className={styles.featureCard}>
+            <strong>管理员账号</strong>
+            <span>额外拥有用户管理、角色与权限策略配置能力。</span>
+          </article>
+        </div>
+
+        <div className={styles.brandFooter}>
+          <button
+            type="button"
+            className={styles.ghostButton}
+            onClick={returnToApp}
+          >
+            返回系统
+          </button>
+        </div>
+      </aside>
+
+      <section className={styles.content}>
         <div className={styles.card}>
           <div className={styles.cardHeader}>
-            <div>
-              <p className={styles.cardEyebrow}>账号入口</p>
-              <h2>{actor.isGuest ? '登录或注册' : '当前账号'}</h2>
-            </div>
-            <button
-              type="button"
-              className={styles.ghostButton}
-              onClick={returnToApp}
-            >
-              继续以游客身份使用
-            </button>
+            <p className={styles.cardEyebrow}>
+              {actor.isGuest ? '账号入口' : '当前账号'}
+            </p>
+            <h2>{actor.isGuest ? '登录或注册' : '已登录'}</h2>
           </div>
 
           {checkingSession ? (
@@ -198,28 +203,30 @@ export default function LoginPage() {
           ) : null}
 
           {!checkingSession && notice ? (
-            <div className={styles.notice}>{notice}</div>
+            <div className={styles.notice} role="status">{notice}</div>
           ) : null}
 
-          {!checkingSession && error ? <div className={styles.error}>{error}</div> : null}
+          {!checkingSession && error ? (
+            <div className={styles.error} role="alert">{error}</div>
+          ) : null}
 
           {!checkingSession && actor.isGuest ? (
             <>
-              <div className={styles.modeTabs}>
+              <div className={styles.modeTabs} role="tablist" aria-label="账号操作">
                 <button
                   type="button"
-                  className={`${styles.modeTab} ${
-                    mode === 'login' ? styles.modeTabActive : ''
-                  }`}
+                  role="tab"
+                  aria-selected={mode === 'login'}
+                  className={`${styles.modeTab} ${mode === 'login' ? styles.modeTabActive : ''}`}
                   onClick={() => setMode('login')}
                 >
                   登录
                 </button>
                 <button
                   type="button"
-                  className={`${styles.modeTab} ${
-                    mode === 'register' ? styles.modeTabActive : ''
-                  }`}
+                  role="tab"
+                  aria-selected={mode === 'register'}
+                  className={`${styles.modeTab} ${mode === 'register' ? styles.modeTabActive : ''}`}
                   onClick={() => setMode('register')}
                 >
                   注册
@@ -228,13 +235,14 @@ export default function LoginPage() {
 
               <form className={styles.form} onSubmit={handleSubmit}>
                 <label className={styles.field}>
-                  <span>邮箱</span>
+                  <span>用户名</span>
                   <input
-                    type="email"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    placeholder="name@example.com"
-                    autoComplete="email"
+                    type="text"
+                    value={username}
+                    onChange={(event) => setUsername(event.target.value)}
+                    placeholder="例如 deepclaw"
+                    autoComplete="username"
+                    autoFocus
                   />
                 </label>
 
@@ -244,12 +252,25 @@ export default function LoginPage() {
                     type="password"
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
-                    placeholder="至少 8 位密码"
+                    placeholder="至少 8 位"
                     autoComplete={
                       mode === 'login' ? 'current-password' : 'new-password'
                     }
                   />
                 </label>
+
+                {mode === 'register' ? (
+                  <label className={styles.field}>
+                    <span>邮箱（可选）</span>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      placeholder="仅用于资料展示，不参与登录"
+                      autoComplete="email"
+                    />
+                  </label>
+                ) : null}
 
                 <label className={styles.rememberRow}>
                   <input
@@ -257,16 +278,16 @@ export default function LoginPage() {
                     checked={rememberPassword}
                     onChange={(event) => setRememberPassword(event.target.checked)}
                   />
-                  <span>记住密码</span>
+                  <span>记住用户名和密码</span>
                 </label>
 
                 <button type="submit" className={styles.primaryButton} disabled={loading}>
-                  {loading ? '提交中...' : mode === 'login' ? '登录' : '注册并登录'}
+                  {loading ? '处理中...' : mode === 'login' ? '登录' : '注册并登录'}
                 </button>
               </form>
 
               <p className={styles.helperText}>
-                注册后会自动登录。当前先不做邮箱验证码，邮箱需保持唯一。
+                使用用户名登录，用户名需唯一；邮箱为可选资料，不参与登录。
               </p>
             </>
           ) : null}
@@ -275,14 +296,14 @@ export default function LoginPage() {
             <div className={styles.accountCard}>
               <div className={styles.accountMeta}>
                 <span className={styles.accountRole}>
-                  {actor.role === 'admin' ? '管理员账号' : '普通用户'}
+                  {actor.role === 'admin' ? '管理员' : '普通用户'}
                 </span>
-                <strong>{actor.email || actor.userId}</strong>
-                <span>用户 ID: {actor.userId}</span>
+                <strong>{actor.username || actor.email || actor.userId}</strong>
+                <span>用户 ID：{actor.userId}</span>
               </div>
 
               <p className={styles.helperText}>
-                当前会话已经登录。你可以返回系统继续使用，也可以先退出再切换其他账号。
+                当前会话已登录。可以返回系统继续使用，也可以退出后切换账号。
               </p>
 
               <div className={styles.actionRow}>
@@ -291,7 +312,7 @@ export default function LoginPage() {
                   className={styles.secondaryButton}
                   onClick={returnToApp}
                 >
-                  返回系统
+                  进入系统
                 </button>
                 <button
                   type="button"

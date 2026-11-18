@@ -256,8 +256,9 @@ pnpm build
 - `RBAC_MODEL_PATH`
 - `RBAC_POLICY_PATH`
 - `RBAC_STORE_ENABLED`
-- `AUTH_ADMIN_EMAIL`
-- `AUTH_ADMIN_PASSWORD`
+- `AUTH_ADMIN_USERNAME`（默认 `deepclaw`）
+- `AUTH_ADMIN_PASSWORD`（默认 `deepclaw`）
+- `AUTH_ADMIN_EMAIL`（可选，仅展示）
 - `AUTH_TOKEN_EXPIRE_DAYS`
 
 ### 渠道配置
@@ -468,6 +469,7 @@ pnpm build
 - 渠道管理归属 `/api/channels/*`
 - 前端默认以游客模式进入，点击右上角头像会跳转到独立 `/login` 页面进入登录/注册流程
 - 知识库读写已对游客开放：`/api/rag/knowledge-bases/*` 的写接口与读接口统一用同一个归属解析（登录用户取自身 ID，游客取固定 `guest`），不再对游客返回 403；前端 `canManageKnowledge` 恒为 `true`，与 `canManageSkills` 保持一致
+- 账号以 `username` 作为唯一登录标识（归一化为小写），`email` 改为可空的可选资料字段，不参与登录；旧库升级时会把存量 `email` 回填为 `username` 并放宽 `email` 的 NOT NULL 约束。首次启动若无管理员，按 `AUTH_ADMIN_USERNAME` / `AUTH_ADMIN_PASSWORD`（默认 `deepclaw` / `deepclaw`）自举。
 - 认证是不透明令牌（`la_` + 随机串，`sha256` 后入库），不是 JWT；`AuthStore.get_actor_by_token()` 刷新 `last_used_at` 时按 `ACCESS_TOKEN_LAST_USED_THROTTLE`（60 秒）节流，同一令牌在窗口内重复校验不会写库，这是刻意的性能设计，不是漏写
 - `auth`、`channels`、`knowledge_bases` 元数据默认优先使用 `PG_DATABASE_URL`；未配置时各自回退到 `.deepclaw` 下的 SQLite，并在默认初始化路径上兼容导入历史 SQLite 数据
 

@@ -15,7 +15,7 @@ interface UserManagementViewProps {
   onOpenAuth: () => void
   onLoadUsers: (search: string) => void | Promise<void>
   onCreateUser: (input: {
-    email: string
+    username: string
     password: string
     role: 'admin' | 'user'
   }) => void | Promise<void>
@@ -44,7 +44,7 @@ export function UserManagementView({
   onResetUserPassword,
 }: UserManagementViewProps) {
   const [search, setSearch] = useState('')
-  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [role, setRole] = useState<'admin' | 'user'>('user')
 
@@ -105,6 +105,7 @@ export function UserManagementView({
               <span className={styles.accountRoleBadge}>普通用户</span>
             </div>
             <div className={styles.managementMetaPanel}>
+              <span>用户名: {actor.username || '-'}</span>
               <span>邮箱: {actor.email || '-'}</span>
               <span>用户 ID: {actor.userId}</span>
             </div>
@@ -140,10 +141,10 @@ export function UserManagementView({
           <div className={styles.managementForm}>
             <input
               className={styles.managementInput}
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="新用户邮箱"
+              type="text"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              placeholder="新用户名，登录时使用"
             />
             <input
               className={styles.managementInput}
@@ -165,8 +166,8 @@ export function UserManagementView({
                 type="button"
                 className={styles.managementButton}
                 onClick={async () => {
-                  await onCreateUser({ email, password, role })
-                  setEmail('')
+                  await onCreateUser({ username, password, role })
+                  setUsername('')
                   setPassword('')
                   setRole('user')
                 }}
@@ -195,7 +196,7 @@ export function UserManagementView({
                     void onLoadUsers(search.trim())
                   }
                 }}
-                placeholder="按邮箱搜索"
+                placeholder="按用户名或邮箱搜索"
               />
               <button
                 type="button"
@@ -215,7 +216,8 @@ export function UserManagementView({
                 <div key={user.user_id} className={styles.managementDataRow}>
                   <div className={styles.managementDataPrimary}>
                     <div className={styles.managementDataTitle}>
-                      <strong>{user.email}</strong>
+                      <strong>{user.username}</strong>
+                      {user.email ? <span className={styles.managementMeta}>{user.email}</span> : null}
                       <span className={styles.accountRoleBadge}>
                         {user.role === 'admin' ? '管理员' : '普通用户'}
                       </span>
@@ -254,7 +256,7 @@ export function UserManagementView({
                       className={styles.managementDangerMinorButton}
                       onClick={() => {
                         const nextPassword = window.prompt(
-                          `为 ${user.email} 设置新密码（至少 8 位）`
+                          `为 ${user.username} 设置新密码（至少 8 位）`
                         )
                         if (!nextPassword) return
                         void onResetUserPassword(user.user_id, nextPassword)

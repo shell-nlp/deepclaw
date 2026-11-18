@@ -377,7 +377,7 @@ Once running:
 - AG-UI agents: `GET /api/agui/agents`
 - Channels API: `/api/channels/*`
 
-On first start, if `AUTH_ADMIN_EMAIL` / `AUTH_ADMIN_PASSWORD` are set and no admin exists yet, that admin
+On first start, if `AUTH_ADMIN_USERNAME` / `AUTH_ADMIN_PASSWORD` are set and no admin exists yet, that admin
 account is created automatically. Unauthenticated requests fall back to a guest identity, and guests may
 manage skills and knowledge bases.
 
@@ -693,7 +693,7 @@ curl http://localhost:7869/api/agui/threads/demo-thread/state -H "Authorization:
 | `USE_COPILOTKIT` | Enables the CopilotKit middleware |
 | `MCP_CONFIG` | Default MCP server configuration (JSON) |
 | `PHOENIX_COLLECTOR_ENDPOINT` | Enables Phoenix tracing |
-| `AUTH_ADMIN_EMAIL` / `AUTH_ADMIN_PASSWORD` | Admin account bootstrapped on first start |
+| `AUTH_ADMIN_USERNAME` / `AUTH_ADMIN_PASSWORD` | Admin account bootstrapped on first start |
 | `AUTH_TOKEN_EXPIRE_DAYS` | Access token lifetime in days, default `1` |
 | `AGUI_RUN_RETENTION_SECONDS` | Run and event retention, default `3600` |
 | `AGUI_THREAD_RETENTION_SECONDS` | Thread index retention; `0` means no automatic expiry |

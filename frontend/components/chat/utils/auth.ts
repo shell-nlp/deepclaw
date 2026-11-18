@@ -16,6 +16,7 @@ export type ActorRole = 'guest' | 'user' | 'admin'
 export interface ActorState {
   isGuest: boolean
   userId: string
+  username: string | null
   email: string | null
   role: ActorRole
 }
@@ -23,6 +24,7 @@ export interface ActorState {
 export interface ActorPayload {
   is_guest?: boolean
   user_id?: string | null
+  username?: string | null
   email?: string | null
   role?: string | null
 }
@@ -36,7 +38,7 @@ export interface ActorCapabilities {
 }
 
 export interface RememberedLogin {
-  email: string
+  username: string
   password: string
 }
 
@@ -55,6 +57,7 @@ export function normalizeActorPayload(payload: ActorPayload | null | undefined):
     return {
       isGuest: true,
       userId: GUEST_USER_ID,
+      username: null,
       email: null,
       role: 'guest',
     }
@@ -64,6 +67,7 @@ export function normalizeActorPayload(payload: ActorPayload | null | undefined):
   return {
     isGuest: false,
     userId: payload.user_id,
+    username: payload.username ?? null,
     email: payload.email ?? null,
     role,
   }
@@ -73,6 +77,7 @@ export function normalizeUserToActor(user: AuthUserSummary): ActorState {
   return normalizeActorPayload({
     is_guest: false,
     user_id: user.user_id,
+    username: user.username,
     email: user.email,
     role: user.role,
   })
@@ -114,10 +119,11 @@ export function getRememberedLogin(): RememberedLogin | null {
 
   try {
     const parsed = JSON.parse(raw) as Partial<RememberedLogin>
-    const email = typeof parsed.email === 'string' ? parsed.email.trim().toLowerCase() : ''
+    const username =
+      typeof parsed.username === 'string' ? parsed.username.trim().toLowerCase() : ''
     const password = typeof parsed.password === 'string' ? parsed.password : ''
-    if (!email || !password) return null
-    return { email, password }
+    if (!username || !password) return null
+    return { username, password }
   } catch {
     return null
   }
@@ -128,7 +134,7 @@ export function storeRememberedLogin(login: RememberedLogin): void {
   localStorage.setItem(
     AUTH_REMEMBER_LOGIN_STORAGE_KEY,
     JSON.stringify({
-      email: login.email.trim().toLowerCase(),
+      username: login.username.trim().toLowerCase(),
       password: login.password,
     })
   )
@@ -141,15 +147,19 @@ export function clearRememberedLogin(): void {
 
 export async function submitAuthRequest(
   mode: 'login' | 'register',
-  email: string,
-  password: string
+  username: string,
+  password: string,
+  email?: string
 ): Promise<AuthLoginResponse> {
+  const payload: Record<string, string> = { username, password }
+  const normalizedEmail = email?.trim()
+  if (normalizedEmail) payload.email = normalizedEmail
   return fetchJson<AuthLoginResponse>(
     getApiUrl(mode === 'login' ? AUTH_LOGIN_API_PATH : AUTH_REGISTER_API_PATH),
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify(payload),
     }
   )
 }

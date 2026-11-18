@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from sqlalchemy import inspect, text
 from sqlmodel import select
 
 from deepclaw.web_backend.common.errors import BusinessRuleError
@@ -101,15 +102,35 @@ def _merge_table_rows(
         )
 
 
+def _backfill_username_from_email(connection: sqlite3.Connection) -> None:
+    """把旧库中为空的 username 回填为邮箱，保证并入新库后仍可登录。
+
+    Args:
+        connection: 旧库 sqlite 连接。
+    """
+    columns = _get_table_columns(connection, "authuser")
+    if "username" not in columns or "email" not in columns:
+        return
+    connection.execute(
+        "UPDATE authuser SET username = email WHERE username IS NULL AND email IS NOT NULL"
+    )
+
 def _merge_legacy_auth_db(legacy_db_path: Path, current_db_path: Path) -> None:
     with sqlite3.connect(legacy_db_path) as legacy_connection, sqlite3.connect(
         current_db_path
     ) as current_connection:
+        # 新版以 username 作为唯一登录标识；旧库没有该列时按 email 判重。
+        legacy_columns = _get_table_columns(legacy_connection, "authuser")
+        if "username" in legacy_columns:
+            _backfill_username_from_email(legacy_connection)
+            identity_columns = ["username"]
+        else:
+            identity_columns = ["email"]
         _merge_table_rows(
             legacy_connection=legacy_connection,
             current_connection=current_connection,
             table_name="authuser",
-            identity_columns=["email"],
+            identity_columns=identity_columns,
         )
         _merge_table_rows(
             legacy_connection=legacy_connection,
@@ -141,6 +162,52 @@ def migrate_legacy_auth_db_if_needed(current_home_path: Path) -> None:
     marker_path.write_text("migrated\n", encoding="utf-8")
 
 
+# SQLite 不支持直接修改列约束，改用重建表的方式放宽 email 的 NOT NULL。
+AUTH_USER_TABLE_DDL = (
+    "CREATE TABLE authuser ("
+    "id INTEGER NOT NULL PRIMARY KEY, "
+    "user_id VARCHAR NOT NULL UNIQUE, "
+    "username VARCHAR UNIQUE, "
+    "email VARCHAR, "
+    "password_hash VARCHAR NOT NULL, "
+    "role VARCHAR NOT NULL, "
+    "is_active BOOLEAN NOT NULL, "
+    "created_at TIMESTAMP NOT NULL, "
+    "updated_at TIMESTAMP NOT NULL"
+    ")"
+)
+
+
+async def _relax_email_not_null(conn) -> None:
+    """把 authuser.email 的 NOT NULL 约束放宽为可空。
+
+    SQLite 需要重建表，PostgreSQL 可以直接 ALTER COLUMN。
+
+    Args:
+        conn: 当前异步数据库连接。
+    """
+    dialect = conn.dialect.name
+    if dialect == "postgresql":
+        await conn.execute(
+            text("ALTER TABLE authuser ALTER COLUMN email DROP NOT NULL")
+        )
+        return
+    if dialect != "sqlite":
+        return
+    table_info = await conn.exec_driver_sql("PRAGMA table_info(authuser)")
+    columns = table_info.fetchall()
+    email_column = next((row for row in columns if row[1] == "email"), None)
+    if email_column is None or not email_column[3]:
+        return
+    await conn.exec_driver_sql("ALTER TABLE authuser RENAME TO authuser_legacy_email")
+    await conn.exec_driver_sql(AUTH_USER_TABLE_DDL)
+    column_names = ", ".join(row[1] for row in columns)
+    await conn.exec_driver_sql(
+        f"INSERT INTO authuser ({column_names}) SELECT {column_names} FROM authuser_legacy_email"
+    )
+    await conn.exec_driver_sql("DROP TABLE authuser_legacy_email")
+
+
 class AuthStore:
     def __init__(self, db_url: str | None = None):
         should_import_home_db = db_url is None
@@ -168,8 +235,45 @@ class AuthStore:
         from sqlmodel import SQLModel
         async with self.engine.begin() as conn:
             await conn.run_sync(SQLModel.metadata.create_all)
+        await self._migrate_legacy_schema()
         await self._import_home_sqlite_if_needed()
         self._init_done = True
+
+    async def _migrate_legacy_schema(self) -> None:
+        """为旧库补齐 username 列，并把历史邮箱回填为用户名。
+
+        旧版本以邮箱作为唯一登录标识，升级后邮箱变为可选资料；
+        这里把存量邮箱复制到 username，保证老账号仍能登录。
+
+        Args:
+            无。
+        """
+        async with self.engine.begin() as conn:
+            columns = await conn.run_sync(
+                lambda sync_conn: {
+                    column["name"]
+                    for column in inspect(sync_conn).get_columns("authuser")
+                }
+            )
+            if "username" not in columns:
+                await conn.execute(
+                    text("ALTER TABLE authuser ADD COLUMN username VARCHAR")
+                )
+            if "email" in columns:
+                # 旧库 email 为 NOT NULL：先回填再放宽约束，否则 username-only 账号无法写入。
+                await conn.execute(
+                    text(
+                        "UPDATE authuser SET email = username "
+                        "WHERE email IS NULL AND username IS NOT NULL"
+                    )
+                )
+                await _relax_email_not_null(conn)
+                await conn.execute(
+                    text(
+                        "UPDATE authuser SET username = email "
+                        "WHERE username IS NULL AND email IS NOT NULL"
+                    )
+                )
 
     async def _import_home_sqlite_if_needed(self) -> None:
         if self._sqlite_import_path is None or self._sqlite_import_marker.exists():
@@ -185,8 +289,12 @@ class AuthStore:
                 payload = dict(row)
                 for column in ["created_at", "updated_at"]:
                     payload[column] = _deserialize_datetime_value(payload[column])
+                # 用户名是唯一登录标识，导入时按 username 判重；
+                # 历史数据没有 username 时回退用 email 作为用户名。
+                legacy_username = payload.get("username") or payload.get("email")
+                payload["username"] = legacy_username
                 result = await session.exec(
-                    select(AuthUser).where(AuthUser.email == payload["email"])
+                    select(AuthUser).where(AuthUser.username == legacy_username)
                 )
                 model = result.first()
                 if model is None:
@@ -246,7 +354,31 @@ class AuthStore:
             if changed:
                 await session.commit()
 
+    async def get_user_by_username(self, username: str) -> AuthUser | None:
+        """按用户名查询用户。
+
+        Args:
+            username: 已归一化的登录用户名。
+
+        Returns:
+            AuthUser | None: 匹配用户，不存在时返回 None。
+        """
+        await self._ensure_init()
+        async with self.async_session() as session:
+            result = await session.exec(
+                select(AuthUser).where(AuthUser.username == username)
+            )
+            return result.first()
+
     async def get_user_by_email(self, email: str) -> AuthUser | None:
+        """按邮箱查询用户，仅用于兼容历史数据。
+
+        Args:
+            email: 归一化邮箱。
+
+        Returns:
+            AuthUser | None: 匹配用户，不存在时返回 None。
+        """
         await self._ensure_init()
         async with self.async_session() as session:
             result = await session.exec(
@@ -270,12 +402,31 @@ class AuthStore:
             )
             return result.first() is not None
 
-    async def create_user(self, *, email: str, password_hash: str, role: str) -> AuthUser:
+    async def create_user(
+        self,
+        *,
+        username: str,
+        password_hash: str,
+        role: str,
+        email: str | None = None,
+    ) -> AuthUser:
+        """创建用户账号。
+
+        Args:
+            username: 登录用户名。
+            password_hash: 密码哈希。
+            role: 用户角色。
+            email: 可选邮箱。
+
+        Returns:
+            AuthUser: 已创建的账号。
+        """
         await self._ensure_init()
         async with self.async_session() as session:
             now = utc_now()
             user = AuthUser(
                 user_id=f"user_{uuid.uuid4().hex}",
+                username=username,
                 email=email,
                 password_hash=password_hash,
                 role=role,
@@ -294,7 +445,9 @@ class AuthStore:
             statement = select(AuthUser).order_by(AuthUser.created_at.desc())
             if search:
                 like = f"%{search}%"
-                statement = statement.where(AuthUser.email.like(like))
+                statement = statement.where(
+                    (AuthUser.username.like(like)) | (AuthUser.email.like(like))
+                )
             result = await session.exec(statement)
             return list(result.all())
 

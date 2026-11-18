@@ -141,7 +141,7 @@ export function useAuthSession({
   }, [])
 
   const createAdminUser = async (input: {
-    email: string
+    username: string
     password: string
     role: 'admin' | 'user'
   }) => {
@@ -154,7 +154,7 @@ export function useAuthSession({
         body: JSON.stringify(input),
       })
       await loadAdminUsers()
-      setUserAdminNotice(`已创建账号 ${input.email}。`)
+      setUserAdminNotice(`已创建账号 ${input.username}。`)
     } catch (error) {
       setUserAdminError(error instanceof Error ? error.message : '创建用户失败。')
     }

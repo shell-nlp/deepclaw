@@ -11,7 +11,7 @@ def build_client() -> TestClient:
 
     service = AuthService(
         store=AuthStore("sqlite:///:memory:"),
-        admin_email="admin@example.com",
+        admin_username="admin",
         admin_password="admin-pass-123",
         token_expire_days=30,
     )
@@ -29,11 +29,11 @@ def test_guest_me_and_register_login_flow():
     guest = client.get("/api/auth/me")
     register = client.post(
         "/api/auth/register",
-        json={"email": "user@example.com", "password": "secret-123"},
+        json={"username": "user", "password": "secret-123"},
     )
     login = client.post(
         "/api/auth/login",
-        json={"email": "user@example.com", "password": "secret-123"},
+        json={"username": "user", "password": "secret-123"},
     )
 
     assert guest.status_code == 200
@@ -48,13 +48,13 @@ def test_admin_can_create_user():
 
     login = client.post(
         "/api/auth/login",
-        json={"email": "admin@example.com", "password": "admin-pass-123"},
+        json={"username": "admin", "password": "admin-pass-123"},
     )
     token = login.json()["token"]
     response = client.post(
         "/api/auth/users/create",
         json={
-            "email": "created@example.com",
+            "username": "created",
             "password": "created-pass-123",
             "role": "user",
         },
@@ -62,7 +62,7 @@ def test_admin_can_create_user():
     )
 
     assert response.status_code == 200
-    assert response.json()["user"]["email"] == "created@example.com"
+    assert response.json()["user"]["username"] == "created"
 
 
 def test_admin_can_manage_user_accounts():
@@ -70,14 +70,14 @@ def test_admin_can_manage_user_accounts():
 
     login = client.post(
         "/api/auth/login",
-        json={"email": "admin@example.com", "password": "admin-pass-123"},
+        json={"username": "admin", "password": "admin-pass-123"},
     )
     token = login.json()["token"]
     headers = {"Authorization": f"Bearer {token}"}
 
     create = client.post(
         "/api/auth/users/create",
-        json={"email": "managed@example.com", "password": "managed-pass-123", "role": "user"},
+        json={"username": "managed", "password": "managed-pass-123", "role": "user"},
         headers=headers,
     )
     user_id = create.json()["user"]["user_id"]
@@ -100,7 +100,7 @@ def test_admin_can_manage_user_accounts():
     )
 
     assert listed.status_code == 200
-    assert any(item["email"] == "managed@example.com" for item in listed.json()["items"])
+    assert any(item["username"] == "managed" for item in listed.json()["items"])
     assert role_updated.status_code == 200
     assert role_updated.json()["user"]["role"] == "admin"
     assert status_updated.status_code == 200

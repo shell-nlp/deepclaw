@@ -9,9 +9,17 @@ def utc_now() -> datetime:
 
 
 class AuthUser(SQLModel, table=True):
+    """用户账号。
+
+    Args:
+        username: 登录用户名，唯一且必填。
+        email: 可选邮箱，仅作附加资料展示，可为空且不要求唯一。
+    """
+
     id: int | None = Field(default=None, primary_key=True)
     user_id: str = Field(index=True, unique=True)
-    email: str = Field(index=True, unique=True)
+    username: str | None = Field(default=None, index=True, unique=True)
+    email: str | None = Field(default=None, index=True)
     password_hash: str
     role: str = Field(default="user")
     is_active: bool = True

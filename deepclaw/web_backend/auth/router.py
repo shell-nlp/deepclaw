@@ -27,11 +27,16 @@ async def register(
     service: AuthService = Depends(get_auth_service),
 ):
     """注册普通用户并返回登录令牌。"""
-    user = await service.register(email=request.email, password=request.password)
-    issued = await service.login(email=request.email, password=request.password)
+    user = await service.register(
+        username=request.username,
+        password=request.password,
+        email=request.email,
+    )
+    issued = await service.login(username=request.username, password=request.password)
     return {
         "token": issued.token,
         "user": {
+            "username": user.username,
             "email": user.email,
             "role": user.role,
             "is_active": user.is_active,
@@ -40,16 +45,17 @@ async def register(
     }
 
 
-@router.post("/login", summary="用户登录", description="校验邮箱和密码，成功后返回访问令牌和用户信息。")
+@router.post("/login", summary="用户登录", description="校验用户名和密码，成功后返回访问令牌和用户信息。")
 async def login(
     request: LoginRequest,
     service: AuthService = Depends(get_auth_service),
 ):
     """校验登录凭据并返回访问令牌。"""
-    issued = await service.login(email=request.email, password=request.password)
+    issued = await service.login(username=request.username, password=request.password)
     return {
         "token": issued.token,
         "user": {
+            "username": issued.user.username,
             "email": issued.user.email,
             "role": issued.user.role,
             "is_active": issued.user.is_active,
@@ -84,12 +90,14 @@ async def create_user(
 ):
     """由管理员创建用户。"""
     user = await service.create_user_as_admin(
-        email=request.email,
+        username=request.username,
         password=request.password,
         role=request.role,
+        email=request.email,
     )
     return {
         "user": {
+            "username": user.username,
             "email": user.email,
             "role": user.role,
             "is_active": user.is_active,
@@ -109,6 +117,7 @@ async def list_users(
     return {
         "items": [
             {
+                "username": user.username,
                 "email": user.email,
                 "role": user.role,
                 "is_active": user.is_active,
@@ -133,6 +142,7 @@ async def update_user_role(
     )
     return {
         "user": {
+            "username": user.username,
             "email": user.email,
             "role": user.role,
             "is_active": user.is_active,
@@ -154,6 +164,7 @@ async def update_user_status(
     )
     return {
         "user": {
+            "username": user.username,
             "email": user.email,
             "role": user.role,
             "is_active": user.is_active,
@@ -175,6 +186,7 @@ async def reset_user_password(
     )
     return {
         "user": {
+            "username": user.username,
             "email": user.email,
             "role": user.role,
             "is_active": user.is_active,

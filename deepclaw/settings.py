@@ -89,8 +89,10 @@ class Settings(BaseSettings):
     # 是否把策略存到数据库；关闭时直接读取策略文件
     RBAC_STORE_ENABLED: bool = True
 
+    # 首次启动自举管理员：用户名/密码默认 deepclaw/deepclaw，邮箱可选
+    AUTH_ADMIN_USERNAME: str = "deepclaw"
+    AUTH_ADMIN_PASSWORD: str = "deepclaw"
     AUTH_ADMIN_EMAIL: str | None = None
-    AUTH_ADMIN_PASSWORD: str | None = None
     AUTH_TOKEN_EXPIRE_DAYS: int = 1
 
     # 图表公网访问地址前缀，例如 https://example.com；为空时返回相对路径 /charts/xxx.png
