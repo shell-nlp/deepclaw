@@ -244,6 +244,7 @@ export type KnowledgePage =
   | 'library-detail'
   | 'document-detail'
   | 'users'
+  | 'roles'
 export type RequestMode = 'agent' | 'rag'
 export type ChatStatus = 'ready' | 'connecting' | 'error'
 export interface InterruptData {
@@ -314,6 +315,8 @@ export interface AuthUserSummary {
   role: 'admin' | 'user'
   is_active: boolean
   user_id: string
+  created_at?: string | null
+  updated_at?: string | null
 }
 
 export interface AuthLoginResponse {

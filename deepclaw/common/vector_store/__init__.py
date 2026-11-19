@@ -5,6 +5,7 @@ from deepclaw.common.vector_store.factory import (
     create_default_vector_store,
     create_vector_store,
 )
+from deepclaw.common.vector_store.sqlite_vec import SqliteVecVectorStore
 
 try:
     from deepclaw.common.vector_store.pgsql import PgVectorStore
@@ -15,6 +16,7 @@ __all__ = [
     "AbstractVectorStore",
     "ElasticsearchVectorStore",
     "PgVectorStore",
+    "SqliteVecVectorStore",
     "VectorStoreBackend",
     "create_default_vector_store",
     "create_vector_store",

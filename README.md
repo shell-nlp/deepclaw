@@ -705,7 +705,8 @@ curl http://localhost:7869/api/agui/threads/demo-thread/state -H "Authorization:
 | 变量 | 说明 |
 |------|------|
 | `PG_DATABASE_URL` | PostgreSQL 连接串。配置后 Run/Thread、检查点、长期记忆、认证、渠道与知识库元数据统一落库，多实例可共享 |
-| `VECTOR_STORE_BACKEND` | 向量库后端：`pgsql`（PostgreSQL + pgvector）、`elasticsearch`，或 `none`（不启用知识库），默认 `pgsql` |
+| `VECTOR_STORE_BACKEND` | 向量库后端：`sqlite`（默认，SQLite + sqlite-vec 单文件）、`pgsql`（PostgreSQL + pgvector）、`elasticsearch`，或 `none`（不启用知识库） |
+| `SQLITE_VECTOR_DB_PATH` | `VECTOR_STORE_BACKEND=sqlite` 时的数据库文件路径，默认 `.deepclaw/vector.db` |
 | `ES_URL` | `VECTOR_STORE_BACKEND=elasticsearch` 时的 Elasticsearch 地址 |
 | `ES_URSR` / `ES_PWD` | Elasticsearch 用户名与密码 |
 | `OBJECT_STORAGE_PROVIDER` | 知识库文件对象存储：`local`（默认）或 `minio` |
@@ -714,16 +715,17 @@ curl http://localhost:7869/api/agui/threads/demo-thread/state -H "Authorization:
 
 ### 无中间件模式（最小依赖）
 
-不装 PostgreSQL / Elasticsearch / MinIO / Docker 也能跑：把向量库显式关掉即可，
-其余数据自动落到本地 SQLite 与本地对象存储目录（`HOME_PATH`，见上文安装方式）。
+不装 PostgreSQL / Elasticsearch / MinIO / Docker 也能跑：向量库默认就是 SQLite +
+[sqlite-vec](https://github.com/asg017/sqlite-vec)，其余数据落在本地 SQLite 与本地对象存储目录（`HOME_PATH`）。
 
 ```dotenv
 OPENAI_API_BASE=http://localhost:8082/v1
 OPENAI_API_KEY=your-api-key
 CHAT_MODEL_NAME=qwen3
 
-# 关掉向量库；不关的话 pgsql/elasticsearch 缺连接串会启动失败
-VECTOR_STORE_BACKEND=none
+# 默认就是 sqlite，无需额外服务；如需关闭知识库可改为 none
+VECTOR_STORE_BACKEND=sqlite
+# SQLITE_VECTOR_DB_PATH=.deepclaw/vector.db
 BACKEND_TYPE=local_shell
 ```
 
@@ -733,7 +735,7 @@ BACKEND_TYPE=local_shell
 | 登录鉴权、RBAC、用户管理 | 可用（`.deepclaw/auth.db` + `.deepclaw/rbac.db`） |
 | 渠道绑定、设备配对、定时任务 | 可用（各自 SQLite） |
 | 会话历史与 Thread | 仅进程内内存，重启即丢失；要持久化才需要 `PG_DATABASE_URL` |
-| 知识库 / RAG | 不可用，接口返回“当前未启用向量库”的业务错误 |
+| 知识库 / RAG | 可用，向量与切片都存在 `.deepclaw/vector.db` |
 | 沙箱隔离执行 | 不可用，需 OpenSandbox（`BACKEND_TYPE=sandbox`） |
 
 > 想保留会话历史但不装 PostgreSQL 时，可以把 `PG_DATABASE_URL` 指向任意一个 PostgreSQL 实例；

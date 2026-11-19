@@ -19,7 +19,11 @@ export const AUTH_USERS_LIST_API_PATH = '/api/auth/users/list'
 export const AUTH_USERS_UPDATE_ROLE_API_PATH = '/api/auth/users/update-role'
 export const AUTH_USERS_UPDATE_STATUS_API_PATH = '/api/auth/users/update-status'
 export const AUTH_USERS_RESET_PASSWORD_API_PATH = '/api/auth/users/reset-password'
+export const AUTH_USERS_UPDATE_PROFILE_API_PATH = '/api/auth/users/update'
+export const AUTH_USERS_DELETE_API_PATH = '/api/auth/users/delete'
 export const MODEL_CONFIG_API_PATH = '/api/models/config'
+export const MODEL_CATALOG_API_PATH = '/api/models/catalog'
+export const MODEL_API_PATH = '/api/models'
 
 export const RBAC_POLICIES_API_PATH = '/api/auth/rbac/policies'
 export const RBAC_POLICIES_CREATE_API_PATH = '/api/auth/rbac/policies'
@@ -99,6 +103,7 @@ export const MANAGEMENT_PAGE_TITLE_MAP: Record<KnowledgePage, string> = {
   'library-detail': '知识库详情',
   'document-detail': '知识详情',
   users: '用户管理',
+  roles: '角色管理',
 }
 
 export const MANAGEMENT_PAGE_DESCRIPTION_MAP: Record<KnowledgePage, string> = {
@@ -107,4 +112,5 @@ export const MANAGEMENT_PAGE_DESCRIPTION_MAP: Record<KnowledgePage, string> = {
     '为当前知识库上传知识文件，管理已有知识，并进入知识详情页查看切片。',
   'document-detail': '查看当前知识文档的切片明细、原始信息和删除操作。',
   users: '单独管理用户身份，切换后会隔离知识库和对话数据。',
+  roles: '维护角色继承与权限策略，管理员可在此调整资源的读写范围。',
 }

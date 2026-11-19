@@ -4,9 +4,11 @@ from typing import Literal
 
 from deepclaw.common.vector_store.base import AbstractVectorStore
 from deepclaw.common.vector_store.elasticsearch import ElasticsearchVectorStore
+from deepclaw.common.vector_store.sqlite_vec import SqliteVecVectorStore
+from deepclaw.constant import HOME_PATH
 from deepclaw.settings import settings
 
-VectorStoreBackend = Literal["elasticsearch", "pgsql", "none"]
+VectorStoreBackend = Literal["elasticsearch", "pgsql", "sqlite", "none"]
 
 
 def _load_pg_vector_store():
@@ -39,6 +41,14 @@ def create_vector_store(
         raise ValueError(
             "VECTOR_STORE_BACKEND=none 未启用向量库，知识库功能不可用；"
             "如需知识库请配置 pgsql 或 elasticsearch。"
+        )
+
+    if backend == "sqlite":
+        db_path = settings.SQLITE_VECTOR_DB_PATH or str(HOME_PATH / "vector.db")
+        return SqliteVecVectorStore(
+            db_path,
+            embedding_model=embedding_model,
+            embedding_dimensions=embedding_dimensions,
         )
 
     if backend == "elasticsearch":

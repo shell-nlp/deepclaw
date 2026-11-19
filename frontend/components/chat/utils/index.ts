@@ -29,6 +29,7 @@ export function normalizeKnowledgePage(value?: string): KnowledgePage {
     case 'library-detail':
     case 'document-detail':
     case 'users':
+    case 'roles':
       return value
     default:
       return 'libraries'

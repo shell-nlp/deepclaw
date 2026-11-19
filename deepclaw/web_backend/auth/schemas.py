@@ -79,6 +79,30 @@ class AdminUpdateUserStatusRequest(BaseModel):
     is_active: bool
 
 
+class AdminUpdateUserProfileRequest(BaseModel):
+    """管理员修改用户资料请求。
+
+    Args:
+        user_id: 目标用户 ID。
+        username: 新用户名；为空表示不修改。
+        email: 新邮箱；传空字符串表示清空。
+    """
+
+    user_id: str
+    username: str | None = Field(default=None, min_length=1, max_length=64)
+    email: str | None = None
+
+
+class AdminDeleteUserRequest(BaseModel):
+    """管理员删除用户请求。
+
+    Args:
+        user_id: 目标用户 ID。
+    """
+
+    user_id: str
+
+
 class AdminResetUserPasswordRequest(BaseModel):
     """管理员重置密码请求。
 

@@ -31,6 +31,7 @@ export function usePageRouting(
   const [lastChannelPage, setLastChannelPage] =
     useState<ChannelManagementPage>(DEFAULT_CHANNEL_PAGE)
   const [channelNavExpanded, setChannelNavExpanded] = useState(false)
+  const [systemNavExpanded, setSystemNavExpanded] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [knowledgePage, setKnowledgePage] =
     useState<KnowledgePage>(DEFAULT_KNOWLEDGE_PAGE)
@@ -57,6 +58,9 @@ export function usePageRouting(
       if (nextViewMode === 'channels') {
         setLastChannelPage(nextChannelPage)
         setChannelNavExpanded(true)
+      }
+      if (nextViewMode === 'knowledge' && (safeKnowledgePage === 'users' || safeKnowledgePage === 'roles')) {
+        setSystemNavExpanded(true)
       }
 
       if (typeof window === 'undefined') return
@@ -93,6 +97,9 @@ export function usePageRouting(
         setLastChannelPage(route.channelPage)
         setChannelNavExpanded(true)
       }
+      if (route.viewMode === 'knowledge' && (route.knowledgePage === 'users' || route.knowledgePage === 'roles')) {
+        setSystemNavExpanded(true)
+      }
 
       const expectedHash = getRouteHash(
         route.viewMode,
@@ -127,6 +134,14 @@ export function usePageRouting(
     setChannelNavExpanded((current) => !current)
   }, [lastChannelPage, navigateTo, viewMode])
 
+  const handleSystemNavClick = useCallback(() => {
+    if (viewMode !== 'knowledge' || (knowledgePage !== 'users' && knowledgePage !== 'roles')) {
+      navigateTo('knowledge', 'users')
+      return
+    }
+    setSystemNavExpanded((current) => !current)
+  }, [knowledgePage, navigateTo, viewMode])
+
   const toggleSidebar = useCallback(() => {
     setSidebarCollapsed((collapsed) => !collapsed)
   }, [])
@@ -150,12 +165,15 @@ export function usePageRouting(
     lastChannelPage,
     channelNavExpanded,
     setChannelNavExpanded,
+    systemNavExpanded,
+    setSystemNavExpanded,
     sidebarCollapsed,
     setSidebarCollapsed,
     knowledgePage,
     setKnowledgePage,
     navigateTo,
     handleChannelsNavClick,
+    handleSystemNavClick,
     toggleSidebar,
     navigateToKnowledgeView,
   }

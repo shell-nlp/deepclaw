@@ -4846,3 +4846,134 @@ button.extensionListRow { cursor: pointer; }
     width: min(100vw - 32px, 360px);
   }
 }
+
+.rbacPolicyResource {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+  min-width: 0;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+.rbacPolicyResourceName { font-size: 12px; font-weight: 650; }
+.rbacPolicyResourceDetail { color: var(--text-muted); font-size: 10px; }
+.rbacPolicyResource:hover .rbacPolicyResourceName { color: var(--accent-primary); }
+.rbacPolicyResource:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 3px; border-radius: 4px; }
+.rbacPolicyResource .rbacPolicyPath { color: var(--text-muted); font-size: 10px; }
+
+/* Model registry compact layout */
+.modelRegistryTopbar { align-items: flex-end; }
+.modelRegistrySummary { display: grid; justify-items: end; gap: 3px; color: var(--text-muted); font-size: 12px; }
+.modelRegistrySummary strong { color: var(--text-primary); font-family: 'IBM Plex Mono', monospace; font-size: 28px; font-weight: 500; line-height: 1; }
+.modelRegistryGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.modelShelf { min-height: 0; padding: 16px; }
+.modelShelfHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--border-subtle); }
+.modelShelfHeader h3 { margin: 2px 0 5px; font-size: 18px; }
+.modelShelfHeader p { margin: 0; color: var(--text-muted); font-size: 12px; }
+.modelShelfKicker { color: var(--accent-primary); font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: .1em; }
+.modelActiveStrip { display: flex; align-items: center; gap: 8px; min-height: 42px; color: var(--text-muted); font-size: 11px; }
+.modelActiveStrip strong { color: var(--text-primary); font-weight: 650; }
+.modelPulse { width: 7px; height: 7px; border-radius: 50%; background: #4cb782; box-shadow: 0 0 0 4px rgba(76,183,130,.12); }
+.modelList { display: grid; gap: 7px; }
+.modelRow { display: grid; grid-template-columns: 25px minmax(0, 1fr) auto; gap: 9px; align-items: center; padding: 10px 9px; border: 1px solid transparent; border-radius: 10px; background: rgba(247,248,250,.78); }
+.modelRowActive { border-color: rgba(77,107,254,.24); background: rgba(77,107,254,.055); }
+.modelRowMark { display: grid; place-items: center; width: 23px; height: 23px; border-radius: 7px; background: #fff; color: var(--accent-primary); font-size: 13px; }
+.modelRowBody { min-width: 0; display: grid; gap: 3px; }
+.modelRowTitle { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.modelRowTitle strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-size: 13px; }
+.modelRowMeta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-family: 'IBM Plex Mono', monospace; font-size: 9px; }
+.modelActiveBadge { padding: 2px 5px; border-radius: 4px; background: rgba(76,183,130,.13); color: #2c9364; font-size: 9px; white-space: nowrap; }
+.modelRowActions { display: flex; gap: 4px; opacity: .8; }
+.modelShelf .managementButton, .modelShelf .managementMinorButton, .modelShelf .managementDangerMinorButton { min-height: 30px; padding: 6px 9px; border-radius: 8px; font-size: 11px; }
+.modelEditorBackdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 24px; background: rgba(29,35,48,.28); backdrop-filter: blur(4px); }
+.modelEditor { width: min(560px, 100%); padding: 24px; border: 1px solid rgba(77,107,254,.18); border-radius: 18px; background: #fff; box-shadow: 0 24px 70px rgba(32,33,36,.2); }
+.modelEditorHeader, .modelEditorFooter { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.modelEditorHeader { padding-bottom: 18px; border-bottom: 1px solid var(--border-subtle); }
+.modelEditorHeader h3 { margin: 4px 0 0; font-size: 21px; }
+.modelEditorForm { display: grid; gap: 14px; padding: 20px 0; }
+.modelEditorFooter { align-items: center; padding-top: 16px; border-top: 1px solid var(--border-subtle); }
+.modelEditorFooter .managementMeta { max-width: 260px; line-height: 1.5; }
+.modelEditor small { color: var(--text-muted); font-weight: 400; }
+@media (max-width: 900px) { .modelRegistryGrid { grid-template-columns: 1fr; } }
+
+
+/* RBAC role and permission workspace */
+.rbacStats { display: flex; align-items: center; gap: 18px; }
+.rbacStat { display: grid; gap: 2px; text-align: right; }
+.rbacStatValue { color: var(--text-primary); font-size: 21px; font-weight: 700; }
+.rbacStatLabel { color: var(--text-muted); font-size: 11px; }
+.rbacWorkspace { display: grid; grid-template-columns: minmax(280px, 336px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.rbacPanel { min-width: 0; border: 1px solid var(--border-subtle); border-radius: 14px; background: #fff; box-shadow: var(--shadow-sm, 0 2px 10px rgba(32,33,36,.05)); overflow: hidden; }
+.rbacRolePanel { position: sticky; top: 16px; }
+.rbacPanelHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 18px; border-bottom: 1px solid var(--border-subtle); }
+.rbacPanelHeading { min-width: 0; }
+.rbacPanelHeading h3 { display: flex; align-items: center; gap: 7px; margin: 0; color: var(--text-primary); font-size: 16px; }
+.rbacPanelHint { margin: 7px 0 0; color: #6d7684; font-size: 11px; line-height: 1.55; }
+.rbacTag, .rbacCount { display: inline-flex; align-items: center; justify-content: center; min-width: 19px; padding: 3px 6px; border-radius: 8px; background: var(--accent-soft, rgba(77,107,254,.1)); color: var(--accent-primary); font-size: 10px; font-weight: 650; white-space: nowrap; }
+.rbacPanelMeta { color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+.rbacPanelBody { padding: 14px 18px; }
+.rbacPolicyBody { padding: 0 18px 16px; }
+.rbacEmpty { display: grid; gap: 5px; place-items: center; min-height: 110px; padding: 20px; color: var(--text-muted); text-align: center; font-size: 12px; }
+.rbacEmpty strong { color: var(--text-primary); font-size: 13px; }
+.rbacGuide { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: center; gap: 12px; margin-bottom: 16px; padding: 12px 16px; border: 1px solid rgba(77,107,254,.16); border-radius: 12px; background: rgba(77,107,254,.035); }
+.rbacGuideStep { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.rbacGuideStep strong { display: grid; place-items: center; width: 24px; height: 24px; flex: 0 0 auto; border-radius: 7px; background: var(--accent-primary); color: #fff; font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+.rbacGuideStep div { display: grid; gap: 2px; min-width: 0; }
+.rbacGuideStep b { color: var(--text-primary); font-size: 12px; }
+.rbacGuideStep span { overflow: hidden; color: var(--text-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.rbacGuideArrow { color: var(--accent-primary); font-size: 18px; }
+.rbacRoleList, .rbacPolicyList { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.rbacRoleRow { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; padding: 7px 8px; border-bottom: 1px solid #f0f2f5; }
+.rbacRoleChain { display: flex; align-items: center; gap: 7px; min-width: 0; color: var(--text-primary); font-size: 12px; }
+.rbacRoleChild { overflow: hidden; max-width: 130px; font-family: 'IBM Plex Mono', monospace; text-overflow: ellipsis; white-space: nowrap; }
+.rbacRoleParent { padding: 4px 7px; border: 1px solid rgba(77,107,254,.16); border-radius: 5px; background: rgba(77,107,254,.05); color: var(--accent-primary); font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+.rbacRoleArrow, .rbacFormArrow { color: var(--text-muted); }
+.rbacIconButton { display: grid; place-items: center; width: 25px; height: 25px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #77808f; cursor: pointer; }
+.rbacIconButton svg { width: 15px; height: 15px; }
+.rbacIconButton:hover { background: rgba(217,79,79,.08); color: #b54848; }
+.rbacIconButton:focus-visible, .rbacButton:focus-visible, .rbacButtonGhost:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+.rbacForm, .rbacPolicyForm { display: grid; gap: 10px; padding: 14px 18px; border-top: 1px solid var(--border-subtle); background: #fafbfe; }
+.rbacFormTitle { color: var(--text-primary); font-size: 12px; font-weight: 700; }
+.rbacField { display: grid; gap: 5px; min-width: 0; color: var(--text-secondary); font-size: 11px; font-weight: 600; }
+.rbacFieldLabel { color: #6d7684; font-size: 10px; }
+.rbacInput, .rbacSelect { min-width: 0; width: 100%; min-height: 34px; padding: 7px 9px; border: 1px solid var(--border-subtle); border-radius: 7px; background: #fff; color: var(--text-primary); font-size: 12px; outline: none; }
+.rbacInput:focus, .rbacSelect:focus { border-color: var(--accent-primary); box-shadow: 0 0 0 3px rgba(77,107,254,.1); }
+.rbacInputMono, .rbacPolicyPath { font-family: 'IBM Plex Mono', monospace; }
+.rbacRoleFormGrid { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); align-items: end; gap: 7px; }
+.rbacFormArrow { padding-bottom: 9px; }
+.rbacButton, .rbacButtonGhost { min-height: 32px; padding: 7px 11px; border-radius: 8px; font-size: 11px; cursor: pointer; }
+.rbacButton { border: 1px solid transparent; background: var(--accent-primary); color: #fff; box-shadow: 0 5px 12px rgba(77,107,254,.16); }
+.rbacButtonGhost { border: 1px solid rgba(77,107,254,.22); background: #fff; color: var(--accent-primary); }
+.rbacToolbar { display: grid; grid-template-columns: minmax(0,1fr) 150px auto; gap: 8px; padding: 12px 18px; border-bottom: 1px solid var(--border-subtle); background: #fafbfe; }
+.rbacToolbarActions { display: flex; gap: 6px; }
+.rbacGroup { padding-top: 14px; }
+.rbacGroupHead { display: flex; align-items: center; gap: 8px; }
+.rbacGroupSubject { color: var(--text-primary); font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 700; }
+.rbacGroupCount { color: var(--text-muted); font-size: 10px; }
+.rbacGroupRule { flex: 1; height: 1px; background: var(--border-subtle); }
+.rbacPolicyRow { display: grid; grid-template-columns: minmax(0,1fr) auto 25px; align-items: center; gap: 10px; min-height: 42px; border-bottom: 1px solid #f0f2f5; }
+.rbacAction { min-width: 38px; padding: 4px 7px; border-radius: 7px; text-align: center; font-family: 'IBM Plex Mono', monospace; font-size: 10px; }
+.rbacActionRead { border: 1px solid rgba(77,107,254,.2); background: rgba(77,107,254,.07); color: var(--accent-primary); }
+.rbacActionWrite { border: 1px solid rgba(216,141,49,.25); background: rgba(216,141,49,.08); color: #aa6a12; }
+.rbacActionOther { border: 1px solid var(--border-subtle); color: var(--text-muted); }
+.rbacPolicyForm { grid-template-columns: minmax(120px, .8fr) minmax(170px, 1.3fr) 100px auto; align-items: end; }
+.rbacPolicyForm .rbacFormTitle, .rbacPolicyForm .rbacFormHint { grid-column: 1 / -1; }
+.rbacFormHint { margin: -4px 0 0; color: var(--text-muted); font-size: 10px; }
+.rbacRestricted { max-width: 640px; }
+
+@media (max-width: 900px) {
+  .rbacWorkspace { grid-template-columns: 1fr; }
+  .rbacRolePanel { position: static; }
+  .rbacGuide { grid-template-columns: 1fr; gap: 8px; }
+  .rbacGuideArrow { display: none; }
+}
+@media (max-width: 640px) {
+  .rbacToolbar, .rbacPolicyForm { grid-template-columns: 1fr; }
+  .rbacRoleFormGrid { grid-template-columns: 1fr; }
+  .rbacFormArrow { display: none; }
+}
+

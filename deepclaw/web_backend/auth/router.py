@@ -8,7 +8,9 @@ from deepclaw.web_backend.auth.dependencies import (
 from deepclaw.web_backend.auth.rbac import require_permission
 from deepclaw.web_backend.auth.schemas import (
     AdminCreateUserRequest,
+    AdminDeleteUserRequest,
     AdminListUsersRequest,
+    AdminUpdateUserProfileRequest,
     AdminResetUserPasswordRequest,
     AdminUpdateUserRoleRequest,
     AdminUpdateUserStatusRequest,
@@ -41,6 +43,8 @@ async def register(
             "role": user.role,
             "is_active": user.is_active,
             "user_id": user.user_id,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "updated_at": user.updated_at.isoformat() if user.updated_at else None,
         },
     }
 
@@ -102,6 +106,8 @@ async def create_user(
             "role": user.role,
             "is_active": user.is_active,
             "user_id": user.user_id,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "updated_at": user.updated_at.isoformat() if user.updated_at else None,
         }
     }
 
@@ -122,6 +128,8 @@ async def list_users(
                 "role": user.role,
                 "is_active": user.is_active,
                 "user_id": user.user_id,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "updated_at": user.updated_at.isoformat() if user.updated_at else None,
             }
             for user in users
         ],
@@ -147,6 +155,8 @@ async def update_user_role(
             "role": user.role,
             "is_active": user.is_active,
             "user_id": user.user_id,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "updated_at": user.updated_at.isoformat() if user.updated_at else None,
         }
     }
 
@@ -169,8 +179,49 @@ async def update_user_status(
             "role": user.role,
             "is_active": user.is_active,
             "user_id": user.user_id,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "updated_at": user.updated_at.isoformat() if user.updated_at else None,
         }
     }
+
+
+@router.post("/users/update", summary="修改用户资料", description="管理员修改指定用户的用户名与邮箱。")
+async def update_user_profile(
+    request: AdminUpdateUserProfileRequest,
+    actor: CurrentActor = Depends(require_permission("/api/auth/users/update", "write")),
+    service: AuthService = Depends(get_auth_service),
+):
+    """由管理员修改用户用户名或邮箱。"""
+    user = await service.update_user_profile(
+        user_id=request.user_id,
+        username=request.username,
+        email=request.email,
+    )
+    return {
+        "user": {
+            "username": user.username,
+            "email": user.email,
+            "role": user.role,
+            "is_active": user.is_active,
+            "user_id": user.user_id,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "updated_at": user.updated_at.isoformat() if user.updated_at else None,
+        }
+    }
+
+
+@router.post("/users/delete", summary="删除用户", description="管理员删除指定用户，禁止删除自己或最后一个管理员。")
+async def delete_user(
+    request: AdminDeleteUserRequest,
+    actor: CurrentActor = Depends(require_permission("/api/auth/users/delete", "write")),
+    service: AuthService = Depends(get_auth_service),
+):
+    """由管理员删除用户账号。"""
+    deleted = await service.delete_user(
+        user_id=request.user_id,
+        operator_user_id=actor.user_id,
+    )
+    return {"deleted": deleted}
 
 
 @router.post("/users/reset-password", summary="重置用户密码", description="管理员为指定用户设置新的登录密码。")
@@ -191,5 +242,7 @@ async def reset_user_password(
             "role": user.role,
             "is_active": user.is_active,
             "user_id": user.user_id,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "updated_at": user.updated_at.isoformat() if user.updated_at else None,
         }
     }

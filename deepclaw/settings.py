@@ -43,8 +43,10 @@ class Settings(BaseSettings):
 
     # postgres数据库配置
     PG_DATABASE_URL: str | None = None
-    # none 表示不启用向量库：通用对话/工具/渠道可用，知识库相关能力显式失败
-    VECTOR_STORE_BACKEND: Literal["elasticsearch", "pgsql", "none"] = "pgsql"
+    # 默认 sqlite：单文件 sqlite-vec，无需任何中间件；也可选 pgsql / elasticsearch / none
+    VECTOR_STORE_BACKEND: Literal["elasticsearch", "pgsql", "sqlite", "none"] = "sqlite"
+    # sqlite-vec 数据库文件路径；留空时落在 HOME_PATH/vector.db
+    SQLITE_VECTOR_DB_PATH: str | None = None
     LANGSMITH_API_KEY: str | None = None
 
     # 对象存储配置：默认本地，显式选择 minio 时才连接远端

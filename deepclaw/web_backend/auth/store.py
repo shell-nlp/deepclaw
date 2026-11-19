@@ -402,6 +402,17 @@ class AuthStore:
             )
             return result.first() is not None
 
+    async def count_admin_users(self) -> int:
+        """统计管理员账号数量。
+
+        Returns:
+            int: 管理员账号数量。
+        """
+        await self._ensure_init()
+        async with self.async_session() as session:
+            result = await session.exec(select(AuthUser).where(AuthUser.role == "admin"))
+            return len(result.all())
+
     async def create_user(
         self,
         *,
@@ -489,6 +500,65 @@ class AuthStore:
             await session.commit()
             await session.refresh(user)
             return user
+
+    async def update_user_profile(
+        self,
+        *,
+        user_id: str,
+        username: str | None = None,
+        email: str | None = None,
+    ) -> AuthUser:
+        """更新用户用户名与邮箱。
+
+        Args:
+            user_id: 目标用户 ID。
+            username: 新用户名；为 None 表示不修改。
+            email: 新邮箱；为 None 表示不修改，空字符串由上层转换为清空。
+
+        Returns:
+            AuthUser: 更新后的账号。
+
+        Raises:
+            BusinessRuleError: 用户不存在时抛出。
+        """
+        await self._ensure_init()
+        async with self.async_session() as session:
+            result = await session.exec(
+                select(AuthUser).where(AuthUser.user_id == user_id)
+            )
+            user = result.first()
+            if user is None:
+                raise BusinessRuleError("用户不存在。")
+            if username is not None:
+                user.username = username
+            if email is not None:
+                user.email = email
+            user.updated_at = utc_now()
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
+            return user
+
+    async def delete_user(self, *, user_id: str) -> bool:
+        """删除用户账号。
+
+        Args:
+            user_id: 目标用户 ID。
+
+        Returns:
+            bool: 删除成功返回真，账号不存在返回假。
+        """
+        await self._ensure_init()
+        async with self.async_session() as session:
+            result = await session.exec(
+                select(AuthUser).where(AuthUser.user_id == user_id)
+            )
+            user = result.first()
+            if user is None:
+                return False
+            await session.delete(user)
+            await session.commit()
+            return True
 
     async def update_user_password(self, *, user_id: str, password_hash: str) -> AuthUser:
         await self._ensure_init()

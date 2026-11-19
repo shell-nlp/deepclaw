@@ -20,6 +20,7 @@ export default function ChatInterface() {
     viewMode,
     channelPage,
     channelNavExpanded,
+    systemNavExpanded,
     sidebarCollapsed,
     knowledgePage,
     messages,
@@ -117,6 +118,7 @@ export default function ChatInterface() {
     openHistorySession,
     deleteHistorySession,
     handleChannelsNavClick,
+    handleSystemNavClick,
     toggleSidebar,
     navigateToKnowledgeView,
     loadAdminUsers,
@@ -135,6 +137,8 @@ export default function ChatInterface() {
     createAdminUser,
     updateAdminUserRole,
     updateAdminUserStatus,
+    updateAdminUserProfile,
+    deleteAdminUser,
     resetAdminUserPassword,
     openSkillUploadDialog,
     handleUploadSkill,
@@ -202,6 +206,8 @@ export default function ChatInterface() {
           onDeleteHistorySession={deleteHistorySession}
           channelNavExpanded={channelNavExpanded}
           onChannelsNavClick={handleChannelsNavClick}
+          systemNavExpanded={systemNavExpanded}
+          onSystemNavClick={handleSystemNavClick}
           actor={actor}
           accountMenuOpen={accountMenuOpen}
           onAccountMenuOpenChange={setAccountMenuOpen}
@@ -307,7 +313,6 @@ export default function ChatInterface() {
               />
             </div>
           ) : knowledgePage === 'users' ? (
-            <>
             <div className={styles.managementViewport}>
               <UserManagementView
                 actor={actor}
@@ -320,11 +325,14 @@ export default function ChatInterface() {
                 onCreateUser={createAdminUser}
                 onUpdateUserRole={updateAdminUserRole}
                 onUpdateUserStatus={updateAdminUserStatus}
+                onUpdateUserProfile={updateAdminUserProfile}
+                onDeleteUser={deleteAdminUser}
+                currentUserId={currentUserId}
                 onResetUserPassword={resetAdminUserPassword}
               />
             </div>
+          ) : knowledgePage === 'roles' ? (
             <div className={styles.managementViewport}>
-              <div className={styles.managementSectionDivider} />
               <RbacManagementView
                 canManage={actorCapabilities.canManageUsers}
                 policies={rbacPolicies.policies}
@@ -344,7 +352,6 @@ export default function ChatInterface() {
                 onDeleteRole={rbacPolicies.deleteRole}
               />
             </div>
-            </>
           ) : (
             <div className={styles.managementViewport}>
               <KnowledgeManagementView

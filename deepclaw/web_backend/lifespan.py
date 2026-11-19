@@ -40,6 +40,7 @@ def validate_runtime_settings() -> None:
             "VECTOR_STORE_BACKEND=pgsql 时必须配置 PG_DATABASE_URL；"
             "不启用知识库时请设置 VECTOR_STORE_BACKEND=none。"
         )
+    # 默认的 sqlite 后端不需要任何外部连接，仅依赖本地文件，无需额外校验。
     if settings.VECTOR_STORE_BACKEND == "elasticsearch" and not settings.ES_URL:
         problems.append(
             "VECTOR_STORE_BACKEND=elasticsearch 时必须配置 ES_URL；"

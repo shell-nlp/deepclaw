@@ -39,6 +39,8 @@ interface AppSidebarProps {
   ) => void | Promise<void>
   channelNavExpanded: boolean
   onChannelsNavClick: () => void
+  systemNavExpanded: boolean
+  onSystemNavClick: () => void
   actor: ActorState
   accountMenuOpen: boolean
   onAccountMenuOpenChange: (open: boolean) => void
@@ -91,6 +93,8 @@ export function AppSidebar({
   onDeleteHistorySession,
   channelNavExpanded,
   onChannelsNavClick,
+  systemNavExpanded,
+  onSystemNavClick,
   actor,
   accountMenuOpen,
   onAccountMenuOpenChange,
@@ -320,17 +324,70 @@ export function AppSidebar({
             </button>
           </div>
         ) : null}
-        <button
-          className={`${styles.sidebarButton} ${
-            viewMode === 'knowledge' && knowledgePage === 'users'
-              ? styles.sidebarButtonActive
-              : ''
-          }`}
-          onClick={() => onNavigate('knowledge', 'users')}
-        >
-          <SidebarIcon name="users" />
-          <span className={styles.sidebarButtonLabel}>用户管理</span>
-        </button>
+        {actor.role === 'admin' ? (
+          <>
+            <button
+              className={`${styles.sidebarButton} ${
+                viewMode === 'knowledge' &&
+                (knowledgePage === 'users' || knowledgePage === 'roles')
+                  ? styles.sidebarButtonActive
+                  : ''
+              }`}
+              onClick={onSystemNavClick}
+              aria-expanded={systemNavExpanded}
+            >
+              <SidebarIcon name="users" />
+              <span className={styles.sidebarButtonLabel}>系统管理</span>
+              <span
+                className={
+                  systemNavExpanded
+                    ? styles.sidebarChevronExpanded
+                    : styles.sidebarChevron
+                }
+              >
+                ▾
+              </span>
+            </button>
+            {systemNavExpanded ? (
+              <div className={styles.channelSubnav}>
+                <button
+                  className={`${styles.channelSubnavItem} ${
+                    viewMode === 'knowledge' && knowledgePage === 'users'
+                      ? styles.channelSubnavItemActive
+                      : ''
+                  }`}
+                  onClick={() => onNavigate('knowledge', 'users')}
+                >
+                  <span className={styles.channelSubnavLabel}>用户管理</span>
+                  <span className={styles.channelSubnavMeta}>账号与状态</span>
+                </button>
+                <button
+                  className={`${styles.channelSubnavItem} ${
+                    viewMode === 'knowledge' && knowledgePage === 'roles'
+                      ? styles.channelSubnavItemActive
+                      : ''
+                  }`}
+                  onClick={() => onNavigate('knowledge', 'roles')}
+                >
+                  <span className={styles.channelSubnavLabel}>角色管理</span>
+                  <span className={styles.channelSubnavMeta}>继承与权限</span>
+                </button>
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <button
+            className={`${styles.sidebarButton} ${
+              viewMode === 'knowledge' && knowledgePage === 'users'
+                ? styles.sidebarButtonActive
+                : ''
+            }`}
+            onClick={() => onNavigate('knowledge', 'users')}
+          >
+            <SidebarIcon name="users" />
+            <span className={styles.sidebarButtonLabel}>系统管理</span>
+          </button>
+        )}
       </div>
       <div className={styles.sidebarAccount}>
         <AccountPanel

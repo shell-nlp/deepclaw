@@ -707,7 +707,8 @@ curl http://localhost:7869/api/agui/threads/demo-thread/state -H "Authorization:
 | Variable | Description |
 |----------|-------------|
 | `PG_DATABASE_URL` | PostgreSQL connection string. When set, runs/threads, checkpoints, long-term memory, auth, channels and knowledge base metadata all share one database and multiple instances can share state |
-| `VECTOR_STORE_BACKEND` | Vector store backend: `pgsql` (PostgreSQL + pgvector), `elasticsearch`, or `none` (knowledge base disabled); defaults to `pgsql` |
+| `VECTOR_STORE_BACKEND` | Vector store backend: `sqlite` (default, single-file SQLite + sqlite-vec), `pgsql` (PostgreSQL + pgvector), `elasticsearch`, or `none` (knowledge base disabled) |
+| `SQLITE_VECTOR_DB_PATH` | Database file used when `VECTOR_STORE_BACKEND=sqlite`; defaults to `.deepclaw/vector.db` |
 | `ES_URL` | Elasticsearch URL when `VECTOR_STORE_BACKEND=elasticsearch` |
 | `ES_URSR` / `ES_PWD` | Elasticsearch username and password |
 | `OBJECT_STORAGE_PROVIDER` | Knowledge-base file storage: `local` (default) or `minio` |
@@ -726,7 +727,7 @@ OPENAI_API_KEY=your-api-key
 CHAT_MODEL_NAME=qwen3
 
 # Disable the vector store; otherwise pgsql/elasticsearch without a URL fails startup
-VECTOR_STORE_BACKEND=none
+VECTOR_STORE_BACKEND=sqlite
 BACKEND_TYPE=local_shell
 ```
 
@@ -736,7 +737,7 @@ BACKEND_TYPE=local_shell
 | Authentication, RBAC, user management | Available (`.deepclaw/auth.db` + `.deepclaw/rbac.db`) |
 | Channel bindings, device pairing, cron jobs | Available (one SQLite file each) |
 | Chat history and threads | In-process memory only, lost on restart; set `PG_DATABASE_URL` to persist |
-| Knowledge base / RAG | Unavailable; the API returns a business error saying the vector store is disabled |
+| Knowledge base / RAG | Available; vectors and chunks live in `.deepclaw/vector.db` |
 | Sandbox-isolated execution | Unavailable; requires OpenSandbox (`BACKEND_TYPE=sandbox`) |
 
 > To keep chat history without installing anything else, point `PG_DATABASE_URL` at any

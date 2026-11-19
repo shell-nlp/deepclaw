@@ -36,6 +36,8 @@ dependencies = [
     "neo4j>=6.2.0",
     "matplotlib>=3.11.0",
     "casbin>=1.43.0",
+    # 默认轻量向量库：SQLite 扩展，无需外部中间件
+    "sqlite-vec>=0.1.9",
     # SQLAlchemy 异步扩展的必需运行时依赖，不声明时 pip 安装会直接 ImportError。
     "greenlet>=3.0.0",
 ]

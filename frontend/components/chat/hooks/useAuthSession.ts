@@ -16,6 +16,8 @@ import {
   AUTH_USERS_CREATE_API_PATH,
   AUTH_USERS_LIST_API_PATH,
   AUTH_USERS_RESET_PASSWORD_API_PATH,
+  AUTH_USERS_UPDATE_PROFILE_API_PATH,
+  AUTH_USERS_DELETE_API_PATH,
   AUTH_USERS_UPDATE_ROLE_API_PATH,
   AUTH_USERS_UPDATE_STATUS_API_PATH,
 } from '../utils/constants'
@@ -192,6 +194,45 @@ export function useAuthSession({
     }
   }
 
+  const updateAdminUserProfile = async (
+    userId: string,
+    input: { username?: string; email?: string }
+  ) => {
+    setUserAdminNotice('')
+    setUserAdminError('')
+    try {
+      await requestJson<AuthLoginResponse>(AUTH_USERS_UPDATE_PROFILE_API_PATH, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: userId,
+          username: input.username ?? null,
+          email: input.email ?? null,
+        }),
+      })
+      await loadAdminUsers()
+      setUserAdminNotice('用户资料已更新。')
+    } catch (error) {
+      setUserAdminError(error instanceof Error ? error.message : '更新用户资料失败。')
+    }
+  }
+
+  const deleteAdminUser = async (userId: string) => {
+    setUserAdminNotice('')
+    setUserAdminError('')
+    try {
+      await requestJson<{ deleted: boolean }>(AUTH_USERS_DELETE_API_PATH, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId }),
+      })
+      await loadAdminUsers()
+      setUserAdminNotice('用户已删除。')
+    } catch (error) {
+      setUserAdminError(error instanceof Error ? error.message : '删除用户失败。')
+    }
+  }
+
   const resetAdminUserPassword = async (userId: string, password: string) => {
     setUserAdminNotice('')
     setUserAdminError('')
@@ -231,6 +272,8 @@ export function useAuthSession({
     createAdminUser,
     updateAdminUserRole,
     updateAdminUserStatus,
+    updateAdminUserProfile,
+    deleteAdminUser,
     resetAdminUserPassword,
   }
 }

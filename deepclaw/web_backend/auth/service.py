@@ -217,6 +217,68 @@ class AuthService:
             await self.store.revoke_tokens_by_user_id(user_id)
         return user
 
+    async def update_user_profile(
+        self,
+        *,
+        user_id: str,
+        username: str | None = None,
+        email: str | None = None,
+    ):
+        """管理员修改用户用户名或邮箱。
+
+        Args:
+            user_id: 目标用户 ID。
+            username: 新用户名；为 None 或空串表示不修改。
+            email: 新邮箱；None 表示不修改，空串表示清空。
+
+        Returns:
+            AuthUser: 更新后的账号。
+
+        Raises:
+            BusinessRuleError: 用户名或邮箱已被其他账号占用时抛出。
+        """
+        normalized_username: str | None = None
+        if username is not None and username.strip():
+            normalized_username = normalize_username(username)
+            existing = await self.store.get_user_by_username(normalized_username)
+            if existing is not None and existing.user_id != user_id:
+                raise BusinessRuleError("该用户名已被使用，请更换。")
+        normalized_email: str | None = None
+        if email is not None:
+            normalized_email = normalize_optional_email(email)
+            if normalized_email:
+                taken = await self.store.get_user_by_email(normalized_email)
+                if taken is not None and taken.user_id != user_id:
+                    raise BusinessRuleError("该邮箱已被其他账号使用。")
+        return await self.store.update_user_profile(
+            user_id=user_id,
+            username=normalized_username,
+            email=normalized_email,
+        )
+
+    async def delete_user(self, *, user_id: str, operator_user_id: str | None = None):
+        """删除用户账号，禁止删除自己或最后一个管理员。
+
+        Args:
+            user_id: 目标用户 ID。
+            operator_user_id: 执行删除操作的管理员 ID。
+
+        Returns:
+            bool: 删除成功返回真。
+
+        Raises:
+            BusinessRuleError: 删除自己、删除最后一个管理员或账号不存在时抛出。
+        """
+        if operator_user_id and operator_user_id == user_id:
+            raise BusinessRuleError("不能删除当前登录的账号。")
+        target = await self.store.get_user_by_user_id(user_id)
+        if target is None:
+            raise BusinessRuleError("用户不存在。")
+        if target.role == "admin" and await self.store.count_admin_users() <= 1:
+            raise BusinessRuleError("至少保留一个管理员账号。")
+        await self.store.revoke_tokens_by_user_id(user_id)
+        return await self.store.delete_user(user_id=user_id)
+
     async def reset_user_password(self, *, user_id: str, password: str):
         """重置用户密码并撤销旧令牌。
 

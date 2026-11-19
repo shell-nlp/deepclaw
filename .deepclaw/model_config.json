@@ -1,7 +1,28 @@
 {
-  "OPENAI_API_BASE": "https://llm.talkweb.com.cn/v1",
-  "OPENAI_API_KEY": "sk-7tafcVM8AUrZEFNZziH6wutt6Bm2PttyDz3sEb8SnDroe78j",
-  "CHAT_MODEL_NAME": "deepseek-flash",
-  "EMBEDDING_MODEL_NAME": "gpu-bge-m3",
-  "MODEL_CONTEXT_WINDOW": 128000
+  "models": [
+    {
+      "id": "515b157bf1bf442da77bd10f0a0dc2d5",
+      "type": "chat",
+      "name": "deepseek-flash",
+      "provider": "OpenAI Compatible",
+      "api_base": "https://llm.talkweb.com.cn/v1",
+      "api_key": "sk-7tafcVM8AUrZEFNZziH6wutt6Bm2PttyDz3sEb8SnDroe78j",
+      "context_window": 128000,
+      "created_at": "2026-11-19T06:11:43Z",
+      "updated_at": "2026-11-19T06:11:43Z"
+    },
+    {
+      "id": "78404329fb8a4a20a52071fc6f2a4ccc",
+      "type": "embedding",
+      "name": "gpu-bge-m3",
+      "provider": "OpenAI Compatible",
+      "api_base": "https://llm.talkweb.com.cn/v1",
+      "api_key": "sk-7tafcVM8AUrZEFNZziH6wutt6Bm2PttyDz3sEb8SnDroe78j",
+      "context_window": null,
+      "created_at": "2026-11-19T06:11:43Z",
+      "updated_at": "2026-11-19T06:11:43Z"
+    }
+  ],
+  "active_chat_model_id": "515b157bf1bf442da77bd10f0a0dc2d5",
+  "active_embedding_model_id": "78404329fb8a4a20a52071fc6f2a4ccc"
 }

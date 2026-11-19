@@ -92,7 +92,7 @@
   技能管理路由、请求模型与服务实现。
 
 - `deepclaw/model_config.py` / `deepclaw/web_backend/model_router.py` / `deepclaw/web_backend/model_schemas.py`
-  模型管理配置、管理员 API 与请求响应模型。配置默认从环境变量读取，管理员在 `/api/models/config` 保存后落到运行期 `HOME_PATH/model_config.json`，并清理智能体运行时缓存；API Key 只返回脱敏值。
+  模型目录配置、管理员 API 与请求响应模型；用户管理相关的编辑/删除走 `/api/auth/users/update` 与 `/api/auth/users/delete`，禁止删除自己或最后一个管理员。配置默认从环境变量迁移为两个分类列表，管理员通过 `/api/models/catalog`、`/api/models` 及其子路径新增、编辑、删除、测试和切换大模型/语义模型；目录落到运行期 `HOME_PATH/model_config.json`，保存后清理智能体运行时缓存，API Key 只返回脱敏值。
 
 - `deepclaw/web_backend/knowledge_bases/`
 知识库管理路由、请求模型、元数据存储与服务实现。上传接口先将原始文件保存到对象存储并登记独立的 `knowledge_upload_tasks` 任务，返回 202；每实例后台 worker 数由 `KNOWLEDGE_UPLOAD_WORKERS` 控制（默认 2，允许 1–8），原子领取任务，在线程中执行 PDF 解析和切片写入（只写 passage 索引，不做三元组抽取），按排队/解析/索引/成功/失败持久化阶段，前端轮询 `/api/rag/knowledge-bases/documents/upload-tasks`。进程异常中断的任务心跳过期后重新排队；部署多实例时共享元数据数据库和对象存储。知识库解析统一选择 `PDFParser`；PDF 直接解析，TXT/MD 等文本格式先生成 PDF，DOCX/PPTX/XLSX 等由 LibreOffice 转换为 PDF 后再解析。`create_document_parser()` 保留给非知识库上传场景。失败任务可由前端调用 `/api/rag/knowledge-bases/documents/upload-tasks/retry` 重新排队，或调用 `/upload-tasks/delete` 删除记录；两者都只允许操作 `failed` 状态的任务。
@@ -132,7 +132,7 @@
   Docling 统一文档解析适配器。按文件后缀选择 Docling 或回退解析器，将 PDF、DOCX、PPTX、XLSX、HTML、Markdown、TXT 转换为现有知识库兼容的 LangChain Document 切片，并保留标题路径、页码和 Docling 元数据。
 
 - `deepclaw/common/vector_store/`
-  向量数据库抽象层，包含通用 `AbstractVectorStore`、统一创建入口 `create_vector_store()`、Elasticsearch 实现，以及基于 PostgreSQL + pgvector + pg_search 的实现。限定文档 ID 的 `vector_search_by_ids()`、按元数据列出全部 ID 的 `list_ids_by_filter()` 与索引清理 `clear_index()` 统一由此层提供；ES 批量写入保留外部传入的 ID，PG 元数据数组列表过滤表示任一匹配，ES 建索引使用 `ik_smart` 中文分词（缺失插件时回退默认分词）并在写入前自动建索引。混合检索由 `retrieve_with_rrf()` 提供：分别取 BM25 关键词检索与向量检索结果，再按 RRF 融合（每路保底 `k // 3` 个名额，避免单路独有命中被另一路的共识噪声挤出），是当前 RAG 检索的唯一实现；返回项的 `score` 是融合分，单路原始分放在 `raw_score`。
+  向量数据库抽象层，包含通用 `AbstractVectorStore`、统一创建入口 `create_vector_store()`、默认的 SQLite + sqlite-vec 实现（`sqlite_vec.py`，单文件、零中间件，关键词检索用子串加 Python 打分以适配中文）、Elasticsearch 实现，以及基于 PostgreSQL + pgvector + pg_search 的实现。限定文档 ID 的 `vector_search_by_ids()`、按元数据列出全部 ID 的 `list_ids_by_filter()` 与索引清理 `clear_index()` 统一由此层提供；ES 批量写入保留外部传入的 ID，PG 元数据数组列表过滤表示任一匹配，ES 建索引使用 `ik_smart` 中文分词（缺失插件时回退默认分词）并在写入前自动建索引。混合检索由 `retrieve_with_rrf()` 提供：分别取 BM25 关键词检索与向量检索结果，再按 RRF 融合（每路保底 `k // 3` 个名额，避免单路独有命中被另一路的共识噪声挤出），是当前 RAG 检索的唯一实现；返回项的 `score` 是融合分，单路原始分放在 `raw_score`。
 
 - `deepclaw/common/__init__.py`
   导出公共类型。知识库上传以新生成的 `document_id` 作为来源整体替换 passage 索引，删除文档按相同来源清理；同名文件再次上传仍创建新文档，不自动覆盖旧文件。
@@ -225,6 +225,7 @@ pnpm build
 - `pip install .` 装 wheel，`pip install -e .` 可编辑安装；两者都暴露 `deepclaw` 命令（`[project.scripts]` → `deepclaw.main:run`）
 - `[tool.setuptools.packages.find]` 只包含 `deepclaw*` 与 `mcp2tool*`；`mcp2tool` 是 `deepclaw.middleware.mcp` 的运行时依赖，漏掉会导致启动直接 ImportError
 - `[tool.setuptools.package-data]` 把 RBAC 的 `rbac_model.conf` / `rbac_policy.csv` 带进 wheel；新增运行期数据文件必须同步登记
+- 新增运行期依赖时同步 `pyproject.toml`；`sqlite-vec` 是默认向量后端的一部分，缺失会让 `VECTOR_STORE_BACKEND=sqlite` 启动即报错
 - `enforcer.resolve_rbac_paths()` 默认按 `rbac_model.conf` / `rbac_policy.csv` 找包内文件，并允许 `<repo>/data/` 同名文件覆盖；重命名这两份文件时必须同步改常量，否则安装态启动会报“RBAC 模型/策略文件不存在”
 - 根目录 `setup.py` 用 `build_py` 钩子把 `frontend/out` 复制到 wheel 内的 `deepclaw/web_static/frontend`，因此安装态不需要 Node.js；`MANIFEST.in` 把同一目录 `graft` 进 sdist
 - `frontend/out` 更新后必须重新构建 wheel，否则 wheel 内仍是旧前端
@@ -267,7 +268,8 @@ uv venv .tmpvenv && uv pip install --python .tmpvenv/Scripts/python.exe .
 - `TAVILY_API_KEY`
 - `BACKEND_TYPE`
 - `PG_DATABASE_URL`
-- `VECTOR_STORE_BACKEND`（`pgsql` 默认 / `elasticsearch` / `none`；`none` 表示不启用向量库，跳过知识库 worker，知识库接口返回业务错误）
+- `VECTOR_STORE_BACKEND`（`sqlite` 默认 / `pgsql` / `elasticsearch` / `none`；`sqlite` 走 SQLite + sqlite-vec 单文件，无需中间件）
+- `SQLITE_VECTOR_DB_PATH`（sqlite 后端的数据库文件路径，默认 `HOME_PATH/vector.db`）
 - `LANGSMITH_API_KEY`
 - `USE_COPILOTKIT`
 - `USE_TOOL_SEARCH`
@@ -287,7 +289,7 @@ uv venv .tmpvenv && uv pip install --python .tmpvenv/Scripts/python.exe .
 - `AUTH_ADMIN_PASSWORD`（默认 `deepclaw`）
 - `AUTH_ADMIN_EMAIL`（可选，仅展示）
 - `AUTH_TOKEN_EXPIRE_DAYS`
-- `/api/models/config`：管理员读取与更新 OpenAI 兼容网关、API Key、聊天模型、向量模型和上下文窗口；模型配置页位于前端 `ModelManagementView.tsx`。
+- `/api/models/catalog`、`POST /api/models`、`PUT/DELETE /api/models/{model_id}`、`POST /api/models/{model_id}/test`、`POST /api/models/{model_id}/activate`：管理员维护、测试和切换大模型与语义模型目录；模型配置页位于前端 `ModelManagementView.tsx`。
 
 ### 渠道配置
 
