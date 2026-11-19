@@ -12,6 +12,7 @@ import { UserManagementView } from './management/UserManagementView'
 import { useChatPageController } from './hooks/useChatPageController'
 import { useRbacPolicies } from './hooks/useRbacPolicies'
 import { DeviceManagementView } from './management/DeviceManagementView'
+import { ModelManagementView } from './management/ModelManagementView'
 
 export default function ChatInterface() {
   const {
@@ -291,6 +292,10 @@ export default function ChatInterface() {
                 onLoadMcpExample={loadMcpExample}
                 onClearMcpConfig={clearMcpConfig}
               />
+            </div>
+          ) : viewMode === 'models' ? (
+            <div className={styles.managementViewport}>
+              <ModelManagementView actor={actor} requestJson={requestJson} />
             </div>
           ) : viewMode === 'channels' ? (
             <div className={styles.managementViewport}>

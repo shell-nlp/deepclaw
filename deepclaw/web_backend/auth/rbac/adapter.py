@@ -18,6 +18,12 @@ async def bootstrap_policy_store(
     await store.ensure_schema()
     if not await store.is_initialized():
         await store.seed(policies, roles)
+        return
+    # 已有安装也要补齐新版本新增的基础策略，不覆盖管理员在界面里的自定义策略。
+    for subject, path, action in policies:
+        await store.add_policy(subject, path, action)
+    for child, parent in roles:
+        await store.add_role(child, parent)
 
 
 def read_default_policy_file(policy_path: Path) -> tuple[list[tuple[str, str, str]], list[tuple[str, str]]]:

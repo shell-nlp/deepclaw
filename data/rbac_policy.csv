@@ -15,5 +15,7 @@ p, admin, /api/auth/rbac/*, read
 p, admin, /api/auth/rbac/*, write
 p, admin, /api/auth/users/*, read
 p, admin, /api/auth/users/*, write
+p, admin, /api/models/*, read
+p, admin, /api/models/*, write
 
 g, admin, user

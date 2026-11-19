@@ -1,0 +1,7 @@
+{
+  "OPENAI_API_BASE": "https://llm.talkweb.com.cn/v1",
+  "OPENAI_API_KEY": "sk-7tafcVM8AUrZEFNZziH6wutt6Bm2PttyDz3sEb8SnDroe78j",
+  "CHAT_MODEL_NAME": "deepseek-flash",
+  "EMBEDDING_MODEL_NAME": "gpu-bge-m3",
+  "MODEL_CONTEXT_WINDOW": 128000
+}

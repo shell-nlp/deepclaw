@@ -19,6 +19,7 @@ export const AUTH_USERS_LIST_API_PATH = '/api/auth/users/list'
 export const AUTH_USERS_UPDATE_ROLE_API_PATH = '/api/auth/users/update-role'
 export const AUTH_USERS_UPDATE_STATUS_API_PATH = '/api/auth/users/update-status'
 export const AUTH_USERS_RESET_PASSWORD_API_PATH = '/api/auth/users/reset-password'
+export const MODEL_CONFIG_API_PATH = '/api/models/config'
 
 export const RBAC_POLICIES_API_PATH = '/api/auth/rbac/policies'
 export const RBAC_POLICIES_CREATE_API_PATH = '/api/auth/rbac/policies'

@@ -91,6 +91,9 @@
 - `deepclaw/web_backend/skills/`
   技能管理路由、请求模型与服务实现。
 
+- `deepclaw/model_config.py` / `deepclaw/web_backend/model_router.py` / `deepclaw/web_backend/model_schemas.py`
+  模型管理配置、管理员 API 与请求响应模型。配置默认从环境变量读取，管理员在 `/api/models/config` 保存后落到运行期 `HOME_PATH/model_config.json`，并清理智能体运行时缓存；API Key 只返回脱敏值。
+
 - `deepclaw/web_backend/knowledge_bases/`
 知识库管理路由、请求模型、元数据存储与服务实现。上传接口先将原始文件保存到对象存储并登记独立的 `knowledge_upload_tasks` 任务，返回 202；每实例后台 worker 数由 `KNOWLEDGE_UPLOAD_WORKERS` 控制（默认 2，允许 1–8），原子领取任务，在线程中执行 PDF 解析和切片写入（只写 passage 索引，不做三元组抽取），按排队/解析/索引/成功/失败持久化阶段，前端轮询 `/api/rag/knowledge-bases/documents/upload-tasks`。进程异常中断的任务心跳过期后重新排队；部署多实例时共享元数据数据库和对象存储。知识库解析统一选择 `PDFParser`；PDF 直接解析，TXT/MD 等文本格式先生成 PDF，DOCX/PPTX/XLSX 等由 LibreOffice 转换为 PDF 后再解析。`create_document_parser()` 保留给非知识库上传场景。失败任务可由前端调用 `/api/rag/knowledge-bases/documents/upload-tasks/retry` 重新排队，或调用 `/upload-tasks/delete` 删除记录；两者都只允许操作 `failed` 状态的任务。
 切片写入时附带 `state`（默认 `true`）与 `tenant_id`（多租户预留，当前统一为空）两个元数据字段；`POST /api/rag/knowledge-bases/documents/chunks/update` 支持修改单个切片的正文（会重新生成向量）或切换 `state`。RAG 检索用 `filter_conditions={"metadata.state": {"$ne": False}}` 排除停用切片：PG 走 `metadata ->> 'state' IS DISTINCT FROM 'false'`，ES 走 `must_not term`，因此缺少 `state` 的历史切片仍视为开启，无需先回填。
@@ -284,6 +287,7 @@ uv venv .tmpvenv && uv pip install --python .tmpvenv/Scripts/python.exe .
 - `AUTH_ADMIN_PASSWORD`（默认 `deepclaw`）
 - `AUTH_ADMIN_EMAIL`（可选，仅展示）
 - `AUTH_TOKEN_EXPIRE_DAYS`
+- `/api/models/config`：管理员读取与更新 OpenAI 兼容网关、API Key、聊天模型、向量模型和上下文窗口；模型配置页位于前端 `ModelManagementView.tsx`。
 
 ### 渠道配置
 

@@ -2744,6 +2744,23 @@ textarea.interruptInput {
   gap: 12px;
 }
 
+.managementField {
+  display: grid;
+  gap: 7px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.managementField .managementInput {
+  width: 100%;
+}
+
+.managementTopbarMeta {
+  align-self: flex-start;
+  padding-top: 8px;
+}
+
 .managementList {
   display: flex;
   flex-direction: column;

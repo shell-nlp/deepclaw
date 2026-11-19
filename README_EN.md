@@ -741,6 +741,10 @@ BACKEND_TYPE=local_shell
 
 > To keep chat history without installing anything else, point `PG_DATABASE_URL` at any
 > PostgreSQL instance you already have; checkpoints, runs/threads and metadata all move there.
+### Model management
+
+After signing in as an administrator, open Model management from the sidebar to change the OpenAI-compatible gateway, API key, chat model, embedding model and context window. The configuration is saved under the runtime data directory; API keys are only returned in masked form. Saving clears the agent runtime cache so new requests use the updated configuration.
+
 ### Common optional environment variables
 
 | Variable | Description |

@@ -265,6 +265,15 @@ export function AppSidebar({
         </button>
         <button
           className={`${styles.sidebarButton} ${
+            viewMode === 'models' ? styles.sidebarButtonActive : ''
+          }`}
+          onClick={() => onNavigate('models')}
+        >
+          <SidebarIcon name="models" />
+          <span className={styles.sidebarButtonLabel}>模型管理</span>
+        </button>
+        <button
+          className={`${styles.sidebarButton} ${
             viewMode === 'channels' ? styles.sidebarButtonActive : ''
           }`}
           onClick={onChannelsNavClick}
