@@ -9,7 +9,7 @@ type ModelType = 'chat' | 'embedding'
 interface ModelItem { id: string; type: ModelType; name: string; provider: string; api_base: string; api_key_masked: string; has_api_key: boolean; context_window: number | null; created_at: string; updated_at: string; active: boolean }
 interface Catalog { chat_models: ModelItem[]; embedding_models: ModelItem[]; active_chat_model_id: string | null; active_embedding_model_id: string | null }
 interface Draft { type: ModelType; name: string; provider: string; api_base: string; api_key: string; context_window: string }
-interface Props { actor: ActorState; requestJson: <T>(path: string, init?: RequestInit) => Promise<T> }
+interface Props { actor: ActorState; requestJson: <T>(path: string, init?: RequestInit) => Promise<T>; canManage?: boolean }
 const emptyDraft = (type: ModelType): Draft => ({ type, name: '', provider: 'OpenAI Compatible', api_base: '', api_key: '', context_window: '128000' })
 
 /**
@@ -18,7 +18,7 @@ const emptyDraft = (type: ModelType): Draft => ({ type, name: '', provider: 'Ope
  *   actor: 当前登录主体。
  *   requestJson: 带鉴权的 JSON 请求函数。
  */
-export function ModelManagementView({ actor, requestJson }: Props) {
+export function ModelManagementView({ actor, requestJson, canManage = actor.role === 'admin' }: Props) {
   const [catalog, setCatalog] = useState<Catalog | null>(null)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -28,7 +28,6 @@ export function ModelManagementView({ actor, requestJson }: Props) {
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const load = useCallback(async () => { setLoading(true); setError(''); try { setCatalog(await requestJson<Catalog>(MODEL_CATALOG_API_PATH)) } catch (cause) { setError(cause instanceof Error ? cause.message : '无法读取模型目录。') } finally { setLoading(false) } }, [requestJson])
-  const canManage = actor.role === 'admin' || Boolean(actor.permissions?.some((item) => item.action === 'write' && item.path === '/api/models'))
   useEffect(() => { if (canManage && !actor.isGuest) void load() }, [actor.isGuest, canManage, load])
   const startCreate = (type: ModelType) => { setEditingId(null); setDraft(emptyDraft(type)); setNotice(''); setError('') }
   const startEdit = (model: ModelItem) => { setEditingId(model.id); setDraft({ type: model.type, name: model.name, provider: model.provider, api_base: model.api_base, api_key: '', context_window: String(model.context_window || 128000) }); setNotice(''); setError('') }

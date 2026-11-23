@@ -33,10 +33,13 @@ export interface ActorPayload {
 }
 
 export interface ActorCapabilities {
+  canViewKnowledge: boolean
   canManageKnowledge: boolean
   canManageSkills: boolean
   canManageUsers: boolean
+  canViewRoles: boolean
   canManageRoles: boolean
+  canViewModels: boolean
   canManageModels: boolean
   canManageChannelBindingsGlobally: boolean
   requiresLoginMessage: string
@@ -70,14 +73,17 @@ export function normalizeActorPayload(payload: ActorPayload | null | undefined):
   }
 
   const role = payload.role?.trim() || 'user'
-  return {
+  const actor: ActorState = {
     isGuest: false,
     userId: payload.user_id,
     username: payload.username ?? null,
     email: payload.email ?? null,
     role,
-    permissions: payload.permissions,
   }
+  if (Array.isArray(payload.permissions)) {
+    actor.permissions = payload.permissions
+  }
+  return actor
 }
 
 export function normalizeUserToActor(user: AuthUserSummary): ActorState {
@@ -97,12 +103,16 @@ export function getActorCapabilities(actor: ActorState): ActorCapabilities {
     if (item.action !== action) return false
     return item.path === path || (item.path.endsWith('/*') && path.startsWith(item.path.slice(0, -1)))
   }))
+  const hasPermissions = Boolean(grants)
   return {
-    canManageKnowledge: actor.isGuest || allowed('/api/rag/knowledge-bases/list', 'write'),
-    canManageSkills: actor.isGuest || allowed('/api/agent/skills/list', 'write'),
+    canViewKnowledge: actor.isGuest || !hasPermissions || allowed('/api/rag/knowledge-bases/list', 'read'),
+    canManageKnowledge: actor.isGuest || !hasPermissions || allowed('/api/rag/knowledge-bases/list', 'write'),
+    canManageSkills: actor.isGuest || !hasPermissions || allowed('/api/agent/skills/list', 'write'),
     canManageUsers: allowed('/api/auth/users/list', 'read') && allowed('/api/auth/users/create', 'write'),
-    canManageRoles: allowed('/api/auth/rbac/catalog/roles', 'read') && allowed('/api/auth/rbac/catalog/roles', 'write'),
-    canManageModels: allowed('/api/models/catalog', 'read') && allowed('/api/models', 'write'),
+    canViewRoles: allowed('/api/auth/rbac/catalog/roles', 'read'),
+    canManageRoles: allowed('/api/auth/rbac/catalog/roles', 'write'),
+    canViewModels: allowed('/api/models/catalog', 'read'),
+    canManageModels: allowed('/api/models', 'write'),
     canManageChannelBindingsGlobally: allowed('/api/auth/users/list', 'write'),
     requiresLoginMessage: '登录后可使用此功能。',
   }

@@ -596,24 +596,37 @@ test('处理中及结束后都保留真实思考和工具，无过程时结束�
 })
 
 
-test('角色权限页对非管理员只展示说明，对管理员展示策略编辑入口', () => {
+test('角色页按服务端权限目录渲染，只读与可管理状态区分按钮', () => {
   const baseProps = {
-    policies: [{ subject: 'user', path: '/api/rag/*', action: 'read' }],
-    roles: [{ child: 'admin', parent: 'user' }],
+    catalog: [
+      { id: 'admin', name: '管理员', description: '平台内置管理员', builtin: true, user_count: 1, permissions: [] },
+      { id: 'reviewer', name: '内容审核', description: '负责审核知识内容', builtin: false, user_count: 2, permissions: [{ path: '/api/rag/*', action: 'read' }] },
+    ],
+    permissionDefinitions: [
+      { group: '知识库', code: 'knowledge.view', name: '查看知识库', description: '查看知识库与文档。', rules: [{ path: '/api/rag/*', action: 'read' }] },
+      { group: '知识库', code: 'knowledge.manage', name: '管理知识库', description: '上传与删除知识内容。', rules: [{ path: '/api/rag/*', action: 'write' }] },
+    ],
     loading: false, busy: false, notice: '', error: '',
-    policyDraft: { subject: '', path: '', action: 'read' },
-    roleDraft: { child: '', parent: '' },
-    onPolicyDraftChange() {}, onRoleDraftChange() {},
-    onLoadPolicies() {}, onCreatePolicy() {}, onDeletePolicy() {},
-    onCreateRole() {}, onDeleteRole() {},
+    onCreateRole: async () => true, onSaveRole: async () => true,
+    onDeleteRole: async () => true, onSavePermissions: async () => true,
   }
-  const restricted = renderToStaticMarkup(React.createElement(RbacManagementView, { ...baseProps, canManage: false }))
-  assert.match(restricted, /仅管理员/)
-  assert.doesNotMatch(restricted, /添加策略/)
+  const denied = renderToStaticMarkup(React.createElement(RbacManagementView, { ...baseProps, canView: false, canManage: false }))
+  assert.match(denied, /没有查看角色的权限/)
 
-  const admin = renderToStaticMarkup(React.createElement(RbacManagementView, { ...baseProps, canManage: true }))
-  assert.match(admin, /角色继承/)
-  assert.match(admin, /添加策略/)
-  assert.match(admin, /\/api\/rag\/\*/)
-  assert.match(admin, /admin/)
+  const readOnly = renderToStaticMarkup(React.createElement(RbacManagementView, { ...baseProps, canView: true, canManage: false }))
+  assert.match(readOnly, /角色清单/)
+  assert.match(readOnly, /内容审核/)
+  assert.match(readOnly, /知识库/)
+  assert.doesNotMatch(readOnly, /新建角色/)
+
+  const manager = renderToStaticMarkup(React.createElement(RbacManagementView, { ...baseProps, canView: true, canManage: true }))
+  assert.match(manager, /新建角色/)
+  assert.match(manager, /内置角色/)
+
+  const editable = renderToStaticMarkup(React.createElement(RbacManagementView, {
+    ...baseProps, canView: true, canManage: true, catalog: [baseProps.catalog[1]],
+  }))
+  assert.match(editable, /保存修改/)
+  assert.match(editable, /删除角色/)
+  assert.match(editable, /知识库/)
 })

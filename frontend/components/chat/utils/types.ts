@@ -349,6 +349,18 @@ export interface RoleCatalogResponse {
   roles: RoleCatalogRecord[]
 }
 
+export interface PermissionDefinition {
+  group: string
+  code: string
+  name: string
+  description: string
+  rules: Array<{ path: string; action: 'read' | 'write' }>
+}
+
+export interface PermissionCatalogResponse {
+  permissions: PermissionDefinition[]
+}
+
 export interface RbacRoleItem {
   child: string
   parent: string

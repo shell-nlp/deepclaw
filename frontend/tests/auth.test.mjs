@@ -20,6 +20,7 @@ test('auth helpers normalize guest and authenticated actors', () => {
     username: null,
     email: null,
     role: 'guest',
+    permissions: [],
   })
 
   assert.deepEqual(

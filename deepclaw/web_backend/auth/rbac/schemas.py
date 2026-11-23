@@ -1,6 +1,46 @@
 from pydantic import BaseModel, Field
 
 
+class RbacPermissionRuleResponse(BaseModel):
+    """单个功能项实际匹配的 Casbin 规则。
+
+    Args:
+        path: 后端资源路径。
+        action: 后端操作。
+    """
+
+    path: str
+    action: str
+
+
+class RbacPermissionDefinitionResponse(BaseModel):
+    """系统支持的模块权限定义。
+
+    Args:
+        group: 所属功能分组。
+        code: 稳定、可读的权限代码。
+        name: 界面显示名称。
+        description: 权限作用说明。
+        rules: 此功能项映射的实际 Casbin 规则。
+    """
+
+    group: str
+    code: str
+    name: str
+    description: str
+    rules: list[RbacPermissionRuleResponse]
+
+
+class RbacPermissionCatalogResponse(BaseModel):
+    """供角色界面配置使用的权限目录。
+
+    Args:
+        permissions: 可配置权限定义。
+    """
+
+    permissions: list[RbacPermissionDefinitionResponse]
+
+
 class RbacCatalogPermissionResponse(BaseModel):
     """角色拥有的直接策略权限。
 

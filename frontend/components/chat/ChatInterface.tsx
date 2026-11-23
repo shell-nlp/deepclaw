@@ -300,7 +300,7 @@ export default function ChatInterface() {
             </div>
           ) : viewMode === 'models' ? (
             <div className={styles.managementViewport}>
-              <ModelManagementView actor={actor} requestJson={requestJson} />
+              <ModelManagementView actor={actor} requestJson={requestJson} canManage={actorCapabilities.canManageModels} />
             </div>
           ) : viewMode === 'channels' ? (
             <div className={styles.managementViewport}>
@@ -335,8 +335,10 @@ export default function ChatInterface() {
           ) : knowledgePage === 'roles' ? (
             <div className={styles.managementViewport}>
               <RbacManagementView
+                canView={actorCapabilities.canViewRoles}
                 canManage={actorCapabilities.canManageRoles}
                 catalog={roleCatalog.roles}
+                permissionDefinitions={roleCatalog.permissions}
                 loading={roleCatalog.loading}
                 busy={roleCatalog.busy}
                 notice={roleCatalog.notice}

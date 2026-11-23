@@ -122,6 +122,13 @@ status and delete action.
 
 ![User Management](assets/img/user_management.png)
 
+Role management is its own page: a role list on the left, and a permission matrix grouped by module
+(user management / role management / model management) on the right. Saving applies immediately.
+
+- Built-in roles `admin` / `user` are read-only; custom roles can be created, renamed and deleted
+- The permission catalog is defined by the backend, so every checkbox maps to a real server-side rule
+- A role still assigned to accounts cannot be deleted
+
 Admins can create users, change roles, enable/disable accounts and reset passwords; disabling or resetting
 immediately revokes every token of that user.
 
@@ -489,6 +496,12 @@ role and cannot be called as a guest.
 | `POST` | `/api/auth/users/update-role` | Admin: change a user role |
 | `POST` | `/api/auth/users/update-status` | Admin: enable or disable a user |
 | `POST` | `/api/auth/users/reset-password` | Admin: reset a user password |
+| `GET` | `/api/auth/rbac/catalog/roles` | Role catalog with user counts and direct permissions |
+| `POST` | `/api/auth/rbac/catalog/roles` | Create a custom role |
+| `PATCH` | `/api/auth/rbac/catalog/roles/{role_id}` | Rename or re-describe a custom role |
+| `DELETE` | `/api/auth/rbac/catalog/roles/{role_id}` | Delete an unused custom role |
+| `PUT` | `/api/auth/rbac/catalog/roles/{role_id}/permissions` | Atomically replace role permissions |
+| `GET` | `/api/auth/rbac/catalog/permissions` | Permission catalog shown in the UI |
 
 Access tokens are server-side opaque tokens (`la_` prefix plus random bytes; only the SHA-256 hash is
 stored) and expire after one day by default. Disabling a user or resetting a password revokes all of that

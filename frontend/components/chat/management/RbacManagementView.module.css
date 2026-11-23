@@ -77,3 +77,9 @@
 @media (max-width: 1050px) { .columns { grid-template-columns: 1fr; } .matrix { grid-template-columns: repeat(2, minmax(0,1fr)); } }
 @media (max-width: 640px) { .header, .detailHeader, .footer { align-items: flex-start; flex-direction: column; } .matrix, .identityFields { grid-template-columns: 1fr; } .matrix { padding: 14px; } .detailHeader { padding: 17px; } }
 @media (prefers-reduced-motion: reduce) { .page * { scroll-behavior: auto !important; transition: none !important; } }
+.groupHeader { width:100%; border:0; color:inherit; text-align:left; cursor:pointer; }
+.groupHeader > span:first-child { display:grid; gap:3px; }
+.groupHeader > span:first-child small { color:var(--text-secondary); font-size:11px; font-weight:400; }
+.groupHeader > span:last-child { display:flex; align-items:center; gap:8px; color:var(--text-secondary); font-size:11px; }
+.groupHeader > span:last-child b { color:var(--accent-primary); font-size:15px; }
+.groupPermissions { border-top:1px solid var(--border-subtle); }

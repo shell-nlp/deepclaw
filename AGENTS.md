@@ -73,7 +73,7 @@
   认证相关路由、请求模型、SQLModel、存储、服务与 FastAPI 依赖。
 
 - `deepclaw/web_backend/auth/rbac/`
-  基于 Casbin 的 RBAC + ABAC 授权层。`rbac_model.conf` 定义「角色继承 + 资源归属」匹配规则，`rbac_policy.csv` 是基础策略（内置 user、admin，admin 继承 user）；`enforcer.py` 提供进程级单例、主体/资源属性对象与 `is_allowed()`，`dependencies.py` 提供 `require_permission(path, action, owner=...)` 依赖，`store.py` + `models.py` 把策略落到 `rbac_policy_rules` / `rbac_role_rules` 两张表（默认 `.deepclaw/rbac.db`，随 `PG_DATABASE_URL` 走统一 PG），`adapter.py` 负责首次启动播种，`bootstrap.py` 在建表后写入基础策略，`router.py` 提供 `/api/auth/rbac/*` 策略管理接口。前端策略管理位于 `management/RbacManagementView.tsx`，由 `hooks/useRbacPolicies.ts` 承载数据，作为「用户管理」页的第二个区块渲染，仅管理员可见。`RBAC_STORE_ENABLED=True` 时从数据库装载策略，失败回退策略文件；`RBAC_MODEL_PATH` / `RBAC_POLICY_PATH` 可外部覆盖模型与基础策略（需同时配置）。启动时在 `validate_runtime_settings()` 中加载，策略损坏直接启动失败。管理员专属接口、渠道 `scope=all` 与 RBAC 管理接口均走策略判定；资源归属仍由各模块的 owner 判断保留。注意 Casbin 的 `Enforcer(model)` 不会重建 g 规则链接，必须用 adapter 构造，否则角色继承静默失效。
+  基于 Casbin 的 RBAC + ABAC 授权层。`rbac_model.conf` 定义「角色继承 + 资源归属」匹配规则，`rbac_policy.csv` 是基础策略（内置 user、admin，admin 继承 user）；`enforcer.py` 提供进程级单例、主体/资源属性对象与 `is_allowed()`，`dependencies.py` 提供 `require_permission(path, action, owner=...)` 依赖，`store.py` + `models.py` 把策略落到 `rbac_policy_rules` / `rbac_role_rules` 两张表（默认 `.deepclaw/rbac.db`，随 `PG_DATABASE_URL` 走统一 PG），`adapter.py` 负责首次启动播种，`bootstrap.py` 在建表后写入基础策略，`router.py` 提供 `/api/auth/rbac/*` 策略管理接口。角色目录与权限目录分两层：`store.py` 维护 `rbac_catalog_roles` 角色实体（内置 `user` / `admin` 只读，其余可增删改并统计在用账号数），`permissions.py` 定义可在界面勾选的功能权限及其真实 Casbin 路径动作映射，`router.py` 提供 `/api/auth/rbac/catalog/roles`（角色目录 CRUD 与 `PUT .../permissions` 原子替换）与 `/api/auth/rbac/catalog/permissions`（界面权限目录）。前端「角色管理」独立成页，`management/RbacManagementView.tsx` 负责左侧角色清单与右侧按模块分组的权限矩阵，`hooks/useRoleCatalog.ts` 同时加载角色目录与权限目录；用户管理页的角色下拉复用同一目录。权限目录只收录后端真实挂了 `require_permission` 的功能，避免界面可勾选而服务端不鉴权。`RBAC_STORE_ENABLED=True` 时从数据库装载策略，失败回退策略文件；`RBAC_MODEL_PATH` / `RBAC_POLICY_PATH` 可外部覆盖模型与基础策略（需同时配置）。启动时在 `validate_runtime_settings()` 中加载，策略损坏直接启动失败。管理员专属接口、渠道 `scope=all` 与 RBAC 管理接口均走策略判定；资源归属仍由各模块的 owner 判断保留。注意 Casbin 的 `Enforcer(model)` 不会重建 g 规则链接，必须用 adapter 构造，否则角色继承静默失效。
 - `deepclaw/web_backend/channels/`
   渠道共享模型、会话存储、消息处理服务、共享会话接口与总装配入口。
   `jobs.py` 定义独立的 `channel_jobs` 持久化任务表、`channel_leases` 数据库租约表及存储；消息按渠道、绑定、消息 ID 去重，同一会话在所有服务实例之间通过租约串行执行。`service.py` 编排执行与投递，`delivery.py` 隔离渠道发送故障，`recovery.py` 恢复原 Run 或补发已完成结果；流式进度按约 0.5 秒或终止事件保存，不逐 token 写库。`jobs_router.py` 提供任务查询及只补发/人工结束操作，接口响应不包含原始消息、正文或凭据。
@@ -498,7 +498,7 @@ pnpm build
 - 知识库管理归属 `/api/rag/knowledge-bases/*`
 - 渠道管理归属 `/api/channels/*`
 - 前端默认以游客模式进入，点击右上角头像会跳转到独立 `/login` 页面进入登录/注册流程
-- 知识库读写已对游客开放：`/api/rag/knowledge-bases/*` 的写接口与读接口统一用同一个归属解析（登录用户取自身 ID，游客取固定 `guest`），不再对游客返回 403；前端 `canManageKnowledge` 恒为 `true`，与 `canManageSkills` 保持一致
+- 知识库读写已对游客开放：`/api/rag/knowledge-bases/*` 的写接口与读接口统一用同一个归属解析（登录用户取自身 ID，游客取固定 `guest`），不再对游客返回 403。前端能力由 `getActorCapabilities()` 推导：游客恒为可用；登录用户若服务端返回 `permissions`，则按其中是否包含对应路径动作为准，未返回权限列表（旧后端）时回退为可用
 - 账号以 `username` 作为唯一登录标识（归一化为小写），`email` 改为可空的可选资料字段，不参与登录；旧库升级时会把存量 `email` 回填为 `username` 并放宽 `email` 的 NOT NULL 约束。首次启动若无管理员，按 `AUTH_ADMIN_USERNAME` / `AUTH_ADMIN_PASSWORD`（默认 `deepclaw` / `deepclaw`）自举。
 - 认证是不透明令牌（`la_` + 随机串，`sha256` 后入库），不是 JWT；`AuthStore.get_actor_by_token()` 刷新 `last_used_at` 时按 `ACCESS_TOKEN_LAST_USED_THROTTLE`（60 秒）节流，同一令牌在窗口内重复校验不会写库，这是刻意的性能设计，不是漏写
 - `auth`、`channels`、`knowledge_bases` 元数据默认优先使用 `PG_DATABASE_URL`；未配置时各自回退到 `.deepclaw` 下的 SQLite，并在默认初始化路径上兼容导入历史 SQLite 数据

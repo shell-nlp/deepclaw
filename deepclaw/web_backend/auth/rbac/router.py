@@ -10,6 +10,7 @@ from deepclaw.web_backend.auth.rbac.schemas import (
     RbacCatalogPermissionsRequest,
     RbacCatalogRoleResponse,
     RbacCatalogUpdateRequest,
+    RbacPermissionCatalogResponse,
     RbacPolicyCreateRequest,
     RbacPolicyDeleteRequest,
     RbacPolicyItemResponse,
@@ -17,6 +18,10 @@ from deepclaw.web_backend.auth.rbac.schemas import (
     RbacRoleCreateRequest,
     RbacRoleDeleteRequest,
     RbacRoleItemResponse,
+)
+from deepclaw.web_backend.auth.rbac.permissions import (
+    allowed_permission_pairs,
+    list_permission_definitions,
 )
 from deepclaw.web_backend.auth.rbac.store import (
     BUILTIN_ROLES,
@@ -79,6 +84,21 @@ async def _catalog_item(store: RbacPolicyStore, role_id: str) -> RbacCatalogRole
         if role.id == role_id:
             return role
     raise HTTPException(status_code=404, detail="角色不存在。")
+
+
+@router.get("/catalog/permissions", response_model=RbacPermissionCatalogResponse)
+async def list_permission_catalog(
+    actor: CurrentActor = Depends(require_permission("/api/auth/rbac/catalog/roles", "read")),
+) -> RbacPermissionCatalogResponse:
+    """返回角色矩阵使用的系统权限定义。
+
+    Args:
+        actor: 当前鉴权主体。
+
+    Returns:
+        系统支持的模块权限及对应后端路径动作。
+    """
+    return RbacPermissionCatalogResponse(permissions=list_permission_definitions())
 
 
 @router.get("/catalog/roles", response_model=RbacCatalogListResponse)
@@ -179,7 +199,11 @@ async def replace_catalog_permissions(
     """
     _require_catalog_writable()
     try:
-        await store.replace_catalog_permissions(role_id, [(item.path, item.action) for item in request.permissions])
+        submitted = [(item.path, item.action) for item in request.permissions]
+        invalid = [pair for pair in submitted if pair not in allowed_permission_pairs()]
+        if invalid:
+            raise HTTPException(status_code=422, detail="提交的权限不在系统权限目录中。")
+        await store.replace_catalog_permissions(role_id, submitted)
     except RoleCatalogError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     reload_enforcer()

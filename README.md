@@ -126,6 +126,12 @@ checkpoint 统一持久化，前端构建产物由同一个进程静态托管。
 
 管理员可创建用户、调整角色、启用停用与重置密码；停用或重置密码会即时撤销该用户全部登录令牌。
 
+角色管理独立成页：左侧是角色清单，右侧按「用户管理 / 角色管理 / 模型管理」等模块勾选权限，保存后立即生效。
+
+- 内置角色 `admin` / `user` 只读，自定义角色可新建、改名、删除
+- 权限项由后端目录统一定义，界面勾选的每一项都对应真实的服务端鉴权规则
+- 还有账号在用的角色不能删除
+
 ## 技术栈
 
 | 模块 | 技术 |
@@ -489,6 +495,12 @@ pnpm build
 | `POST` | `/api/auth/users/update-role` | 管理员调整用户角色 |
 | `POST` | `/api/auth/users/update-status` | 管理员启用 / 停用用户 |
 | `POST` | `/api/auth/users/reset-password` | 管理员重置用户密码 |
+| `GET` | `/api/auth/rbac/catalog/roles` | 角色目录（含在用账号数与直接权限） |
+| `POST` | `/api/auth/rbac/catalog/roles` | 新建自定义角色 |
+| `PATCH` | `/api/auth/rbac/catalog/roles/{role_id}` | 修改自定义角色名称与说明 |
+| `DELETE` | `/api/auth/rbac/catalog/roles/{role_id}` | 删除未被使用的自定义角色 |
+| `PUT` | `/api/auth/rbac/catalog/roles/{role_id}/permissions` | 原子替换角色权限 |
+| `GET` | `/api/auth/rbac/catalog/permissions` | 可供界面勾选的功能权限目录 |
 
 访问令牌是服务端不透明令牌（`la_` 前缀 + 随机串，数据库只存 SHA-256 哈希），默认 1 天有效。
 停用用户或重置密码会即时撤销该用户全部令牌。
