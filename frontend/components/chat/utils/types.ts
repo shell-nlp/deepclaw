@@ -312,7 +312,8 @@ export interface SkillDeleteResponse {
 export interface AuthUserSummary {
   username: string
   email: string | null
-  role: 'admin' | 'user'
+  role: string
+  permissions?: Array<{ path: string; action: string }>
   is_active: boolean
   user_id: string
   created_at?: string | null
@@ -333,6 +334,19 @@ export interface RbacPolicyItem {
   subject: string
   path: string
   action: string
+}
+
+export interface RoleCatalogRecord {
+  id: string
+  name: string
+  description: string
+  builtin: boolean
+  user_count: number
+  permissions: Array<{ path: string; action: string }>
+}
+
+export interface RoleCatalogResponse {
+  roles: RoleCatalogRecord[]
 }
 
 export interface RbacRoleItem {

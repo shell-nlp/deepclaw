@@ -11,7 +11,8 @@ import { fetchJson, getApiUrl } from './index.ts'
 
 export const GUEST_USER_ID = 'guest'
 
-export type ActorRole = 'guest' | 'user' | 'admin'
+export type ActorRole = string
+export interface ActorPermission { path: string; action: string }
 
 export interface ActorState {
   isGuest: boolean
@@ -19,6 +20,7 @@ export interface ActorState {
   username: string | null
   email: string | null
   role: ActorRole
+  permissions?: ActorPermission[]
 }
 
 export interface ActorPayload {
@@ -27,12 +29,15 @@ export interface ActorPayload {
   username?: string | null
   email?: string | null
   role?: string | null
+  permissions?: ActorPermission[]
 }
 
 export interface ActorCapabilities {
   canManageKnowledge: boolean
   canManageSkills: boolean
   canManageUsers: boolean
+  canManageRoles: boolean
+  canManageModels: boolean
   canManageChannelBindingsGlobally: boolean
   requiresLoginMessage: string
 }
@@ -60,16 +65,18 @@ export function normalizeActorPayload(payload: ActorPayload | null | undefined):
       username: null,
       email: null,
       role: 'guest',
+      permissions: [],
     }
   }
 
-  const role = payload.role === 'admin' ? 'admin' : 'user'
+  const role = payload.role?.trim() || 'user'
   return {
     isGuest: false,
     userId: payload.user_id,
     username: payload.username ?? null,
     email: payload.email ?? null,
     role,
+    permissions: payload.permissions,
   }
 }
 
@@ -80,15 +87,23 @@ export function normalizeUserToActor(user: AuthUserSummary): ActorState {
     username: user.username,
     email: user.email,
     role: user.role,
+    permissions: user.permissions,
   })
 }
 
 export function getActorCapabilities(actor: ActorState): ActorCapabilities {
+  const grants = actor.permissions
+  const allowed = (path: string, action: string) => actor.role === 'admin' || Boolean(grants?.some((item) => {
+    if (item.action !== action) return false
+    return item.path === path || (item.path.endsWith('/*') && path.startsWith(item.path.slice(0, -1)))
+  }))
   return {
-    canManageKnowledge: true,
-    canManageSkills: true,
-    canManageUsers: actor.role === 'admin',
-    canManageChannelBindingsGlobally: actor.role === 'admin',
+    canManageKnowledge: actor.isGuest || allowed('/api/rag/knowledge-bases/list', 'write'),
+    canManageSkills: actor.isGuest || allowed('/api/agent/skills/list', 'write'),
+    canManageUsers: allowed('/api/auth/users/list', 'read') && allowed('/api/auth/users/create', 'write'),
+    canManageRoles: allowed('/api/auth/rbac/catalog/roles', 'read') && allowed('/api/auth/rbac/catalog/roles', 'write'),
+    canManageModels: allowed('/api/models/catalog', 'read') && allowed('/api/models', 'write'),
+    canManageChannelBindingsGlobally: allowed('/api/auth/users/list', 'write'),
     requiresLoginMessage: '登录后可使用此功能。',
   }
 }

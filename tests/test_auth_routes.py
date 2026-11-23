@@ -1,5 +1,6 @@
 import asyncio
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -106,4 +107,91 @@ def test_admin_can_manage_user_accounts():
     assert status_updated.status_code == 200
     assert status_updated.json()["user"]["is_active"] is False
     assert reset.status_code == 200
+
+
+def test_custom_role_token_uses_catalog_permissions(tmp_path, monkeypatch):
+    from deepclaw.settings import settings
+    from deepclaw.web_backend.auth.rbac import enforcer as enforcer_module
+    from deepclaw.web_backend.auth.rbac import store as rbac_store_module
+    from deepclaw.web_backend.auth.rbac.adapter import read_default_policy_file
+    from deepclaw.web_backend.auth.rbac.store import RbacPolicyStore
+    from deepclaw.web_backend.auth.service import AuthService, get_auth_service
+    from deepclaw.web_backend.auth.store import AuthStore
+
+    auth_store = AuthStore("sqlite:///:memory:")
+    rbac_store = RbacPolicyStore(
+        f"sqlite:///{(tmp_path / 'rbac.db').as_posix()}",
+        auth_db_url="sqlite:///:memory:",
+    )
+    policies, roles = read_default_policy_file(enforcer_module.resolve_rbac_paths()[1])
+    monkeypatch.setattr(rbac_store_module, "_store", rbac_store)
+    service = AuthService(
+        store=auth_store,
+        admin_username="admin",
+        admin_password="admin-pass-123",
+        token_expire_days=30,
+    )
+
+    async def seed():
+        await rbac_store.ensure_schema()
+        await rbac_store.seed(policies, roles)
+        await rbac_store.ensure_catalog()
+        await rbac_store.create_catalog_role("reviewer", "Reviewer", "Read user list")
+        await rbac_store.replace_catalog_permissions(
+            "reviewer", [("/api/auth/users/list", "read")]
+        )
+        await service.bootstrap_admin_if_needed()
+        await service.create_user_as_admin(
+            username="reviewer", password="reviewer-pass-123", role="reviewer"
+        )
+
+    asyncio.run(seed())
+    monkeypatch.setattr(settings, "RBAC_STORE_ENABLED", True)
+    monkeypatch.setattr(rbac_store_module, "_store", rbac_store)
+    monkeypatch.setattr(enforcer_module, "_enforcer", None)
+    app = FastAPI()
+    app.dependency_overrides[get_auth_service] = lambda: service
+    from deepclaw.web_backend.auth.router import router as auth_router
+
+    app.include_router(auth_router)
+    client = TestClient(app)
+    issued = client.post(
+        "/api/auth/login",
+        json={"username": "reviewer", "password": "reviewer-pass-123"},
+    )
+    headers = {"Authorization": f"Bearer {issued.json()['token']}"}
+    me = client.get("/api/auth/me", headers=headers)
+    listed = client.post("/api/auth/users/list", json={}, headers=headers)
+
+    assert issued.status_code == 200
+    assert me.json()["role"] == "reviewer"
+    assert {"path": "/api/auth/users/list", "action": "read"} in me.json()["permissions"]
+    assert listed.status_code == 200
+    monkeypatch.setattr(settings, "RBAC_STORE_ENABLED", False)
+    monkeypatch.setattr(rbac_store_module, "_store", None)
+    monkeypatch.setattr(enforcer_module, "_enforcer", None)
+
+
+def test_last_active_admin_cannot_be_demoted_or_disabled():
+    from deepclaw.web_backend.auth.service import AuthService
+    from deepclaw.web_backend.auth.store import AuthStore
+    from deepclaw.web_backend.common.errors import BusinessRuleError
+
+    service = AuthService(
+        store=AuthStore("sqlite:///:memory:"),
+        admin_username="admin",
+        admin_password="admin-pass-123",
+        token_expire_days=30,
+    )
+
+    async def check():
+        admin = await service.bootstrap_admin_if_needed()
+        with pytest.raises(BusinessRuleError, match="启用中的管理员"):
+            await service.update_user_role(user_id=admin.user_id, role="user")
+        with pytest.raises(BusinessRuleError, match="启用中的管理员"):
+            await service.update_user_status(user_id=admin.user_id, is_active=False)
+        assert admin.role == "admin"
+        assert admin.is_active is True
+
+    asyncio.run(check())
 

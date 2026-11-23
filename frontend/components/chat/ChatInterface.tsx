@@ -10,7 +10,7 @@ import { SkillManagementView } from './management/SkillManagementView'
 import { RbacManagementView } from './management/RbacManagementView'
 import { UserManagementView } from './management/UserManagementView'
 import { useChatPageController } from './hooks/useChatPageController'
-import { useRbacPolicies } from './hooks/useRbacPolicies'
+import { useRoleCatalog } from './hooks/useRoleCatalog'
 import { DeviceManagementView } from './management/DeviceManagementView'
 import { ModelManagementView } from './management/ModelManagementView'
 
@@ -173,10 +173,7 @@ export default function ChatInterface() {
     mcpStatusLabel,
   } = useChatPageController()
 
-  const rbacPolicies = useRbacPolicies({
-    requestJson,
-    canManage: actorCapabilities.canManageUsers,
-  })
+  const roleCatalog = useRoleCatalog(requestJson, actorCapabilities.canManageRoles)
   return (
     <div className={styles.container}>
       <div className={styles.backgroundGrid} />
@@ -209,6 +206,8 @@ export default function ChatInterface() {
           systemNavExpanded={systemNavExpanded}
           onSystemNavClick={handleSystemNavClick}
           actor={actor}
+          canManageUsers={actorCapabilities.canManageUsers}
+          canManageRoles={actorCapabilities.canManageRoles}
           accountMenuOpen={accountMenuOpen}
           onAccountMenuOpenChange={setAccountMenuOpen}
           onLogout={handleLogout}
@@ -322,6 +321,8 @@ export default function ChatInterface() {
                 error={userAdminError}
                 onOpenAuth={openLoginPage}
                 onLoadUsers={loadAdminUsers}
+                requestJson={requestJson}
+                canManageUsers={actorCapabilities.canManageUsers}
                 onCreateUser={createAdminUser}
                 onUpdateUserRole={updateAdminUserRole}
                 onUpdateUserStatus={updateAdminUserStatus}
@@ -334,22 +335,16 @@ export default function ChatInterface() {
           ) : knowledgePage === 'roles' ? (
             <div className={styles.managementViewport}>
               <RbacManagementView
-                canManage={actorCapabilities.canManageUsers}
-                policies={rbacPolicies.policies}
-                roles={rbacPolicies.roles}
-                loading={rbacPolicies.loading}
-                busy={rbacPolicies.busy}
-                notice={rbacPolicies.notice}
-                error={rbacPolicies.error}
-                policyDraft={rbacPolicies.policyDraft}
-                roleDraft={rbacPolicies.roleDraft}
-                onPolicyDraftChange={rbacPolicies.setPolicyDraft}
-                onRoleDraftChange={rbacPolicies.setRoleDraft}
-                onLoadPolicies={rbacPolicies.loadPolicies}
-                onCreatePolicy={rbacPolicies.createPolicy}
-                onDeletePolicy={rbacPolicies.deletePolicy}
-                onCreateRole={rbacPolicies.createRole}
-                onDeleteRole={rbacPolicies.deleteRole}
+                canManage={actorCapabilities.canManageRoles}
+                catalog={roleCatalog.roles}
+                loading={roleCatalog.loading}
+                busy={roleCatalog.busy}
+                notice={roleCatalog.notice}
+                error={roleCatalog.error}
+                onCreateRole={roleCatalog.createRole}
+                onSaveRole={roleCatalog.saveRole}
+                onDeleteRole={roleCatalog.deleteRole}
+                onSavePermissions={roleCatalog.savePermissions}
               />
             </div>
           ) : (

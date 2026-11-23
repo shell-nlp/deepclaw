@@ -162,6 +162,40 @@ class AuthService:
         """
         return await self.store.revoke_token(token)
 
+    async def _validate_role(self, role: str) -> str:
+        """校验角色存在于 RBAC 角色目录。
+
+        Args:
+            role: 待分配的角色标识。
+
+        Returns:
+            str: 去除首尾空白后的角色标识。
+
+        Raises:
+            BusinessRuleError: 角色为空或角色目录中不存在。
+        """
+        normalized_role = role.strip()
+        if not normalized_role:
+            raise BusinessRuleError("角色不能为空。")
+        from deepclaw.web_backend.auth.rbac.store import get_rbac_policy_store
+
+        if not await get_rbac_policy_store().role_exists(normalized_role):
+            raise BusinessRuleError("指定角色不存在，请先在角色目录中创建。")
+        return normalized_role
+
+    async def _cleanup_user_role_edges(self, user_id: str) -> None:
+        """尽力清理已删除用户遗留的 Casbin 角色关系。
+
+        Args:
+            user_id: 已删除用户 ID。
+        """
+        try:
+            from deepclaw.web_backend.auth.rbac.store import get_rbac_policy_store
+
+            await get_rbac_policy_store().cleanup_user_role_edges(user_id)
+        except Exception:
+            return
+
     async def create_user_as_admin(
         self,
         *,
@@ -179,12 +213,13 @@ class AuthService:
             email: 可选邮箱。
         """
         normalized_username = normalize_username(username)
+        normalized_role = await self._validate_role(role)
         if await self.store.get_user_by_username(normalized_username) is not None:
             raise BusinessRuleError("该用户名已被注册，请更换。")
         return await self.store.create_user(
             username=normalized_username,
             password_hash=hash_password(password),
-            role=role,
+            role=normalized_role,
             email=normalize_optional_email(email),
         )
 
@@ -203,7 +238,14 @@ class AuthService:
             user_id: 目标用户 ID。
             role: 新角色。
         """
-        return await self.store.update_user_role(user_id=user_id, role=role)
+        normalized_role = await self._validate_role(role)
+        target = await self.store.get_user_by_user_id(user_id)
+        if target is None:
+            raise BusinessRuleError("用户不存在。")
+        if target.is_active and target.role == "admin" and normalized_role != "admin":
+            if await self.store.count_active_admin_users() <= 1:
+                raise BusinessRuleError("至少保留一个启用中的管理员账号。")
+        return await self.store.update_user_role(user_id=user_id, role=normalized_role)
 
     async def update_user_status(self, *, user_id: str, is_active: bool):
         """启用或禁用用户，禁用时撤销全部令牌。
@@ -212,6 +254,12 @@ class AuthService:
             user_id: 目标用户 ID。
             is_active: 是否启用。
         """
+        target = await self.store.get_user_by_user_id(user_id)
+        if target is None:
+            raise BusinessRuleError("用户不存在。")
+        if target.is_active and not is_active and target.role == "admin":
+            if await self.store.count_active_admin_users() <= 1:
+                raise BusinessRuleError("至少保留一个启用中的管理员账号。")
         user = await self.store.update_user_status(user_id=user_id, is_active=is_active)
         if not is_active:
             await self.store.revoke_tokens_by_user_id(user_id)
@@ -274,10 +322,12 @@ class AuthService:
         target = await self.store.get_user_by_user_id(user_id)
         if target is None:
             raise BusinessRuleError("用户不存在。")
-        if target.role == "admin" and await self.store.count_admin_users() <= 1:
-            raise BusinessRuleError("至少保留一个管理员账号。")
+        if target.role == "admin" and await self.store.count_active_admin_users() <= 1:
+            raise BusinessRuleError("至少保留一个启用中的管理员账号。")
         await self.store.revoke_tokens_by_user_id(user_id)
-        return await self.store.delete_user(user_id=user_id)
+        deleted = await self.store.delete_user(user_id=user_id)
+        await self._cleanup_user_role_edges(user_id)
+        return deleted
 
     async def reset_user_password(self, *, user_id: str, password: str):
         """重置用户密码并撤销旧令牌。

@@ -42,6 +42,8 @@ interface AppSidebarProps {
   systemNavExpanded: boolean
   onSystemNavClick: () => void
   actor: ActorState
+  canManageUsers?: boolean
+  canManageRoles?: boolean
   accountMenuOpen: boolean
   onAccountMenuOpenChange: (open: boolean) => void
   onLogout: () => void
@@ -96,6 +98,8 @@ export function AppSidebar({
   systemNavExpanded,
   onSystemNavClick,
   actor,
+  canManageUsers = actor.role === 'admin',
+  canManageRoles = actor.role === 'admin',
   accountMenuOpen,
   onAccountMenuOpenChange,
   onLogout,
@@ -324,7 +328,7 @@ export function AppSidebar({
             </button>
           </div>
         ) : null}
-        {actor.role === 'admin' ? (
+        {canManageUsers || canManageRoles ? (
           <>
             <button
               className={`${styles.sidebarButton} ${
@@ -333,7 +337,10 @@ export function AppSidebar({
                   ? styles.sidebarButtonActive
                   : ''
               }`}
-              onClick={onSystemNavClick}
+              onClick={() => {
+                if (!canManageUsers && viewMode !== 'knowledge') onNavigate('knowledge', 'roles')
+                else onSystemNavClick()
+              }}
               aria-expanded={systemNavExpanded}
             >
               <SidebarIcon name="users" />
@@ -350,7 +357,7 @@ export function AppSidebar({
             </button>
             {systemNavExpanded ? (
               <div className={styles.channelSubnav}>
-                <button
+                {canManageUsers ? <button
                   className={`${styles.channelSubnavItem} ${
                     viewMode === 'knowledge' && knowledgePage === 'users'
                       ? styles.channelSubnavItemActive
@@ -360,8 +367,8 @@ export function AppSidebar({
                 >
                   <span className={styles.channelSubnavLabel}>用户管理</span>
                   <span className={styles.channelSubnavMeta}>账号与状态</span>
-                </button>
-                <button
+                </button> : null}
+                {canManageRoles ? <button
                   className={`${styles.channelSubnavItem} ${
                     viewMode === 'knowledge' && knowledgePage === 'roles'
                       ? styles.channelSubnavItemActive
@@ -370,8 +377,8 @@ export function AppSidebar({
                   onClick={() => onNavigate('knowledge', 'roles')}
                 >
                   <span className={styles.channelSubnavLabel}>角色管理</span>
-                  <span className={styles.channelSubnavMeta}>继承与权限</span>
-                </button>
+                  <span className={styles.channelSubnavMeta}>权限配置</span>
+                </button> : null}
               </div>
             ) : null}
           </>

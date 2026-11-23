@@ -413,6 +413,19 @@ class AuthStore:
             result = await session.exec(select(AuthUser).where(AuthUser.role == "admin"))
             return len(result.all())
 
+    async def count_active_admin_users(self) -> int:
+        """统计启用中的管理员账号数量。
+
+        Returns:
+            int: 启用中的管理员数量。
+        """
+        await self._ensure_init()
+        async with self.async_session() as session:
+            result = await session.exec(
+                select(AuthUser).where(AuthUser.role == "admin", AuthUser.is_active.is_(True))
+            )
+            return len(result.all())
+
     async def create_user(
         self,
         *,

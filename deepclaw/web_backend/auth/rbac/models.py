@@ -16,6 +16,22 @@ def utc_now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
+class RbacCatalogRole(SQLModel, table=True):
+    """可管理的角色目录实体。
+
+    Args:
+        id: 稳定角色标识，同时作为 Casbin 策略主体。
+        name: 可显示的角色名称。
+        description: 角色说明。
+    """
+
+    __tablename__ = "rbac_catalog_roles"
+
+    id: str = Field(primary_key=True, max_length=128)
+    name: str = Field(max_length=128)
+    description: str = Field(default="", max_length=512)
+
+
 class RbacPolicyRule(SQLModel, table=True):
     """Casbin 策略行，与 policy.csv 的一行对应。
 

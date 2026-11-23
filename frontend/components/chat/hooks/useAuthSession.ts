@@ -101,7 +101,7 @@ export function useAuthSession({
 
   const loadAdminUsers = useCallback(
     async (search = '') => {
-      if (actor.isGuest || actor.role !== 'admin') {
+      if (actor.isGuest || !actorCapabilities.canManageUsers) {
         setAdminUsers([])
         return
       }
@@ -120,7 +120,7 @@ export function useAuthSession({
         setLoadingAdminUsers(false)
       }
     },
-    [actor.isGuest, actor.role, requestJson]
+    [actor.isGuest, actorCapabilities.canManageUsers, requestJson]
   )
 
   const handleLogout = async () => {
@@ -145,7 +145,7 @@ export function useAuthSession({
   const createAdminUser = async (input: {
     username: string
     password: string
-    role: 'admin' | 'user'
+    role: string
   }) => {
     setUserAdminNotice('')
     setUserAdminError('')
@@ -162,7 +162,7 @@ export function useAuthSession({
     }
   }
 
-  const updateAdminUserRole = async (userId: string, role: 'admin' | 'user') => {
+  const updateAdminUserRole = async (userId: string, role: string) => {
     setUserAdminNotice('')
     setUserAdminError('')
     try {

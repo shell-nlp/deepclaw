@@ -5,7 +5,7 @@ from deepclaw.web_backend.auth.dependencies import (
     get_current_actor,
     require_authenticated_actor,
 )
-from deepclaw.web_backend.auth.rbac import require_permission
+from deepclaw.web_backend.auth.rbac import get_enforcer, require_permission
 from deepclaw.web_backend.auth.schemas import (
     AdminCreateUserRequest,
     AdminDeleteUserRequest,
@@ -82,8 +82,27 @@ async def logout(
 
 @router.get("/me", summary="获取当前用户", description="返回当前访问令牌对应的用户信息和角色权限。")
 async def me(actor: CurrentActor = Depends(get_current_actor)):
-    """返回当前鉴权主体。"""
-    return actor.model_dump()
+    """返回当前鉴权主体及其实际 RBAC 权限。
+
+    Args:
+        actor: 当前鉴权主体。
+
+    Returns:
+        dict: 用户资料与权限路径动作列表。
+    """
+    permissions: list[dict[str, str]] = []
+    if not actor.is_guest:
+        try:
+            permissions = [
+                {"path": rule[1], "action": rule[2]}
+                for rule in get_enforcer().get_implicit_permissions_for_user(actor.role)
+                if len(rule) >= 3
+            ]
+        except Exception:
+            permissions = []
+    response = actor.model_dump()
+    response["permissions"] = permissions
+    return response
 
 
 @router.post("/users/create", summary="创建用户", description="管理员创建指定角色和初始状态的用户账号。")

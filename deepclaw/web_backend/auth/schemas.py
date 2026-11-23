@@ -1,5 +1,3 @@
-from typing import Literal
-
 from pydantic import BaseModel, Field
 
 
@@ -41,7 +39,7 @@ class AdminCreateUserRequest(BaseModel):
 
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=8)
-    role: Literal["admin", "user"] = "user"
+    role: str = Field(default="user", min_length=1, max_length=128)
     email: str | None = None
 
 
@@ -64,7 +62,7 @@ class AdminUpdateUserRoleRequest(BaseModel):
     """
 
     user_id: str
-    role: Literal["admin", "user"]
+    role: str = Field(min_length=1, max_length=128)
 
 
 class AdminUpdateUserStatusRequest(BaseModel):

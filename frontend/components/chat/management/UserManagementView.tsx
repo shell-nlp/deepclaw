@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import styles from '../../ChatInterface.module.css'
 import type { ActorState } from '../utils/auth'
-import type { AuthUserSummary } from '../utils/types'
+import type { AuthUserSummary, RoleCatalogRecord, RoleCatalogResponse } from '../utils/types'
+import { RBAC_ROLE_CATALOG_API_PATH } from '../utils/constants'
 
 interface UserManagementViewProps {
   actor: ActorState
@@ -14,8 +15,10 @@ interface UserManagementViewProps {
   error: string
   onOpenAuth: () => void
   onLoadUsers: (search: string) => void | Promise<void>
-  onCreateUser: (input: { username: string; password: string; role: 'admin' | 'user' }) => void | Promise<void>
-  onUpdateUserRole: (userId: string, role: 'admin' | 'user') => void | Promise<void>
+  onCreateUser: (input: { username: string; password: string; role: string }) => void | Promise<void>
+  onUpdateUserRole: (userId: string, role: string) => void | Promise<void>
+  requestJson: <T>(path: string, init?: RequestInit) => Promise<T>
+  canManageUsers?: boolean
   onUpdateUserStatus: (userId: string, isActive: boolean) => void | Promise<void>
   onUpdateUserProfile: (
     userId: string,
@@ -45,6 +48,8 @@ export function UserManagementView({
   error,
   onOpenAuth,
   onLoadUsers,
+  requestJson,
+  canManageUsers = actor.role === 'admin',
   onCreateUser,
   onUpdateUserRole,
   onUpdateUserStatus,
@@ -56,15 +61,28 @@ export function UserManagementView({
   const [search, setSearch] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [role, setRole] = useState<'admin' | 'user'>('user')
+  const [role, setRole] = useState('user')
+  const [roleOptions, setRoleOptions] = useState<RoleCatalogRecord[]>([])
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<AuthUserSummary | null>(null)
   const [editUsername, setEditUsername] = useState('')
   const [editEmail, setEditEmail] = useState('')
 
   useEffect(() => {
-    if (!actor.isGuest && actor.role === 'admin') void onLoadUsers('')
-  }, [actor.isGuest, actor.role, onLoadUsers])
+    if (!actor.isGuest && canManageUsers) void onLoadUsers('')
+  }, [actor.isGuest, canManageUsers, onLoadUsers])
+
+  const loadRoles = useCallback(async () => {
+    if (actor.isGuest || !canManageUsers) return
+    try {
+      const response = await requestJson<RoleCatalogResponse>(RBAC_ROLE_CATALOG_API_PATH)
+      setRoleOptions(response.roles)
+    } catch {
+      setRoleOptions([])
+    }
+  }, [actor.isGuest, canManageUsers, requestJson])
+
+  useEffect(() => { void loadRoles() }, [loadRoles])
 
   if (actor.isGuest) {
     return (
@@ -86,7 +104,7 @@ export function UserManagementView({
     )
   }
 
-  if (actor.role !== 'admin') {
+  if (!canManageUsers) {
     return (
       <div className={styles.managementPage}>
         <div className={styles.managementTopbar}><div className={styles.managementRouteInfo}>
@@ -132,11 +150,16 @@ export function UserManagementView({
           <div className={styles.managementDataList}>
             {users.length === 0 ? <div className={styles.managementEmpty}>当前没有匹配的用户。</div> : users.map((user) => (
               <div key={user.user_id} className={styles.managementDataRow}>
-                <div className={styles.managementDataPrimary}><div className={styles.managementDataTitle}><strong>{user.username}</strong>{user.email ? <span className={styles.managementMeta}>{user.email}</span> : null}<span className={styles.accountRoleBadge}>{user.role === 'admin' ? '管理员' : '普通用户'}</span></div><span className={styles.managementDataDescription}>用户 ID: {user.user_id}</span><span className={styles.managementDataDescription}>创建：{formatAccountTime(user.created_at)} · 更新：{formatAccountTime(user.updated_at)}</span></div>
+                <div className={styles.managementDataPrimary}><div className={styles.managementDataTitle}><strong>{user.username}</strong>{user.email ? <span className={styles.managementMeta}>{user.email}</span> : null}<span className={styles.accountRoleBadge}>{roleOptions.find((item) => item.id === user.role)?.name || user.role}</span></div><span className={styles.managementDataDescription}>用户 ID: {user.user_id}</span><span className={styles.managementDataDescription}>创建：{formatAccountTime(user.created_at)} · 更新：{formatAccountTime(user.updated_at)}</span></div>
                 <div className={styles.managementDataMetrics}><span className={user.is_active ? styles.userStatusActive : styles.userStatusInactive}><span aria-hidden="true" className={styles.userStatusDot} />{user.is_active ? '启用中' : '已停用'}</span></div>
                 <div className={styles.managementDataActions}>
                   <button type="button" className={styles.managementMinorButton} onClick={() => { setEditingUser(user); setEditUsername(user.username || ''); setEditEmail(user.email || '') }} aria-label={`编辑 ${user.username} 的资料`}>编辑</button>
-                  <button type="button" className={styles.managementMinorButton} onClick={() => void onUpdateUserRole(user.user_id, user.role === 'admin' ? 'user' : 'admin')}>{user.role === 'admin' ? '设为普通用户' : '设为管理员'}</button>
+                  <label className={styles.managementField}>角色
+                    <select className={styles.managementInput} aria-label={'设置 ' + user.username + ' 的角色'} value={user.role} onChange={(event) => void onUpdateUserRole(user.user_id, event.target.value)} disabled={user.user_id === currentUserId}>
+                      {roleOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                      {!roleOptions.some((item) => item.id === user.role) && <option value={user.role}>{user.role}</option>}
+                    </select>
+                  </label>
                   <button type="button" className={styles.managementMinorButton} onClick={() => void onUpdateUserStatus(user.user_id, !user.is_active)}>{user.is_active ? '停用账号' : '启用账号'}</button>
                   <button type="button" className={styles.managementDangerMinorButton} onClick={() => { const nextPassword = window.prompt('为 ' + user.username + ' 设置新密码（至少 8 位）'); if (nextPassword) void onResetUserPassword(user.user_id, nextPassword) }}>重置密码</button>
                   <button type="button" className={styles.managementDangerMinorButton} disabled={user.user_id === currentUserId} title={user.user_id === currentUserId ? '不能删除当前登录账号' : undefined} onClick={() => { if (window.confirm('确定删除账号 ' + user.username + ' 吗？该操作不可恢复。')) void onDeleteUser(user.user_id) }} aria-label={`删除用户 ${user.username}`}>删除</button>
@@ -154,7 +177,7 @@ export function UserManagementView({
             <div className={styles.managementForm}>
               <label className={styles.managementField}>用户名<input className={styles.managementInput} type="text" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="登录时使用的用户名" autoFocus /></label>
               <label className={styles.managementField}>初始密码<input className={styles.managementInput} type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="至少 8 位" /></label>
-              <label className={styles.managementField}>角色<select className={styles.managementInput} value={role} onChange={(event) => setRole(event.target.value as 'admin' | 'user')}><option value="user">普通用户</option><option value="admin">管理员</option></select></label>
+              <label className={styles.managementField}>角色<select className={styles.managementInput} value={role} onChange={(event) => setRole(event.target.value)}>{roleOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}{!roleOptions.length && <><option value="user">普通用户</option><option value="admin">管理员</option></>}</select></label>
               <div className={styles.managementToolbar}><button type="button" className={styles.managementMinorButton} onClick={() => setIsCreateOpen(false)}>取消</button><button type="button" className={styles.managementButton} onClick={() => void handleCreateUser()}>创建用户</button></div>
             </div>
           </section>
