@@ -4865,6 +4865,13 @@ button.extensionListRow { cursor: pointer; }
 .rbacPolicyResource:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 3px; border-radius: 4px; }
 .rbacPolicyResource .rbacPolicyPath { color: var(--text-muted); font-size: 10px; }
 
+.rbacPolicyRowExpanded { grid-template-rows: auto auto; }
+.rbacResourcePermissionCount { color: var(--text-muted); font-size: 10px; white-space: nowrap; }
+.rbacResourceChevron { color: var(--accent-primary); font-size: 14px; }
+.rbacResourceActions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 0 2px; border-top: 1px dashed var(--border-subtle); }
+.rbacPermissionChip { display: flex; align-items: center; gap: 6px; padding: 3px 5px 3px 7px; border: 1px solid var(--border-subtle); border-radius: 7px; background: #fff; }
+
+
 /* Model registry compact layout */
 .modelRegistryTopbar { align-items: flex-end; }
 .modelRegistrySummary { display: grid; justify-items: end; gap: 3px; color: var(--text-muted); font-size: 12px; }

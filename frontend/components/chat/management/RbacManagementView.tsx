@@ -77,6 +77,22 @@ function actionLabel(action: string): string {
   return action === 'read' ? '查看' : action === 'write' ? '管理' : action
 }
 
+
+interface PolicyResourceGroup {
+  path: string
+  policies: RbacPolicyItem[]
+}
+
+function groupPoliciesByResource(items: RbacPolicyItem[]): PolicyResourceGroup[] {
+  const grouped = new Map<string, RbacPolicyItem[]>()
+  items.forEach((policy) => {
+    const bucket = grouped.get(policy.path)
+    if (bucket) bucket.push(policy)
+    else grouped.set(policy.path, [policy])
+  })
+  return Array.from(grouped.entries()).map(([path, policies]) => ({ path, policies }))
+}
+
 function actionBadgeClassName(action: string): string {
   if (action === 'read') return `${styles.rbacAction} ${styles.rbacActionRead}`
   if (action === 'write') return `${styles.rbacAction} ${styles.rbacActionWrite}`
@@ -440,46 +456,41 @@ export function RbacManagementView({
                     <span className={styles.rbacGroupRule} aria-hidden="true" />
                   </div>
                   <ul className={styles.rbacPolicyList} role="list">
-                    {group.items.map((policy, index) => (
-                      <li
-                        key={`${policy.subject}|${policy.path}|${policy.action}|${index}`}
-                        className={styles.rbacPolicyRow}
-                      >
-                        <button
-                          type="button"
-                          className={styles.rbacPolicyResource}
-                          onClick={() => {
-                            const key = policy.subject + '|' + policy.path + '|' + policy.action + '|' + index
-                            setExpandedPolicies((current) => {
+                    {groupPoliciesByResource(group.items).map((resource) => {
+                      const resourceKey = group.subject + '|' + resource.path
+                      const isExpanded = expandedPolicies.has(resourceKey)
+                      return (
+                        <li key={resourceKey} className={styles.rbacPolicyRow + ' ' + (isExpanded ? styles.rbacPolicyRowExpanded : '')}>
+                          <button
+                            type="button"
+                            className={styles.rbacPolicyResource}
+                            onClick={() => setExpandedPolicies((current) => {
                               const next = new Set(current)
-                              if (next.has(key)) next.delete(key)
-                              else next.add(key)
+                              if (next.has(resourceKey)) next.delete(resourceKey)
+                              else next.add(resourceKey)
                               return next
-                            })
-                          }}
-                          aria-expanded={expandedPolicies.has(policy.subject + '|' + policy.path + '|' + policy.action + '|' + index)}
-                        >
-                          <span className={styles.rbacPolicyResourceName}>{resourceLabel(policy.path).label}</span>
-                          <span className={styles.rbacPolicyResourceDetail}>{resourceLabel(policy.path).detail}</span>
-                          {expandedPolicies.has(policy.subject + '|' + policy.path + '|' + policy.action + '|' + index) ? (
-                            <code className={styles.rbacPolicyPath}>{policy.path}</code>
+                            })}
+                            aria-expanded={isExpanded}
+                          >
+                            <span className={styles.rbacPolicyResourceName}>{resourceLabel(resource.path).label}</span>
+                            <span className={styles.rbacPolicyResourceDetail}>{resourceLabel(resource.path).detail}</span>
+                            {isExpanded ? <code className={styles.rbacPolicyPath}>{resource.path}</code> : null}
+                          </button>
+                          <span className={styles.rbacResourcePermissionCount}>{resource.policies.length} 项权限</span>
+                          <span className={styles.rbacResourceChevron} aria-hidden="true">{isExpanded ? '⌃' : '⌄'}</span>
+                          {isExpanded ? (
+                            <div className={styles.rbacResourceActions}>
+                              {resource.policies.map((policy) => (
+                                <div key={policy.action} className={styles.rbacPermissionChip}>
+                                  <span className={actionBadgeClassName(policy.action)}>{actionLabel(policy.action)}</span>
+                                  <button type="button" className={styles.rbacIconButton} disabled={busy} onClick={() => void onDeletePolicy(policy)} aria-label={'删除' + actionLabel(policy.action) + '权限'} title="删除权限"><DeleteIcon /></button>
+                                </div>
+                              ))}
+                            </div>
                           ) : null}
-                        </button>
-                        <span className={actionBadgeClassName(policy.action)}>
-                          {actionLabel(policy.action)}
-                        </span>
-                        <button
-                          type="button"
-                          className={styles.rbacIconButton}
-                          disabled={busy}
-                          onClick={() => void onDeletePolicy(policy)}
-                          aria-label={`删除策略：${policy.subject} 对 ${policy.path} 的 ${policy.action} 权限`}
-                          title="删除策略"
-                        >
-                          <DeleteIcon />
-                        </button>
-                      </li>
-                    ))}
+                        </li>
+                      )
+                    })}
                   </ul>
                 </div>
               ))
