@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlmodel import select
 
 from deepclaw.web_backend.auth.dependencies import CurrentActor, get_current_actor
+from deepclaw.web_backend.auth.rbac import require_permission
 from deepclaw.web_backend.channels.common import is_admin, manager_user_id_from_actor
 from deepclaw.web_backend.channels.jobs import ChannelJob, ChannelJobStore
 from deepclaw.web_backend.channels.store import ChannelStore, get_channel_store
@@ -54,7 +55,8 @@ router = APIRouter(tags=["channels"])
 
 @router.get("/jobs", response_model=ChannelJobListResponse)
 async def list_jobs(scope: Literal["my", "all"] = "my", actor: CurrentActor = Depends(get_current_actor),
-                    store: ChannelStore = Depends(get_channel_store)):
+                    store: ChannelStore = Depends(get_channel_store),
+                    _permission: CurrentActor = Depends(require_permission("/api/channels/*", "read", allow_guest=True))):
     """查询未完成任务，管理员可查看全部。
 
     Args:
@@ -76,7 +78,8 @@ async def list_jobs(scope: Literal["my", "all"] = "my", actor: CurrentActor = De
 
 @router.post("/jobs/{job_id}/actions", response_model=ChannelJobResponse)
 async def job_action(job_id: str, request: ChannelJobActionRequest,
-                     actor: CurrentActor = Depends(get_current_actor), store: ChannelStore = Depends(get_channel_store)):
+                     actor: CurrentActor = Depends(get_current_actor), store: ChannelStore = Depends(get_channel_store),
+                     _permission: CurrentActor = Depends(require_permission("/api/channels/*", "write", allow_guest=True))):
     """补发已有结果或在人工核对后结束异常任务，不创建 Run。
 
     Args:

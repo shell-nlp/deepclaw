@@ -1,5 +1,6 @@
+import asyncio
 import os
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -17,7 +18,12 @@ from deepclaw.web_backend.agent.run_store import (
     get_run_store,
     restore_threads_from_checkpoints,
 )
-from deepclaw.web_backend.auth.rbac import bootstrap_rbac_policy, get_enforcer
+from deepclaw.web_backend.auth.rbac import (
+    REVISION_POLL_SECONDS,
+    bootstrap_rbac_policy,
+    get_enforcer,
+    refresh_enforcer_if_stale,
+)
 from deepclaw.web_backend.auth.service import get_auth_service
 from deepclaw.web_backend.channels.lifespan import channel_lifespan
 from deepclaw.web_backend.common.agui_runs import (
@@ -195,6 +201,20 @@ def _register_exported_html_routes(app: FastAPI, frontend_dir: Path) -> None:
         app.get(route_path, include_in_schema=False)(serve_exported_page)
 
 
+async def watch_rbac_revision() -> None:
+    """周期比对策略版本号，让其他进程及时跟进策略变更。
+
+    Args:
+        无。
+    """
+    while True:
+        await asyncio.sleep(REVISION_POLL_SECONDS)
+        try:
+            await refresh_enforcer_if_stale()
+        except Exception as exc:  # noqa: BLE001 - 轮询失败不应中断服务
+            logger.warning("策略版本轮询失败: {}", exc)
+
+
 @asynccontextmanager
 async def app_lifespan(app: FastAPI):
     """管理应用启动初始化与关闭清理。
@@ -237,10 +257,15 @@ async def app_lifespan(app: FastAPI):
     if settings.VECTOR_STORE_BACKEND != "none":
         upload_manager = get_knowledge_base_manager()
         await upload_manager.start_upload_workers()
+    rbac_watch = asyncio.create_task(watch_rbac_revision()) if settings.RBAC_STORE_ENABLED else None
     try:
         async with channel_lifespan():
             yield
     finally:
+        if rbac_watch is not None:
+            rbac_watch.cancel()
+            with suppress(asyncio.CancelledError):
+                await rbac_watch
         if upload_manager is not None:
             await upload_manager.stop_upload_workers()
         runtime_cache = getattr(app.state, "agent_runtime_cache", None)

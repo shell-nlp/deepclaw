@@ -16,6 +16,9 @@ POLICY_SECTION = "rbac_policy"
 
 _enforcer: casbin.Enforcer | None = None
 _lock = threading.Lock()
+_last_revision: int = 0
+
+REVISION_POLL_SECONDS = 2.0
 
 
 @dataclass(slots=True)
@@ -249,6 +252,32 @@ def reload_enforcer() -> casbin.Enforcer:
     with _lock:
         _enforcer = None
     return get_enforcer()
+
+
+async def refresh_enforcer_if_stale() -> bool:
+    """比对数据库策略版本号，变化时重建授权引擎。
+
+    多进程部署下每个 worker 各自持有内存策略，写请求只会刷新收到请求的进程；
+    该函数供后台轮询任务调用，让其他 worker 在数秒内跟进。
+
+    Args:
+        无。
+
+    Returns:
+        bool: 发生重建时返回真。
+    """
+    global _last_revision
+    if not settings.RBAC_STORE_ENABLED:
+        return False
+    from deepclaw.web_backend.auth.rbac.store import get_rbac_policy_store
+
+    revision = await get_rbac_policy_store().current_revision()
+    if revision == _last_revision:
+        return False
+    _last_revision = revision
+    reload_enforcer()
+    logger.info("检测到策略版本变化，已重载授权引擎: revision={}", revision)
+    return True
 
 
 def subject_from_actor(actor: CurrentActor) -> RbacSubject:

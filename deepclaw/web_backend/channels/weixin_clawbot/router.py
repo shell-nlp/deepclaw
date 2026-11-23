@@ -1,6 +1,7 @@
 from fastapi import APIRouter, BackgroundTasks, Depends
 
 from deepclaw.web_backend.auth.dependencies import CurrentActor, get_current_actor
+from deepclaw.web_backend.auth.rbac import require_permission
 from deepclaw.web_backend.channels.models import ChannelBindingDeleteResult
 from deepclaw.web_backend.channels.service import ChannelService, get_channel_service
 from deepclaw.web_backend.channels.store import ChannelStore, get_channel_store
@@ -51,6 +52,7 @@ async def create_weixin_binding(
     request: WeixinClawBotBindingCreateRequest,
     actor: CurrentActor = Depends(get_current_actor),
     weixin_service: WeixinClawBotService = Depends(get_weixin_clawbot_service),
+    _permission: CurrentActor = Depends(require_permission("/api/channels/*", "write", allow_guest=True)),
 ):
     """创建微信 ClawBot 绑定。"""
     payload = await weixin_service.create_binding(
@@ -71,6 +73,7 @@ async def refresh_weixin_binding_qrcode(
     binding_id: int,
     actor: CurrentActor = Depends(get_current_actor),
     weixin_service: WeixinClawBotService = Depends(get_weixin_clawbot_service),
+    _permission: CurrentActor = Depends(require_permission("/api/channels/*", "write", allow_guest=True)),
 ):
     """刷新指定微信 ClawBot 绑定的二维码。"""
     payload = await weixin_service.refresh_binding_qrcode(
@@ -91,6 +94,7 @@ async def get_weixin_binding_qrcode_status(
     verify_code: str | None = None,
     actor: CurrentActor = Depends(get_current_actor),
     weixin_service: WeixinClawBotService = Depends(get_weixin_clawbot_service),
+    _permission: CurrentActor = Depends(require_permission("/api/channels/*", "read", allow_guest=True)),
 ):
     """查询指定微信 ClawBot 绑定的二维码状态。"""
     return WeixinClawBotQRCodeStatus.model_validate(
@@ -112,6 +116,7 @@ async def delete_weixin_binding(
     binding_id: int,
     actor: CurrentActor = Depends(get_current_actor),
     weixin_service: WeixinClawBotService = Depends(get_weixin_clawbot_service),
+    _permission: CurrentActor = Depends(require_permission("/api/channels/*", "write", allow_guest=True)),
 ):
     """删除指定微信 ClawBot 绑定。"""
     deleted = await weixin_service.delete_binding(actor=actor, binding_id=binding_id)
@@ -128,6 +133,7 @@ async def weixin_clawbot_poll(
     request: WeixinClawBotPollRequest,
     background_tasks: BackgroundTasks,
     weixin_service: WeixinClawBotService = Depends(get_weixin_clawbot_service),
+    _permission: CurrentActor = Depends(require_permission("/api/channels/*", "write", allow_guest=True)),
 ):
     """轮询并处理微信 ClawBot 消息。"""
     adapter, messages, next_buf = await weixin_service.fetch_pending_messages(

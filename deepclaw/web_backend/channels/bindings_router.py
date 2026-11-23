@@ -3,6 +3,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 
 from deepclaw.web_backend.auth.dependencies import CurrentActor, get_current_actor
+from deepclaw.web_backend.auth.rbac import require_permission
 from deepclaw.web_backend.channels.common import is_admin, manager_user_id_from_actor
 from deepclaw.web_backend.channels.models import ChannelBindingList, ChannelBindingRead
 from deepclaw.web_backend.channels.store import ChannelStore, get_channel_store
@@ -23,6 +24,7 @@ async def list_bindings(
     owner_user_id: str | None = None,
     actor: CurrentActor = Depends(get_current_actor),
     store: ChannelStore = Depends(get_channel_store),
+    _permission: CurrentActor = Depends(require_permission("/api/channels/*", "read", allow_guest=True)),
 ):
     """查询当前可见的渠道绑定。"""
     if scope == "all" and not is_admin(actor):

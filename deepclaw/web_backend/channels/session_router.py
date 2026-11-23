@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from deepclaw.web_backend.auth.dependencies import CurrentActor, get_current_actor
+from deepclaw.web_backend.auth.rbac import require_permission
 from deepclaw.web_backend.channels.common import (
     ensure_session_access,
     is_admin,
@@ -22,6 +23,7 @@ router = APIRouter(tags=["channels"])
 async def list_sessions(
     actor: CurrentActor = Depends(get_current_actor),
     store: ChannelStore = Depends(get_channel_store),
+    _permission: CurrentActor = Depends(require_permission("/api/channels/*", "read", allow_guest=True)),
 ):
     """查询当前可见的渠道会话。"""
     sessions = [
@@ -40,6 +42,7 @@ async def update_session(
     update: ChannelSessionUpdate,
     actor: CurrentActor = Depends(get_current_actor),
     store: ChannelStore = Depends(get_channel_store),
+    _permission: CurrentActor = Depends(require_permission("/api/channels/*", "write", allow_guest=True)),
 ):
     """更新渠道会话回复模式。"""
     channel_session = await store.get_session_by_session_id(session_id)

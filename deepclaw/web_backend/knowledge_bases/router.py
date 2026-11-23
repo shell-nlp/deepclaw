@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 
-from deepclaw.web_backend.auth.dependencies import get_current_actor
+from deepclaw.web_backend.auth.dependencies import CurrentActor, get_current_actor
+from deepclaw.web_backend.auth.rbac import require_permission
 from deepclaw.web_backend.knowledge_bases.schemas import (
     BulkDeleteKnowledgeBaseDocumentRequest,
     BulkDeleteKnowledgeBaseRequest,
@@ -53,6 +54,7 @@ router = APIRouter(prefix="/api/rag", tags=["rag-knowledge-bases"])
 async def list_knowledge_bases(
     request: KnowledgeBaseListRequest,
     actor=Depends(get_current_actor),
+    _permission: CurrentActor = Depends(require_permission("/api/rag/*", "read", allow_guest=True)),
 ):
     return await get_knowledge_base_manager().search_knowledge_bases(
         user_id=_resolved_user_id(actor),
@@ -65,6 +67,7 @@ async def list_knowledge_bases(
 async def create_knowledge_base(
     request: CreateKnowledgeBaseRequest,
     actor=Depends(get_current_actor),
+    _permission: CurrentActor = Depends(require_permission("/api/rag/*", "write", allow_guest=True)),
 ):
     owner_id = _resolved_user_id(actor)
     return await get_knowledge_base_manager().create_knowledge_base(
@@ -77,6 +80,7 @@ async def create_knowledge_base(
 async def get_knowledge_base(
     request: KnowledgeBaseIdentityRequest,
     actor=Depends(get_current_actor),
+    _permission: CurrentActor = Depends(require_permission("/api/rag/*", "read", allow_guest=True)),
 ):
     return await get_knowledge_base_manager().get_knowledge_base(
         user_id=_resolved_user_id(actor),
@@ -87,6 +91,7 @@ async def get_knowledge_base(
 async def update_knowledge_base(
     request: UpdateKnowledgeBaseRequest,
     actor=Depends(get_current_actor),
+    _permission: CurrentActor = Depends(require_permission("/api/rag/*", "write", allow_guest=True)),
 ):
     owner_id = _resolved_user_id(actor)
     return await get_knowledge_base_manager().update_knowledge_base(
@@ -100,6 +105,7 @@ async def update_knowledge_base(
 async def delete_knowledge_base(
     request: KnowledgeBaseIdentityRequest,
     actor=Depends(get_current_actor),
+    _permission: CurrentActor = Depends(require_permission("/api/rag/*", "write", allow_guest=True)),
 ):
     owner_id = _resolved_user_id(actor)
     return await get_knowledge_base_manager().delete_knowledge_base(
@@ -116,6 +122,7 @@ async def delete_knowledge_base(
 async def bulk_delete_knowledge_bases(
     request: BulkDeleteKnowledgeBaseRequest,
     actor=Depends(get_current_actor),
+    _permission: CurrentActor = Depends(require_permission("/api/rag/*", "write", allow_guest=True)),
 ):
     owner_id = _resolved_user_id(actor)
     return await get_knowledge_base_manager().bulk_delete_knowledge_bases(
@@ -132,6 +139,7 @@ async def bulk_delete_knowledge_bases(
 async def list_documents(
     request: DocumentListRequest,
     actor=Depends(get_current_actor),
+    _permission: CurrentActor = Depends(require_permission("/api/rag/*", "read", allow_guest=True)),
 ):
     return await get_knowledge_base_manager().search_documents(
         user_id=_resolved_user_id(actor),
@@ -150,6 +158,7 @@ async def list_documents(
 async def get_document_detail(
     request: DocumentDetailRequest,
     actor=Depends(get_current_actor),
+    _permission: CurrentActor = Depends(require_permission("/api/rag/*", "read", allow_guest=True)),
 ):
     return await get_knowledge_base_manager().get_document_detail(
         user_id=_resolved_user_id(actor),
@@ -171,6 +180,7 @@ async def upload_documents(
     knowledge_base_id: str = Form(..., description="Knowledge base ID"),
     files: list[UploadFile] = File(..., description="Uploaded files"),
     actor=Depends(get_current_actor),
+    _permission: CurrentActor = Depends(require_permission("/api/rag/*", "write", allow_guest=True)),
 ):
     """接收原始文件并提交后台入库任务。
 
@@ -207,6 +217,7 @@ async def upload_documents(
 async def list_upload_tasks(
     request: KnowledgeBaseIdentityRequest,
     actor=Depends(get_current_actor),
+    _permission: CurrentActor = Depends(require_permission("/api/rag/*", "read", allow_guest=True)),
 ):
     """查询当前知识库文件后台处理阶段。
 
@@ -227,6 +238,7 @@ async def list_upload_tasks(
 async def retry_upload_task(
     request: KnowledgeUploadTaskRequest,
     actor=Depends(get_current_actor),
+    _permission: CurrentActor = Depends(require_permission("/api/rag/*", "write", allow_guest=True)),
 ):
     """重试失败的上传任务。
 
@@ -247,6 +259,7 @@ async def retry_upload_task(
 async def delete_upload_task(
     request: KnowledgeUploadTaskRequest,
     actor=Depends(get_current_actor),
+    _permission: CurrentActor = Depends(require_permission("/api/rag/*", "write", allow_guest=True)),
 ):
     """删除失败的上传任务记录。
 
@@ -267,6 +280,7 @@ async def delete_upload_task(
 async def update_document(
     request: UpdateKnowledgeBaseDocumentRequest,
     actor=Depends(get_current_actor),
+    _permission: CurrentActor = Depends(require_permission("/api/rag/*", "write", allow_guest=True)),
 ):
     owner_id = _resolved_user_id(actor)
     return await get_knowledge_base_manager().update_document(
@@ -285,6 +299,7 @@ async def update_document(
 async def update_document_chunk(
     request: UpdateKnowledgeChunkRequest,
     actor=Depends(get_current_actor),
+    _permission: CurrentActor = Depends(require_permission("/api/rag/*", "write", allow_guest=True)),
 ):
     """更新单个切片。
 
@@ -305,6 +320,7 @@ async def update_document_chunk(
 async def delete_document(
     request: DeleteKnowledgeBaseDocumentRequest,
     actor=Depends(get_current_actor),
+    _permission: CurrentActor = Depends(require_permission("/api/rag/*", "write", allow_guest=True)),
 ):
     owner_id = _resolved_user_id(actor)
     return await get_knowledge_base_manager().delete_document(
@@ -322,6 +338,7 @@ async def delete_document(
 async def bulk_delete_documents(
     request: BulkDeleteKnowledgeBaseDocumentRequest,
     actor=Depends(get_current_actor),
+    _permission: CurrentActor = Depends(require_permission("/api/rag/*", "write", allow_guest=True)),
 ):
     owner_id = _resolved_user_id(actor)
     return await get_knowledge_base_manager().bulk_delete_documents(

@@ -4,7 +4,13 @@ from sqlmodel import select
 
 from deepclaw.utils.db import build_async_sessionmaker, create_async_engine_from_url
 from deepclaw.web_backend.auth.models import AuthUser
-from deepclaw.web_backend.auth.rbac.models import RbacCatalogRole, RbacPolicyRule, RbacRoleRule
+from deepclaw.web_backend.auth.rbac.models import (
+    RbacCatalogRole,
+    RbacPolicyRevision,
+    RbacPolicyRule,
+    RbacRoleRule,
+    utc_now,
+)
 from deepclaw.web_backend.db import resolve_metadata_db_url
 
 _store: "RbacPolicyStore | None" = None
@@ -81,6 +87,38 @@ class RbacPolicyStore:
                 except IntegrityError:
                     await session.rollback()  # 其他实例已经补齐同一个角色。
 
+    async def _bump_revision(self, session) -> None:
+        """在写事务内递增策略版本号。
+
+        其他进程通过版本号变化感知策略更新，无需重启。
+
+        Args:
+            session: 当前写事务会话。
+        """
+        # 关闭自动刷新，避免把调用方待写入的实体提前 flush 出主键冲突。
+        with session.no_autoflush:
+            record = await session.get(RbacPolicyRevision, 1)
+            if record is None:
+                session.add(RbacPolicyRevision(id=1, revision=1))
+            else:
+                record.revision += 1
+                record.updated_at = utc_now()
+                session.add(record)
+
+    async def current_revision(self) -> int:
+        """读取当前策略版本号。
+
+        Args:
+            无。
+
+        Returns:
+            int: 版本号；从未写入过时为 0。
+        """
+        await self.ensure_schema()
+        async with self.sessions() as session:
+            record = await session.get(RbacPolicyRevision, 1)
+            return record.revision if record is not None else 0
+
     async def role_exists(self, role_id: str) -> bool:
         """判断角色标识是否已存在于兼容目录。
 
@@ -112,6 +150,7 @@ class RbacPolicyStore:
         await self.ensure_catalog()
         async with self.sessions() as session:
             session.add(RbacCatalogRole(id=role_id, name=name, description=description))
+            await self._bump_revision(session)
             try:
                 await session.commit()
             except IntegrityError as exc:
@@ -138,6 +177,7 @@ class RbacPolicyStore:
             if description is not None:
                 role.description = description
             session.add(role)
+            await self._bump_revision(session)
             await session.commit()
 
     async def replace_catalog_permissions(self, role_id: str, permissions: list[tuple[str, str]]) -> None:
@@ -160,6 +200,7 @@ class RbacPolicyStore:
             await session.flush()
             for path, action in sorted(set(permissions)):
                 session.add(RbacPolicyRule(subject=role_id, path=path, action=action))
+            await self._bump_revision(session)
             await session.commit()
 
     async def delete_catalog_role(self, role_id: str, user_count: int = 0) -> None:
@@ -194,6 +235,7 @@ class RbacPolicyStore:
             for rule in [*policies, *roles]:
                 await session.delete(rule)
             await session.delete(role)
+            await self._bump_revision(session)
             await session.commit()
 
     async def count_catalog_users(self, role_id: str) -> int:
@@ -295,6 +337,7 @@ class RbacPolicyStore:
                 session.add(RbacPolicyRule(subject=subject, path=path, action=action))
             for child, parent in roles:
                 session.add(RbacRoleRule(child=child, parent=parent))
+            await self._bump_revision(session)
             await session.commit()
 
     async def add_policy(self, subject: str, path: str, action: str) -> RbacPolicyRule:
@@ -322,6 +365,7 @@ class RbacPolicyStore:
                 return existing
             rule = RbacPolicyRule(subject=subject, path=path, action=action)
             session.add(rule)
+            await self._bump_revision(session)
             await session.commit()
             await session.refresh(rule)
             return rule
@@ -350,6 +394,7 @@ class RbacPolicyStore:
             if rule is None:
                 return False
             await session.delete(rule)
+            await self._bump_revision(session)
             await session.commit()
             return True
 
@@ -376,6 +421,7 @@ class RbacPolicyStore:
                 return existing
             rule = RbacRoleRule(child=child, parent=parent)
             session.add(rule)
+            await self._bump_revision(session)
             await session.commit()
             await session.refresh(rule)
             return rule
@@ -402,6 +448,7 @@ class RbacPolicyStore:
             if rule is None:
                 return False
             await session.delete(rule)
+            await self._bump_revision(session)
             await session.commit()
             return True
 

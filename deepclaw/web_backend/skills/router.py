@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, File, UploadFile
 
-from deepclaw.web_backend.auth.dependencies import get_current_actor
+from deepclaw.web_backend.auth.dependencies import CurrentActor, get_current_actor
+from deepclaw.web_backend.auth.rbac import require_permission
 from deepclaw.web_backend.skills.schemas import (
     SkillDeleteRequest,
     SkillListRequest,
@@ -17,7 +18,11 @@ router = APIRouter(prefix="/api/agent", tags=["agent-skills"])
 
 
 @router.post("/skills/list", response_model=SkillListResponse, summary="查询技能列表", description="返回当前可用的技能包及其元数据。")
-def list_skills(request: SkillListRequest, actor=Depends(get_current_actor)):
+def list_skills(
+    request: SkillListRequest,
+    actor=Depends(get_current_actor),
+    _permission: CurrentActor = Depends(require_permission("/api/agent/*", "read", allow_guest=True)),
+):
     """查询技能包列表。"""
     return skill_manager.list_skills(search=request.search)
 
@@ -26,6 +31,7 @@ def list_skills(request: SkillListRequest, actor=Depends(get_current_actor)):
 async def upload_skill(
     file: UploadFile = File(..., description="Skill zip package"),
     _actor=Depends(get_current_actor),
+    _permission: CurrentActor = Depends(require_permission("/api/agent/*", "write", allow_guest=True)),
 ):
     """上传技能包压缩文件。"""
     data = await file.read()
@@ -40,6 +46,7 @@ async def upload_skill(
 def delete_skill(
     request: SkillDeleteRequest,
     _actor=Depends(get_current_actor),
+    _permission: CurrentActor = Depends(require_permission("/api/agent/*", "write", allow_guest=True)),
 ):
     """删除指定技能包。"""
     return skill_manager.delete_skill(skill_name=request.skill_name)

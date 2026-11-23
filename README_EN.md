@@ -123,11 +123,14 @@ status and delete action.
 ![User Management](assets/img/user_management.png)
 
 Role management is its own page: a role list on the left, and a permission matrix grouped by module
-(user management / role management / model management) on the right. Saving applies immediately.
+(knowledge base / capabilities & connections / user management / role management / model management)
+on the right. Saving applies immediately.
 
 - Built-in roles `admin` / `user` are read-only; custom roles can be created, renamed and deleted
 - The permission catalog is defined by the backend, so every checkbox maps to a real server-side rule
+- Knowledge base, skills, channels and devices all enforce the role policy; guests keep their existing access
 - A role still assigned to accounts cannot be deleted
+- With multiple workers, a policy change reaches every process within seconds via a revision counter
 
 Admins can create users, change roles, enable/disable accounts and reset passwords; disabling or resetting
 immediately revokes every token of that user.

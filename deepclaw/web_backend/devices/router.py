@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from pydantic import ValidationError
 
 from deepclaw.web_backend.auth.dependencies import CurrentActor, require_authenticated_actor
+from deepclaw.web_backend.auth.rbac import require_permission
 from deepclaw.web_backend.devices.installer import router as installer_router
 from deepclaw.web_backend.devices.schemas import (
     DeviceResponse, DeviceListResponse, DeviceTaskResponse, DeviceTaskListResponse,
@@ -42,7 +43,8 @@ def task_response(task) -> DeviceTaskResponse:
 
 
 @router.get("", response_model=DeviceListResponse)
-async def list_devices(actor: CurrentActor = Depends(require_authenticated_actor), store: DeviceStore = Depends(get_device_store)):
+async def list_devices(actor: CurrentActor = Depends(require_authenticated_actor), store: DeviceStore = Depends(get_device_store),
+                       _permission: CurrentActor = Depends(require_permission("/api/devices/*", "read", allow_guest=True))):
     """查询当前用户设备，管理员也不能越过设备归属。
 
     Args:
@@ -53,7 +55,8 @@ async def list_devices(actor: CurrentActor = Depends(require_authenticated_actor
 
 
 @router.post("/pairings", response_model=PairingResponse)
-async def create_pairing(actor: CurrentActor = Depends(require_authenticated_actor), store: DeviceStore = Depends(get_device_store)):
+async def create_pairing(actor: CurrentActor = Depends(require_authenticated_actor), store: DeviceStore = Depends(get_device_store),
+                         _permission: CurrentActor = Depends(require_permission("/api/devices/*", "write", allow_guest=True))):
     """创建供桌面客户端输入的短期配对码。
 
     Args:
@@ -65,7 +68,8 @@ async def create_pairing(actor: CurrentActor = Depends(require_authenticated_act
 
 
 @router.post("/pairings/claim", response_model=PairingClaimResponse)
-async def claim_pairing(request: PairingClaimRequest, store: DeviceStore = Depends(get_device_store)):
+async def claim_pairing(request: PairingClaimRequest, store: DeviceStore = Depends(get_device_store),
+                        _permission: CurrentActor = Depends(require_permission("/api/devices/*", "write", allow_guest=True))):
     """一次性领取设备凭据，高熵配对码不进入 URL。
 
     Args:
@@ -80,7 +84,8 @@ async def claim_pairing(request: PairingClaimRequest, store: DeviceStore = Depen
 
 
 @router.delete("/{device_id}", status_code=204)
-async def revoke_device(device_id: str, actor: CurrentActor = Depends(require_authenticated_actor), store: DeviceStore = Depends(get_device_store)):
+async def revoke_device(device_id: str, actor: CurrentActor = Depends(require_authenticated_actor), store: DeviceStore = Depends(get_device_store),
+                        _permission: CurrentActor = Depends(require_permission("/api/devices/*", "write", allow_guest=True))):
     """解绑自己的设备并撤销其连接凭据。
 
     Args:
@@ -94,7 +99,8 @@ async def revoke_device(device_id: str, actor: CurrentActor = Depends(require_au
 
 
 @router.get("/{device_id}/tasks", response_model=DeviceTaskListResponse)
-async def list_tasks(device_id: str, actor: CurrentActor = Depends(require_authenticated_actor), store: DeviceStore = Depends(get_device_store)):
+async def list_tasks(device_id: str, actor: CurrentActor = Depends(require_authenticated_actor), store: DeviceStore = Depends(get_device_store),
+                     _permission: CurrentActor = Depends(require_permission("/api/devices/*", "read", allow_guest=True))):
     """查询当前用户设备的最近任务。
 
     Args:
@@ -108,7 +114,8 @@ async def list_tasks(device_id: str, actor: CurrentActor = Depends(require_authe
 
 
 @router.post("/{device_id}/tasks/{task_id}/cancel", response_model=DeviceTaskResponse)
-async def cancel_task(device_id: str, task_id: str, actor: CurrentActor = Depends(require_authenticated_actor), store: DeviceStore = Depends(get_device_store)):
+async def cancel_task(device_id: str, task_id: str, actor: CurrentActor = Depends(require_authenticated_actor), store: DeviceStore = Depends(get_device_store),
+                      _permission: CurrentActor = Depends(require_permission("/api/devices/*", "write", allow_guest=True))):
     """请求取消任务，等待客户端报告实际终止结果。
 
     Args:

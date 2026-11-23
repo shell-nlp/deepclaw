@@ -1,6 +1,7 @@
 from fastapi import APIRouter, BackgroundTasks, Depends
 
 from deepclaw.web_backend.auth.dependencies import CurrentActor, get_current_actor
+from deepclaw.web_backend.auth.rbac import require_permission
 from deepclaw.web_backend.channels.feishu.adapter import FeishuAdapter
 from deepclaw.web_backend.channels.feishu.schemas import FeishuBindingRequest
 from deepclaw.web_backend.channels.feishu.service import FeishuBindingService
@@ -40,6 +41,7 @@ async def feishu_events(
     payload: dict,
     background_tasks: BackgroundTasks,
     service: ChannelService = Depends(get_channel_service),
+    _permission: CurrentActor = Depends(require_permission("/api/channels/*", "write", allow_guest=True)),
 ):
     """接收并异步处理飞书事件。"""
     adapter = FeishuAdapter()
@@ -59,6 +61,7 @@ async def create_feishu_binding(
     request: FeishuBindingRequest,
     actor: CurrentActor = Depends(get_current_actor),
     binding_service: FeishuBindingService = Depends(get_feishu_binding_service),
+    _permission: CurrentActor = Depends(require_permission("/api/channels/*", "write", allow_guest=True)),
 ):
     """为当前用户创建飞书绑定。"""
     binding = await binding_service.create_binding(actor=actor, request=request)
@@ -75,6 +78,7 @@ async def delete_feishu_binding_by_id(
     binding_id: int,
     actor: CurrentActor = Depends(get_current_actor),
     binding_service: FeishuBindingService = Depends(get_feishu_binding_service),
+    _permission: CurrentActor = Depends(require_permission("/api/channels/*", "write", allow_guest=True)),
 ):
     """按绑定 ID 删除飞书绑定。"""
     deleted = await binding_service.delete_binding(actor=actor, binding_id=binding_id)

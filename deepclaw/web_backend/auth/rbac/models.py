@@ -68,3 +68,18 @@ class RbacRoleRule(SQLModel, table=True):
     child: str = Field(index=True)
     parent: str = Field(index=True)
     created_at: datetime = Field(default_factory=utc_now, sa_type=DateTime)
+
+class RbacPolicyRevision(SQLModel, table=True):
+    """策略版本号，供多进程感知策略变更。
+
+    Args:
+        id: 固定为 1 的单行主键。
+        revision: 单调递增的版本号。
+        updated_at: 最近一次变更时间。
+    """
+
+    __tablename__ = "rbac_policy_revision"
+
+    id: int = Field(default=1, primary_key=True)
+    revision: int = Field(default=0)
+    updated_at: datetime = Field(default_factory=utc_now, sa_type=DateTime)
