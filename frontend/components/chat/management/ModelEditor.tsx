@@ -5,6 +5,10 @@ import styles from '../../ChatInterface.module.css'
 import editor from './ModelEditor.module.css'
 import { MODEL_API_PATH } from '../utils/constants'
 
+import { REASONING_LABELS, type ReasoningEffort } from '../utils/reasoning'
+
+const reasoningOptions = Object.entries(REASONING_LABELS) as [ReasoningEffort, string][]
+
 interface HeaderRow { id: number; name: string; value: string }
 export const CHAT_UPSTREAM_FORMAT_LABELS = {
   chat_completions: 'Chat Completions',
@@ -20,6 +24,7 @@ export interface ModelDraft {
   api_base: string
   api_key: string
   context_window: string
+  reasoning_efforts: ReasoningEffort[]
   request_headers: HeaderRow[]
 }
 export interface ModelTestResult { ok: boolean; message: string; latency_ms: number; dimension: number | null }
@@ -44,6 +49,7 @@ export function modelPayload(draft: ModelDraft) {
     api_base: draft.api_base.trim(),
     api_key: draft.api_key.trim() || null,
     context_window: draft.type === 'chat' ? Number(draft.context_window) : null,
+    reasoning_efforts: draft.type === 'chat' ? draft.reasoning_efforts : undefined,
     request_headers: draft.request_headers.map(({ name, value }) => ({ name: name.trim(), value: value || null })),
   }
 }
@@ -177,6 +183,24 @@ export function ModelEditor({ draft, modelId, hasSavedKey, busy, error, requestJ
               <input className={styles.managementInput + ' ' + editor.technical} type="number" min="1" max="10000000" value={draft.context_window} onChange={(event) => change({ context_window: event.target.value })} required />
             </label>}
           </div>
+
+          {draft.type === 'chat' && <section className={editor.headers} aria-labelledby="model-reasoning-title">
+            <h4 id="model-reasoning-title">支持的推理等级</h4>
+            <p className={editor.empty}>勾选上游模型支持的等级。留空时，聊天中只提供开启和关闭。</p>
+            <div className={editor.effortOptions}>
+              {reasoningOptions.map(([level, label]) => (
+                <label key={level}>
+                  <input type="checkbox" checked={draft.reasoning_efforts.includes(level)} onChange={event => {
+                    const next = event.target.checked
+                      ? reasoningOptions.map(([key]) => key).filter(key => key === level || draft.reasoning_efforts.includes(key))
+                      : draft.reasoning_efforts.filter(key => key !== level)
+                    change({ reasoning_efforts: next })
+                  }} />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </section>}
 
           <section className={editor.headers} aria-labelledby="model-headers-title">
             <div className={editor.headersHeading}>

@@ -65,3 +65,28 @@
   .footer { flex-wrap: wrap; gap: 8px; }
   .actions { margin-left: auto; }
 }
+.effortOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.effortOptions label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border: 1px solid #e0e7f4;
+  border-radius: 8px;
+  color: #33476b;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.effortOptions label:has(:checked) {
+  border-color: #bdcbeb;
+  background: #edf3ff;
+}
+
+.effortOptions input { margin: 0; accent-color: #486bc6; }

@@ -95,7 +95,7 @@
   技能管理路由、请求模型与服务实现。
 
 - `deepclaw/model_config.py` / `deepclaw/web_backend/model_router.py` / `deepclaw/web_backend/model_schemas.py`
-  模型目录配置、管理员 API 与请求响应模型；用户管理相关的编辑/删除走 `/api/auth/users/update` 与 `/api/auth/users/delete`，禁止删除自己或最后一个管理员。配置默认从环境变量迁移为两个分类列表，管理员通过 `/api/models/catalog`、`/api/models` 及其子路径新增、编辑、删除、测试和切换大模型/语义模型；目录落到运行期 `HOME_PATH/model_config.json`，保存后清理智能体运行时缓存，目录仅展示脱敏密钥和请求头名称；具备模型写权限的用户可在 `ModelEditor.tsx` 主动查看密钥、配置多条请求头，并用当前表单试连。大模型与语义模型运行时各自使用目录中的网关、密钥和请求头。
+  模型目录配置、管理员 API 与请求响应模型；用户管理相关的编辑/删除走 `/api/auth/users/update` 与 `/api/auth/users/delete`，禁止删除自己或最后一个管理员。配置默认从环境变量迁移为两个分类列表，管理员通过 `/api/models/catalog`、`/api/models` 及其子路径新增、编辑、删除、测试和切换大模型/语义模型；目录经 SQLModel 写入统一的 SQLite/PostgreSQL 元数据库，首次启动成功导入旧 JSON 后清理原文件，聊天只发送目录中该模型支持的推理等级，保存后清理智能体运行时缓存，目录仅展示脱敏密钥和请求头名称；具备模型写权限的用户可在 `ModelEditor.tsx` 主动查看密钥、配置多条请求头，并用当前表单试连。大模型与语义模型运行时各自使用目录中的网关、密钥和请求头。
 
 - `deepclaw/web_backend/knowledge_bases/`
 知识库管理路由、请求模型、元数据存储与服务实现。上传接口先将原始文件保存到对象存储并登记独立的 `knowledge_upload_tasks` 任务，返回 202；每实例后台 worker 数由 `KNOWLEDGE_UPLOAD_WORKERS` 控制（默认 2，允许 1–8），原子领取任务，在线程中执行 PDF 解析和切片写入（只写 passage 索引，不做三元组抽取），按排队/解析/索引/成功/失败持久化阶段，前端轮询 `/api/rag/knowledge-bases/documents/upload-tasks`。进程异常中断的任务心跳过期后重新排队；部署多实例时共享元数据数据库和对象存储。知识库解析统一选择 `PDFParser`；PDF 直接解析，TXT/MD 等文本格式先生成 PDF，DOCX/PPTX/XLSX 等由 LibreOffice 转换为 PDF 后再解析。`create_document_parser()` 保留给非知识库上传场景。失败任务可由前端调用 `/api/rag/knowledge-bases/documents/upload-tasks/retry` 重新排队，或调用 `/upload-tasks/delete` 删除记录；两者都只允许操作 `failed` 状态的任务。

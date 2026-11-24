@@ -1,5 +1,6 @@
 'use client'
 
+import type { ChatModelOptions, ReasoningChoice, ReasoningEffort } from '../utils/reasoning'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { fetchCurrentActor, getStoredAuthToken } from '../utils/auth'
@@ -55,7 +56,13 @@ export function useChatPageController() {
   const [inputValue, setInputValue] = useState('')
   const [imageDraft, setImageDraft] = useState<{ threadId: string; images: ChatImage[] } | null>(null)
   const [selectedModelId, setSelectedModelId] = useState('')
-  const [chatModels, setChatModels] = useState<{ items: { id: string; name: string }[]; default_id: string | null }>({ items: [], default_id: null })
+  const [chatModels, setChatModels] = useState<ChatModelOptions>({ items: [], default_id: null })
+  const [effortSelection, setEffortSelection] = useState<{ modelId: string | null; effort: ReasoningEffort | '' }>({ modelId: null, effort: '' })
+  const currentModelId = selectedModelId || chatModels.default_id
+  const currentModel = chatModels.items.find(model => model.id === currentModelId)
+  const availableEfforts = currentModel?.reasoning_efforts
+  const reasoningEffort: ReasoningEffort | '' = effortSelection.modelId === currentModelId && effortSelection.effort &&
+    availableEfforts?.includes(effortSelection.effort) ? effortSelection.effort : ''
   const [sessionId, setSessionId] = useState('')
   const draftImages = imageDraft?.threadId === sessionId ? imageDraft.images : []
   const [status, setStatus] = useState<'ready' | 'connecting' | 'error'>('ready')
@@ -65,6 +72,7 @@ export function useChatPageController() {
   const [runningThreadIds, setRunningThreadIds] = useState<string[]>([])
   const [internetSearch, setInternetSearch] = useState(false)
   const [deepThinking, setDeepThinking] = useState(true)
+  const reasoningChoice: ReasoningChoice = reasoningEffort || (deepThinking ? 'on' : 'off')
   const [isKnowledgeMode, setIsKnowledgeMode] = useState(false)
   const [showInterrupt, setShowInterrupt] = useState(false)
   const [interruptData, setInterruptData] = useState<InterruptData | null>(null)
@@ -668,6 +676,7 @@ export function useChatPageController() {
     draftImages,
     clearDraftImages: () => setImageDraft(null),
     selectedModelId,
+    reasoningEffort,
     setInputValue,
     sessionId,
     setSessionId,
@@ -758,7 +767,13 @@ export function useChatPageController() {
     setDraftImages: (images: ChatImage[]) => setImageDraft({ threadId: sessionId, images }),
     chatModels,
     selectedModelId,
+    reasoningChoice,
     setSelectedModelId,
+    setReasoningChoice: (choice: ReasoningChoice) => {
+      setDeepThinking(choice !== 'off')
+      const effort = choice === 'on' || choice === 'off' ? '' : choice
+      setEffortSelection({ modelId: currentModelId, effort })
+    },
     sessionId,
     historySessions,
     historyExpanded,
@@ -771,8 +786,6 @@ export function useChatPageController() {
     runningThreadIds,
     internetSearch,
     setInternetSearch,
-    deepThinking,
-    setDeepThinking,
     isKnowledgeMode,
     selectedKnowledgeBaseIds,
     knowledgeBaseOptions,

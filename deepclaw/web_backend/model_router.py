@@ -9,13 +9,12 @@ from deepclaw.model_config import (
     DEFAULT_CHAT_UPSTREAM_FORMAT,
     KEYLESS_API_KEY,
     _new_model,
-    load_model_state,
-    persist_model_state,
     public_model,
 )
 from deepclaw.web_backend.auth.dependencies import CurrentActor
 from deepclaw.web_backend.auth.rbac import require_permission
 from deepclaw.utils.model_factory import chat_gateway_options
+from deepclaw.web_backend.model_store import ModelCatalogChangedError, get_model_catalog_store
 from deepclaw.web_backend.model_schemas import (
     ModelActivateRequest,
     ModelCatalogResponse,
@@ -28,6 +27,18 @@ from deepclaw.web_backend.model_schemas import (
     ModelTestResponse,
     ModelUpdateRequest,
 )
+
+async def _save_model_catalog(state: dict) -> None:
+    """将目录修改提交到数据库。
+
+    Args:
+        state: 携带读取版本的模型目录。
+    """
+    try:
+        await get_model_catalog_store().save(state)
+    except ModelCatalogChangedError as exc:
+        raise HTTPException(status_code=409, detail="模型目录已更新，请刷新后重试。") from exc
+
 
 router = APIRouter(prefix="/api/models", tags=["models"])
 HEADER_NAME = re.compile(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+")
@@ -163,7 +174,7 @@ async def get_model_catalog(
     actor: CurrentActor = Depends(require_permission("/api/models/catalog", "read")),
 ) -> ModelCatalogResponse:
     """返回大模型与语义模型目录。"""
-    return _catalog_response(load_model_state())
+    return _catalog_response((await get_model_catalog_store().load()))
 
 
 @router.post("", response_model=ModelCatalogResponse, summary="新建模型")
@@ -174,7 +185,7 @@ async def create_model(
 ) -> ModelCatalogResponse:
     """新建模型并在该类型尚无活动模型时自动启用。"""
     api_base = _validate_api_base(request.api_base)
-    state = load_model_state()
+    state = await get_model_catalog_store().load()
     model = _new_model(
         request.type,
         request.name,
@@ -186,11 +197,12 @@ async def create_model(
     model["request_headers"] = _resolve_headers(request.request_headers, {})
     if request.type == "chat":
         model["upstream_format"] = request.upstream_format or DEFAULT_CHAT_UPSTREAM_FORMAT
+        model["reasoning_efforts"] = list(dict.fromkeys(request.reasoning_efforts or []))
     state.setdefault("models", []).append(model)
     active_key = "active_chat_model_id" if request.type == "chat" else "active_embedding_model_id"
     if not state.get(active_key):
         state[active_key] = model["id"]
-    persist_model_state(state)
+    await _save_model_catalog(state)
     await _reset_runtime(http_request)
     return _catalog_response(state)
 
@@ -209,7 +221,7 @@ async def test_model(
     Returns:
         ModelTestResponse: 连通性、耗时和语义向量维度结果。
     """
-    return await _probe_model(_find_model(load_model_state(), model_id))
+    return await _probe_model(_find_model((await get_model_catalog_store().load()), model_id))
 
 
 @router.post("/test-draft", response_model=ModelTestResponse, summary="测试当前表单配置")
@@ -223,7 +235,7 @@ async def test_model_draft(
         request: 当前表单及可选的原模型标识。
         actor: 具备模型写权限的用户。
     """
-    saved = _find_model(load_model_state(), request.model_id) if request.model_id else {}
+    saved = _find_model((await get_model_catalog_store().load()), request.model_id) if request.model_id else {}
     if saved and saved["type"] != request.type:
         raise HTTPException(status_code=422, detail="模型类型与原配置不符。")
     return await _probe_model({
@@ -250,7 +262,7 @@ async def reveal_model_key(
         actor: 具备模型写权限的用户。
     """
     response.headers["Cache-Control"] = "no-store"
-    model = _find_model(load_model_state(), model_id)
+    model = _find_model((await get_model_catalog_store().load()), model_id)
     return ModelSecretResponse(api_key=model.get("api_key", ""))
 
 
@@ -268,7 +280,7 @@ async def get_model_headers(
         actor: 具备模型写权限的用户。
     """
     response.headers["Cache-Control"] = "no-store"
-    model = _find_model(load_model_state(), model_id)
+    model = _find_model((await get_model_catalog_store().load()), model_id)
     return ModelHeadersResponse(request_headers=model.get("request_headers", {}))
 
 
@@ -331,7 +343,7 @@ async def update_model(
     actor: CurrentActor = Depends(require_permission("/api/models", "write")),
 ) -> ModelCatalogResponse:
     """编辑模型目录中的一条记录。"""
-    state = load_model_state()
+    state = await get_model_catalog_store().load()
     model = next((item for item in state.get("models", []) if item.get("id") == model_id), None)
     if model is None:
         raise HTTPException(status_code=404, detail="模型不存在。")
@@ -345,7 +357,9 @@ async def update_model(
         model["context_window"] = request.context_window or 128_000
         if request.upstream_format is not None:
             model["upstream_format"] = request.upstream_format
-    persist_model_state(state)
+        if request.reasoning_efforts is not None:
+            model["reasoning_efforts"] = list(dict.fromkeys(request.reasoning_efforts))
+    await _save_model_catalog(state)
     await _reset_runtime(http_request)
     return _catalog_response(state)
 
@@ -357,7 +371,7 @@ async def delete_model(
     actor: CurrentActor = Depends(require_permission("/api/models", "write")),
 ) -> ModelCatalogResponse:
     """删除模型；当前活动模型不可直接删除。"""
-    state = load_model_state()
+    state = await get_model_catalog_store().load()
     model = next((item for item in state.get("models", []) if item.get("id") == model_id), None)
     if model is None:
         raise HTTPException(status_code=404, detail="模型不存在。")
@@ -365,7 +379,7 @@ async def delete_model(
     if state.get(active_key) == model_id:
         raise HTTPException(status_code=409, detail="请先切换其他模型，再删除当前活动模型。")
     state["models"] = [item for item in state.get("models", []) if item.get("id") != model_id]
-    persist_model_state(state)
+    await _save_model_catalog(state)
     await _reset_runtime(http_request)
     return _catalog_response(state)
 
@@ -378,11 +392,11 @@ async def activate_model(
     actor: CurrentActor = Depends(require_permission("/api/models", "write")),
 ) -> ModelCatalogResponse:
     """切换指定类型的活动模型。"""
-    state = load_model_state()
+    state = await get_model_catalog_store().load()
     model = next((item for item in state.get("models", []) if item.get("id") == model_id), None)
     if model is None or model.get("type") != request.type:
         raise HTTPException(status_code=404, detail="指定类型的模型不存在。")
     state["active_chat_model_id" if request.type == "chat" else "active_embedding_model_id"] = model_id
-    persist_model_state(state)
+    await _save_model_catalog(state)
     await _reset_runtime(http_request)
     return _catalog_response(state)

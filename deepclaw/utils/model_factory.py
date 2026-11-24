@@ -116,12 +116,18 @@ def chat_gateway_options(headers: dict[str, str]) -> dict[str, Any]:
     return {}
 
 
-def get_chat_model(tags: list[str] | None = None, *, catalog_model: dict[str, Any] | None = None) -> ChatOpenAI:
+def get_chat_model(
+    tags: list[str] | None = None,
+    *,
+    catalog_model: dict[str, Any] | None = None,
+    reasoning_effort: str | None = None,
+) -> ChatOpenAI:
     """创建聊天模型实例。
 
     Args:
         tags: 模型调用标签，未传时默认为 agent。
         catalog_model: 本轮选择的模型记录，未传时使用系统默认模型。
+        reasoning_effort: 本轮推理等级，仅目录为该模型启用的值会被传给上游。
 
     Returns:
         配置当前 OpenAI 兼容接口的聊天模型。
@@ -140,6 +146,7 @@ def get_chat_model(tags: list[str] | None = None, *, catalog_model: dict[str, An
         default_headers=headers,
         **chat_gateway_options(headers),
         use_responses_api=upstream_format == "responses",
+        reasoning_effort=reasoning_effort if reasoning_effort in selected.get("reasoning_efforts", []) else None,
         streaming=True,
         stream_usage=True,
         tags=tags or ["agent"],

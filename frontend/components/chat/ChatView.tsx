@@ -7,6 +7,8 @@ import { InterruptPanel } from './interrupt/InterruptPanel'
 import type { InterruptEditedAction } from './interrupt/utils'
 import { AssistantMessageBody, MarkdownMessage } from './cards/AssistantMessageBody'
 import { AgentModeSwitcher } from './shared/AgentModeSwitcher'
+import { ChatModelPicker } from './shared/ChatModelPicker'
+import type { ChatModelOptions, ReasoningChoice } from './utils/reasoning'
 import { DevicePicker } from './shared/DevicePicker'
 import { CHAT_IMAGE_TYPES, readChatImage, type ChatImage } from './utils/chatImages'
 import type { ClientDevice } from './hooks/useDevices'
@@ -29,50 +31,8 @@ function formatMessageTime(msg: Message): string {
   })
 }
 
-type ComposerToggleIconName = 'internet' | 'thinking'
-
-/**
- * 渲染输入框能力开关的图标。
- *
- * Args:
- *   name: 图标名称。
- */
-function ComposerToggleIcon({ name }: { name: ComposerToggleIconName }) {
-  const paths: Record<ComposerToggleIconName, ReactNode> = {
-    internet: (
-      <>
-        <circle cx="12" cy="12" r="8" />
-        <path d="M4.3 12h15.4" />
-        <path d="M12 4c2.3 2.6 2.3 13.4 0 16-2.3-2.6-2.3-13.4 0-16z" />
-      </>
-    ),
-    thinking: (
-      <>
-        <path d="m12 4.4 1.8 4.2 4.2 1.8-4.2 1.8-1.8 4.2-1.8-4.2L6 10.4l4.2-1.8z" />
-        <path d="m18.4 15.6.7 1.7 1.7.7-1.7.7-.7 1.7-.7-1.7-1.7-.7 1.7-.7z" />
-      </>
-    ),
-  }
-
-  return (
-    <svg
-      aria-hidden="true"
-      className={styles.toggleIcon}
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="1.7"
-    >
-      {paths[name]}
-    </svg>
-  )
-}
-
 interface ComposerToggleProps {
   label: string
-  iconName: ComposerToggleIconName
   checked: boolean
   onChange: (checked: boolean) => void
 }
@@ -82,11 +42,10 @@ interface ComposerToggleProps {
  *
  * Args:
  *   label: 开关文案。
- *   iconName: 开关图标名称。
  *   checked: 开关是否开启。
  *   onChange: 开关状态变更回调。
  */
-function ComposerToggle({ label, iconName, checked, onChange }: ComposerToggleProps) {
+function ComposerToggle({ label, checked, onChange }: ComposerToggleProps) {
   return (
     <label className={styles.toggle}>
       <input
@@ -94,7 +53,12 @@ function ComposerToggle({ label, iconName, checked, onChange }: ComposerTogglePr
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
       />
-      <ComposerToggleIcon name={iconName} />
+      <svg aria-hidden="true" className={styles.toggleIcon} fill="none" viewBox="0 0 24 24"
+        stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7">
+        <circle cx="12" cy="12" r="8" />
+        <path d="M4.3 12h15.4" />
+        <path d="M12 4c2.3 2.6 2.3 13.4 0 16-2.3-2.6-2.3-13.4 0-16z" />
+      </svg>
       <span className={styles.toggleLabel}>{label}</span>
     </label>
   )
@@ -122,13 +86,14 @@ interface ChatViewProps {
   inputValue: string
   draftImages: ChatImage[]
   onDraftImagesChange: (images: ChatImage[]) => void
-  chatModels: { items: { id: string; name: string }[]; default_id: string | null }
+  chatModels: ChatModelOptions
+  reasoningChoice: ReasoningChoice
+  onReasoningChoiceChange: (choice: ReasoningChoice) => void
   selectedModelId: string
   onModelChange: (id: string) => void
   chatDisabled: boolean
   canUseChat: boolean
   internetSearch: boolean
-  deepThinking: boolean
   currentAssistantMessageId: string | null
   chatContainerRef: Ref<HTMLDivElement>
   onChatScroll: () => void
@@ -146,7 +111,6 @@ interface ChatViewProps {
   onKnowledgeSelectionChange: (ids: string[]) => void
   onChatModeChange: (optionId: string) => void
   onInternetSearchChange: (checked: boolean) => void
-  onDeepThinkingChange: (checked: boolean) => void
   onNavigateToKnowledge: () => void
   onAbortRequest: () => void
   onSendMessage: () => void | Promise<void>
@@ -177,12 +141,13 @@ export function ChatView({
   draftImages,
   onDraftImagesChange,
   chatModels,
+  reasoningChoice,
+  onReasoningChoiceChange,
   selectedModelId,
   onModelChange,
   chatDisabled,
   canUseChat,
   internetSearch,
-  deepThinking,
   currentAssistantMessageId,
   chatContainerRef,
   onChatScroll,
@@ -197,7 +162,6 @@ export function ChatView({
   onKnowledgeSelectionChange,
   onChatModeChange,
   onInternetSearchChange,
-  onDeepThinkingChange,
   onNavigateToKnowledge,
   onAbortRequest,
   onSendMessage,
@@ -207,7 +171,6 @@ export function ChatView({
   const imageInput = useRef<HTMLInputElement>(null)
   const [readingImages, setReadingImages] = useState(false)
   const [imageError, setImageError] = useState('')
-  const defaultModel = chatModels.items.find((model) => model.id === chatModels.default_id)
 
   /** 读取并预览本次选择的图片。Args: files 为本地文件选项。 */
   const addImages = async (files: File[]) => {
@@ -396,26 +359,13 @@ export function ChatView({
               />
               <ComposerToggle
                 label="联网"
-                iconName="internet"
                 checked={internetSearch}
                 onChange={onInternetSearchChange}
               />
-              <ComposerToggle
-                label="思考"
-                iconName="thinking"
-                checked={deepThinking}
-                onChange={onDeepThinkingChange}
-              />
             </div>
             <div className={styles.composerActions}>
-              <label className={styles.composerModel}>
-                <select aria-label="选择聊天模型" value={selectedModelId} onChange={(event) => onModelChange(event.target.value)}>
-                  <option value="">{defaultModel ? defaultModel.name + '（默认）' : '默认模型'}</option>
-                  {chatModels.items.filter((model) => model.id !== chatModels.default_id || model.id === selectedModelId).map((model) =>
-                    <option key={model.id} value={model.id}>{model.name}</option>
-                  )}
-                </select>
-              </label>
+              <ChatModelPicker models={chatModels} modelId={selectedModelId} choice={reasoningChoice}
+                onModelChange={onModelChange} onChoiceChange={onReasoningChoiceChange} />
             {isProcessing ? (
               <button
                 className={styles.abortBtn}

@@ -63,3 +63,20 @@ def test_chat_model_uses_configured_upstream_format():
     assert "input" in responses_payload
     assert "messages" not in responses_payload
     assert "extra_body" not in responses_payload
+
+
+def test_reasoning_effort_is_forwarded_only_when_configured() -> None:
+    """验证未启用的等级会被忽略，两种协议按各自格式发送已启用的等级。"""
+    model = {"name": "test-model", "api_base": "http://localhost:7869/v1", "api_key": "test"}
+    default = get_chat_model(catalog_model=model, reasoning_effort="high")
+    assert "reasoning_effort" not in default._get_request_payload("hello")
+
+    model["reasoning_efforts"] = ["high"]
+    legacy = get_chat_model(catalog_model=model, reasoning_effort="high")
+    assert legacy._get_request_payload("hello")["reasoning_effort"] == "high"
+
+    model["upstream_format"] = "responses"
+    responses = get_chat_model(catalog_model=model, reasoning_effort="high")
+    payload = responses._get_request_payload("hello")
+    assert payload["reasoning"] == {"effort": "high"}
+    assert "reasoning_effort" not in payload

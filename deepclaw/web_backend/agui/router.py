@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from loguru import logger
 
 from deepclaw.agent_registry import AgentRegistry
-from deepclaw.model_config import find_chat_model, load_model_state
+from deepclaw.web_backend.model_store import find_chat_model, get_model_catalog_store
 from deepclaw.web_backend.agent.run_store import (
     RunStore,
     get_or_backfill_thread,
@@ -208,11 +208,14 @@ async def list_chat_models() -> ChatModelOptionsResponse:
     Args:
         无。
     """
-    catalog = load_model_state()
+    catalog = await get_model_catalog_store().load()
     return ChatModelOptionsResponse(
         default_id=catalog.get("active_chat_model_id"),
         items=[
-            ChatModelOptionResponse(id=item["id"], name=item["name"], provider=item["provider"])
+            ChatModelOptionResponse(
+                id=item["id"], name=item["name"], provider=item["provider"],
+                reasoning_efforts=item.get("reasoning_efforts", []),
+            )
             for item in catalog["models"] if item.get("type") == "chat"
         ],
     )
@@ -262,7 +265,7 @@ async def create_run(
 ):
     """创建统一 AG-UI Run。"""
     _validate_chat_images(payload)
-    if payload.model_id and find_chat_model(payload.model_id) is None:
+    if payload.model_id and await find_chat_model(payload.model_id) is None:
         raise HTTPException(422, "所选模型已不可用，请重新选择。")
     logger.info("AG-UI 创建 Run 入参：\n{}", format_run_payload(payload))
     registry = request.app.state.agent_registry

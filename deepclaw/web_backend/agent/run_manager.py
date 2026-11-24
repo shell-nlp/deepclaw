@@ -12,7 +12,7 @@ from langgraph.graph.state import CompiledStateGraph
 from loguru import logger
 
 from deepclaw.patch.ag_ui_langgraph import install_reasoning_text_split
-from deepclaw.model_config import find_chat_model
+from deepclaw.web_backend.model_store import find_chat_model
 from deepclaw.settings import settings
 from deepclaw.utils.model_factory import RUN_CHAT_MODEL, get_chat_model
 from deepclaw.web_backend.agent.run_store import (
@@ -378,10 +378,10 @@ class AgentRunManager:
         if payload.run_id != run_id or payload.thread_id != state.thread_id:
             raise ValueError("run_id 或 thread_id 与当前 Run 不一致")
         restored_state = dict(payload.state or {})
-        restored_state.pop("chat_model_id", None)
-        model_id = (state.input.state or {}).get("chat_model_id")
-        if model_id:
-            restored_state["chat_model_id"] = model_id
+        for key in ("chat_model_id", "chat_reasoning_effort"):
+            restored_state.pop(key, None)
+            if (saved_value := (state.input.state or {}).get(key)) is not None:
+                restored_state[key] = saved_value
         payload = payload.model_copy(update={"state": restored_state})
         state.input = payload
         state.status = "queued"
@@ -570,11 +570,13 @@ class AgentRunManager:
         try:
             state_input = dict(payload.state or {})
             model_id = state_input.pop("chat_model_id", None)
-            if model_id:
-                selected = find_chat_model(model_id)
-                if selected is None:
+            effort = state_input.pop("chat_reasoning_effort", None)
+            if model_id or effort:
+                selected = await find_chat_model(model_id)
+                if model_id and selected is None:
                     raise ValueError("所选模型已从目录移除，请重新选择模型。")
-                model_token = RUN_CHAT_MODEL.set(get_chat_model(catalog_model=selected))
+                if selected is not None:
+                    model_token = RUN_CHAT_MODEL.set(get_chat_model(catalog_model=selected, reasoning_effort=effort))
                 payload = payload.model_copy(update={"state": state_input})
             async for event in agent.run(payload):
                 state = await self.store.get_run(run_id)

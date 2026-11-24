@@ -59,7 +59,7 @@ class BusinessMiddleware(AgentMiddleware):
             request = request.override(model=selected_model)
         state = request.state or {}
         internet_search = bool(state.get("internet_search", False))
-        deep_thinking = bool(state.get("deep_thinking", False))
+        deep_thinking = bool(state.get("deep_thinking", False) or getattr(selected_model, "reasoning_effort", None))
         if not internet_search:
             # 禁用互联网搜索相关的工具调用
             filtered_tools = [tool for tool in request.tools if tool.name != "tavily_search"]

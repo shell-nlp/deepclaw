@@ -2268,16 +2268,11 @@ textarea.interruptInput {
   border-radius: 10px; background: #f5f7fc; color: #415679;
   font-size: 22px; line-height: 1; cursor: pointer;
 }
-.composerAddImage:hover:not(:disabled), .composerModel:hover { background: #edf2ff; }
+.composerAddImage:hover:not(:disabled) { background: #edf2ff; }
 .composerAddImage:disabled { opacity: .55; cursor: default; }
-.composerModel { border: 1px solid #e0e5f1; border-radius: 10px; background: #f8faff; }
-.composerModel select {
-  width: 100%; max-width: min(180px, 36vw); height: 30px; padding: 0 7px;
-  background: transparent; border: 0; border-radius: inherit;
-  color: #33476b; font: inherit; font-size: 12px; cursor: pointer; text-overflow: ellipsis;
-}
-.composerModel select:focus-visible, .composerAddImage:focus-visible {
-  outline: 2px solid #4d6bfe; outline-offset: 2px;
+.composerAddImage:focus-visible {
+  outline: 2px solid #5679c2;
+  outline-offset: 2px;
 }
 .composerImages, .chatMessageImages { display: flex; flex-wrap: wrap; gap: 8px; }
 .composerImages { padding: 3px 4px 8px; }

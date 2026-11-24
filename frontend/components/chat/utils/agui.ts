@@ -43,6 +43,7 @@ export type AgUiRunInput = {
   runId: string
   state: Record<string, unknown>
   model_id?: string
+  reasoning_effort?: string
   messages: Array<{ id: string; role: 'user'; content: ChatContent }>
   tools: unknown[]
   context: unknown[]
@@ -62,6 +63,7 @@ export function createAgUiRunInput(input: {
   messageId: string
   query: string
   modelId?: string
+  reasoningEffort?: string
   images?: ReadonlyArray<{ url: string }>
   state: Record<string, unknown>
   forwardedProps?: Record<string, unknown>
@@ -79,6 +81,7 @@ export function createAgUiRunInput(input: {
     runId: input.runId,
     state: input.state,
     ...(input.modelId ? { model_id: input.modelId } : {}),
+    ...(input.reasoningEffort ? { reasoning_effort: input.reasoningEffort } : {}),
     messages: [{ id: input.messageId, role: 'user', content }],
     tools: [],
     context: [],

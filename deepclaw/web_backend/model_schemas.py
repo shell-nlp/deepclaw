@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from deepclaw.model_config import ChatUpstreamFormat
+from deepclaw.model_config import ChatUpstreamFormat, ReasoningEffort
 
 
 class ModelItemResponse(BaseModel):
@@ -18,6 +18,7 @@ class ModelItemResponse(BaseModel):
     api_key_masked: str
     has_api_key: bool
     request_headers: list[str] = Field(default_factory=list)
+    reasoning_efforts: list[ReasoningEffort] = Field(default_factory=list)
     context_window: int | None
     created_at: str
     updated_at: str
@@ -50,6 +51,7 @@ class ModelUpdateRequest(BaseModel):
     api_key: str | None = Field(default=None, max_length=2_000)
     context_window: int | None = Field(default=128_000, ge=1, le=10_000_000)
     request_headers: list[ModelHeaderRequest] | None = None
+    reasoning_efforts: list[ReasoningEffort] | None = Field(default=None, max_length=6)
 
 
 class ModelCreateRequest(ModelUpdateRequest):

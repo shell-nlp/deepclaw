@@ -15,6 +15,7 @@ from deepclaw.constant import HOME_PATH, resolve_frontend_path
 from deepclaw.middleware.cron.executor import schedule_worker
 from deepclaw.middleware.cron.schedule_store import get_schedule_store
 from deepclaw.settings import settings
+from deepclaw.web_backend.model_store import get_model_catalog_store
 from deepclaw.web_backend.agui.runtime import AgentRuntimeCache
 from deepclaw.web_backend.agent.run_store import (
     get_run_store,
@@ -204,6 +205,21 @@ def _register_exported_html_routes(app: FastAPI, frontend_dir: Path) -> None:
         app.get(route_path, include_in_schema=False)(serve_exported_page)
 
 
+async def watch_model_catalog(runtime_cache: AgentRuntimeCache) -> None:
+    """同步其他进程修改的模型目录并刷新智能体缓存。
+
+    Args:
+        runtime_cache: 当前进程的智能体运行时缓存。
+    """
+    while True:
+        await asyncio.sleep(REVISION_POLL_SECONDS)
+        try:
+            if await get_model_catalog_store().refresh():
+                await runtime_cache.close()
+        except Exception as exc:
+            logger.warning("模型目录同步失败: {}", type(exc).__name__)
+
+
 async def watch_rbac_revision() -> None:
     """周期比对策略版本号，让其他进程及时跟进策略变更。
 
@@ -226,6 +242,8 @@ async def app_lifespan(app: FastAPI):
         app: 当前 FastAPI 应用。
     """
     await asyncio.to_thread(migrate_sqlite_metadata, Path(HOME_PATH))
+    model_store = get_model_catalog_store()
+    await model_store.initialize()
     validate_runtime_settings()
     setup_observability()
     await init_agent_env(app)
@@ -264,10 +282,16 @@ async def app_lifespan(app: FastAPI):
     rbac_watch = asyncio.create_task(watch_rbac_revision()) if settings.RBAC_STORE_ENABLED else None
     schedule_store = get_schedule_store()
     schedule_task = asyncio.create_task(schedule_worker(schedule_store))
+    model_watch = asyncio.create_task(watch_model_catalog(runtime_cache))
     try:
         async with channel_lifespan():
             yield
     finally:
+        model_watch.cancel()
+        with suppress(asyncio.CancelledError):
+            await model_watch
+        await model_store.engine.dispose()
+        get_model_catalog_store.cache_clear()
         schedule_task.cancel()
         with suppress(asyncio.CancelledError):
             await schedule_task

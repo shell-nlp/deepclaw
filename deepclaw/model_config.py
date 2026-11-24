@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
-import os
 import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -16,6 +16,7 @@ MODEL_CONFIG_PATH = HOME_PATH / MODEL_CONFIG_FILENAME
 KEYLESS_API_KEY = "deepclaw-no-key"
 ModelType = Literal["chat", "embedding"]
 ChatUpstreamFormat = Literal["chat_completions", "responses"]
+ReasoningEffort = Literal["minimal", "low", "medium", "high", "xhigh", "max"]
 DEFAULT_CHAT_UPSTREAM_FORMAT: ChatUpstreamFormat = "chat_completions"
 active_chat_headers: dict[str, str] = {}
 active_chat_upstream_format: ChatUpstreamFormat = DEFAULT_CHAT_UPSTREAM_FORMAT
@@ -65,7 +66,6 @@ def _new_model(
         "updated_at": timestamp,
     }
 
-
 def _legacy_state(payload: dict[str, Any]) -> dict[str, Any] | None:
     """把旧版单模型配置迁移为模型目录。
 
@@ -100,79 +100,43 @@ def _default_state() -> dict[str, Any]:
     return _legacy_state({}) or {"models": [], "active_chat_model_id": None, "active_embedding_model_id": None}
 
 
-def _write_state(state: dict[str, Any]) -> None:
-    """把模型目录原子写入磁盘，不应用运行期配置。
+def load_initial_model_state() -> dict[str, Any]:
+    """读取待导入的旧目录，缺少文件时从环境变量初始化。
 
     Args:
-        state: 标准化后的模型目录状态。
-    """
-    HOME_PATH.mkdir(parents=True, exist_ok=True)
-    temporary_path = MODEL_CONFIG_PATH.with_suffix(".tmp")
-    temporary_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    os.replace(temporary_path, MODEL_CONFIG_PATH)
-
-
-def load_model_state() -> dict[str, Any]:
-    """读取模型目录并兼容旧版单模型文件。
-
-    迁移或补全后的目录会立即落盘，保证同一份模型记录在所有请求里保持相同 ID；
-    否则每次读取都会重新生成随机 ID，导致测试、切换等按 ID 寻址的接口拿不到模型。
-
-    Returns:
-        标准化后的模型目录状态。
+        无。
     """
     try:
-        payload = json.loads(MODEL_CONFIG_PATH.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        payload = {}
-    if not isinstance(payload, dict):
-        payload = {}
-    migrated = _legacy_state(payload)
-    needs_persist = False
-    if migrated is not None:
-        state = migrated
-        needs_persist = True
-    elif "models" in payload:
-        state = payload
-    else:
-        state = _default_state()
-        needs_persist = True
-    models = state.get("models", [])
-    if not isinstance(models, list):
-        state = _default_state()
-        models = state["models"]
-        needs_persist = True
-    normalized_models = [item for item in models if isinstance(item, dict) and item.get("id")]
-    if len(normalized_models) != len(models):
-        needs_persist = True
-    state["models"] = normalized_models
-    for active_key, model_type in (
-        ("active_chat_model_id", "chat"),
-        ("active_embedding_model_id", "embedding"),
-    ):
-        if active_key not in state:
-            state[active_key] = next((m["id"] for m in state["models"] if m.get("type") == model_type), None)
-            needs_persist = True
-    if needs_persist:
-        try:
-            _write_state(state)
-        except OSError:
-            pass
-    return state
+        legacy_bytes = MODEL_CONFIG_PATH.read_bytes()
+        payload = json.loads(legacy_bytes)
+    except FileNotFoundError:
+        return _default_state()
+    if isinstance(payload, dict) and "models" not in payload:
+        payload = _legacy_state(payload) or _default_state()
+    if not isinstance(payload, dict) or not isinstance(payload.get("models"), list):
+        raise ValueError("旧模型目录格式无效，无法导入。")
+    payload["models"] = [item for item in payload["models"] if isinstance(item, dict) and item.get("id")]
+    for model_type in ("chat", "embedding"):
+        payload.setdefault(
+            f"active_{model_type}_model_id",
+            next((model["id"] for model in payload["models"] if model.get("type") == model_type), None),
+        )
+    payload["legacy_import_sha256"] = hashlib.sha256(legacy_bytes).hexdigest()
+    return payload
 
 
-def persist_model_state(state: dict[str, Any]) -> dict[str, Any]:
-    """原子写入模型目录并应用当前模型。
+def remove_imported_model_file(digest: str | None) -> None:
+    """仅清理已成功入库且内容未变的旧配置文件。
 
     Args:
-        state: 标准化后的模型目录状态。
-
-    Returns:
-        写入后的模型目录状态。
+        digest: 数据库中记录的导入文件摘要。
     """
-    _write_state(state)
-    apply_active_model_config(state)
-    return state
+    if digest:
+        try:
+            if hashlib.sha256(MODEL_CONFIG_PATH.read_bytes()).hexdigest() == digest:
+                MODEL_CONFIG_PATH.unlink(missing_ok=True)
+        except FileNotFoundError:
+            pass
 
 
 def apply_active_model_config(state: dict[str, Any]) -> None:
@@ -239,24 +203,10 @@ def public_model(model: dict[str, Any], active_id: str | None) -> dict[str, Any]
         "api_key_masked": mask_api_key(model.get("api_key")),
         "has_api_key": bool(model.get("api_key")),
         "request_headers": list(model.get("request_headers", {})),
+        "reasoning_efforts": model.get("reasoning_efforts", []) if model["type"] == "chat" else [],
         "upstream_format": (
             model.get("upstream_format") or DEFAULT_CHAT_UPSTREAM_FORMAT
             if model["type"] == "chat" else None
         ),
         "active": model.get("id") == active_id,
     }
-
-
-def find_chat_model(model_id: str) -> dict[str, Any] | None:
-    """按 ID 查询聊天模型。
-
-    Args:
-        model_id: 模型目录中的标识。
-    """
-    return next(
-        (model for model in load_model_state()["models"] if model["id"] == model_id and model.get("type") == "chat"),
-        None,
-    )
-
-
-apply_active_model_config(load_model_state())

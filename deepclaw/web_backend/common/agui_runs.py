@@ -182,6 +182,9 @@ def _with_trusted_state(
     model_id = getattr(payload, "model_id", None)
     if model_id:
         state["chat_model_id"] = model_id
+    effort = getattr(payload, "reasoning_effort", None)
+    if effort:
+        state["chat_reasoning_effort"] = effort
     return payload.model_copy(update={"state": state})
 
 

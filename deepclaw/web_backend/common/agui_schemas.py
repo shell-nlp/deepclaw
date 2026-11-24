@@ -2,6 +2,9 @@ from ag_ui.core import RunAgentInput
 from pydantic import BaseModel, ConfigDict, Field
 
 
+from deepclaw.model_config import ReasoningEffort
+
+
 class AgUiRunRequest(RunAgentInput):
     """DeepClaw 扩展的 AG-UI Run 输入。
 
@@ -12,6 +15,7 @@ class AgUiRunRequest(RunAgentInput):
 
     agent_id: str | None = Field(default=None, description="智能体 ID")
     model_id: str | None = Field(default=None, max_length=64, description="本轮聊天模型 ID")
+    reasoning_effort: str | None = Field(default=None, max_length=32)
 
 
 class ChatModelOptionResponse(BaseModel):
@@ -20,6 +24,7 @@ class ChatModelOptionResponse(BaseModel):
     id: str
     name: str
     provider: str
+    reasoning_efforts: list[ReasoningEffort] = Field(default_factory=list)
 
 
 class ChatModelOptionsResponse(BaseModel):

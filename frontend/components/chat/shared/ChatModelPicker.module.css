@@ -1,0 +1,89 @@
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  max-width: min(220px, 56vw);
+  min-height: 32px;
+  padding: 0 11px;
+  border: 1px solid #dce4f3;
+  border-radius: 10px;
+  color: #33476b;
+  background: #f5f8ff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.trigger:hover, .trigger[aria-expanded='true'] {
+  color: #263f77;
+  border-color: #bdcbeb;
+  background: #ebf1ff;
+}
+
+.triggerEffort {
+  flex: none;
+  padding-left: 8px;
+  border-left: 1px solid #cfdaf0;
+  color: #3c598e;
+}
+
+.chevron {
+  width: 6px;
+  height: 6px;
+  margin: 3px 2px 0;
+  border: solid currentColor;
+  border-width: 1.5px 0 0 1.5px;
+  transform: rotate(45deg);
+  flex: none;
+}
+
+.panel {
+  position: fixed;
+  z-index: 1200;
+  width: min(308px, calc(100vw - 16px));
+  box-sizing: border-box;
+  transform: translateY(-100%);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid #dce5f4;
+  border-radius: 15px;
+  background: #fff;
+  color: #1b2c4d;
+  box-shadow: 0 16px 44px #1c37612e, 0 2px 6px #223c6010;
+}
+
+.section { padding: 11px 12px; }
+.section + .section { border-top: 1px solid #edf1f8; }
+.section h3 { margin: 0 5px 7px; color: #526383; font-size: 11px; font-weight: 650; }
+.models { display: grid; gap: 2px; }
+.modelName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.empty { padding: 8px; color: #526383; font-size: 13px; }
+
+.model, .level {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.model {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 34px;
+  padding: 4px 8px;
+  text-align: left;
+  font-size: 13px;
+}
+
+.model small { margin-left: auto; color: #526383; flex: none; }
+.mark { width: 14px; flex: none; color: #375fb2; font-weight: 700; }
+.levels { display: flex; flex-wrap: wrap; gap: 5px; }
+.level { padding: 5px 8px; font-size: 12px; border-color: #e4eaf5; }
+.model:hover, .level:hover { background: #f3f6fc; }
+.model[aria-checked='true'], .level[aria-pressed='true'] { background: #edf3ff; color: #254884; }
+.trigger:focus-visible, .model:focus-visible, .level:focus-visible { outline: 2px solid #5679c2; outline-offset: 1px; }

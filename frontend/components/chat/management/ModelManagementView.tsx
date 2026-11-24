@@ -6,11 +6,13 @@ import { MODEL_API_PATH, MODEL_CATALOG_API_PATH } from '../utils/constants'
 import type { ActorState } from '../utils/auth'
 import { CHAT_UPSTREAM_FORMAT_LABELS, ModelEditor, modelPayload, type ChatUpstreamFormat, type ModelDraft, type ModelTestResult } from './ModelEditor'
 
+import type { ReasoningEffort } from '../utils/reasoning'
+
 type ModelType = 'chat' | 'embedding'
-interface ModelItem { id: string; type: ModelType; name: string; provider: string; upstream_format?: ChatUpstreamFormat | null; api_base: string; api_key_masked: string; has_api_key: boolean; request_headers: string[]; context_window: number | null; created_at: string; updated_at: string; active: boolean }
+interface ModelItem { id: string; type: ModelType; name: string; provider: string; upstream_format?: ChatUpstreamFormat | null; api_base: string; api_key_masked: string; has_api_key: boolean; request_headers: string[]; reasoning_efforts?: ReasoningEffort[]; context_window: number | null; created_at: string; updated_at: string; active: boolean }
 interface Catalog { chat_models: ModelItem[]; embedding_models: ModelItem[]; active_chat_model_id: string | null; active_embedding_model_id: string | null }
 interface Props { actor: ActorState; requestJson: <T>(path: string, init?: RequestInit) => Promise<T>; canManage?: boolean }
-const emptyDraft = (type: ModelType): ModelDraft => ({ type, name: '', provider: 'OpenAI Compatible', upstream_format: 'chat_completions', api_base: '', api_key: '', context_window: '128000', request_headers: [] })
+const emptyDraft = (type: ModelType): ModelDraft => ({ type, name: '', provider: 'OpenAI Compatible', upstream_format: 'chat_completions', api_base: '', api_key: '', context_window: '128000', reasoning_efforts: [], request_headers: [] })
 
 /**
  * 以模型目录形式管理大模型与语义模型。
@@ -47,6 +49,7 @@ export function ModelManagementView({ actor, requestJson, canManage = actor.role
         upstream_format: model.upstream_format ?? 'chat_completions',
         api_base: model.api_base,
         context_window: String(model.context_window || 128000),
+        reasoning_efforts: model.reasoning_efforts ?? [],
         request_headers: Object.entries(request_headers).map(([name, value], id) => ({ id, name, value })),
       })
     } catch (cause) {

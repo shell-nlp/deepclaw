@@ -34,6 +34,8 @@ export default function ChatInterface() {
     chatModels,
     selectedModelId,
     setSelectedModelId,
+    reasoningChoice,
+    setReasoningChoice,
     sessionId,
     historySessions,
     historyExpanded,
@@ -46,8 +48,6 @@ export default function ChatInterface() {
     runningThreadIds,
     internetSearch,
     setInternetSearch,
-    deepThinking,
-    setDeepThinking,
     isKnowledgeMode,
     selectedKnowledgeBaseIds,
     knowledgeBaseOptions,
@@ -257,10 +257,11 @@ export default function ChatInterface() {
               chatModels={chatModels}
               selectedModelId={selectedModelId}
               onModelChange={setSelectedModelId}
+              reasoningChoice={reasoningChoice}
+              onReasoningChoiceChange={setReasoningChoice}
               chatDisabled={chatDisabled}
               canUseChat={actorCapabilities.canUseChat}
               internetSearch={internetSearch}
-              deepThinking={deepThinking}
               currentAssistantMessageId={currentAssistantMessageIdRef.current}
               chatContainerRef={chatContainerRef}
               onChatScroll={handleChatScroll}
@@ -275,7 +276,6 @@ export default function ChatInterface() {
               onKnowledgeSelectionChange={handleKnowledgeSelectionChange}
               onChatModeChange={handleChatModeChange}
               onInternetSearchChange={setInternetSearch}
-              onDeepThinkingChange={setDeepThinking}
               onNavigateToKnowledge={() => navigateTo('knowledge', 'libraries')}
               onAbortRequest={abortRequest}
               onSendMessage={sendMessage}

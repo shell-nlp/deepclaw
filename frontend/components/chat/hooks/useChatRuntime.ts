@@ -59,6 +59,7 @@ type UseChatRuntimeDeps = {
   draftImages: import('../utils/chatImages').ChatImage[]
   clearDraftImages: () => void
   selectedModelId: string
+  reasoningEffort: string
   setInputValue: Dispatch<SetStateAction<string>>
   sessionId: string
   setSessionId: Dispatch<SetStateAction<string>>
@@ -144,6 +145,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
     draftImages,
     clearDraftImages,
     selectedModelId,
+    reasoningEffort,
     sessionId,
     setSessionId,
     status,
@@ -1096,9 +1098,10 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
     switchToThreadRef.current = switchToThread
   }, [switchToThread])
 
-  const sendMessage = async (recommendedQuestion?: string, retry?: { images: typeof draftImages; modelId: string }) => {
+  const sendMessage = async (recommendedQuestion?: string, retry?: { images: typeof draftImages; modelId: string; effort: string }) => {
     const images = retry?.images ?? (recommendedQuestion === undefined ? draftImages : [])
     const modelId = retry?.modelId ?? selectedModelId
+    const effort = retry?.effort ?? reasoningEffort
     const query = (recommendedQuestion ?? inputValue).trim() || (images.length ? '请描述这些图片。' : '')
     if (!query || isProcessing || !sessionId) return
     const threadId = sessionId
@@ -1172,7 +1175,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
       createdAt: Date.now(),
       toolData: [],
       startedAt: Date.now(),
-      thinkingRequest: deepThinking ? 'pending' : undefined,
+      thinkingRequest: (deepThinking || effort) ? 'pending' : undefined,
     })
     runtime.messages = messagesRef.current
     runtime.assistantMessageId = assistantMessageId
@@ -1204,6 +1207,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
         query,
         images,
         modelId,
+        reasoningEffort: effort,
         state,
       })
       currentRunInputRef.current = runInput as unknown as Record<string, unknown>
@@ -1234,7 +1238,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
                   message.id !== assistantMessageId
               )
             )
-            await sendMessage(query, { images, modelId })
+            await sendMessage(query, { images, modelId, effort })
           })
         }
       }
