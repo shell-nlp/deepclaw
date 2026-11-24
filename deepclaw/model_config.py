@@ -13,7 +13,10 @@ from deepclaw.settings import settings
 
 MODEL_CONFIG_FILENAME = "model_config.json"
 MODEL_CONFIG_PATH = HOME_PATH / MODEL_CONFIG_FILENAME
+KEYLESS_API_KEY = "deepclaw-no-key"
 ModelType = Literal["chat", "embedding"]
+active_chat_headers: dict[str, str] = {}
+active_embedding_options: dict[str, Any] = {}
 
 
 def _now() -> str:
@@ -175,9 +178,19 @@ def apply_active_model_config(state: dict[str, Any]) -> None:
     Args:
         state: 模型目录状态。
     """
+    global active_chat_headers, active_embedding_options
     models = state.get("models", [])
     active_chat = next((m for m in models if m.get("id") == state.get("active_chat_model_id")), None)
     active_embedding = next((m for m in models if m.get("id") == state.get("active_embedding_model_id")), None)
+    active_chat_headers = dict(active_chat.get("request_headers", {})) if active_chat else {}
+    active_embedding_options = (
+        {
+            "base_url": active_embedding["api_base"],
+            "api_key": active_embedding.get("api_key") or KEYLESS_API_KEY,
+            "default_headers": dict(active_embedding.get("request_headers", {})),
+        }
+        if active_embedding else {}
+    )
     if active_chat:
         settings.OPENAI_API_BASE = active_chat.get("api_base", settings.OPENAI_API_BASE)
         settings.OPENAI_API_KEY = active_chat.get("api_key", settings.OPENAI_API_KEY)
@@ -213,7 +226,14 @@ def public_model(model: dict[str, Any], active_id: str | None) -> dict[str, Any]
     Returns:
         脱敏后的模型记录。
     """
-    return {**model, "api_key": None, "api_key_masked": mask_api_key(model.get("api_key")), "has_api_key": bool(model.get("api_key")), "active": model.get("id") == active_id}
+    return {
+        **model,
+        "api_key": None,
+        "api_key_masked": mask_api_key(model.get("api_key")),
+        "has_api_key": bool(model.get("api_key")),
+        "request_headers": list(model.get("request_headers", {})),
+        "active": model.get("id") == active_id,
+    }
 
 
 apply_active_model_config(load_model_state())

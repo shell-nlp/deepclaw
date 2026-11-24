@@ -89,10 +89,13 @@ def get_chat_model(tags: list[str] | None = None) -> ChatOpenAI:
     Returns:
         配置当前 OpenAI 兼容接口的聊天模型。
     """
+    from deepclaw import model_config
+
     return ReasoningChatOpenAI(
         model=settings.CHAT_MODEL_NAME,
         base_url=settings.OPENAI_API_BASE,
-        api_key=settings.OPENAI_API_KEY,
+        api_key=settings.OPENAI_API_KEY or model_config.KEYLESS_API_KEY,
+        default_headers=model_config.active_chat_headers,
         streaming=True,
         stream_usage=True,
         tags=tags or ["agent"],
@@ -111,6 +114,9 @@ def get_embedding_model() -> OpenAIEmbeddings:
         无额外参数。
     """
 
+    from deepclaw import model_config
+
     return OpenAIEmbeddings(
         model=settings.EMBEDDING_MODEL_NAME,
+        **model_config.active_embedding_options,
     )

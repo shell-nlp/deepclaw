@@ -14,6 +14,7 @@ class ModelItemResponse(BaseModel):
     api_key: None = None
     api_key_masked: str
     has_api_key: bool
+    request_headers: list[str] = Field(default_factory=list)
     context_window: int | None
     created_at: str
     updated_at: str
@@ -29,7 +30,25 @@ class ModelCatalogResponse(BaseModel):
     active_embedding_model_id: str | None
 
 
-class ModelCreateRequest(BaseModel):
+class ModelHeaderRequest(BaseModel):
+    """一个请求头，空值表示保留同名请求头的已保存值。"""
+
+    name: str
+    value: str | None = None
+
+
+class ModelUpdateRequest(BaseModel):
+    """更新模型请求，空 API Key 表示保留原密钥。"""
+
+    name: str = Field(min_length=1, max_length=200)
+    provider: str = Field(default="OpenAI Compatible", max_length=100)
+    api_base: str = Field(min_length=1, max_length=500)
+    api_key: str | None = Field(default=None, max_length=2_000)
+    context_window: int | None = Field(default=128_000, ge=1, le=10_000_000)
+    request_headers: list[ModelHeaderRequest] | None = None
+
+
+class ModelCreateRequest(ModelUpdateRequest):
     """创建模型请求。
 
     Args:
@@ -42,21 +61,18 @@ class ModelCreateRequest(BaseModel):
     """
 
     type: Literal["chat", "embedding"]
-    name: str = Field(min_length=1, max_length=200)
-    provider: str = Field(default="OpenAI Compatible", max_length=100)
-    api_base: str = Field(min_length=1, max_length=500)
-    api_key: str | None = Field(default=None, max_length=2_000)
-    context_window: int | None = Field(default=128_000, ge=1, le=10_000_000)
 
 
-class ModelUpdateRequest(BaseModel):
-    """更新模型请求，空 API Key 表示保留原密钥。"""
+class ModelDraftTestRequest(ModelCreateRequest):
+    """测试未保存的模型配置，可复用指定模型的现有凭据。"""
 
-    name: str = Field(min_length=1, max_length=200)
-    provider: str = Field(default="OpenAI Compatible", max_length=100)
-    api_base: str = Field(min_length=1, max_length=500)
-    api_key: str | None = Field(default=None, max_length=2_000)
-    context_window: int | None = Field(default=128_000, ge=1, le=10_000_000)
+    model_id: str | None = None
+
+
+class ModelSecretResponse(BaseModel):
+    """单次显式查看所返回的密钥。"""
+
+    api_key: str
 
 
 class ModelActivateRequest(BaseModel):

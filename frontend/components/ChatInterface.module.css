@@ -4919,15 +4919,6 @@ button.extensionListRow { cursor: pointer; }
 .modelActiveBadge { padding: 2px 5px; border-radius: 4px; background: rgba(76,183,130,.13); color: #2c9364; font-size: 9px; white-space: nowrap; }
 .modelRowActions { display: flex; gap: 4px; opacity: .8; }
 .modelShelf .managementButton, .modelShelf .managementMinorButton, .modelShelf .managementDangerMinorButton { min-height: 30px; padding: 6px 9px; border-radius: 8px; font-size: 11px; }
-.modelEditorBackdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 24px; background: rgba(29,35,48,.28); backdrop-filter: blur(4px); }
-.modelEditor { width: min(560px, 100%); padding: 24px; border: 1px solid rgba(77,107,254,.18); border-radius: 18px; background: #fff; box-shadow: 0 24px 70px rgba(32,33,36,.2); }
-.modelEditorHeader, .modelEditorFooter { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-.modelEditorHeader { padding-bottom: 18px; border-bottom: 1px solid var(--border-subtle); }
-.modelEditorHeader h3 { margin: 4px 0 0; font-size: 21px; }
-.modelEditorForm { display: grid; gap: 14px; padding: 20px 0; }
-.modelEditorFooter { align-items: center; padding-top: 16px; border-top: 1px solid var(--border-subtle); }
-.modelEditorFooter .managementMeta { max-width: 260px; line-height: 1.5; }
-.modelEditor small { color: var(--text-muted); font-weight: 400; }
 @media (max-width: 900px) { .modelRegistryGrid { grid-template-columns: 1fr; } }
 
 
