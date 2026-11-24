@@ -634,7 +634,8 @@ export function useChatPageController() {
   selectedKnowledgeBaseRef.current = knowledge.selectedKnowledgeBase
   resetKnowledgeStateRef.current = knowledge.resetKnowledgeState
   useEffect(() => {
-    scrollToBottom()
+    const frame = requestAnimationFrame(scrollToBottom)
+    return () => cancelAnimationFrame(frame)
   }, [messages, showInterrupt, interruptData, scrollToBottom])
 
 

@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import aclosing
 from types import SimpleNamespace
 
 from ag_ui.core import RunAgentInput
@@ -484,6 +485,41 @@ def test_list_thread_runs_backfills_legacy_thread():
             assert thread.updated_at == run.updated_at
         finally:
             await manager.close()
+
+    asyncio.run(scenario())
+
+
+def test_sql_run_subscription_wakes_on_committed_events(tmp_path):
+    """验证同进程订阅无需等轮询即可读取新事件，并保留断线重放。
+
+    Args:
+        tmp_path: 隔离测试数据库的临时目录。
+    """
+    async def scenario():
+        """验证两个已订阅客户端都能读取最新提交的事件。"""
+        store = SqlRunStore(f"sqlite:///{tmp_path / 'live-events.db'}", poll_interval_seconds=30)
+        payload = RunAgentInput.model_validate(
+            {"threadId": "thread", "runId": "run", "messages": [], "tools": []}
+        )
+        try:
+            await store.create_thread(ThreadState(thread_id="thread", owner_user_id="user-1"))
+            await store.create_run(
+                RunState(run_id="run", thread_id="thread", input=payload, owner_user_id="user-1")
+            )
+            await store.append_event("run", "initial")
+            async with aclosing(store.subscribe("run", user_id="user-1")) as stream:
+                assert await anext(stream) == (1, "initial")
+                next_event = asyncio.create_task(anext(stream))
+                await asyncio.sleep(0)
+                await store.append_event("run", "next")
+                assert await asyncio.wait_for(next_event, 2) == (2, "next")
+                await store.update_run_status("run", "finished")
+                assert [event async for event in stream] == []
+
+            replay = store.subscribe("run", after=1, user_id="user-1")
+            assert [event async for event in replay] == [(2, "next")]
+        finally:
+            await store.close()
 
     asyncio.run(scenario())
 

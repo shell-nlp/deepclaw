@@ -1094,6 +1094,7 @@ class SqlRunStore(BaseRunStore):
         )
         self.db_url = db_url
         self.poll_interval_seconds = poll_interval_seconds
+        self._event_waiters: dict[str, set[asyncio.Event]] = {}
         self.engine = create_async_engine_from_url(db_url)
         self.async_session = build_async_sessionmaker(self.engine)
         self._init_done = False
@@ -1767,6 +1768,8 @@ class SqlRunStore(BaseRunStore):
             record.expires_at = datetime_from_timestamp(self._expires_at())
             session.add(record)
             await session.commit()
+            for waiter in self._event_waiters.get(run_id, ()):
+                waiter.set()
             await session.refresh(record)
             await self._touch_thread(record.thread_id)
             return self._to_state(record)
@@ -1801,6 +1804,8 @@ class SqlRunStore(BaseRunStore):
                 )
             )
             await session.commit()
+            for waiter in self._event_waiters.get(run_id, ()):
+                waiter.set()
             await self._trim_events(session, run_id)
             await self._touch_thread(record.thread_id)
             return event_id
@@ -1869,23 +1874,32 @@ class SqlRunStore(BaseRunStore):
         Yields:
             事件 ID 与编码帧。
         """
+        wake_up = asyncio.Event()
+        waiters = self._event_waiters.setdefault(run_id, set())
+        waiters.add(wake_up)
         last_event_id = after
-        while True:
-            state = await self.get_run(run_id, user_id=user_id)
-            if state is None:
-                raise ValueError("Run 不存在或无权访问")
-            events = await self.get_events(run_id, after=last_event_id)
-            for event_id, frame in events:
-                last_event_id = event_id
-                yield event_id, frame
-            if state.status not in {"queued", "running", "cancelling"}:
-                await asyncio.sleep(self.poll_interval_seconds)
+        try:
+            while True:
+                # 先清除信号，再查数据库，避免漏掉查询期间提交的事件。
+                wake_up.clear()
+                state = await self.get_run(run_id, user_id=user_id)
+                if state is None:
+                    raise ValueError("Run 不存在或无权访问")
                 events = await self.get_events(run_id, after=last_event_id)
                 for event_id, frame in events:
                     last_event_id = event_id
                     yield event_id, frame
-                return
-            await asyncio.sleep(self.poll_interval_seconds)
+                if state.status not in {"queued", "running", "cancelling"}:
+                    return
+                try:
+                    # 同进程提交后立即唤醒，其他进程写入仍可通过轮询读取。
+                    await asyncio.wait_for(wake_up.wait(), self.poll_interval_seconds)
+                except TimeoutError:
+                    pass
+        finally:
+            waiters.discard(wake_up)
+            if not waiters:
+                del self._event_waiters[run_id]
 
     async def prune_expired(self) -> int:
         """清理已过期 Run。

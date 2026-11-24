@@ -29,7 +29,8 @@ export function ProcessSummary({
   toolCallDurations,
   isProcessing,
 }: ProcessSummaryProps) {
-  const processItems = getAssistantMessageItems(msg).filter(
+  const assistantItems = getAssistantMessageItems(msg)
+  const processItems = assistantItems.filter(
     (item) => item.type === 'reasoning' || item.type === 'tool'
   ).filter((item) => {
     if (item.type === 'reasoning') {
@@ -78,17 +79,6 @@ export function ProcessSummary({
     return undefined
   }
 
-  const activitySteps = processItems.map((item) => {
-    if (item.type === 'reasoning') return '正在思考中...'
-    const toolData = msg.toolData?.find(
-      (data) => data.toolCall.id === item.toolCallId
-    )
-    const toolName =
-      toolData?.toolCall.tool_display_name || toolData?.toolCall.name || '工具'
-    return `执行${toolName}`
-  })
-  const [activityIndex, setActivityIndex] = useState(0)
-
   useEffect(() => {
     if (!isProcessing) return
     setNow(Date.now())
@@ -98,20 +88,24 @@ export function ProcessSummary({
     return () => window.clearInterval(timer)
   }, [isProcessing, msg.startedAt])
 
-  useEffect(() => {
-    if (!isProcessing || activitySteps.length <= 1) {
-      setActivityIndex(0)
-      return
+  const latestItem = assistantItems.at(-1)
+  const latestTool = latestItem?.type === 'tool'
+    ? msg.toolData?.find((tool) => tool.toolCall.id === latestItem.toolCallId)
+    : undefined
+  let activityLabel = '已完成'
+  if (isProcessing) {
+    activityLabel = '正在处理中...'
+    if (latestItem?.type === 'content') activityLabel = '正在生成回答'
+    if (latestItem?.type === 'reasoning') activityLabel = '正在思考'
+    if (latestTool) {
+      const isRetrieval = latestTool.toolCall.name === 'retrieve_context'
+      const hasResult = latestTool.toolOutput?.some((output) => output.kind !== 'decision')
+      const toolName = latestTool.toolCall.tool_display_name || latestTool.toolCall.name
+      activityLabel = hasResult
+        ? (isRetrieval ? '检索已返回' : '工具已返回')
+        : (isRetrieval ? '正在检索知识库' : `正在执行 ${toolName}`)
     }
-    const timer = window.setInterval(() => {
-      setActivityIndex((current) => (current + 1) % activitySteps.length)
-    }, 1800)
-    return () => window.clearInterval(timer)
-  }, [activitySteps.length, isProcessing])
-
-  const activityLabel = isProcessing
-    ? activitySteps[activityIndex % activitySteps.length] || '正在处理中...'
-    : '已完成'
+  }
   const hasProcess = processItems.length > 0
   const showCompletedRequest = !isProcessing && msg.thinkingRequest === 'completed'
   const showSummaryLabel = hasProcess || showCompletedRequest ||
@@ -130,7 +124,7 @@ export function ProcessSummary({
           isProcessing ? styles.processSummaryLabelActive : ''
         }`}
       >
-        {showSummaryLabel ? '分析与执行' : '正在处理中...'}
+        {showSummaryLabel ? '分析与执行' : activityLabel}
       </span>
       {showSummaryLabel && (
         <span className={styles.processSummaryActivity} aria-live="polite">

@@ -1,9 +1,31 @@
+import { memo } from 'react'
 import styles from '../../ChatInterface.module.css'
-import type { Message } from '../utils/types'
+import type { Message, ToolData } from '../utils/types'
 import { normalizeChartMarkdown, parseMarkdown } from '../utils'
 import { getAssistantMessageItems } from '../utils/assistantMessage'
 import { ErrorCard } from './ErrorCard'
 import { ProcessSummary } from './ProcessSummary'
+
+/** 渲染 Markdown 正文。其他消息更新时复用已渲染的正文。
+ *
+ * Args:
+ *   content: Markdown 正文。
+ *   tools: 用来校正图表链接的工具结果。
+ *   normalizeCharts: 是否校正助手生成的图表链接。
+ */
+export const MarkdownMessage = memo(function MarkdownMessage({
+  content,
+  tools,
+  normalizeCharts = false,
+}: { content: string; tools?: ToolData[]; normalizeCharts?: boolean }) {
+  const markdown = normalizeCharts ? normalizeChartMarkdown(content, tools) : content
+  return (
+    <div
+      className={styles.messageContent}
+      dangerouslySetInnerHTML={{ __html: parseMarkdown(markdown) }}
+    />
+  )
+})
 
 interface AssistantMessageBodyProps {
   msg: Message
@@ -69,14 +91,16 @@ export function AssistantMessageBody({
         isProcessing={isProcessing}
       />
       {visibleContentBlocks.map((block) => (
-        <div
+        <MarkdownMessage
           key={block.id}
-          className={styles.messageContent}
-          dangerouslySetInnerHTML={{
-            __html: parseMarkdown(normalizeChartMarkdown(block.content, msg.toolData)),
-          }}
+          content={block.content}
+          tools={msg.toolData}
+          normalizeCharts
         />
       ))}
+      {isProcessing && assistantItems.at(-1)?.type === 'content' && visibleContentBlocks.length > 0 && (
+        <span className={styles.generationCursor} aria-hidden="true" />
+      )}
       {!isProcessing && showTokenUsage && tokenUsage ? (
         <div
           className={styles.tokenUsage}

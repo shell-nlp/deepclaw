@@ -5,7 +5,7 @@ import type { KeyboardEvent, ReactNode, Ref } from 'react'
 import styles from '../ChatInterface.module.css'
 import { InterruptPanel } from './interrupt/InterruptPanel'
 import type { InterruptEditedAction } from './interrupt/utils'
-import { AssistantMessageBody } from './cards/AssistantMessageBody'
+import { AssistantMessageBody, MarkdownMessage } from './cards/AssistantMessageBody'
 import { AgentModeSwitcher } from './shared/AgentModeSwitcher'
 import { DevicePicker } from './shared/DevicePicker'
 import type { ClientDevice } from './hooks/useDevices'
@@ -19,9 +19,6 @@ import type {
   KnowledgeBase,
   Message,
 } from './utils/types'
-import {
-  parseMarkdown,
-} from './utils'
 
 function formatMessageTime(msg: Message): string {
   const timestamp = msg.createdAt ?? msg.startedAt
@@ -247,10 +244,7 @@ export function ChatView({
                       {formatMessageTime(msg)}
                     </span>
                   </div>
-                  <div
-                    className={styles.messageContent}
-                    dangerouslySetInnerHTML={{ __html: parseMarkdown(msg.content) }}
-                  />
+                  <MarkdownMessage content={msg.content} />
                 </>
               ) : (
                 <>

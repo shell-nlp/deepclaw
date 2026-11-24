@@ -14,6 +14,7 @@ import {
   parseAgUiSseFrame,
   type AgUiEvent,
   type AgUiInterrupt,
+  type AgUiSseFrame,
 } from '../utils/agui'
 import {
   AGUI_THREAD_RUNS_API_PATH,
@@ -674,16 +675,60 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
       let stale = false
       let finishedAssistantMessageId = ''
 
-      const processChunk = (chunk: string) => {
-        if (!isCurrentStream(threadId, generation)) {
-          stale = true
-          return
+      let pendingText: AgUiSseFrame | undefined
+      let renderTimer: ReturnType<typeof setTimeout> | undefined
+
+      /**
+       * 应用流式事件并更新重放游标。
+       *
+       * Args:
+       *   frame: 已解析的事件帧。
+       */
+      const applyFrame = (frame: AgUiSseFrame) => {
+        const runtime = getThreadRuntime(threadId)
+        const handledEvent = handleAgUiEvent(frame.event)
+        if (frame.id) {
+          lastEventIdRef.current = frame.id
+          runtime.lastEventId = frame.id
         }
+        if (handledEvent === 'interrupt') {
+          interrupted = true
+          runtime.processing = false
+          runtime.status = 'ready'
+          runtime.messages = messagesRef.current
+          setThreadRunning(threadId, false)
+        }
+        if (handledEvent === 'finished') {
+          completed = true
+          finishedAssistantMessageId =
+            currentAssistantMessageIdRef.current || ''
+          runtime.processing = false
+          runtime.status = 'ready'
+          runtime.messages = messagesRef.current
+          setThreadRunning(threadId, false)
+          setIsProcessing(false)
+          setStatus('ready')
+        }
+      }
 
-        const normalized = chunk.replace(/\r\n/g, '\n')
-        const parts = normalized.split('\n\n')
+      /** 提交缓冲的正文；切换会话后交由重放继续。 */
+      const flushText = () => {
+        clearTimeout(renderTimer)
+        renderTimer = undefined
+        const frame = pendingText
+        pendingText = undefined
+        if (frame && isCurrentStream(threadId, generation)) applyFrame(frame)
+      }
+
+      /**
+       * 合并连续正文，保留其他事件与正文的先后顺序。
+       *
+       * Args:
+       *   chunk: 上次未完帧与本次读取的数据。
+       */
+      const processChunk = (chunk: string) => {
+        const parts = chunk.replace(/\r\n/g, '\n').split('\n\n')
         buffer = parts.pop() || ''
-
         for (const part of parts) {
           if (!isCurrentStream(threadId, generation)) {
             stale = true
@@ -691,53 +736,38 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
           }
           const frame = parseAgUiSseFrame(part)
           if (!frame) continue
-          const runtime = getThreadRuntime(threadId)
-          if (frame.id) {
-            lastEventIdRef.current = frame.id
-            runtime.lastEventId = frame.id
-          }
-          const handledEvent = handleAgUiEvent(frame.event)
-          if (handledEvent === 'interrupt') {
-            interrupted = true
-            runtime.processing = false
-            runtime.status = 'ready'
-            runtime.messages = messagesRef.current
-            setThreadRunning(threadId, false)
-          }
-          if (handledEvent === 'finished') {
-            completed = true
-            finishedAssistantMessageId =
-              currentAssistantMessageIdRef.current || ''
-            runtime.processing = false
-            runtime.status = 'ready'
-            runtime.messages = messagesRef.current
-            setThreadRunning(threadId, false)
-            setIsProcessing(false)
-            setStatus('ready')
+          const { type, delta, content } = frame.event
+          const text = typeof delta === 'string' ? delta : content
+          const isText = type === 'TEXT_MESSAGE_CONTENT' || type === 'TEXT_MESSAGE_CHUNK'
+          if (isText && typeof text === 'string' && lastAssistantStreamEventRef.current === 'content') {
+            pendingText = {
+              id: frame.id ?? pendingText?.id,
+              event: { ...frame.event, delta: (pendingText?.event.delta ?? '') + text },
+            }
+            renderTimer ??= setTimeout(flushText, 32)
+          } else {
+            flushText()
+            applyFrame(frame)
           }
         }
       }
 
-      while (true) {
-        if (!isCurrentStream(threadId, generation)) {
-          stale = true
-          break
+      try {
+        while (isCurrentStream(threadId, generation)) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          processChunk(buffer)
+          if (completed || stale) break
         }
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        processChunk(buffer)
-        if (completed || stale) {
-          await reader.cancel()
-          break
+        stale ||= !isCurrentStream(threadId, generation)
+        if (!stale && !completed) {
+          buffer += decoder.decode()
+          if (buffer.trim()) processChunk(buffer + '\n\n')
         }
-      }
-
-      if (!stale) {
-        buffer += decoder.decode()
-        if (buffer.trim()) {
-          processChunk(`${buffer}\n\n`)
-        }
+      } finally {
+        flushText()
+        if (completed || stale) await reader.cancel()
       }
 
       if (completed && !stale && finishedAssistantMessageId) {
