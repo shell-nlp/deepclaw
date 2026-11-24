@@ -94,9 +94,20 @@ def _legacy_state(payload: dict[str, Any]) -> dict[str, Any] | None:
 def _default_state() -> dict[str, Any]:
     """根据环境变量生成初始模型目录。
 
+    未在环境变量中配置任何模型时返回空目录，模型改由前端模型目录添加。
+
     Returns:
-        包含一个大模型和一个语义模型的目录状态。
+        包含一个大模型和一个语义模型的目录状态；环境变量为空时返回空目录。
     """
+    if not any(
+        (
+            settings.CHAT_MODEL_NAME,
+            settings.EMBEDDING_MODEL_NAME,
+            settings.OPENAI_API_BASE,
+            settings.OPENAI_API_KEY,
+        )
+    ):
+        return {"models": [], "active_chat_model_id": None, "active_embedding_model_id": None}
     return _legacy_state({}) or {"models": [], "active_chat_model_id": None, "active_embedding_model_id": None}
 
 

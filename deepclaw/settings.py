@@ -18,17 +18,17 @@ class Settings(BaseSettings):
     PORT: int = 7869
     LOCAL_HOST: str = "http://localhost:7869"
 
-    # openAI api_base 和 api_key配置
-    OPENAI_API_BASE: str
-    CHAT_MODEL_NAME: str
+    # openAI api_base 和 api_key配置；留空时由前端模型目录配置
+    OPENAI_API_BASE: str = ""
+    CHAT_MODEL_NAME: str = ""
 
-    # Chat模型配置
-    OPENAI_API_KEY: str
+    # Chat模型配置；留空时由前端模型目录配置
+    OPENAI_API_KEY: str = ""
     # 模型上下文窗口长度，用于按 80% 阈值触发摘要；按实际部署模型调整。
     MODEL_CONTEXT_WINDOW: int = Field(default=128000, ge=1)
 
-    # Embedding模型配置
-    EMBEDDING_MODEL_NAME: str
+    # Embedding模型配置；留空时由前端模型目录配置
+    EMBEDDING_MODEL_NAME: str = ""
 
     # elasticsearch配置
     ES_URL: str | None = None
