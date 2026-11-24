@@ -262,16 +262,30 @@ def test_mcp_middleware_retries_after_empty_tool_discovery():
     assert "thread-retry" not in middleware._mcp_resources_by_thread_id
 
 
-def test_mcp_middleware_uses_cached_tools_for_tool_call():
+def test_mcp_middleware_uses_cached_tools_for_tool_call(monkeypatch):
     """验证工具调用复用同一会话已缓存的 MCP 工具。
 
     Args:
-        无。
+        monkeypatch: 注入可撤销的 MCP 授权判断。
     """
-    from deepclaw.middleware.mcp import MCPMiddleware
+    from deepclaw.middleware import mcp
 
-    middleware = MCPMiddleware()
+    middleware = mcp.MCPMiddleware()
     captured_config = {}
+    granted = True
+
+    async def agent_has_permission(user_id, path, action):
+        """模拟用户被授予或撤销 MCP 权限。
+
+        Args:
+            user_id: 可信运行账号。
+            path: 授权功能路径。
+            action: 授权动作。
+        """
+        assert (user_id, path, action) == ("user-42", "/agent/tools/mcp", "use")
+        return granted
+
+    monkeypatch.setattr(mcp, "agent_has_permission", agent_has_permission)
 
     async def invoke_tool(args, config):
         """模拟缓存 MCP 工具的调用。
@@ -305,6 +319,7 @@ def test_mcp_middleware_uses_cached_tools_for_tool_call():
         state={"user_id": "user-42"},
         runtime=SimpleNamespace(
             execution_info=SimpleNamespace(thread_id="thread-1"),
+            server_info=SimpleNamespace(user=SimpleNamespace(identity="user-42")),
         ),
     )
 
@@ -314,3 +329,17 @@ def test_mcp_middleware_uses_cached_tools_for_tool_call():
     assert result.tool_call_id == "call-1"
     assert captured_config["metadata"]["mcp_meta"] == {"userId": "user-42"}
     assert callable(captured_config["metadata"]["mcp_progress_callback"])
+
+    async def fallback(_request):
+        """返回未调用 MCP 时的默认处理结果。
+
+        Args:
+            _request: 当前调用请求。
+        """
+        return "fallback"
+
+    granted = False
+    captured_config.clear()
+    assert asyncio.run(middleware.awrap_model_call(request, fallback)) == "fallback"
+    assert asyncio.run(middleware.awrap_tool_call(request, fallback)) == "fallback"
+    assert captured_config == {}

@@ -13,7 +13,9 @@ from deepclaw.web_backend.auth.rbac.permissions import (
 )
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "deepclaw"
-CALL_PATTERN = re.compile(r'require_permission\(\s*"([^"]+)"\s*,\s*"([^"]+)"')
+CALL_PATTERN = re.compile(
+    r'(?:require_permission\(\s*|agent_has_permission\(\s*\w+,\s*)"([^"]+)"\s*,\s*"([^"]+)"'
+)
 
 
 def _scanned_calls() -> set[tuple[str, str]]:

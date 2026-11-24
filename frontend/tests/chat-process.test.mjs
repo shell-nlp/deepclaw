@@ -577,7 +577,7 @@ test('真实思考和工具默认折叠并在结束后保留，纯等待不提�
     }))
     assert.match(html, /<details class="processSummary">/)
     assert.match(html, /<summary[^>]*>[\s\S]*查看[\s\S]*<\/summary>/)
-    assert.match(html, /class="reasoningContent">先查询天气/)
+    assert.match(html, /<details class="reasoningContainer"><summary class="reasoningHeader">[\s\S]*?<\/summary><div class="reasoningContent">先查询天气/)
     assert.match(html, /weather/)
   }
   const html = renderToStaticMarkup(React.createElement(ProcessSummary, {

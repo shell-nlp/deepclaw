@@ -26,35 +26,82 @@ def test_cron_manager_add_list_remove_roundtrip(tmp_path):
     assert asyncio.run(manager.list()) == []
 
 
-def test_cron_tool_supports_add_list_remove(tmp_path):
-    from deepclaw.middleware.cron.cron_manager import get_cron_manager
+def test_cron_tool_supports_crud_and_account_isolation(tmp_path, monkeypatch):
+    """通过 ToolRuntime 校验聊天工具的增删改查和账号隔离。
+
+    Args:
+        tmp_path: 隔离的数据库目录。
+        monkeypatch: 测试替换工具。
+    """
+    import importlib
+    import json
+    from langchain_core.messages import AIMessage
+    from langgraph.graph import END, START, MessagesState, StateGraph
+    from langgraph.prebuilt import ToolNode
+
     from deepclaw.middleware.cron.cron_tool import cron_tool
+    from deepclaw.middleware.cron.schedule_store import ScheduleStore
+    from deepclaw.web_backend.agent.run_manager import AgentAuthUser
 
-    get_cron_manager(f"sqlite:///{tmp_path / 'cron-tool.db'}")
+    store = ScheduleStore(f"sqlite:///{tmp_path / 'test.db'}")
+    tool_module = importlib.import_module("deepclaw.middleware.cron.cron_tool")
+    monkeypatch.setattr(tool_module, "get_schedule_store", lambda: store)
 
-    added = asyncio.run(cron_tool.ainvoke(
-        {
-            "action": "add",
-            "name": "cleanup",
-            "cron_expression": "*/15 * * * *",
-            "command": "python scripts/cleanup.py",
-        }
-    ))
-    listed = asyncio.run(cron_tool.ainvoke({"action": "list"}))
-    removed = asyncio.run(cron_tool.ainvoke({"action": "remove", "name": "cleanup"}))
+    async def agent_has_permission(user_id, path, action):
+        """模拟一个仅允许查看任务的角色。
 
-    assert "added successfully" in added
-    assert "cleanup" in listed
-    assert "Cron job removed successfully" == removed
+        Args:
+            user_id: 当前账号。
+            path: 授权功能路径。
+            action: 授权动作。
+        """
+        return path == "/api/schedules" and (user_id != "viewer" or action == "read")
 
+    monkeypatch.setattr(tool_module, "agent_has_permission", agent_has_permission)
+    graph = StateGraph(MessagesState)
+    graph.add_node("tools", ToolNode([cron_tool]))
+    graph.add_edge(START, "tools")
+    graph.add_edge("tools", END)
+    compiled = graph.compile()
 
-def test_cron_tool_requires_identifier_for_remove():
-    from deepclaw.middleware.cron.cron_tool import cron_tool
+    async def invoke(user, action, **args):
+        """在实际工具节点中模拟已经认证的聊天。
 
-    result = asyncio.run(cron_tool.ainvoke({"action": "remove"}))
+        Args:
+            user: 用户 ID。
+            action: 工具动作。
+            args: 动作参数。
+        """
+        message = AIMessage(content="", tool_calls=[
+            {"name": "cron_tool", "args": {"action": action, **args}, "id": action}
+        ])
+        result = await compiled.ainvoke(
+            {"messages": [message]},
+            {"configurable": {"langgraph_auth_user": AgentAuthUser(identity=user)}},
+        )
+        return result["messages"][-1].content
 
-    assert result == "Error: Please provide either job_id or name"
+    async def run():
+        """验证任务工具的完整交互。
 
+        Args:
+            无。
+        """
+        assert "请登录" in await invoke("guest", "list")
+        assert json.loads(await invoke("viewer", "list")) == []
+        assert "没有访问" in await invoke("viewer", "add")
+        created = json.loads(await invoke("owner", "add", changes={
+            "name": "日报", "content": "准备日报", "cron": "0 9 * * 1-5",
+        }))
+        assert json.loads(await invoke("other", "list")) == []
+        assert json.loads(await invoke("owner", "list"))[0]["id"] == created["id"]
+        edited = json.loads(await invoke("owner", "update", job_id=created["id"], changes={"enabled": False}))
+        assert edited["next_at"] is None
+        assert "找不到" in await invoke("other", "remove", job_id=created["id"])
+        assert "已删除" in await invoke("owner", "remove", job_id=created["id"])
+        await store.engine.dispose()
+
+    asyncio.run(run())
 
 class DummyRequest:
     def __init__(self, tools):
@@ -95,8 +142,8 @@ def test_cron_middleware_does_not_duplicate_existing_tool():
     assert [tool.name for tool in updated_request.tools] == [cron_tool.name]
 
 
-def test_general_agent_does_not_register_cron_middleware(monkeypatch):
-    """验证通用 Agent 当前不注册 CronMiddleware。"""
+def test_general_agent_registers_cron_middleware(monkeypatch):
+    """验证通用 Agent 注册 CronMiddleware。"""
     from deepclaw.middleware.cron.middleware import CronMiddleware
 
     captured = {}
@@ -121,7 +168,7 @@ def test_general_agent_does_not_register_cron_middleware(monkeypatch):
 
     agent_module.GeneralAgent.build_agent(deep_agent=True)
 
-    assert not any(
+    assert any(
         isinstance(m, CronMiddleware)
         for m in captured["middleware"]
     )

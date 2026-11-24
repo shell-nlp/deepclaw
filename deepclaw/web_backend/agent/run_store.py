@@ -113,6 +113,10 @@ def get_thread_title(payload: RunAgentInput) -> str | None:
         content = getattr(message, "content", None)
         if isinstance(content, str) and content.strip():
             return content.strip()[:240]
+        if isinstance(content, list):
+            text = "".join(part.text for part in content if getattr(part, "type", None) == "text").strip()
+            if text:
+                return text[:240]
     return None
 
 

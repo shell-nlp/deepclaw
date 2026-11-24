@@ -212,8 +212,9 @@ class AuthStore:
     def __init__(self, db_url: str | None = None):
         should_import_home_db = db_url is None
         if db_url is None:
-            migrate_legacy_auth_db_if_needed(HOME_PATH)
-            db_url = resolve_metadata_db_url("auth.db")
+            db_url = resolve_metadata_db_url()
+            if db_url.startswith("postgresql"):
+                migrate_legacy_auth_db_if_needed(HOME_PATH)
 
         self.db_url = db_url
         self.engine = create_async_engine_from_url(db_url)

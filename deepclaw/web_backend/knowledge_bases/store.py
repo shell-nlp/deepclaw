@@ -433,7 +433,7 @@ class SQLModelKnowledgeBaseMetadataStore:
     def __init__(self, db_url: str | None = None):
         should_import_home_db = db_url is None
         if db_url is None:
-            db_url = resolve_metadata_db_url("knowledge_bases.db")
+            db_url = resolve_metadata_db_url()
 
         self.db_url = db_url
         self.engine = create_async_engine_from_url(db_url)

@@ -7,6 +7,7 @@ from loguru import logger
 
 from deepclaw.agents.general.state import StateSchema
 from deepclaw.utils import get_current_time
+from deepclaw.utils.model_factory import RUN_CHAT_MODEL
 
 
 def get_request_header_info(request) -> dict:
@@ -53,6 +54,9 @@ class BusinessMiddleware(AgentMiddleware):
         return new_system_message
 
     def wrap_model_call(self, request, handler):
+        selected_model = RUN_CHAT_MODEL.get()
+        if selected_model is not None:
+            request = request.override(model=selected_model)
         state = request.state or {}
         internet_search = bool(state.get("internet_search", False))
         deep_thinking = bool(state.get("deep_thinking", False))

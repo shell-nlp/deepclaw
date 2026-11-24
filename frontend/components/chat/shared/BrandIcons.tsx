@@ -11,6 +11,8 @@ export type SidebarIconName =
   | 'users'
   | 'devices'
   | 'models'
+  | 'schedules'
+  | 'notifications'
 
 /**
  * 渲染侧边栏导航图标。
@@ -20,6 +22,8 @@ export type SidebarIconName =
  */
 export function SidebarIcon({ name }: { name: SidebarIconName }) {
   const paths: Record<SidebarIconName, React.ReactNode> = {
+    schedules: <><circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/></>,
+    notifications: <path d="M5 17h14l-2-3v-3a5 5 0 0 0-10 0v3zm5 3h4"/>,
     devices: <><rect x="3.5" y="4" width="17" height="12" rx="1.5"/><path d="M8 20h8m-4-4v4"/></>,
     models: <><path d="M5 7.5 12 4l7 3.5-7 3.5z"/><path d="m5 12.5 7 3.5 7-3.5M5 17l7 3 7-3"/></>,
     chat: (

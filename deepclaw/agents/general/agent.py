@@ -47,6 +47,7 @@ class GeneralAgent(Agent):
 
         from deepclaw.middleware import (
             BusinessMiddleware,
+            CronMiddleware,
             MCPMiddleware,
             RecommendedQuestionsMiddleware,
         )
@@ -65,6 +66,7 @@ class GeneralAgent(Agent):
         return [
             RecommendedQuestionsMiddleware(),
             BusinessMiddleware(),
+            CronMiddleware(),
             MCPMiddleware(),
             DeviceToolsMiddleware(),
             HumanInTheLoopMiddleware(

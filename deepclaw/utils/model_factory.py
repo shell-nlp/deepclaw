@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 from typing import Any
 
 from langchain_core.messages.ai import AIMessageChunk
@@ -14,6 +15,7 @@ DISABLE_THINKING_EXTRA_BODY: dict[str, Any] = {
     "chat_template_kwargs": {"enable_thinking": False},
     "thinking": {"type": "disabled"},
 }
+RUN_CHAT_MODEL: ContextVar[ChatOpenAI | None] = ContextVar("run_chat_model", default=None)
 
 
 class ReasoningChatOpenAI(ChatOpenAI):
@@ -80,26 +82,28 @@ def _delta_of(chunk: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
-def get_chat_model(tags: list[str] | None = None) -> ChatOpenAI:
+def get_chat_model(tags: list[str] | None = None, *, catalog_model: dict[str, Any] | None = None) -> ChatOpenAI:
     """创建聊天模型实例。
 
     Args:
         tags: 模型调用标签，未传时默认为 agent。
+        catalog_model: 本轮选择的模型记录，未传时使用系统默认模型。
 
     Returns:
         配置当前 OpenAI 兼容接口的聊天模型。
     """
     from deepclaw import model_config
 
+    selected = catalog_model or {}
     return ReasoningChatOpenAI(
-        model=settings.CHAT_MODEL_NAME,
-        base_url=settings.OPENAI_API_BASE,
-        api_key=settings.OPENAI_API_KEY or model_config.KEYLESS_API_KEY,
-        default_headers=model_config.active_chat_headers,
+        model=selected.get("name", settings.CHAT_MODEL_NAME),
+        base_url=selected.get("api_base", settings.OPENAI_API_BASE),
+        api_key=selected.get("api_key", settings.OPENAI_API_KEY) or model_config.KEYLESS_API_KEY,
+        default_headers=selected.get("request_headers", {}) if selected else model_config.active_chat_headers,
         streaming=True,
         stream_usage=True,
         tags=tags or ["agent"],
-        profile={"max_input_tokens": settings.MODEL_CONTEXT_WINDOW},
+        profile={"max_input_tokens": selected.get("context_window") or settings.MODEL_CONTEXT_WINDOW},
         extra_body={
             **DISABLE_THINKING_EXTRA_BODY,
             "tool_choice": "auto",

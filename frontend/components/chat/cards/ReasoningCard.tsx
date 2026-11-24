@@ -8,7 +8,7 @@ interface ReasoningCardProps {
 }
 
 /**
- * 展示思考正文及浏览器记录的耗时。
+ * 默认折叠思考正文，并在标题上显示浏览器记录的耗时。
  *
  * Args:
  *   block: 思考分段。
@@ -17,14 +17,15 @@ interface ReasoningCardProps {
 export function ReasoningCard({ block, duration = block.duration }: ReasoningCardProps) {
 
   return (
-    <section className={styles.reasoningContainer}>
-      <div className={styles.reasoningHeader}>
+    <details className={styles.reasoningContainer}>
+      <summary className={styles.reasoningHeader}>
         <span>思考</span>
         {duration !== undefined && (
           <span className={styles.reasoningDuration}>{formatDuration(duration)}</span>
         )}
-      </div>
+        <span className={styles.reasoningChevron} aria-hidden="true" />
+      </summary>
       <div className={styles.reasoningContent}>{block.content}</div>
-    </section>
+    </details>
   )
 }

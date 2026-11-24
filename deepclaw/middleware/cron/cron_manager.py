@@ -1,4 +1,3 @@
-import os
 from datetime import UTC, datetime
 from typing import Optional
 
@@ -6,8 +5,8 @@ from sqlalchemy import DateTime
 from sqlmodel import select
 from sqlmodel import Field, SQLModel
 
-from deepclaw.constant import HOME_PATH
 from deepclaw.utils.db import build_async_sessionmaker, create_async_engine_from_url
+from deepclaw.web_backend.db import resolve_metadata_db_url
 
 
 def _utc_now() -> datetime:
@@ -39,8 +38,7 @@ class CronJob(SQLModel, table=True):
 class CronManager:
     def __init__(self, db_url: Optional[str] = None):
         if db_url is None:
-            os.makedirs(HOME_PATH, exist_ok=True)
-            db_url = f"sqlite:///{os.path.join(HOME_PATH, 'cron.db')}"
+            db_url = resolve_metadata_db_url()
 
         self.engine = create_async_engine_from_url(db_url)
         self.async_session = build_async_sessionmaker(self.engine)

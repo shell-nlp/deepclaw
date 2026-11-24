@@ -45,6 +45,7 @@ export function getRouteHash(
   if (viewMode === 'mcp') return '#/mcp'
   if (viewMode === 'skills') return '#/skills'
   if (viewMode === 'devices') return '#/devices'
+  if (viewMode === 'schedules') return '#/schedules'
   if (viewMode === 'models') return '#/models'
   if (viewMode === 'channels') return `#/channels/${channelPage}`
   return `#/knowledge/${knowledgePage}`
@@ -64,6 +65,9 @@ export function parseRouteHash(hash: string): {
 
   if (parts[0] === 'devices') {
     return { viewMode: 'devices', knowledgePage: DEFAULT_KNOWLEDGE_PAGE, channelPage: DEFAULT_CHANNEL_PAGE }
+  }
+  if (parts[0] === 'schedules') {
+    return { viewMode: 'schedules', knowledgePage: DEFAULT_KNOWLEDGE_PAGE, channelPage: DEFAULT_CHANNEL_PAGE }
   }
 
   if (parts[0] === 'mcp') {
@@ -153,13 +157,16 @@ export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> 
     try {
       const payload = await response.json()
       if (payload?.detail) {
-        message = String(payload.detail)
+        message = Array.isArray(payload.detail)
+          ? payload.detail.map((item: { msg?: string } | null) => item?.msg || String(item)).join('；')
+          : String(payload.detail)
       }
     } catch {
       // ignore parse error
     }
     throw new Error(message)
   }
+  if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
 }
 

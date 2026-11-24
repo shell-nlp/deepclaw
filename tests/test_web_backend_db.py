@@ -12,7 +12,7 @@ def test_resolve_metadata_db_url_prefers_pg_database_url(monkeypatch):
         ),
     )
 
-    resolved = db_module.resolve_metadata_db_url("auth.db")
+    resolved = db_module.resolve_metadata_db_url()
 
     assert resolved == "postgresql://admin:admin@localhost:55432/deepclaw"
 
@@ -40,9 +40,9 @@ def test_create_async_engine_checks_postgres_connections_before_reuse(monkeypatc
 def test_resolve_metadata_db_url_falls_back_to_home_sqlite(monkeypatch, tmp_path):
     import deepclaw.web_backend.db as db_module
 
-    monkeypatch.setattr(db_module, "settings", SimpleNamespace(PG_DATABASE_URL=None))
+    monkeypatch.setattr(db_module, "settings", SimpleNamespace(PG_DATABASE_URL=None, SQLITE_DB_PATH=None))
     monkeypatch.setattr(db_module, "HOME_PATH", tmp_path)
 
-    resolved = db_module.resolve_metadata_db_url("channels.db")
+    resolved = db_module.resolve_metadata_db_url()
 
-    assert resolved == f"sqlite:///{tmp_path / 'channels.db'}"
+    assert resolved == f"sqlite:///{(tmp_path / 'deepclaw.db').as_posix()}"

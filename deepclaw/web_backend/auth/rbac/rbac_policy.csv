@@ -5,6 +5,9 @@ p, user, /api/rag/*, read
 p, user, /api/rag/*, write
 p, user, /api/agui/*, read
 p, user, /api/agui/*, write
+p, user, /api/schedules, read
+p, user, /api/schedules, write
+p, user, /agent/tools/mcp, use
 p, user, /api/agent/*, read
 p, user, /api/agent/*, write
 p, user, /api/channels/*, read

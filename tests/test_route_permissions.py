@@ -206,3 +206,70 @@ def test_guest_and_read_only_role_knowledge_base_routes(guarded_client):
         await auth_store.engine.dispose()
 
     asyncio.run(verify())
+
+
+def test_workspace_permissions_apply_to_custom_roles(guarded_client, monkeypatch, tmp_path):
+    """验证默认策略回填和自定义角色的聊天、定时任务、MCP 权限。
+
+    Args:
+        guarded_client: 隔离的应用与身份存储。
+        monkeypatch: 替换测试用的任务和运行存储。
+        tmp_path: 临时数据库目录。
+    """
+    from deepclaw.middleware.cron.schedule_store import ScheduleStore
+    from deepclaw.web_backend import schedules
+    from deepclaw.web_backend.agent.run_store import InMemoryRunStore
+    from deepclaw.web_backend.agui.router import get_agui_run_store, router as agui_router
+    from deepclaw.web_backend.auth import service as auth_service_module
+    from deepclaw.web_backend.auth.rbac.adapter import bootstrap_policy_store, read_default_policy_file
+    from deepclaw.web_backend.auth.rbac.dependencies import agent_has_permission
+    from deepclaw.web_backend.auth.rbac.router import _catalog_response
+
+    async def verify():
+        """使用真实令牌与 Casbin 检查权限，结束后释放测试连接。
+
+        Args:
+            无。
+        """
+        app, rbac_store, auth_store, service = guarded_client
+        tasks = ScheduleStore(f"sqlite:///{(tmp_path / 'schedules.db').as_posix()}")
+        monkeypatch.setattr(schedules, "get_schedule_store", lambda: tasks)
+        monkeypatch.setattr(auth_service_module, "get_auth_service", lambda: service)
+        app.include_router(agui_router)
+        app.include_router(schedules.router)
+        runs = InMemoryRunStore()
+        app.dependency_overrides[get_agui_run_store] = lambda: runs
+        try:
+            await rbac_store.ensure_catalog()
+            await rbac_store.add_policy("reader", "/api/agui/*", "read")
+            await rbac_store.add_policy("reader", "/api/schedules", "read")
+            _, policy_path = enforcer.resolve_rbac_paths()
+            policies, roles = read_default_policy_file(policy_path)
+            await bootstrap_policy_store(rbac_store, policies, roles)
+            reader = await auth_store.create_user(
+                username="reader", password_hash=hash_password("reader-pass-123"), role="reader",
+            )
+            issued = await service.login(username="reader", password="reader-pass-123")
+            headers = {"Authorization": f"Bearer {issued.token}"}
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                assert (await client.get("/api/agui/threads", headers=headers)).status_code == 200
+                assert (await client.delete("/api/agui/threads/missing", headers=headers)).status_code == 403
+                assert (await client.get("/api/schedules", headers=headers)).status_code == 200
+                assert (await client.post("/api/schedules", headers=headers, json={
+                    "name": "test", "content": "test", "interval_seconds": 10,
+                })).status_code == 403
+            assert not await agent_has_permission(reader.user_id, "/agent/tools/mcp", "use")
+            await rbac_store.add_policy("reader", "/agent/tools/mcp", "use")
+            enforcer.reload_enforcer()
+            assert await agent_has_permission(reader.user_id, "/agent/tools/mcp", "use")
+            assert any(
+                (rule.path, rule.action) == ("/api/schedules", "write")
+                for role in (await _catalog_response(rbac_store)).roles if role.id == "admin"
+                for rule in role.permissions
+            )
+        finally:
+            await tasks.engine.dispose()
+            await rbac_store.engine.dispose()
+            await auth_store.engine.dispose()
+
+    asyncio.run(verify())

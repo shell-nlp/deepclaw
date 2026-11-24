@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 
 from deepclaw.settings import settings
 from deepclaw.web_backend.auth.dependencies import CurrentActor
-from deepclaw.web_backend.auth.rbac import reload_enforcer, require_permission
+from deepclaw.web_backend.auth.rbac import get_enforcer, reload_enforcer, require_permission
 from deepclaw.web_backend.auth.rbac.schemas import (
     RbacCatalogCreateRequest,
     RbacCatalogListResponse,
@@ -45,7 +45,7 @@ def _require_catalog_writable() -> None:
 
 
 async def _catalog_response(store: RbacPolicyStore) -> RbacCatalogListResponse:
-    """生成含实际用户数量与直接权限的角色目录。
+    """生成角色目录，内置角色显示生效权限，自定义角色显示直接权限。
 
     Args:
         store: RBAC 持久化存储。
@@ -57,6 +57,15 @@ async def _catalog_response(store: RbacPolicyStore) -> RbacCatalogListResponse:
         permissions.setdefault(policy.subject, []).append(
             RbacCatalogPermissionResponse(path=policy.path, action=policy.action)
         )
+    enforcer = get_enforcer()
+    for role_id in BUILTIN_ROLES:
+        permissions[role_id] = [
+            RbacCatalogPermissionResponse(path=path, action=action)
+            for path, action in sorted({
+                (rule[1], rule[2])
+                for rule in enforcer.get_implicit_permissions_for_user(role_id)
+            })
+        ]
     return RbacCatalogListResponse(
         roles=[
             RbacCatalogRoleResponse(

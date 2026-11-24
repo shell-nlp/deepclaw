@@ -22,6 +22,7 @@ def test_general_agent_exposes_common_middleware() -> None:
     assert {
         "RecommendedQuestionsMiddleware",
         "BusinessMiddleware",
+        "CronMiddleware",
         "MCPMiddleware",
         "DeviceToolsMiddleware",
         "HumanInTheLoopMiddleware",

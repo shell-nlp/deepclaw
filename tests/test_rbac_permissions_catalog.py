@@ -57,8 +57,11 @@ def test_permission_catalog_codes_and_rules_are_consistent():
         assert definition.description
         assert definition.rules
         for rule in definition.rules:
-            assert rule.path.startswith("/api/")
-            assert rule.action in {"read", "write"}
+            if rule.path.startswith("/agent/tools/"):
+                assert rule.action == "use"
+            else:
+                assert rule.path.startswith("/api/")
+                assert rule.action in {"read", "write"}
 
 
 def test_permission_allowlist_covers_catalog_rules():

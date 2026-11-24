@@ -11,6 +11,41 @@ from deepclaw.web_backend.auth.rbac.schemas import (
 
 PERMISSION_DEFINITIONS = (
     RbacPermissionDefinitionResponse(
+        code="chat.view",
+        group="聊天",
+        name="查看聊天",
+        description="查看自己的聊天历史、运行状态和消息。",
+        rules=[RbacPermissionRuleResponse(path="/api/agui/*", action="read")],
+    ),
+    RbacPermissionDefinitionResponse(
+        code="chat.manage",
+        group="聊天",
+        name="使用聊天",
+        description="发送消息、继续或取消运行，并删除自己的会话。",
+        rules=[RbacPermissionRuleResponse(path="/api/agui/*", action="write")],
+    ),
+    RbacPermissionDefinitionResponse(
+        code="schedules.view",
+        group="能力与连接",
+        name="查看定时任务",
+        description="查看自己的定时任务、通知和结果文件。",
+        rules=[RbacPermissionRuleResponse(path="/api/schedules", action="read")],
+    ),
+    RbacPermissionDefinitionResponse(
+        code="schedules.manage",
+        group="能力与连接",
+        name="管理定时任务",
+        description="创建、修改、启停和删除自己的定时任务，并删除通知。",
+        rules=[RbacPermissionRuleResponse(path="/api/schedules", action="write")],
+    ),
+    RbacPermissionDefinitionResponse(
+        code="mcp.use",
+        group="能力与连接",
+        name="使用 MCP",
+        description="在聊天中连接 MCP 服务并调用其工具。",
+        rules=[RbacPermissionRuleResponse(path="/agent/tools/mcp", action="use")],
+    ),
+    RbacPermissionDefinitionResponse(
         code="knowledge.view",
         group="知识库",
         name="查看知识库",

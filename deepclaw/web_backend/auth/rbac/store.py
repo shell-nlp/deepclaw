@@ -36,14 +36,14 @@ class RbacPolicyStore:
     """RBAC 策略持久化存储。
 
     Args:
-        db_url: 数据库连接地址；为空时使用元数据数据库（默认 .deepclaw/rbac.db）。
+        db_url: 数据库连接地址；为空时使用统一业务元数据数据库。
     """
 
     def __init__(self, db_url: str | None = None, auth_db_url: str | None = None) -> None:
         from sqlalchemy.pool import NullPool
 
-        self.db_url = db_url or resolve_metadata_db_url("rbac.db")
-        self.auth_db_url = auth_db_url or resolve_metadata_db_url("auth.db")
+        self.db_url = db_url or resolve_metadata_db_url()
+        self.auth_db_url = auth_db_url or resolve_metadata_db_url()
         self._same_auth_database = self.db_url == self.auth_db_url
         # 策略可能在任何事件循环中读取，NullPool 避免连接绑定到已关闭的循环。
         self.engine = create_async_engine_from_url(

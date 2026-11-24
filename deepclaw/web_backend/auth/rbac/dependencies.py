@@ -14,6 +14,25 @@ from deepclaw.web_backend.auth.rbac.enforcer import is_allowed
 OwnerResolver = Callable[[CurrentActor], Awaitable[str | None] | str | None]
 
 
+async def agent_has_permission(user_id: str, path: str, action: str) -> bool:
+    """按智能体的可信用户标识校验当前账号权限。
+
+    Args:
+        user_id: 运行配置注入的用户 ID。
+        path: 受保护的功能路径。
+        action: 要校验的操作。
+    """
+    from deepclaw.web_backend.auth.service import get_auth_service
+
+    if user_id == "guest":
+        return False
+    user = await get_auth_service().store.get_user_by_user_id(user_id)
+    if user is None or not user.is_active:
+        return False
+    actor = CurrentActor(is_guest=False, user_id=user_id, email=user.email, role=user.role)
+    return is_allowed(actor, path=path, action=action)
+
+
 def require_permission(
     path: str,
     action: str,

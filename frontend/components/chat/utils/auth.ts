@@ -33,6 +33,11 @@ export interface ActorPayload {
 }
 
 export interface ActorCapabilities {
+  canViewChat: boolean
+  canUseChat: boolean
+  canViewSchedules: boolean
+  canManageSchedules: boolean
+  canUseMcp: boolean
   canViewKnowledge: boolean
   canManageKnowledge: boolean
   canManageSkills: boolean
@@ -105,6 +110,11 @@ export function getActorCapabilities(actor: ActorState): ActorCapabilities {
   }))
   const hasPermissions = Boolean(grants)
   return {
+    canViewChat: actor.isGuest || allowed('/api/agui/threads', 'read'),
+    canUseChat: actor.isGuest || (allowed('/api/agui/runs', 'read') && allowed('/api/agui/runs', 'write')),
+    canViewSchedules: allowed('/api/schedules', 'read'),
+    canManageSchedules: allowed('/api/schedules', 'write'),
+    canUseMcp: allowed('/agent/tools/mcp', 'use'),
     canViewKnowledge: actor.isGuest || !hasPermissions || allowed('/api/rag/knowledge-bases/list', 'read'),
     canManageKnowledge: actor.isGuest || !hasPermissions || allowed('/api/rag/knowledge-bases/list', 'write'),
     canManageSkills: actor.isGuest || !hasPermissions || allowed('/api/agent/skills/list', 'write'),

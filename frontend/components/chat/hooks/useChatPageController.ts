@@ -30,6 +30,7 @@ import { useChatRuntime } from './useChatRuntime'
 import { usePageRouting } from './usePageRouting'
 import { useHistorySessions } from './useHistorySessions'
 import { useDevices } from './useDevices'
+import type { ChatImage } from '../utils/chatImages'
 
 export function useChatPageController() {
   const selectedKnowledgeBaseRef = useRef<KnowledgeBase | null>(null)
@@ -52,7 +53,11 @@ export function useChatPageController() {
 
   const [messages, setMessages] = useState<Message[]>([])
   const [inputValue, setInputValue] = useState('')
+  const [imageDraft, setImageDraft] = useState<{ threadId: string; images: ChatImage[] } | null>(null)
+  const [selectedModelId, setSelectedModelId] = useState('')
+  const [chatModels, setChatModels] = useState<{ items: { id: string; name: string }[]; default_id: string | null }>({ items: [], default_id: null })
   const [sessionId, setSessionId] = useState('')
+  const draftImages = imageDraft?.threadId === sessionId ? imageDraft.images : []
   const [status, setStatus] = useState<'ready' | 'connecting' | 'error'>('ready')
   const [aguiApiPath, setAguiApiPath] = useState(DEFAULT_AGUI_API_PATH)
   const [availableAgents, setAvailableAgents] = useState<AgentSummary[]>([])
@@ -122,6 +127,16 @@ export function useChatPageController() {
   })
 
   const deviceState = useDevices(requestJson, actor)
+  useEffect(() => {
+    if (viewMode !== 'chat') return
+    const abort = new AbortController()
+    void requestJson<typeof chatModels>('/api/agui/models', { signal: abort.signal }).then((models) => {
+      if (abort.signal.aborted) return
+      setChatModels(models)
+      setSelectedModelId((id) => models.items.some((item) => item.id === id) ? id : '')
+    }).catch(() => {})
+    return () => abort.abort()
+  }, [requestJson, viewMode])
 
   const chatContainerRef = useRef<HTMLDivElement>(null)
   const isChatAtBottomRef = useRef(true)
@@ -649,6 +664,9 @@ export function useChatPageController() {
   const runtime = useChatRuntime({
     messages,
     inputValue,
+    draftImages,
+    clearDraftImages: () => setImageDraft(null),
+    selectedModelId,
     setInputValue,
     sessionId,
     setSessionId,
@@ -709,7 +727,7 @@ export function useChatPageController() {
     knowledgeIndexNames,
     primaryKnowledgeBase,
     mcpConfig,
-    mcpEnabled,
+    mcpEnabled: mcpEnabled && actorCapabilities.canUseMcp,
     activeChatModeId,
     setManagementError,
     textareaRef,
@@ -723,7 +741,7 @@ export function useChatPageController() {
     handleInterruptAction,
     handleAskUserResponse,
   } = runtime
-  const chatDisabled = isKnowledgeMode && knowledgeIndexNames.length === 0
+  const chatDisabled = !actorCapabilities.canUseChat || (isKnowledgeMode && knowledgeIndexNames.length === 0)
   return {
     deviceState,
     viewMode,
@@ -735,6 +753,11 @@ export function useChatPageController() {
     messages,
     inputValue,
     setInputValue,
+    draftImages,
+    setDraftImages: (images: ChatImage[]) => setImageDraft({ threadId: sessionId, images }),
+    chatModels,
+    selectedModelId,
+    setSelectedModelId,
     sessionId,
     historySessions,
     historyExpanded,
@@ -823,6 +846,7 @@ export function useChatPageController() {
     clearChat,
     requestJson,
     handleRetryMessage,
+    withAuthHeaders,
     navigateTo,
     openHistorySession,
     deleteHistorySession,

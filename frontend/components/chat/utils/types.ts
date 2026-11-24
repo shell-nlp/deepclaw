@@ -1,4 +1,7 @@
+import type { ChatImage } from './chatImages'
+
 export interface Message {
+  images?: ChatImage[]
   id: string
   role: 'user' | 'ai'
   content: string
@@ -238,7 +241,7 @@ export interface BulkDeleteDocumentResponse {
   knowledge_base?: KnowledgeBase | null
 }
 
-export type ViewMode = 'chat' | 'knowledge' | 'mcp' | 'skills' | 'channels' | 'devices' | 'models'
+export type ViewMode = 'chat' | 'knowledge' | 'mcp' | 'skills' | 'channels' | 'devices' | 'models' | 'schedules'
 export type ChannelManagementPage = 'weixin' | 'feishu'
 export type KnowledgePage =
   | 'libraries'

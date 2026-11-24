@@ -7,9 +7,26 @@ class AgUiRunRequest(RunAgentInput):
 
     Args:
         agent_id: 顶层智能体 ID；为空时使用默认智能体。
+        model_id: 本轮选用的聊天模型 ID。
     """
 
     agent_id: str | None = Field(default=None, description="智能体 ID")
+    model_id: str | None = Field(default=None, max_length=64, description="本轮聊天模型 ID")
+
+
+class ChatModelOptionResponse(BaseModel):
+    """聊天模型选择器中的一项。"""
+
+    id: str
+    name: str
+    provider: str
+
+
+class ChatModelOptionsResponse(BaseModel):
+    """聊天可选模型及系统默认选项。"""
+
+    items: list[ChatModelOptionResponse]
+    default_id: str | None
 
 
 class RunSnapshotResponse(BaseModel):

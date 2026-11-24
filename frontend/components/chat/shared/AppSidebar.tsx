@@ -25,6 +25,8 @@ interface AppSidebarProps {
     channelPage?: ChannelManagementPage
   ) => void
   historyExpanded: boolean
+  canViewChat: boolean
+  canUseChat: boolean
   onToggleHistory: () => void
   historyLoading: boolean
   historyError: string
@@ -84,6 +86,8 @@ export function AppSidebar({
   channelPage,
   onNavigate,
   historyExpanded,
+  canViewChat,
+  canUseChat,
   onToggleHistory,
   historyLoading,
   historyError,
@@ -151,7 +155,7 @@ export function AppSidebar({
           <SidebarIcon name="chat" />
           <span className={styles.sidebarButtonLabel}>聊天</span>
         </button>
-        {viewMode === 'chat' ? (
+        {viewMode === 'chat' && canViewChat ? (
           <section className={styles.chatHistory} aria-label="聊天历史">
             <div className={styles.chatHistoryHeader}>
               <button
@@ -216,7 +220,7 @@ export function AppSidebar({
                           </span>
                         </span>
                       </button>
-                      <button
+                      {canUseChat && <button
                         type="button"
                         className={styles.chatHistoryDeleteButton}
                         onClick={(event) =>
@@ -229,7 +233,7 @@ export function AppSidebar({
                         aria-label={`删除会话 ${historySession.session_id}`}
                       >
                         删除
-                      </button>
+                      </button>}
                     </div>
                   )
                 })}
@@ -249,6 +253,11 @@ export function AppSidebar({
           <span className={styles.sidebarButtonLabel}>知识库</span>
         </button>
         <p className={styles.sidebarSectionLabel}>能力与连接</p>
+        <button className={`${styles.sidebarButton} ${viewMode === 'schedules' ? styles.sidebarButtonActive : ''}`}
+          onClick={() => onNavigate('schedules')} title="定时任务" aria-current={viewMode === 'schedules' ? 'page' : undefined}>
+          <SidebarIcon name="schedules" />
+          <span className={styles.sidebarButtonLabel}>定时任务</span>
+        </button>
         <button className={`${styles.sidebarButton} ${viewMode === 'devices' ? styles.sidebarButtonActive : ''}`} onClick={() => onNavigate('devices')}>
           <SidebarIcon name="devices" />
           <span className={styles.sidebarButtonLabel}>我的设备</span>

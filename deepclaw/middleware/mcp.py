@@ -18,6 +18,7 @@ from loguru import logger
 from deepclaw.agents.general.state import StateSchema
 from deepclaw.middleware.common import get_request_header_info
 from deepclaw.settings import settings
+from deepclaw.web_backend.auth.rbac.dependencies import agent_has_permission
 from mcp2tool.fastmcp_to_langchain import load_langchain_tools_from_mcp_config
 
 _SKIP_FORWARD_HEADERS = frozenset({"host", "content-length"})
@@ -339,9 +340,22 @@ class MCPMiddleware(AgentMiddleware):
             )
         return prefixed_tools
 
+    async def _can_use_mcp(self, request: ModelRequest | ToolCallRequest) -> bool:
+        """校验当前运行的账号能否使用 MCP。
+
+        Args:
+            request: 智能体模型调用或工具调用请求。
+        """
+        server_info = getattr(request.runtime, "server_info", None)
+        user_id = getattr(getattr(server_info, "user", None), "identity", None)
+        return user_id is None or await agent_has_permission(user_id, "/agent/tools/mcp", "use")
+
     async def awrap_model_call(self, request: ModelRequest, handler):
         thread_id = request.runtime.execution_info.thread_id
         cached_resources = self._mcp_resources_by_thread_id.get(thread_id)
+        mcp_config = None if cached_resources else self._resolve_mcp_config(request)
+        if (cached_resources or mcp_config) and not await self._can_use_mcp(request):
+            return await handler(request)
         if cached_resources is not None:
             _, tools = cached_resources
             if tools:
@@ -355,8 +369,8 @@ class MCPMiddleware(AgentMiddleware):
                     command=Command(update={"mcp_tool_names": [tool.name for tool in tools]}),
                 )
             self._mcp_resources_by_thread_id.pop(thread_id, None)
+            mcp_config = self._resolve_mcp_config(request)
 
-        mcp_config = self._resolve_mcp_config(request)
         if mcp_config:
             header_info = self._prepare_mcp_request_headers(request)
             mcp_config = self._inject_context_headers(
@@ -394,6 +408,9 @@ class MCPMiddleware(AgentMiddleware):
         thread_id = request.runtime.execution_info.thread_id
         progress_callback = self._build_progress_callback(request.tool_call["id"])
         cached_resources = self._mcp_resources_by_thread_id.get(thread_id)
+        mcp_config = self._resolve_mcp_config(request)
+        if (cached_resources or mcp_config) and not await self._can_use_mcp(request):
+            return await handler(request)
         if cached_resources is not None:
             _, tools = cached_resources
             if tools:
@@ -415,7 +432,6 @@ class MCPMiddleware(AgentMiddleware):
             else:
                 self._mcp_resources_by_thread_id.pop(thread_id, None)
 
-        mcp_config = self._resolve_mcp_config(request)
         if mcp_config:
             header_info = self._prepare_mcp_request_headers(request)
             mcp_config = self._inject_context_headers(

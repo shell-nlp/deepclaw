@@ -34,12 +34,16 @@ export type AgUiResumeEntry = {
   payload?: unknown
 }
 
+type ChatContent = string | Array<{ type: 'text'; text: string } |
+  { type: 'image'; source: { type: 'data'; mimeType: string; value: string } }>
+
 export type AgUiRunInput = {
   agentId: string
   threadId: string
   runId: string
   state: Record<string, unknown>
-  messages: Array<{ id: string; role: 'user'; content: string }>
+  model_id?: string
+  messages: Array<{ id: string; role: 'user'; content: ChatContent }>
   tools: unknown[]
   context: unknown[]
   forwardedProps: Record<string, unknown>
@@ -57,15 +61,25 @@ export function createAgUiRunInput(input: {
   runId: string
   messageId: string
   query: string
+  modelId?: string
+  images?: ReadonlyArray<{ url: string }>
   state: Record<string, unknown>
   forwardedProps?: Record<string, unknown>
 }): AgUiRunInput {
+  const content: ChatContent = input.images?.length ? [
+    { type: 'text', text: input.query },
+    ...input.images.map(({ url }) => {
+      const [header, value] = url.split(',', 2)
+      return { type: 'image' as const, source: { type: 'data' as const, mimeType: header.slice(5, -7), value } }
+    }),
+  ] : input.query
   return {
     agentId: input.agentId,
     threadId: input.threadId,
     runId: input.runId,
     state: input.state,
-    messages: [{ id: input.messageId, role: 'user', content: input.query }],
+    ...(input.modelId ? { model_id: input.modelId } : {}),
+    messages: [{ id: input.messageId, role: 'user', content }],
     tools: [],
     context: [],
     forwardedProps: input.forwardedProps ?? {},

@@ -14,6 +14,8 @@ import type {
   ToolData,
 } from './types'
 
+import { historyChatImages } from './chatImages.ts'
+
 export type AssistantStreamKind = 'reasoning' | 'content' | 'tool' | 'interrupt' | null
 
 export type ThreadRuntime = {
@@ -339,6 +341,7 @@ export function toHistoryMessages(
         id: messageId,
         role: 'user',
         content,
+        ...(Array.isArray(message.content) ? { images: historyChatImages(message.content) } : {}),
         createdAt,
       })
       activeAssistant = null

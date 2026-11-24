@@ -204,7 +204,7 @@ def messages2str(messages: List[BaseMessage]):
     for msg in messages:
         if msg.type == "system":
             continue
-        msg_str = f"{msg.type}: " + msg.content
+        msg_str = f"{msg.type}: {msg.text}"
         msg_str_list.append(msg_str)
     return "\n".join(msg_str_list)
 
@@ -337,10 +337,10 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
                 self.model.bind(extra_body=dict(DISABLE_THINKING_EXTRA_BODY)),
                 REWRITE_QUREY_PROMPT.format(history=messages2str(messages[-20:])),
             ).content
-            logger.info(f"改写问题：{messages[-1].content} -> {new_query}")
+            logger.info(f"改写问题：{messages[-1].text} -> {new_query}")
             return new_query
         else:
-            return messages[-1].content
+            return messages[-1].text
 
     def _retrieve_router(self, messages: List[BaseMessage]) -> Literal["LLM", "RAG"]:
         """智能判断是否使用RAG
@@ -371,7 +371,7 @@ class RAGMiddleware(AgentMiddleware[CustomState]):
                 [
                     SystemMessage(content=RETRIEVE_ROUTER_PROMPT),
                 ]
-                + messages[-20:],
+                + [message.model_copy(update={"content": message.text}) for message in messages[-20:]],
             )
             logger.info(f"路由结果：{value}")
             router = value["路由"]

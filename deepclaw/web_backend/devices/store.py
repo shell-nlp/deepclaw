@@ -38,7 +38,7 @@ class DeviceStore:
         Args:
             db_url: 测试或部署使用的数据库地址。
         """
-        self.engine = create_async_engine_from_url(db_url or resolve_metadata_db_url("devices.db"))
+        self.engine = create_async_engine_from_url(db_url or resolve_metadata_db_url())
         self.sessions = build_async_sessionmaker(self.engine)
         self._ready = False
         self._lock = asyncio.Lock()

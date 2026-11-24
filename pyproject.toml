@@ -40,6 +40,8 @@ dependencies = [
     "sqlite-vec>=0.1.9",
     # SQLAlchemy 异步扩展的必需运行时依赖，不声明时 pip 安装会直接 ImportError。
     "greenlet>=3.0.0",
+    "croniter>=7.0.0",
+    "python-docx>=1.2.0",
 ]
 # uv add pypdf2 --optional pdf
 # uv sync --extra pdf 才会安装

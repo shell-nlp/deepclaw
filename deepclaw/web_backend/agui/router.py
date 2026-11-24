@@ -1,19 +1,24 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 from typing import Any
 
+from ag_ui.core import ImageInputContent, TextInputContent, UserMessage
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from loguru import logger
 
 from deepclaw.agent_registry import AgentRegistry
+from deepclaw.model_config import find_chat_model, load_model_state
 from deepclaw.web_backend.agent.run_store import (
     RunStore,
     get_or_backfill_thread,
     get_run_store,
 )
 from deepclaw.web_backend.agui.runtime import AgentRuntimeCache
-from deepclaw.web_backend.auth.dependencies import CurrentActor, get_current_actor
+from deepclaw.web_backend.auth.dependencies import CurrentActor
+from deepclaw.web_backend.auth.rbac.dependencies import require_permission
 from deepclaw.web_backend.common.agui_runs import (
     _actor_user_id,
     cancel_agui_run_from_store,
@@ -28,6 +33,8 @@ from deepclaw.web_backend.common.agui_runs import (
 )
 from deepclaw.web_backend.common.agui_schemas import (
     AgentListResponse,
+    ChatModelOptionResponse,
+    ChatModelOptionsResponse,
     AgentSummaryResponse,
     AgUiRunRequest,
     RunSnapshotResponse,
@@ -96,8 +103,48 @@ def format_run_payload(payload: AgUiRunRequest) -> str:
     try:
         data = payload.model_dump(mode="json")
     except Exception:  # noqa: BLE001
-        return repr(payload)
+        return "无法序列化 Run 请求"
+    for message in data.get("messages", []):
+        if isinstance(message.get("content"), list):
+            message["content"] = "[多模态消息]"
     return json.dumps(data, ensure_ascii=False, indent=2, default=str)
+
+
+def _validate_chat_images(payload: AgUiRunRequest) -> None:
+    """只接受有限大小的内嵌图片，避免从外部地址读取附件。
+
+    Args:
+        payload: 本轮聊天请求。
+    """
+    count = 0
+    total_size = 0
+    for message in payload.messages:
+        if not isinstance(message, UserMessage) or not isinstance(message.content, list):
+            continue
+        for item in message.content:
+            if isinstance(item, TextInputContent):
+                continue
+            if not isinstance(item, ImageInputContent) or item.source.type != "data":
+                raise HTTPException(422, "目前仅支持上传本地图片。")
+            count += 1
+            value = item.source.value
+            if count > 4 or len(value) > 4 * ((5 * 1024 * 1024 + 2) // 3):
+                raise HTTPException(413, "每条消息最多 4 张图片，单张不能超过 5 MB。")
+            try:
+                raw = base64.b64decode(value, validate=True)
+            except (ValueError, binascii.Error) as exc:
+                raise HTTPException(422, "图片数据无效，请重新选择。") from exc
+            total_size += len(raw)
+            if len(raw) > 5 * 1024 * 1024 or total_size > 10 * 1024 * 1024:
+                raise HTTPException(413, "单张图片最多 5 MB，单条消息图片合计最多 10 MB。")
+            mime = item.source.mime_type
+            valid = (
+                (mime == "image/png" and raw.startswith(b"\x89PNG\r\n\x1a\n"))
+                or (mime == "image/jpeg" and raw.startswith(b"\xff\xd8\xff"))
+                or (mime == "image/webp" and raw.startswith(b"RIFF") and raw[8:12] == b"WEBP")
+            )
+            if not valid:
+                raise HTTPException(422, "请选择有效的 PNG、JPEG 或 WebP 图片。")
 
 
 async def _resolve_run_manager(
@@ -154,6 +201,23 @@ async def _resolve_run_manager(
 router = APIRouter(prefix="/api/agui")
 
 
+@router.get("/models", response_model=ChatModelOptionsResponse, tags=["agui-agents"])
+async def list_chat_models() -> ChatModelOptionsResponse:
+    """仅返回聊天模型的可选项，不暴露连接配置。
+
+    Args:
+        无。
+    """
+    catalog = load_model_state()
+    return ChatModelOptionsResponse(
+        default_id=catalog.get("active_chat_model_id"),
+        items=[
+            ChatModelOptionResponse(id=item["id"], name=item["name"], provider=item["provider"])
+            for item in catalog["models"] if item.get("type") == "chat"
+        ],
+    )
+
+
 @router.get(
     "/agents",
     response_model=AgentListResponse,
@@ -190,13 +254,16 @@ async def list_agents(
 async def create_run(
     payload: AgUiRunRequest,
     request: Request,
-    actor: CurrentActor = Depends(get_current_actor),
+    actor: CurrentActor = Depends(require_permission("/api/agui/runs", "write", allow_guest=True)),
     runtime_registry: AgentRuntimeCache = Depends(get_agent_runtime_cache),
     checkpointer: Any | None = Depends(get_checkpointer),
     store: Any | None = Depends(get_langgraph_store),
     run_store: RunStore = Depends(get_agui_run_store),
 ):
     """创建统一 AG-UI Run。"""
+    _validate_chat_images(payload)
+    if payload.model_id and find_chat_model(payload.model_id) is None:
+        raise HTTPException(422, "所选模型已不可用，请重新选择。")
     logger.info("AG-UI 创建 Run 入参：\n{}", format_run_payload(payload))
     registry = request.app.state.agent_registry
     try:
@@ -233,7 +300,7 @@ async def create_run(
 )
 async def get_run(
     run_id: str,
-    actor: CurrentActor = Depends(get_current_actor),
+    actor: CurrentActor = Depends(require_permission("/api/agui/runs/{run_id}", "read", allow_guest=True)),
     run_store: RunStore = Depends(get_agui_run_store),
 ):
     """读取统一 AG-UI Run Snapshot。"""
@@ -250,7 +317,7 @@ async def run_events(
     run_id: str,
     request: Request,
     after: str | None = None,
-    actor: CurrentActor = Depends(get_current_actor),
+    actor: CurrentActor = Depends(require_permission("/api/agui/runs/{run_id}/events", "read", allow_guest=True)),
     run_store: RunStore = Depends(get_agui_run_store),
 ):
     """订阅统一 AG-UI Run 事件。"""
@@ -275,13 +342,14 @@ async def resume_run(
     run_id: str,
     payload: AgUiRunRequest,
     request: Request,
-    actor: CurrentActor = Depends(get_current_actor),
+    actor: CurrentActor = Depends(require_permission("/api/agui/runs/{run_id}/resume", "write", allow_guest=True)),
     runtime_registry: AgentRuntimeCache = Depends(get_agent_runtime_cache),
     checkpointer: Any | None = Depends(get_checkpointer),
     store: Any | None = Depends(get_langgraph_store),
     run_store: RunStore = Depends(get_agui_run_store),
 ):
     """恢复统一 AG-UI Run。"""
+    _validate_chat_images(payload)
     logger.info(
         "AG-UI 恢复 Run 入参（run_id={}）：\n{}", run_id, format_run_payload(payload)
     )
@@ -317,7 +385,7 @@ async def resume_run(
 )
 async def cancel_run(
     run_id: str,
-    actor: CurrentActor = Depends(get_current_actor),
+    actor: CurrentActor = Depends(require_permission("/api/agui/runs/{run_id}/cancel", "write", allow_guest=True)),
     run_store: RunStore = Depends(get_agui_run_store),
 ):
     """取消统一 AG-UI Run。"""
@@ -334,7 +402,7 @@ async def cancel_run(
 async def list_threads(
     agent_id: str | None = Query(default=None, alias="agentId"),
     limit: int = Query(default=100, ge=1, le=200),
-    actor: CurrentActor = Depends(get_current_actor),
+    actor: CurrentActor = Depends(require_permission("/api/agui/threads", "read", allow_guest=True)),
     run_store: RunStore = Depends(get_agui_run_store),
 ):
     """查询当前用户的 Thread 列表。"""
@@ -356,7 +424,7 @@ async def list_threads(
 async def list_thread_runs(
     thread_id: str,
     limit: int = Query(default=100, ge=1, le=200),
-    actor: CurrentActor = Depends(get_current_actor),
+    actor: CurrentActor = Depends(require_permission("/api/agui/threads/{thread_id}/runs", "read", allow_guest=True)),
     run_store: RunStore = Depends(get_agui_run_store),
 ):
     """查询指定 Thread 下的 Run。"""
@@ -377,7 +445,7 @@ async def list_thread_runs(
 async def get_thread_state(
     thread_id: str,
     request: Request,
-    actor: CurrentActor = Depends(get_current_actor),
+    actor: CurrentActor = Depends(require_permission("/api/agui/threads/{thread_id}/state", "read", allow_guest=True)),
     runtime_registry: AgentRuntimeCache = Depends(get_agent_runtime_cache),
     checkpointer: Any | None = Depends(get_checkpointer),
     store: Any | None = Depends(get_langgraph_store),
@@ -419,7 +487,7 @@ async def get_thread_state(
 )
 async def delete_thread(
     thread_id: str,
-    actor: CurrentActor = Depends(get_current_actor),
+    actor: CurrentActor = Depends(require_permission("/api/agui/threads/{thread_id}", "write", allow_guest=True)),
     run_store: RunStore = Depends(get_agui_run_store),
     checkpointer: Any | None = Depends(get_checkpointer),
 ):

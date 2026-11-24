@@ -1,6 +1,6 @@
 'use client'
 
-import type { KeyboardEvent, ReactNode, Ref } from 'react'
+import { useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from 'react'
 
 import styles from '../ChatInterface.module.css'
 import { InterruptPanel } from './interrupt/InterruptPanel'
@@ -8,6 +8,7 @@ import type { InterruptEditedAction } from './interrupt/utils'
 import { AssistantMessageBody, MarkdownMessage } from './cards/AssistantMessageBody'
 import { AgentModeSwitcher } from './shared/AgentModeSwitcher'
 import { DevicePicker } from './shared/DevicePicker'
+import { CHAT_IMAGE_TYPES, readChatImage, type ChatImage } from './utils/chatImages'
 import type { ClientDevice } from './hooks/useDevices'
 import {
   KnowledgeBasePicker,
@@ -100,6 +101,7 @@ function ComposerToggle({ label, iconName, checked, onChange }: ComposerTogglePr
 }
 
 interface ChatViewProps {
+  notifications?: ReactNode
   devices?: ClientDevice[]
   selectedDeviceId?: string
   onDeviceChange?: (id: string) => void
@@ -118,7 +120,13 @@ interface ChatViewProps {
   showInterrupt: boolean
   interruptData: InterruptData | null
   inputValue: string
+  draftImages: ChatImage[]
+  onDraftImagesChange: (images: ChatImage[]) => void
+  chatModels: { items: { id: string; name: string }[]; default_id: string | null }
+  selectedModelId: string
+  onModelChange: (id: string) => void
   chatDisabled: boolean
+  canUseChat: boolean
   internetSearch: boolean
   deepThinking: boolean
   currentAssistantMessageId: string | null
@@ -147,6 +155,7 @@ interface ChatViewProps {
 }
 
 export function ChatView({
+  notifications,
   devices = [],
   selectedDeviceId = '',
   onDeviceChange,
@@ -165,7 +174,13 @@ export function ChatView({
   showInterrupt,
   interruptData,
   inputValue,
+  draftImages,
+  onDraftImagesChange,
+  chatModels,
+  selectedModelId,
+  onModelChange,
   chatDisabled,
+  canUseChat,
   internetSearch,
   deepThinking,
   currentAssistantMessageId,
@@ -189,6 +204,37 @@ export function ChatView({
   onRecommendedQuestion,
   onRetryMessage,
 }: ChatViewProps) {
+  const imageInput = useRef<HTMLInputElement>(null)
+  const [readingImages, setReadingImages] = useState(false)
+  const [imageError, setImageError] = useState('')
+  const defaultModel = chatModels.items.find((model) => model.id === chatModels.default_id)
+
+  /** 读取并预览本次选择的图片。Args: files 为本地文件选项。 */
+  const addImages = async (files: File[]) => {
+    if (!files.length || readingImages) return
+    setImageError('')
+    if (files.length + draftImages.length > 4) {
+      setImageError('每条消息最多添加 4 张图片。')
+      return
+    }
+    const existingBytes = draftImages.reduce((total, image) => {
+      const encoded = image.url.slice(image.url.indexOf(',') + 1)
+      return total + encoded.length * 3 / 4 - (encoded.endsWith('==') ? 2 : encoded.endsWith('=') ? 1 : 0)
+    }, 0)
+    if (files.reduce((total, file) => total + file.size, existingBytes) > 10 * 1024 * 1024) {
+      setImageError('每条消息的图片合计最多 10 MB。')
+      return
+    }
+    setReadingImages(true)
+    try {
+      onDraftImagesChange([...draftImages, ...await Promise.all(files.map(readChatImage))])
+    } catch (error) {
+      setImageError(error instanceof Error ? error.message : '图片读取失败。')
+    } finally {
+      setReadingImages(false)
+    }
+  }
+
   const latestAssistantMessageId = messages.reduce<string | null>(
     (latestId, message) =>
       message.role === 'ai' ? message.id : latestId,
@@ -219,6 +265,7 @@ export function ChatView({
           <button className={styles.clearBtn} onClick={onClearChat}>
             新建/清空会话
           </button>
+          {notifications}
         </div>
       </div>
 
@@ -244,6 +291,9 @@ export function ChatView({
                       {formatMessageTime(msg)}
                     </span>
                   </div>
+                  {msg.images?.length ? <div className={styles.chatMessageImages}>
+                    {msg.images.map((image, index) => <img key={index} src={image.url} alt={image.name} />)}
+                  </div> : null}
                   <MarkdownMessage content={msg.content} />
                 </>
               ) : (
@@ -288,14 +338,38 @@ export function ChatView({
 
       <div className={styles.inputArea}>
         <div className={styles.inputContainer}>
+          <input ref={imageInput} type="file" hidden multiple accept={CHAT_IMAGE_TYPES}
+            onChange={(event) => {
+              void addImages(Array.from(event.currentTarget.files ?? []))
+              event.currentTarget.value = ''
+            }} />
+          {draftImages.length > 0 && <div className={styles.composerImages}>
+            {draftImages.map((image, index) => (
+              <div key={index} className={styles.composerImage} title={image.name}>
+                <img src={image.url} alt={image.name} />
+                <button type="button" disabled={readingImages} aria-label={'移除 ' + image.name}
+                  onClick={() => { setImageError(''); onDraftImagesChange(draftImages.filter((_, i) => i !== index)) }}>×</button>
+              </div>
+            ))}
+          </div>}
+          {imageError && <p className={styles.composerImageError} role="alert">{imageError}</p>}
           <textarea
             ref={textareaRef}
             className={styles.input}
             value={inputValue}
             onChange={(event) => onInputChange(event.target.value)}
-            onKeyDown={onKeyDown}
+            onKeyDown={(event) => {
+              if (readingImages && event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) event.preventDefault()
+              else onKeyDown(event)
+            }}
+            onPaste={(event) => {
+              const files = Array.from(event.clipboardData.files).filter((file) => file.type.startsWith('image/'))
+              if (files.length) void addImages(files)
+            }}
             placeholder={
-              isKnowledgeMode
+              !canUseChat
+                ? '当前账号没有发送消息的权限。'
+                : isKnowledgeMode
                 ? chatDisabled
                   ? '请先在知识管理中选择一个知识库...'
                   : '输入您的知识库问题...'
@@ -305,6 +379,10 @@ export function ChatView({
           />
           <div className={styles.composerFooter}>
             <div className={styles.toggles}>
+              <button type="button" className={styles.composerAddImage} aria-label="上传图片"
+                title="上传图片" disabled={readingImages || isProcessing} onClick={() => imageInput.current?.click()}>
+                <span aria-hidden="true">+</span>
+              </button>
               {!isKnowledgeMode && onDeviceChange && <DevicePicker devices={devices} value={selectedDeviceId} disabled={isProcessing} onChange={onDeviceChange}/>}
               <KnowledgeBasePicker
                 open={knowledgePickerOpen}
@@ -329,6 +407,15 @@ export function ChatView({
                 onChange={onDeepThinkingChange}
               />
             </div>
+            <div className={styles.composerActions}>
+              <label className={styles.composerModel}>
+                <select aria-label="选择聊天模型" value={selectedModelId} onChange={(event) => onModelChange(event.target.value)}>
+                  <option value="">{defaultModel ? defaultModel.name + '（默认）' : '默认模型'}</option>
+                  {chatModels.items.filter((model) => model.id !== chatModels.default_id || model.id === selectedModelId).map((model) =>
+                    <option key={model.id} value={model.id}>{model.name}</option>
+                  )}
+                </select>
+              </label>
             {isProcessing ? (
               <button
                 className={styles.abortBtn}
@@ -351,7 +438,7 @@ export function ChatView({
               <button
                 className={styles.sendBtn}
                 onClick={() => void onSendMessage()}
-                disabled={!inputValue.trim() || chatDisabled}
+                disabled={readingImages || (!inputValue.trim() && !draftImages.length) || chatDisabled}
                 aria-label="发送消息"
                 title="发送"
               >
@@ -370,6 +457,7 @@ export function ChatView({
                 </svg>
               </button>
             )}
+            </div>
           </div>
         </div>
         <p className={styles.composerDisclaimer}>内容由 AI 生成，请仔细甄别</p>

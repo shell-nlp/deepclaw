@@ -43,6 +43,7 @@ class Settings(BaseSettings):
 
     # postgres数据库配置
     PG_DATABASE_URL: str | None = None
+    SQLITE_DB_PATH: str | None = None
     # 默认 sqlite：单文件 sqlite-vec，无需任何中间件；也可选 pgsql / elasticsearch / none
     VECTOR_STORE_BACKEND: Literal["elasticsearch", "pgsql", "sqlite", "none"] = "sqlite"
     # sqlite-vec 数据库文件路径；留空时落在 HOME_PATH/vector.db

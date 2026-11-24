@@ -236,4 +236,16 @@ def public_model(model: dict[str, Any], active_id: str | None) -> dict[str, Any]
     }
 
 
+def find_chat_model(model_id: str) -> dict[str, Any] | None:
+    """按 ID 查询聊天模型。
+
+    Args:
+        model_id: 模型目录中的标识。
+    """
+    return next(
+        (model for model in load_model_state()["models"] if model["id"] == model_id and model.get("type") == "chat"),
+        None,
+    )
+
+
 apply_active_model_config(load_model_state())

@@ -1,6 +1,8 @@
 import asyncio
+from contextlib import AsyncExitStack
 from datetime import timedelta
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 
 import pytest
@@ -62,87 +64,115 @@ def build_file_service(
     )
 
 
-def test_auth_store_migrates_legacy_auth_db_to_deepclaw_home(tmp_path, monkeypatch):
-    import deepclaw.web_backend.db as db_module
+@pytest.fixture
+def auth_migration_home(tmp_path, monkeypatch):
+    """隔离认证迁移测试的数据库并在结束后删除测试目录。
+
+    Args:
+        tmp_path: 当前测试专属的临时目录。
+        monkeypatch: 替换运行目录和数据库配置。
+    """
     import deepclaw.web_backend.auth.store as auth_store_module
+    import deepclaw.web_backend.db as db_module
+
+    with TemporaryDirectory(dir=tmp_path) as directory:
+        migration_home = Path(directory) / ".deepclaw"
+        monkeypatch.setattr(auth_store_module, "HOME_PATH", migration_home)
+        monkeypatch.setattr(db_module, "HOME_PATH", migration_home)
+        monkeypatch.setattr(
+            db_module, "settings", SimpleNamespace(PG_DATABASE_URL=None, SQLITE_DB_PATH=None)
+        )
+        yield migration_home
+
+
+def test_auth_store_migrates_legacy_auth_db_to_deepclaw_home(auth_migration_home):
+    import deepclaw.web_backend.auth.store as auth_store_module
+    from deepclaw.web_backend.sqlite_migration import migrate_sqlite_metadata
 
     async def _test():
-        legacy_home = tmp_path / ".langchain_api"
-        current_home = tmp_path / ".deepclaw"
-        legacy_home.mkdir()
+        async with AsyncExitStack() as databases:
+            current_home = auth_migration_home
+            legacy_home = current_home.with_name(".langchain_api")
+            legacy_home.mkdir()
 
-        legacy_service = build_file_service(
-            legacy_home / "auth.db",
-            admin_username="admin",
-            admin_password="legacy-admin-pass",
-        )
-        await legacy_service.bootstrap_admin_if_needed()
-        await legacy_service.register(username="user", password="user-pass-123")
+            legacy_service = build_file_service(
+                legacy_home / "auth.db",
+                admin_username="admin",
+                admin_password="legacy-admin-pass",
+            )
+            databases.push_async_callback(legacy_service.store.engine.dispose)
+            await legacy_service.bootstrap_admin_if_needed()
+            await legacy_service.register(username="user", password="user-pass-123")
 
-        monkeypatch.setattr(auth_store_module, "HOME_PATH", current_home)
-        monkeypatch.setattr(db_module, "HOME_PATH", current_home)
+            migrate_sqlite_metadata(current_home)
 
-        migrated_service = build_service(store=auth_store_module.AuthStore())
-        issued = await migrated_service.login(username="user", password="user-pass-123")
+            migrated_service = build_service(store=auth_store_module.AuthStore())
+            databases.push_async_callback(migrated_service.store.engine.dispose)
+            assert migrated_service.store.db_url == f"sqlite:///{(current_home / 'deepclaw.db').as_posix()}"
+            issued = await migrated_service.login(username="user", password="user-pass-123")
 
-        assert issued.user.username == "user"
-        assert (current_home / ".auth_migrated_from_langchain_api").exists()
+            assert issued.user.username == "user"
+            assert (current_home / ".auth_migrated_from_langchain_api").exists()
 
     asyncio.run(_test())
 
 
 def test_auth_store_prefers_legacy_auth_data_when_current_db_already_exists(
-    tmp_path, monkeypatch
+    auth_migration_home
 ):
-    import deepclaw.web_backend.db as db_module
     import deepclaw.web_backend.auth.store as auth_store_module
+    from deepclaw.web_backend.sqlite_migration import migrate_sqlite_metadata
 
     async def _test():
-        legacy_home = tmp_path / ".langchain_api"
-        current_home = tmp_path / ".deepclaw"
-        legacy_home.mkdir()
-        current_home.mkdir()
+        async with AsyncExitStack() as databases:
+            current_home = auth_migration_home
+            legacy_home = current_home.with_name(".langchain_api")
+            legacy_home.mkdir()
+            current_home.mkdir()
 
-        legacy_service = build_file_service(
-            legacy_home / "auth.db",
-            admin_username="admin",
-            admin_password="legacy-admin-pass",
-        )
-        await legacy_service.bootstrap_admin_if_needed()
-        await legacy_service.register(username="legacy-user", password="legacy-user-pass")
+            legacy_service = build_file_service(
+                legacy_home / "auth.db",
+                admin_username="admin",
+                admin_password="legacy-admin-pass",
+            )
+            databases.push_async_callback(legacy_service.store.engine.dispose)
+            await legacy_service.bootstrap_admin_if_needed()
+            await legacy_service.register(username="legacy-user", password="legacy-user-pass")
 
-        current_service = build_file_service(
-            current_home / "auth.db",
-            admin_username="admin",
-            admin_password="new-admin-pass",
-        )
-        await current_service.bootstrap_admin_if_needed()
-        await current_service.register(username="current-user", password="current-user-pass")
+            current_service = build_file_service(
+                current_home / "auth.db",
+                admin_username="admin",
+                admin_password="new-admin-pass",
+            )
+            databases.push_async_callback(current_service.store.engine.dispose)
+            await current_service.bootstrap_admin_if_needed()
+            await current_service.register(username="current-user", password="current-user-pass")
 
-        monkeypatch.setattr(auth_store_module, "HOME_PATH", current_home)
-        monkeypatch.setattr(db_module, "HOME_PATH", current_home)
+            migrate_sqlite_metadata(current_home)
 
-        migrated_service = build_service(store=auth_store_module.AuthStore())
+            migrated_service = build_service(store=auth_store_module.AuthStore())
+            databases.push_async_callback(migrated_service.store.engine.dispose)
+            assert migrated_service.store.db_url == f"sqlite:///{(current_home / 'deepclaw.db').as_posix()}"
 
-        admin_issued = await migrated_service.login(
-            username="admin",
-            password="legacy-admin-pass",
-        )
-        legacy_user_issued = await migrated_service.login(
-            username="legacy-user",
-            password="legacy-user-pass",
-        )
-        current_user_issued = await migrated_service.login(
-            username="current-user",
-            password="current-user-pass",
-        )
+            admin_issued = await migrated_service.login(
+                username="admin",
+                password="legacy-admin-pass",
+            )
+            legacy_user_issued = await migrated_service.login(
+                username="legacy-user",
+                password="legacy-user-pass",
+            )
+            current_user_issued = await migrated_service.login(
+                username="current-user",
+                password="current-user-pass",
+            )
 
-        with pytest.raises(ValueError, match="用户名或密码错误。"):
-            await migrated_service.login(username="admin", password="new-admin-pass")
+            with pytest.raises(ValueError, match="用户名或密码错误。"):
+                await migrated_service.login(username="admin", password="new-admin-pass")
 
-        assert admin_issued.user.username == "admin"
-        assert legacy_user_issued.user.username == "legacy-user"
-        assert current_user_issued.user.username == "current-user"
+            assert admin_issued.user.username == "admin"
+            assert legacy_user_issued.user.username == "legacy-user"
+            assert current_user_issued.user.username == "current-user"
 
     asyncio.run(_test())
 

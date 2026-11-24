@@ -46,7 +46,8 @@
   Web 侧统一异步数据库辅助入口。负责：
   - 同步/异步数据库 URL 转换
   - `auth` / `channels` / `knowledge_bases` 默认元数据数据库选择
-  - 当配置 `PG_DATABASE_URL` 时，优先落统一 PG；未配置时回退各自 SQLite
+  - 优先使用 `PG_DATABASE_URL`，未配置时共用 `DEEPCLAW_HOME/deepclaw.db`。可在 `.env` 用 `SQLITE_DB_PATH` 覆盖，相对路径以 `DEEPCLAW_HOME` 为基准。
+  - `sqlite_migration.py` 在 SQLite 模式启动时将历史分库中身份、策略、设备、渠道、知识库及旧 cron 表一次性迁入统一库，迁移成功后可清理旧文件。向量索引仍使用 `SQLITE_VECTOR_DB_PATH`。
 
 - `deepclaw/web_backend/common/agui_runs.py`
   AG-UI Run 公共执行逻辑、统一 Runs 路径解析、渠道 Agent URL 与 runtime-config 路由。
@@ -58,6 +59,7 @@
   AG-UI 智能体运行时缓存，按应用和智能体缓存图与 Run 管理器。
 - `deepclaw/web_backend/agui/router.py`
   模块级统一 AG-UI 路由器，提供 `/api/agui/agents`、`/api/agui/runs/*`、`/api/agui/threads/*`。
+  `GET /api/agui/models` 返回聊天模型选项和默认项，聊天请求可通过 `model_id` 选择本轮回答模型。图片随 AG-UI 用户消息提交，支持 PNG、JPEG、WebP，单张最多 5 MB，每轮最多 4 张且合计最多 10 MB。图片保留在会话记录中，供后续追问使用。
 
 - `deepclaw/web_backend/agent/run_manager.py`
   基于 `RunStore` 的 Run 管理器，负责 Run 执行、`Last-Event-ID` 重放、恢复、取消与事件流编排。每次执行前会把当前用户身份写入 LangGraph config 的 `configurable["langgraph_auth_user"]`：LangGraph 只有在该键存在时才构造 `Runtime.server_info`，Store 的 `filesystem` 命名空间才能按用户隔离；同时（`BACKEND_TYPE=store` 时）在启动图之前调用 `sync_skills_store()` 把本地技能同步进该用户命名空间，避免依赖中间件顺序。
@@ -148,6 +150,8 @@
 
 - `deepclaw/middleware/`
   业务开关、RAG 注入、MCP、工具搜索、计划，以及 `cron` 工具实现等中间件与运行时扩展。
+  定时任务由 `cron/cron_tool.py` 和 `web_backend/schedules.py` 共用 `cron/schedule_store.py`，按当前登录账号隔离。任务表 `scheduled_tasks` 与结果表 `scheduled_task_runs` 使用统一业务元数据数据库。应用生命周期启动轮询 worker，原子领取到期任务，停机期间遗漏的周期只补执行一次，过期的运行标为失败。旧 `cron_jobs` 记录缺少账号归属，继续保留为历史数据。
+  用户可设置一次性时间、以整数秒为单位的固定间隔或带 IANA 时区的 Cron。Cron 支持传统的五段「分 时 日 月 周」和增加开头秒字段的六段表达式。固定间隔按原计划推进，后台每秒检查到期任务。任务可交付固定内容或用当前聊天模型生成正文。Markdown、Word 产物复用统一对象存储，位于 `scheduled-task-results/<账号>/<任务>/<执行批次>.<扩展名>`，经鉴权下载。前端 `#/schedules` 管理任务，右上角铃铛显示执行结果、完成时间、未读数量与下载入口。
   NL2SQL 相关逻辑在 `deepclaw/middleware/nl2sql/`，DDL 拉取采用可注册 fetcher 架构（`ddl/base.py` + 各数据库实现如 `ddl/pgsql.py`）。
   图表生成在 `deepclaw/middleware/chart/`，其中 `charts/` 是基于 matplotlib 的 9 种图表渲染引擎（bar/line/pie/column/scatter/area/histogram/funnel/radar）源码包，`ChartMiddleware` 负责 Agent 工具适配；核心渲染层无 langchain 依赖，可独立发布为 MCP Server。`storage.py` 把生成的 PNG 写入统一对象存储的 `chart-assets` 桶，对象键为 `charts/<timestamp>_<uuid>.png`，并按 `CHART_RETENTION_HOURS` / `CHART_MAX_FILES` 清理；`GET /charts/{file_name}` 从对象存储读取并兼容本地历史工作区文件。
   消息时间不落任何镜像表：`deepclaw/web_backend/common/agui_runs.py` 的 `_collect_message_created_at()` 直接遍历 LangGraph checkpoint 历史（每个 super-step 的 `checkpoint["ts"]`，即 `StateSnapshot.created_at`）推导出 `message_id -> UTC ISO8601` 映射；它只依赖图对象与运行配置，不依赖 Agent 抽象。
@@ -317,6 +321,8 @@ uv venv .tmpvenv && uv pip install --python .tmpvenv/Scripts/python.exe .
 注意：`.env.example` 里可能有示例值或历史残留，修改配置逻辑时以实际代码为准。
 
 ## 必须要遵守的开发约束
+
+- 新增或修改功能时，检查角色管理是否需要新增或更新权限。需要授权的功能同步更新后端守卫（包括 API 和智能体工具入口）、`permissions.py` 权限目录、仓库 `data/rbac_policy.csv` 与包内默认策略、前端权限判断，并验证自定义角色授权与拒绝场景。
 
 - 实现过程中不要逐项播报进度；只在关键节点、遇到阻塞或需要用户决策时简短更新，完成后集中报告结果与验证情况。
 - 所有新写的函数/方法都必须带中文 docstring（功能说明 + Args 每行）。禁止 `"""...""" ...` 同行。

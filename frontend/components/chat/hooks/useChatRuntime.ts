@@ -56,6 +56,9 @@ import type {
 type UseChatRuntimeDeps = {
   messages: Message[]
   inputValue: string
+  draftImages: import('../utils/chatImages').ChatImage[]
+  clearDraftImages: () => void
+  selectedModelId: string
   setInputValue: Dispatch<SetStateAction<string>>
   sessionId: string
   setSessionId: Dispatch<SetStateAction<string>>
@@ -138,6 +141,9 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
     messages,
     inputValue,
     setInputValue,
+    draftImages,
+    clearDraftImages,
+    selectedModelId,
     sessionId,
     setSessionId,
     status,
@@ -1090,8 +1096,10 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
     switchToThreadRef.current = switchToThread
   }, [switchToThread])
 
-  const sendMessage = async (recommendedQuestion?: string) => {
-    const query = (recommendedQuestion ?? inputValue).trim()
+  const sendMessage = async (recommendedQuestion?: string, retry?: { images: typeof draftImages; modelId: string }) => {
+    const images = retry?.images ?? (recommendedQuestion === undefined ? draftImages : [])
+    const modelId = retry?.modelId ?? selectedModelId
+    const query = (recommendedQuestion ?? inputValue).trim() || (images.length ? '请描述这些图片。' : '')
     if (!query || isProcessing || !sessionId) return
     const threadId = sessionId
     const generation = streamGenerationRef.current + 1
@@ -1126,9 +1134,11 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
       id: userMessageId,
       role: 'user',
       content: query,
+      ...(images.length ? { images } : {}),
       createdAt: userMessageCreatedAt,
     })
     setInputValue('')
+    if (recommendedQuestion === undefined) clearDraftImages()
 
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
@@ -1192,6 +1202,8 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
         runId: generateMessageId(),
         messageId: userMessageId,
         query,
+        images,
+        modelId,
         state,
       })
       currentRunInputRef.current = runInput as unknown as Record<string, unknown>
@@ -1222,7 +1234,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
                   message.id !== assistantMessageId
               )
             )
-            await sendMessage(query)
+            await sendMessage(query, { images, modelId })
           })
         }
       }
@@ -1242,7 +1254,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
   }
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault()
       void sendMessage()
     }

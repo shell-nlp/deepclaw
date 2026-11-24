@@ -2,6 +2,9 @@
 
 import styles from '../ChatInterface.module.css'
 import { ChatView } from './ChatView'
+import { ScheduleManagementView } from './management/ScheduleManagementView'
+import scheduleStyles from './management/Schedules.module.css'
+import { ScheduleBell } from './shared/ScheduleBell'
 import { AppSidebar } from './shared/AppSidebar'
 import { ChannelManagementView } from './management/ChannelManagementView'
 import { KnowledgeManagementView } from './management/KnowledgeManagementView'
@@ -26,6 +29,11 @@ export default function ChatInterface() {
     messages,
     inputValue,
     setInputValue,
+    draftImages,
+    setDraftImages,
+    chatModels,
+    selectedModelId,
+    setSelectedModelId,
     sessionId,
     historySessions,
     historyExpanded,
@@ -113,6 +121,7 @@ export default function ChatInterface() {
     handleChatScroll,
     clearChat,
     requestJson,
+    withAuthHeaders,
     handleRetryMessage,
     navigateTo,
     openHistorySession,
@@ -174,6 +183,10 @@ export default function ChatInterface() {
   } = useChatPageController()
 
   const roleCatalog = useRoleCatalog(requestJson, actorCapabilities.canManageRoles)
+  const scheduleBell = actorCapabilities.canViewSchedules && (
+    <ScheduleBell key={actor.userId} requestJson={requestJson} withAuthHeaders={withAuthHeaders}
+      canManage={actorCapabilities.canManageSchedules} />
+  )
   return (
     <div className={styles.container}>
       <div className={styles.backgroundGrid} />
@@ -192,6 +205,8 @@ export default function ChatInterface() {
           channelPage={channelPage}
           onNavigate={navigateTo}
           historyExpanded={historyExpanded}
+          canViewChat={actorCapabilities.canViewChat}
+          canUseChat={actorCapabilities.canUseChat}
           onToggleHistory={() => setHistoryExpanded((expanded) => !expanded)}
           historyLoading={historyLoading}
           historyError={historyError}
@@ -214,8 +229,10 @@ export default function ChatInterface() {
         />
 
         <main className={styles.mainContent}>
+          {viewMode !== 'chat' && scheduleBell && <div className={scheduleStyles.toolbar}>{scheduleBell}</div>}
           {viewMode === 'chat' ? (
             <ChatView
+              notifications={scheduleBell}
               devices={deviceState.available}
               selectedDeviceId={deviceState.selectedDeviceId}
               onDeviceChange={deviceState.setSelectedDeviceId}
@@ -223,7 +240,7 @@ export default function ChatInterface() {
               sessionId={sessionId}
               chatModeOptions={chatModeOptions}
               activeChatModeId={activeChatModeId}
-              mcpStatusLabel={mcpStatusLabel}
+              mcpStatusLabel={actorCapabilities.canUseMcp ? mcpStatusLabel : 'MCP 未授权'}
               status={status}
               isProcessing={isProcessing}
               isKnowledgeMode={isKnowledgeMode}
@@ -234,7 +251,13 @@ export default function ChatInterface() {
               showInterrupt={showInterrupt}
               interruptData={interruptData}
               inputValue={inputValue}
+              draftImages={draftImages}
+              onDraftImagesChange={setDraftImages}
+              chatModels={chatModels}
+              selectedModelId={selectedModelId}
+              onModelChange={setSelectedModelId}
               chatDisabled={chatDisabled}
+              canUseChat={actorCapabilities.canUseChat}
               internetSearch={internetSearch}
               deepThinking={deepThinking}
               currentAssistantMessageId={currentAssistantMessageIdRef.current}
@@ -258,6 +281,12 @@ export default function ChatInterface() {
               onRecommendedQuestion={askRecommendedQuestion}
               onRetryMessage={handleRetryMessage}
             />
+          ) : viewMode === 'schedules' ? (
+            <div className={styles.managementViewport}>
+              <ScheduleManagementView key={actor.userId} requestJson={requestJson} isGuest={actor.isGuest}
+                canView={actorCapabilities.canViewSchedules} canManage={actorCapabilities.canManageSchedules}
+                onLogin={openLoginPage} />
+            </div>
           ) : viewMode === 'devices' ? (
             <div className={styles.managementViewport}>
               <DeviceManagementView key={actor.userId} actor={actor} state={deviceState} requestJson={requestJson} onLogin={openLoginPage}/>
@@ -281,7 +310,7 @@ export default function ChatInterface() {
             </div>
           ) : viewMode === 'mcp' ? (
             <div className={styles.managementViewport}>
-              <McpManagementView
+              {actorCapabilities.canUseMcp ? <McpManagementView
                 mcpEnabled={mcpEnabled}
                 mcpConfigDraft={mcpConfigDraft}
                 mcpConfigDirty={mcpConfigDirty}
@@ -296,7 +325,7 @@ export default function ChatInterface() {
                 onToggleMcpEnabled={toggleMcpEnabled}
                 onLoadMcpExample={loadMcpExample}
                 onClearMcpConfig={clearMcpConfig}
-              />
+              /> : <p>当前账号没有使用 MCP 的权限。</p>}
             </div>
           ) : viewMode === 'models' ? (
             <div className={styles.managementViewport}>

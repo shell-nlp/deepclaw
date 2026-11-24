@@ -12,7 +12,9 @@ from langgraph.graph.state import CompiledStateGraph
 from loguru import logger
 
 from deepclaw.patch.ag_ui_langgraph import install_reasoning_text_split
+from deepclaw.model_config import find_chat_model
 from deepclaw.settings import settings
+from deepclaw.utils.model_factory import RUN_CHAT_MODEL, get_chat_model
 from deepclaw.web_backend.agent.run_store import (
     RunState,
     RunStore,
@@ -375,6 +377,12 @@ class AgentRunManager:
             raise ValueError("Run 仍在运行，不能重复提交恢复操作")
         if payload.run_id != run_id or payload.thread_id != state.thread_id:
             raise ValueError("run_id 或 thread_id 与当前 Run 不一致")
+        restored_state = dict(payload.state or {})
+        restored_state.pop("chat_model_id", None)
+        model_id = (state.input.state or {}).get("chat_model_id")
+        if model_id:
+            restored_state["chat_model_id"] = model_id
+        payload = payload.model_copy(update={"state": restored_state})
         state.input = payload
         state.status = "queued"
         state.error = None
@@ -558,7 +566,16 @@ class AgentRunManager:
             # 前端和渠道不消费原始 LangGraph 事件，关闭 RAW/raw_event 以降低流式传输体积。
             emit_raw_events=False,
         )
+        model_token = None
         try:
+            state_input = dict(payload.state or {})
+            model_id = state_input.pop("chat_model_id", None)
+            if model_id:
+                selected = find_chat_model(model_id)
+                if selected is None:
+                    raise ValueError("所选模型已从目录移除，请重新选择模型。")
+                model_token = RUN_CHAT_MODEL.set(get_chat_model(catalog_model=selected))
+                payload = payload.model_copy(update={"state": state_input})
             async for event in agent.run(payload):
                 state = await self.store.get_run(run_id)
                 if state is None or state.status in {"cancelling", "cancelled"}:
@@ -578,6 +595,9 @@ class AgentRunManager:
                 encoder.encode(RunErrorEvent(message=error_message, code="RUN_ERROR")),
             )
             await self.store.update_run_status(run_id, "error", error_message)
+        finally:
+            if model_token is not None:
+                RUN_CHAT_MODEL.reset(model_token)
 
     async def shutdown(self) -> None:
         """取消活动任务但不关闭共享 Run 存储。

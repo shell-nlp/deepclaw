@@ -11,7 +11,9 @@ from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
 from deepclaw.agent_registry import AgentRegistry
-from deepclaw.constant import resolve_frontend_path
+from deepclaw.constant import HOME_PATH, resolve_frontend_path
+from deepclaw.middleware.cron.executor import schedule_worker
+from deepclaw.middleware.cron.schedule_store import get_schedule_store
 from deepclaw.settings import settings
 from deepclaw.web_backend.agui.runtime import AgentRuntimeCache
 from deepclaw.web_backend.agent.run_store import (
@@ -31,6 +33,7 @@ from deepclaw.web_backend.common.agui_runs import (
     get_agui_runs_path,
 )
 from deepclaw.web_backend.knowledge_bases.service import get_knowledge_base_manager
+from deepclaw.web_backend.sqlite_migration import migrate_sqlite_metadata
 
 
 def validate_runtime_settings() -> None:
@@ -222,6 +225,7 @@ async def app_lifespan(app: FastAPI):
     Args:
         app: 当前 FastAPI 应用。
     """
+    await asyncio.to_thread(migrate_sqlite_metadata, Path(HOME_PATH))
     validate_runtime_settings()
     setup_observability()
     await init_agent_env(app)
@@ -258,10 +262,17 @@ async def app_lifespan(app: FastAPI):
         upload_manager = get_knowledge_base_manager()
         await upload_manager.start_upload_workers()
     rbac_watch = asyncio.create_task(watch_rbac_revision()) if settings.RBAC_STORE_ENABLED else None
+    schedule_store = get_schedule_store()
+    schedule_task = asyncio.create_task(schedule_worker(schedule_store))
     try:
         async with channel_lifespan():
             yield
     finally:
+        schedule_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await schedule_task
+        await schedule_store.engine.dispose()
+        get_schedule_store.cache_clear()
         if rbac_watch is not None:
             rbac_watch.cancel()
             with suppress(asyncio.CancelledError):

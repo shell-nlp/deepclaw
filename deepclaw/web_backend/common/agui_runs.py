@@ -178,7 +178,11 @@ def _with_trusted_state(
     Returns:
         更新后的 AG-UI 输入。
     """
-    return payload.model_copy(update={"state": _trusted_state(payload, request, actor, allowed_keys)})
+    state = _trusted_state(payload, request, actor, allowed_keys)
+    model_id = getattr(payload, "model_id", None)
+    if model_id:
+        state["chat_model_id"] = model_id
+    return payload.model_copy(update={"state": state})
 
 
 async def list_agui_threads(

@@ -834,6 +834,18 @@ wheels = [
 ]
 
 [[package]]
+name = "croniter"
+version = "7.0.0"
+source = { registry = "https://mirrors.cloud.tencent.com/pypi/simple" }
+dependencies = [
+    { name = "python-dateutil" },
+]
+sdist = { url = "https://mirrors.cloud.tencent.com/pypi/packages/54/17/3c60d4cf8c8768f8a116328f94ddb2f205e64d5afbb1bcb85f315bfbbf42/croniter-7.0.0.tar.gz", hash = "sha256:a0b2568303c774f6a4ea2d4ce2e72b1ee911029c7070d64a1befe05cdb107f5a" }
+wheels = [
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/4c/89/10f9987ebdef47dbe9db94e9c00dcbd91a6ff1aa46ad58bee5b50fa454c9/croniter-7.0.0-py3-none-any.whl", hash = "sha256:92090bce3cef195a037a46b78430c4cdd6250e90671d9d7dcd9e486147daaca4" },
+]
+
+[[package]]
 name = "cryptography"
 version = "48.0.0"
 source = { registry = "https://mirrors.cloud.tencent.com/pypi/simple" }
@@ -1012,6 +1024,7 @@ dependencies = [
     { name = "apscheduler" },
     { name = "asyncpg" },
     { name = "casbin" },
+    { name = "croniter" },
     { name = "deepagents", extra = ["quickjs"] },
     { name = "fastapi" },
     { name = "greenlet" },
@@ -1028,6 +1041,7 @@ dependencies = [
     { name = "pgvector" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic-settings" },
+    { name = "python-docx" },
     { name = "python-dotenv" },
     { name = "python-multipart" },
     { name = "sqlite-vec" },
@@ -1091,6 +1105,7 @@ requires-dist = [
     { name = "boto3", marker = "extra == 'object-storage'", specifier = ">=1.35.0" },
     { name = "casbin", specifier = ">=1.43.0" },
     { name = "crawl4ai", marker = "extra == 'web-fetch'", specifier = ">=0.8.0" },
+    { name = "croniter", specifier = ">=7.0.0" },
     { name = "deepagents", extras = ["quickjs"], specifier = ">=0.7.15" },
     { name = "docling", marker = "extra == 'docling'", specifier = ">=2.129.0,<3.0.0" },
     { name = "elasticsearch", marker = "extra == 'elasticsearch'", specifier = "==8.19.3" },
@@ -1118,6 +1133,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.12.0" },
     { name = "pymupdf", marker = "extra == 'pdf'", specifier = ">=1.27.2.3" },
     { name = "pypdf2", marker = "extra == 'pdf'", specifier = ">=3.0.1" },
+    { name = "python-docx", specifier = ">=1.2.0" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "python-multipart", specifier = ">=0.0.20" },
     { name = "sqlite-vec", specifier = ">=0.1.9" },

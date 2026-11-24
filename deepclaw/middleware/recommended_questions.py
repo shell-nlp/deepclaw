@@ -19,10 +19,10 @@ class RecommendedQuestionsMiddleware(AgentMiddleware):
         current_turn = None
         for msg in messages:
             if isinstance(msg, HumanMessage):
-                current_turn = {"question": msg.content, "answers": []}
+                current_turn = {"question": msg.text, "answers": []}
                 conversation_turns.append(current_turn)
             elif isinstance(msg, AIMessage) and current_turn is not None and msg.content:
-                current_turn["answers"].append(msg.content)
+                current_turn["answers"].append(msg.text)
 
         recent_conversation = conversation_turns[-6:]
         conversation_context = "\n\n".join(
