@@ -98,6 +98,13 @@ class Settings(BaseSettings):
     AUTH_ADMIN_PASSWORD: str = "deepclaw"
     AUTH_ADMIN_EMAIL: str | None = None
     AUTH_TOKEN_EXPIRE_DAYS: int = 1
+    # 是否开放公开注册；默认关闭，账号由管理员创建
+    AUTH_ALLOW_REGISTRATION: bool = False
+    # 是否允许未登录游客访问按归属隔离的接口；公网部署建议关闭
+    ALLOW_GUEST_ACCESS: bool = True
+    # 连续登录失败达到阈值后锁定账号的分钟数
+    AUTH_LOGIN_MAX_ATTEMPTS: int = Field(default=5, ge=1)
+    AUTH_LOGIN_LOCK_MINUTES: int = Field(default=15, ge=1)
 
     # 图表公网访问地址前缀，例如 https://example.com；为空时返回相对路径 /charts/xxx.png
     CHART_PUBLIC_URL: str = ""

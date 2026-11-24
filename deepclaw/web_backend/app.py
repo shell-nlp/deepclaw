@@ -109,6 +109,19 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.get("/health", include_in_schema=False)
+    async def health():
+        """返回服务存活状态，供网关与负载均衡探活。
+
+        Args:
+            无。
+
+        Returns:
+            dict[str, str]: 固定 ok 状态。
+        """
+        return {"status": "ok"}
+
     app.include_router(auth_router)
     app.include_router(rbac_router)
     app.include_router(agui_router)

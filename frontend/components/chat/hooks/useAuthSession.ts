@@ -5,10 +5,13 @@ import { useCallback, useRef, useState } from 'react'
 import {
   buildAuthorizationHeaders,
   clearStoredAuthToken,
+  fetchAuthRuntimeConfig,
   getActorCapabilities,
+  getStoredAuthToken,
   GUEST_USER_ID,
-  isUnauthorizedErrorMessage,
+  isUnauthorizedError,
   normalizeActorPayload,
+  redirectToLogin,
   revokeAuthToken,
   type ActorState,
 } from '../utils/auth'
@@ -75,10 +78,15 @@ export function useAuthSession({
   )
 
   const withAuthHeaders = useCallback(
-    (headers?: HeadersInit) => ({
-      ...(headers || {}),
-      ...buildAuthorizationHeaders(authToken),
-    }),
+    (headers?: HeadersInit) => {
+      // 首次挂载时 authToken state 尚未由 effect 写入，回退本地存储避免请求漏带令牌触发 401
+      const effectiveToken =
+        authToken || (typeof window === 'undefined' ? '' : getStoredAuthToken())
+      return {
+        ...(headers || {}),
+        ...buildAuthorizationHeaders(effectiveToken),
+      }
+    },
     [authToken]
   )
 
@@ -90,8 +98,14 @@ export function useAuthSession({
           headers: withAuthHeaders(init?.headers),
         })
       } catch (error) {
-        if (error instanceof Error && isUnauthorizedErrorMessage(error.message)) {
-          clearAuthState('登录状态已失效，已切换为游客模式。')
+        if (isUnauthorizedError(error)) {
+          const { allowGuest } = await fetchAuthRuntimeConfig()
+          if (allowGuest) {
+            clearAuthState('登录状态已失效，已切换为游客模式。')
+          } else {
+            clearAuthState('登录状态已失效，请重新登录。')
+            redirectToLogin()
+          }
         }
         throw error
       }

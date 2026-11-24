@@ -22,6 +22,7 @@ import {
   KNOWLEDGE_AGENT_ID,
 } from '../utils/constants'
 import { generateMessageId, getApiUrl, stringifyToolContent } from '../utils'
+import { fetchAuthRuntimeConfig, redirectToLogin } from '../utils/auth'
 import {
   ChatRequestError,
   appendContentToken,
@@ -793,6 +794,13 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
     ]
   )
 
+  const handleUnauthorizedResponse = useCallback((response: Response) => {
+    if (response.status !== 401) return
+    void fetchAuthRuntimeConfig().then((config) => {
+      if (!config.allowGuest) redirectToLogin()
+    })
+  }, [])
+
   const subscribeAgUiEvents = useCallback(
     async (
       basePath: string,
@@ -819,6 +827,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
           }
         )
         if (!response.ok) {
+          handleUnauthorizedResponse(response)
           throw new ChatRequestError(
             await createHttpChatError(response, 'stream')
           )
@@ -831,7 +840,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
         createChatError('stream', 'AG-UI 事件流中断，重放次数已用尽')
       )
     },
-    [isCurrentStream, readEventStream, withAuthHeaders]
+    [handleUnauthorizedResponse, isCurrentStream, readEventStream, withAuthHeaders]
   )
 
   const startAgUiRun = useCallback(
@@ -852,6 +861,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
         signal,
       })
       if (!createResponse.ok) {
+        handleUnauthorizedResponse(createResponse)
         throw new ChatRequestError(
           await createHttpChatError(createResponse, 'http')
         )
@@ -879,6 +889,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
     },
     [
       getThreadRuntime,
+      handleUnauthorizedResponse,
       isCurrentStream,
       setThreadRunning,
       subscribeAgUiEvents,
@@ -923,6 +934,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
         }
       )
       if (!resumeResponse.ok) {
+        handleUnauthorizedResponse(resumeResponse)
         throw new ChatRequestError(
           await createHttpChatError(resumeResponse, 'resume')
         )
@@ -930,7 +942,13 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
       setThreadRunning(threadId, true)
       return subscribeAgUiEvents(basePath, runId, threadId, generation, signal)
     },
-    [setThreadRunning, subscribeAgUiEvents, updateAssistantMessage, withAuthHeaders]
+    [
+      handleUnauthorizedResponse,
+      setThreadRunning,
+      subscribeAgUiEvents,
+      updateAssistantMessage,
+      withAuthHeaders,
+    ]
   )
 
   const resumeThreadStream = useCallback(

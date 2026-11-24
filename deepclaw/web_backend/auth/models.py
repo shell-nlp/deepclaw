@@ -24,6 +24,9 @@ class AuthUser(SQLModel, table=True):
     password_hash: str
     role: str = Field(default="user")
     is_active: bool = True
+    # 连续登录失败次数与临时锁定截止时间，用于暴力破解防护
+    failed_login_attempts: int = Field(default=0)
+    locked_until: datetime | None = Field(default=None, sa_type=DateTime)
     created_at: datetime = Field(default_factory=utc_now, sa_type=DateTime)
     updated_at: datetime = Field(default_factory=utc_now, sa_type=DateTime)
 

@@ -1,6 +1,7 @@
 ﻿from fastapi import Depends, Header, HTTPException
 from pydantic import BaseModel
 
+from deepclaw.settings import settings
 from deepclaw.web_backend.auth.service import AuthService, get_auth_service
 
 
@@ -16,6 +17,8 @@ async def get_current_actor(
     service: AuthService = Depends(get_auth_service),
 ) -> CurrentActor:
     if not authorization:
+        if not settings.ALLOW_GUEST_ACCESS:
+            raise HTTPException(status_code=401, detail="请先登录后再使用该功能。")
         return CurrentActor(is_guest=True, user_id=None, email=None, role="guest")
 
     scheme, _, token = authorization.partition(" ")

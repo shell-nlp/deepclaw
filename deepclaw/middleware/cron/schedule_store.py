@@ -245,7 +245,7 @@ class ScheduleStore:
         async with self.sessions() as session:
             job = (await session.exec(select(ScheduledTask).where(
                 ScheduledTask.next_at <= now,
-                (ScheduledTask.lease_until == None) | (ScheduledTask.lease_until <= now),
+                (ScheduledTask.lease_until.is_(None)) | (ScheduledTask.lease_until <= now),
             ).order_by(ScheduledTask.next_at, ScheduledTask.id).limit(1))).first()
             if job is None:
                 return None

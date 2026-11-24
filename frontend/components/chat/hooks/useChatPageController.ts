@@ -3,7 +3,12 @@
 import type { ChatModelOptions, ReasoningChoice, ReasoningEffort } from '../utils/reasoning'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { fetchCurrentActor, getStoredAuthToken } from '../utils/auth'
+import {
+  fetchAuthRuntimeConfig,
+  fetchCurrentActor,
+  getStoredAuthToken,
+  redirectToLogin,
+} from '../utils/auth'
 import {
   AGUI_AGENTS_API_PATH,
   DEFAULT_AGUI_API_PATH,
@@ -514,7 +519,12 @@ export function useChatPageController() {
       .catch(() => setAvailableAgents([]))
 
     const storedToken = getStoredAuthToken()
-    if (!storedToken) return
+    if (!storedToken) {
+      void fetchAuthRuntimeConfig().then((config) => {
+        if (!config.allowGuest) redirectToLogin()
+      })
+      return
+    }
 
     setAuthToken(storedToken)
     void fetchCurrentActor(storedToken)
@@ -522,7 +532,14 @@ export function useChatPageController() {
         applyActorState(nextActor)
       })
       .catch(() => {
-        clearAuthState('登录状态已失效，已切换为游客模式。')
+        void fetchAuthRuntimeConfig().then((config) => {
+          if (config.allowGuest) {
+            clearAuthState('登录状态已失效，已切换为游客模式。')
+          } else {
+            clearAuthState('登录状态已失效，请重新登录。')
+            redirectToLogin()
+          }
+        })
       })
   }, [applyActorState, clearAuthState, getThreadRuntime])
 

@@ -1,6 +1,7 @@
 # 应用编排：deepclaw 主服务
 # 启动前需先起中间件：docker compose -f docker-compose.middleware.yml up -d
 # 启动应用：docker compose -f docker-compose.app.yml up -d
+# 浏览器访问走网关：docker compose -f deploy/openresty/docker-compose.yml up -d
 # 首次使用请先复制配置：cp .env.example .env
 services:
   deepclaw:
@@ -10,8 +11,10 @@ services:
     image: deepclaw:latest
     container_name: deepclaw
     restart: always
-    ports:
-      - 7869:7869
+    # 默认不映射到宿主机：网关按服务名 deepclaw:7869 回源，后端不直接对外。
+    # 需要从宿主机直连调试时再取消注释。
+    # ports:
+    #   - 7869:7869
     # 宿主侧配置统一从 .env 读取，下方 environment 覆盖容器内需要改写的连接地址
     env_file:
       - .env
@@ -24,6 +27,10 @@ services:
       - PG_DATABASE_URL=postgresql://admin:admin@postgresql:5432/deepclaw
       - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:6006
       # .env 中 OPENAI_API_BASE 等指向宿主机服务的地址，需要改成宿主机 IP 或 host.docker.internal
+    volumes:
+      # 持久化运行期数据：工作区、对象存储上传原文、图表、设备安装包、运行期数据库与缓存。
+      # 容器重建不会丢失；Linux 部署需确保宿主目录属主为容器内用户（chown -R 1000:1000 .deepclaw）。
+      - ./.deepclaw:/deepclaw/.deepclaw
     networks:
       - deepclaw
 

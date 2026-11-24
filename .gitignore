@@ -15,6 +15,8 @@ wheels/
 .env.*
 !.env.example
 .deepclaw/*.db
+# matplotlib 等运行期缓存，随运行环境变化，禁止提交
+.deepclaw/.cache/
 .deepclaw/downloads/
 .deepclaw/conversation_history/
 .deepclaw/.playwright-cli/
@@ -58,3 +60,6 @@ tmp*/
 dist/
 build/
 *.egg-info/
+
+# 反代证书与私钥，禁止提交
+deploy/openresty/certs/

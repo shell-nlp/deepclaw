@@ -164,7 +164,9 @@ export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> 
     } catch {
       // ignore parse error
     }
-    throw new Error(message)
+    const error = new Error(message)
+    ;(error as Error & { status?: number }).status = response.status
+    throw error
   }
   if (response.status === 204) return undefined as T
   return response.json() as Promise<T>

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, Header
 
+from deepclaw.settings import settings
 from deepclaw.web_backend.auth.dependencies import (
     CurrentActor,
     get_current_actor,
@@ -21,6 +22,15 @@ from deepclaw.web_backend.auth.service import AuthService, get_auth_service
 
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+@router.get("/config", summary="获取认证配置", description="返回公开的登录策略开关，供前端决定游客入口与注册入口是否展示。")
+async def auth_config():
+    """返回登录策略开关。"""
+    return {
+        "allow_guest": settings.ALLOW_GUEST_ACCESS,
+        "allow_registration": settings.AUTH_ALLOW_REGISTRATION,
+    }
 
 
 @router.post("/register", summary="注册用户", description="创建普通用户账号并返回访问令牌和用户信息。")

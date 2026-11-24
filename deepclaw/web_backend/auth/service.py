@@ -1,3 +1,6 @@
+import math
+
+from deepclaw.web_backend.auth.models import utc_now
 from deepclaw.web_backend.auth.security import (
     generate_access_token,
     hash_password,
@@ -54,6 +57,9 @@ class AuthService:
         admin_password: 首次启动自举管理员密码。
         token_expire_days: 访问令牌有效期天数。
         admin_email: 自举管理员可选邮箱。
+        allow_registration: 是否开放公开注册。
+        max_login_attempts: 触发账号锁定的连续失败次数。
+        login_lock_minutes: 账号锁定分钟数。
     """
 
     def __init__(
@@ -64,12 +70,18 @@ class AuthService:
         admin_password: str | None,
         token_expire_days: int,
         admin_email: str | None = None,
+        allow_registration: bool = True,
+        max_login_attempts: int = 5,
+        login_lock_minutes: int = 15,
     ):
         self.store = store
         self.admin_username = admin_username
         self.admin_password = admin_password
         self.admin_email = admin_email
         self.token_expire_days = token_expire_days
+        self.allow_registration = allow_registration
+        self.max_login_attempts = max_login_attempts
+        self.login_lock_minutes = login_lock_minutes
 
     async def initialize(self):
         """启动时校正历史令牌有效期。
@@ -91,8 +103,10 @@ class AuthService:
             AuthUser: 新建账号。
 
         Raises:
-            BusinessRuleError: 用户名已存在时抛出。
+            BusinessRuleError: 用户名已存在或公开注册已关闭时抛出。
         """
+        if not self.allow_registration:
+            raise BusinessRuleError("当前环境已关闭公开注册，请联系管理员创建账号。")
         normalized_username = normalize_username(username)
         if await self.store.get_user_by_username(normalized_username) is not None:
             raise BusinessRuleError("该用户名已被注册，请更换或直接登录。")
@@ -118,11 +132,31 @@ class AuthService:
         """
         normalized_username = normalize_username(username)
         user = await self.store.get_user_by_username(normalized_username)
-        if user is None or not verify_password(password, user.password_hash):
+        if user is None:
+            raise BusinessRuleError("用户名或密码错误。")
+        now = utc_now()
+        if user.locked_until and user.locked_until > now:
+            remaining_minutes = max(
+                1, math.ceil((user.locked_until - now).total_seconds() / 60)
+            )
+            raise BusinessRuleError(
+                f"账号已被临时锁定，请 {remaining_minutes} 分钟后再试。"
+            )
+        if not verify_password(password, user.password_hash):
+            failed = await self.store.register_login_failure(
+                user_id=user.user_id,
+                max_attempts=self.max_login_attempts,
+                lock_minutes=self.login_lock_minutes,
+            )
+            if failed.locked_until and failed.locked_until > utc_now():
+                raise BusinessRuleError(
+                    f"密码错误次数过多，账号已锁定 {self.login_lock_minutes} 分钟。"
+                )
             raise BusinessRuleError("用户名或密码错误。")
         if not user.is_active:
             raise BusinessRuleError("当前账号已被禁用，请联系管理员。")
 
+        await self.store.reset_login_failures(user_id=user.user_id)
         return await self.store.issue_access_token(
             user=user,
             raw_token=generate_access_token(),
@@ -399,5 +433,8 @@ def get_auth_service() -> AuthService:
             admin_password=settings.AUTH_ADMIN_PASSWORD,
             token_expire_days=settings.AUTH_TOKEN_EXPIRE_DAYS,
             admin_email=settings.AUTH_ADMIN_EMAIL,
+            allow_registration=settings.AUTH_ALLOW_REGISTRATION,
+            max_login_attempts=settings.AUTH_LOGIN_MAX_ATTEMPTS,
+            login_lock_minutes=settings.AUTH_LOGIN_LOCK_MINUTES,
         )
     return _auth_service

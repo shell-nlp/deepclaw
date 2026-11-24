@@ -405,9 +405,9 @@ OBJECT_STORAGE_PROVIDER=local
 > 只有配置了 `PG_DATABASE_URL`，Run / Thread / 检查点才会落到共享库，多实例部署才能共享会话状态；
 > 未配置时使用内存检查点，重启即丢失。
 
-### 4. 启动主服务
+### 4. 启动主服务（本地方式）
 
-统一从 `main` 入口启动：
+本地方式与下一节的容器方式二选一，两者都监听 `7869`，不要同时启动。统一从 `main` 入口启动：
 
 ```bash
 uv run python -m deepclaw.main
@@ -421,7 +421,9 @@ uv run python -m deepclaw.main
 - Channels API：`/api/channels/*`
 
 首次启动时，如果配置了 `AUTH_ADMIN_USERNAME` / `AUTH_ADMIN_PASSWORD` 且系统中还没有管理员，
-会自动创建这个管理员账号。未登录访问会自动降级为游客身份，技能管理与知识库管理对游客开放。
+会自动创建这个管理员账号。未登录访问默认降级为游客身份，技能管理与知识库管理对游客开放；
+把 `ALLOW_GUEST_ACCESS` 设为 `false` 后（公网部署建议），匿名请求一律返回 `401`，前端跳转 `/login`。
+公开注册默认关闭（`AUTH_ALLOW_REGISTRATION=false`），账号由管理员在「用户管理」中创建。
 
 ### 5. 启动依赖服务（可选，但推荐）
 
@@ -437,12 +439,40 @@ docker compose -f docker-compose.middleware.yml up -d postgresql elasticsearch
 docker compose -f docker-compose.middleware.yml up -d phoenix
 ```
 
-如果要用容器方式跑主服务，中间件和应用分开编排：
+如果要用容器方式跑主服务（与上面的本地方式二选一），中间件和应用分开编排：
 
 ```bash
 docker compose -f docker-compose.middleware.yml up -d   # 先起中间件
 docker compose -f docker-compose.app.yml up -d          # 再起应用
 ```
+
+应用容器默认不把 `7869` 映射到宿主机（`docker-compose.app.yml` 的 `ports` 已注释），
+浏览器统一经 OpenResty 网关访问，见下节。
+
+#### 通过 OpenResty 网关访问（容器方式）
+
+网关负责 TLS、登录与 Run 限流、上传体积（默认 1G）、SSE 关缓冲和 WebSocket 升级。
+配置位于 `deploy/openresty/deepclaw.conf`，网关编排位于 `deploy/openresty/docker-compose.yml`。
+
+```bash
+# 1) 证书：真实证书放到 deploy/openresty/certs/deepclaw.crt 与 deepclaw.key
+#    本地验证可先生成 1 天期自签证书（compose 一次性任务，执行完即退出）
+docker compose -f deploy/openresty/docker-compose.yml --profile certgen run --rm certgen
+
+# 2) 启动网关（需先启动应用容器，网关按服务名 deepclaw:7869 回源）
+docker compose -f deploy/openresty/docker-compose.yml up -d
+
+# 3) 验证
+curl -k https://127.0.0.1/health
+```
+
+启动后用 `https://127.0.0.1/` 访问（自签证书需在浏览器确认一次）。正式环境把
+`deepclaw.conf` 里的 `server_name` 换成自己的域名，并替换证书。修改配置或更换证书后执行
+`docker restart deepclaw-gateway` 生效；停止网关执行
+`docker compose -f deploy/openresty/docker-compose.yml down`，不影响应用容器。
+
+> 网关只处理 HTTPS、限流与转发，不做业务鉴权；登录态与接口权限仍由后端令牌和 RBAC 负责。
+> 本地方式启动后端时，网关的 upstream 需要改成宿主机地址，否则会返回 502。
 
 Phoenix 控制台默认地址：`http://localhost:6006`
 
@@ -488,8 +518,9 @@ pnpm build
 
 | 方法 | 路径 | 用途 |
 |------|------|------|
-| `POST` | `/api/auth/register` | 注册普通用户并返回访问令牌 |
-| `POST` | `/api/auth/login` | 邮箱密码登录 |
+| `GET` | `/api/auth/config` | 返回游客与注册开关（公开） |
+| `POST` | `/api/auth/register` | 注册普通用户并返回访问令牌（`AUTH_ALLOW_REGISTRATION=false` 时关闭，默认关闭） |
+| `POST` | `/api/auth/login` | 用户名密码登录，连续失败会临时锁定 |
 | `POST` | `/api/auth/logout` | 撤销当前访问令牌 |
 | `GET` | `/api/auth/me` | 返回当前鉴权主体 |
 | `POST` | `/api/auth/users/create` | 管理员创建用户（可指定角色） |
@@ -772,6 +803,10 @@ BACKEND_TYPE=local_shell
 | `PHOENIX_COLLECTOR_ENDPOINT` | 启用 Phoenix tracing |
 | `AUTH_ADMIN_USERNAME` / `AUTH_ADMIN_PASSWORD` | 首次启动时自举的管理员账号 |
 | `AUTH_TOKEN_EXPIRE_DAYS` | 访问令牌有效期天数，默认 `1` |
+| `AUTH_ALLOW_REGISTRATION` | 是否开放公开注册，默认 `false`，账号由管理员创建 |
+| `ALLOW_GUEST_ACCESS` | 是否允许未登录游客访问，默认 `true`；公网部署建议 `false`，此时匿名请求返回 `401` 并跳转登录页 |
+| `AUTH_LOGIN_MAX_ATTEMPTS` | 连续登录失败触发账号锁定的次数，默认 `5` |
+| `AUTH_LOGIN_LOCK_MINUTES` | 登录失败后的锁定时长（分钟），默认 `15` |
 | `AGUI_RUN_RETENTION_SECONDS` | Run 与事件的保留时长，默认 `3600` |
 | `AGUI_THREAD_RETENTION_SECONDS` | Thread 索引保留时长；默认 `0` 表示不自动过期 |
 | `AGUI_RUN_MAX_EVENTS` | 单个 Run 的事件数量上限，默认 `2000` |

@@ -275,6 +275,17 @@ class AuthStore:
                         "WHERE username IS NULL AND email IS NOT NULL"
                     )
                 )
+            if "failed_login_attempts" not in columns:
+                await conn.execute(
+                    text(
+                        "ALTER TABLE authuser ADD COLUMN "
+                        "failed_login_attempts INTEGER NOT NULL DEFAULT 0"
+                    )
+                )
+            if "locked_until" not in columns:
+                await conn.execute(
+                    text("ALTER TABLE authuser ADD COLUMN locked_until TIMESTAMP")
+                )
 
     async def _import_home_sqlite_if_needed(self) -> None:
         if self._sqlite_import_path is None or self._sqlite_import_marker.exists():
@@ -514,6 +525,66 @@ class AuthStore:
             await session.commit()
             await session.refresh(user)
             return user
+
+    async def register_login_failure(
+        self,
+        *,
+        user_id: str,
+        max_attempts: int,
+        lock_minutes: int,
+    ) -> AuthUser:
+        """记录一次登录失败，达到阈值时临时锁定账号。
+
+        Args:
+            user_id: 目标用户 ID。
+            max_attempts: 触发锁定的连续失败次数阈值。
+            lock_minutes: 达到阈值后的锁定分钟数。
+
+        Returns:
+            AuthUser: 更新后的账号，调用方可读取 locked_until 判断是否已锁定。
+
+        Raises:
+            BusinessRuleError: 用户不存在时抛出。
+        """
+        await self._ensure_init()
+        async with self.async_session() as session:
+            result = await session.exec(
+                select(AuthUser).where(AuthUser.user_id == user_id)
+            )
+            user = result.first()
+            if user is None:
+                raise BusinessRuleError("用户不存在。")
+            user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+            if user.failed_login_attempts >= max_attempts:
+                user.locked_until = utc_now() + timedelta(minutes=lock_minutes)
+            user.updated_at = utc_now()
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
+            return user
+
+    async def reset_login_failures(self, *, user_id: str) -> None:
+        """清空用户的登录失败计数与锁定状态。
+
+        Args:
+            user_id: 目标用户 ID。
+
+        Raises:
+            BusinessRuleError: 用户不存在时抛出。
+        """
+        await self._ensure_init()
+        async with self.async_session() as session:
+            result = await session.exec(
+                select(AuthUser).where(AuthUser.user_id == user_id)
+            )
+            user = result.first()
+            if user is None:
+                raise BusinessRuleError("用户不存在。")
+            user.failed_login_attempts = 0
+            user.locked_until = None
+            user.updated_at = utc_now()
+            session.add(user)
+            await session.commit()
 
     async def update_user_profile(
         self,

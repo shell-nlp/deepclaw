@@ -1,4 +1,5 @@
 import {
+  AUTH_CONFIG_API_PATH,
   AUTH_LOGIN_API_PATH,
   AUTH_LOGOUT_API_PATH,
   AUTH_ME_API_PATH,
@@ -130,6 +131,73 @@ export function getActorCapabilities(actor: ActorState): ActorCapabilities {
 
 export function isUnauthorizedErrorMessage(message: string): boolean {
   return message.includes('HTTP 401') || message.includes('登录状态已失效')
+}
+
+/**
+ * 判断请求错误是否为 401，兼容带状态码与仅含文案两种来源。
+ *
+ * Args:
+ *   error: 捕获到的异常。
+ *
+ * Returns:
+ *   boolean: 未授权时返回 true。
+ */
+export function isUnauthorizedError(error: unknown): boolean {
+  if (error instanceof Error) {
+    const status = (error as Error & { status?: number }).status
+    if (status === 401) return true
+    return isUnauthorizedErrorMessage(error.message)
+  }
+  return false
+}
+
+export interface AuthRuntimeConfig {
+  allowGuest: boolean
+  allowRegistration: boolean
+}
+
+let authRuntimeConfigPromise: Promise<AuthRuntimeConfig> | null = null
+
+/**
+ * 获取后端公开的认证策略开关，拉取失败时按允许游客处理，避免锁死页面。
+ *
+ * Args:
+ *   无。
+ *
+ * Returns:
+ *   Promise<AuthRuntimeConfig>: 游客与注册开关。
+ */
+export function fetchAuthRuntimeConfig(): Promise<AuthRuntimeConfig> {
+  if (!authRuntimeConfigPromise) {
+    authRuntimeConfigPromise = fetchJson<{
+      allow_guest?: boolean
+      allow_registration?: boolean
+    }>(getApiUrl(AUTH_CONFIG_API_PATH))
+      .then((payload) => ({
+        allowGuest: payload.allow_guest !== false,
+        allowRegistration: payload.allow_registration !== false,
+      }))
+      .catch(() => ({ allowGuest: true, allowRegistration: true }))
+  }
+  return authRuntimeConfigPromise
+}
+
+/**
+ * 跳转到登录页并携带返回地址；已在登录页时不重复跳转。
+ *
+ * Args:
+ *   无。
+ *
+ * Returns:
+ *   无。
+ */
+export function redirectToLogin(): void {
+  if (typeof window === 'undefined') return
+  if (window.location.pathname === '/login') return
+  const next = `${window.location.pathname}${window.location.search}${
+    window.location.hash || '#/chat'
+  }`
+  window.location.assign(`/login?next=${encodeURIComponent(next)}`)
 }
 
 export function getStoredAuthToken(): string {

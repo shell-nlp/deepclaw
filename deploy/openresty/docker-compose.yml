@@ -1,0 +1,57 @@
+# DeepClaw 边缘网关（OpenResty）单机部署示例
+#
+# 用法：
+#   1. 将证书放到 ./certs/deepclaw.crt 与 ./certs/deepclaw.key
+#   2. docker compose up -d
+#   3. curl -k https://127.0.0.1/health
+#
+# 说明：
+#   - 后端以容器形式运行在 deepclaw 网络（服务名 deepclaw:7869）时，网关直接加入该网络回源，
+#     启动时把配置里的 127.0.0.1:7869 替换为 deepclaw:7869，无需经宿主机端口绕行。
+#   - 后端运行在宿主机时，改用 host.docker.internal:7869 并加 extra_hosts。
+
+services:
+  gateway:
+    image: openresty/openresty:alpine
+    container_name: deepclaw-gateway
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deepclaw.conf:/etc/openresty/templates/deepclaw.conf:ro
+      - ./certs:/etc/openresty/certs:ro
+    networks:
+      - deepclaw
+    command: >
+      sh -c "sed 's|127.0.0.1:7869|deepclaw:7869|' /etc/openresty/templates/deepclaw.conf > /etc/nginx/conf.d/default.conf &&
+             openresty -g 'daemon off;'"
+
+  # 生成 1 天期自签证书，仅本地验证使用：
+  # docker compose -f deploy/openresty/docker-compose.yml --profile certgen run --rm certgen
+  certgen:
+    image: alpine/openssl
+    profiles: ["certgen"]
+    volumes:
+      - ./certs:/certs
+    command:
+      - req
+      - -x509
+      - -nodes
+      - -newkey
+      - rsa:2048
+      - -days
+      - "1"
+      - -keyout
+      - /certs/deepclaw.key
+      - -out
+      - /certs/deepclaw.crt
+      - -subj
+      - /CN=localhost
+      - -addext
+      - subjectAltName=DNS:localhost,IP:127.0.0.1
+
+networks:
+  deepclaw:
+    external: true
+    name: deepclaw

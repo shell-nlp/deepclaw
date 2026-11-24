@@ -294,6 +294,10 @@ uv venv .tmpvenv && uv pip install --python .tmpvenv/Scripts/python.exe .
 - `AUTH_ADMIN_PASSWORD`（默认 `deepclaw`）
 - `AUTH_ADMIN_EMAIL`（可选，仅展示）
 - `AUTH_TOKEN_EXPIRE_DAYS`
+- `AUTH_ALLOW_REGISTRATION`（是否开放公开注册，默认 `false`，账号由管理员创建）
+- `ALLOW_GUEST_ACCESS`（是否允许未登录游客访问，公网部署建议 `false`）
+- `AUTH_LOGIN_MAX_ATTEMPTS`（连续登录失败锁定阈值，默认 5）
+- `AUTH_LOGIN_LOCK_MINUTES`（登录失败锁定分钟数，默认 15）
 - `/api/models/catalog`、`POST /api/models`、`PUT/DELETE /api/models/{model_id}`、`POST /api/models/{model_id}/test`、`POST /api/models/{model_id}/activate`：管理员维护、测试和切换大模型与语义模型目录；模型配置页位于前端 `ModelManagementView.tsx`。
 
 ### 渠道配置
@@ -504,7 +508,8 @@ pnpm build
 - 技能管理归属 `/api/agent/skills/*`
 - 知识库管理归属 `/api/rag/knowledge-bases/*`
 - 渠道管理归属 `/api/channels/*`
-- 前端默认以游客模式进入，点击右上角头像会跳转到独立 `/login` 页面进入登录/注册流程
+- 前端默认以游客模式进入，点击右上角头像会跳转到独立 `/login` 页面进入登录/注册流程；`GET /api/auth/config` 公开返回 `allow_guest`、`allow_registration`，前端据此决定未登录跳转、注册入口与游客卡片展示。`ALLOW_GUEST_ACCESS=False` 时匿名请求统一返回 401 并跳转 `/login?next=...`，`AUTH_ALLOW_REGISTRATION=False` 时注册接口直接拒绝且登录页隐藏注册入口。
+- 登录连续失败达到 `AUTH_LOGIN_MAX_ATTEMPTS` 后按 `AUTH_LOGIN_LOCK_MINUTES` 临时锁定；失败计数与锁定时间存放在 `authuser.failed_login_attempts` / `authuser.locked_until`，旧库启动时自动补列。公网部署的反代示例位于 `deploy/openresty/`（`deepclaw.conf` 单文件配置 + `docker-compose.yml` 本地启动，含 TLS、限流、上传体积、SSE 关缓冲、WebSocket 升级）；`GET /health` 返回 `{"status": "ok"}` 供网关与负载均衡探活，证书目录 `deploy/openresty/certs/` 已在 `.gitignore` 中忽略。
 - 知识库读写已对游客开放：`/api/rag/knowledge-bases/*` 的写接口与读接口统一用同一个归属解析（登录用户取自身 ID，游客取固定 `guest`），不再对游客返回 403。前端能力由 `getActorCapabilities()` 推导：游客恒为可用；登录用户若服务端返回 `permissions`，则按其中是否包含对应路径动作为准，未返回权限列表（旧后端）时回退为可用
 - 账号以 `username` 作为唯一登录标识（归一化为小写），`email` 改为可空的可选资料字段，不参与登录；旧库升级时会把存量 `email` 回填为 `username` 并放宽 `email` 的 NOT NULL 约束。首次启动若无管理员，按 `AUTH_ADMIN_USERNAME` / `AUTH_ADMIN_PASSWORD`（默认 `deepclaw` / `deepclaw`）自举。
 - 认证是不透明令牌（`la_` + 随机串，`sha256` 后入库），不是 JWT；`AuthStore.get_actor_by_token()` 刷新 `last_used_at` 时按 `ACCESS_TOKEN_LAST_USED_THROTTLE`（60 秒）节流，同一令牌在窗口内重复校验不会写库，这是刻意的性能设计，不是漏写

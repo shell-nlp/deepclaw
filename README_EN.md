@@ -407,7 +407,10 @@ OBJECT_STORAGE_PROVIDER=local
 > Only with `PG_DATABASE_URL` set do runs, threads and checkpoints land in a shared database, which is what
 > lets multiple instances share session state. Without it checkpoints live in memory and are lost on restart.
 
-### 4. Start the main service
+### 4. Start the main service (local mode)
+
+Local mode and the container mode in the next section are mutually exclusive: both listen on `7869`, so do
+not run them at the same time. Start from the single `main` entrypoint:
 
 ```bash
 uv run python -m deepclaw.main
@@ -421,8 +424,10 @@ Once running:
 - Channels API: `/api/channels/*`
 
 On first start, if `AUTH_ADMIN_USERNAME` / `AUTH_ADMIN_PASSWORD` are set and no admin exists yet, that admin
-account is created automatically. Unauthenticated requests fall back to a guest identity, and guests may
-manage skills and knowledge bases.
+account is created automatically. Unauthenticated requests fall back to a guest identity by default, and guests
+may manage skills and knowledge bases. Setting `ALLOW_GUEST_ACCESS=false` (recommended for public deployments)
+makes anonymous requests return `401` and the frontend redirect to `/login`. Public registration is disabled by
+default (`AUTH_ALLOW_REGISTRATION=false`); admins create accounts from user management.
 
 ### 5. Start dependencies (optional but recommended)
 
@@ -438,12 +443,43 @@ For Phoenix tracing:
 docker compose -f docker-compose.middleware.yml up -d phoenix
 ```
 
-To run the service itself in a container, middleware and app are composed separately:
+To run the service itself in a container (mutually exclusive with the local mode above), middleware and app
+are composed separately:
 
 ```bash
 docker compose -f docker-compose.middleware.yml up -d   # middleware first
 docker compose -f docker-compose.app.yml up -d          # then the app
 ```
+
+The app container does not publish `7869` to the host by default (`ports` in `docker-compose.app.yml` is
+commented out), so browsers reach it through the OpenResty gateway described below.
+
+#### Serve through the OpenResty gateway (container mode)
+
+The gateway handles TLS, login/run rate limiting, upload size (1G by default), unbuffered SSE and WebSocket
+upgrades. Configuration lives in `deploy/openresty/deepclaw.conf`, orchestration in
+`deploy/openresty/docker-compose.yml`.
+
+```bash
+# 1) Certificates: put real certs at deploy/openresty/certs/deepclaw.crt and deepclaw.key
+#    For local testing, generate a 1-day self-signed pair (one-off compose task)
+docker compose -f deploy/openresty/docker-compose.yml --profile certgen run --rm certgen
+
+# 2) Start the gateway (the app container must be running; the gateway resolves deepclaw:7869)
+docker compose -f deploy/openresty/docker-compose.yml up -d
+
+# 3) Verify
+curl -k https://127.0.0.1/health
+```
+
+Open `https://127.0.0.1/` afterwards (accept the self-signed certificate once). For production, replace
+`server_name` in `deepclaw.conf` with your domain and use real certificates. Run
+`docker restart deepclaw-gateway` after editing the config or swapping certificates; stop it with
+`docker compose -f deploy/openresty/docker-compose.yml down` without touching the app container.
+
+> The gateway only does TLS, rate limiting and proxying; authentication and authorization stay in the backend
+> (opaque tokens plus RBAC). When running the backend locally, point the gateway upstream at the host or it
+> will return 502.
 
 Phoenix console defaults to `http://localhost:6006`.
 
@@ -490,8 +526,9 @@ role and cannot be called as a guest.
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `POST` | `/api/auth/register` | Register a regular user and return an access token |
-| `POST` | `/api/auth/login` | Email and password login |
+| `GET` | `/api/auth/config` | Return guest and registration switches (public) |
+| `POST` | `/api/auth/register` | Register a regular user and return an access token (disabled when `AUTH_ALLOW_REGISTRATION=false`, which is the default) |
+| `POST` | `/api/auth/login` | Username and password login; repeated failures temporarily lock the account |
 | `POST` | `/api/auth/logout` | Revoke the current access token |
 | `GET` | `/api/auth/me` | Return the current actor |
 | `POST` | `/api/auth/users/create` | Admin: create a user with a role |
@@ -776,6 +813,10 @@ After signing in as an administrator, open Model management from the sidebar to 
 | `PHOENIX_COLLECTOR_ENDPOINT` | Enables Phoenix tracing |
 | `AUTH_ADMIN_USERNAME` / `AUTH_ADMIN_PASSWORD` | Admin account bootstrapped on first start |
 | `AUTH_TOKEN_EXPIRE_DAYS` | Access token lifetime in days, default `1` |
+| `AUTH_ALLOW_REGISTRATION` | Enable public registration; default `false`, accounts are created by admins |
+| `ALLOW_GUEST_ACCESS` | Allow anonymous guest access; default `true`. Set to `false` for public deployments so anonymous requests get `401` and redirect to the login page |
+| `AUTH_LOGIN_MAX_ATTEMPTS` | Consecutive login failures before the account is locked, default `5` |
+| `AUTH_LOGIN_LOCK_MINUTES` | Lock duration in minutes after too many failures, default `15` |
 | `AGUI_RUN_RETENTION_SECONDS` | Run and event retention, default `3600` |
 | `AGUI_THREAD_RETENTION_SECONDS` | Thread index retention; `0` means no automatic expiry |
 | `AGUI_RUN_MAX_EVENTS` | Max events per run, default `2000` |

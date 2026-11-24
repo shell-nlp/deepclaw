@@ -6,6 +6,7 @@ import styles from './login.module.css'
 import {
   clearRememberedLogin,
   clearStoredAuthToken,
+  fetchAuthRuntimeConfig,
   fetchCurrentActor,
   getRememberedLogin,
   getStoredAuthToken,
@@ -16,6 +17,7 @@ import {
   storeAuthToken,
   submitAuthRequest,
   type ActorState,
+  type AuthRuntimeConfig,
 } from '@/components/chat/utils/auth'
 
 function normalizeRedirectTarget(value: string | null): string {
@@ -39,6 +41,24 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [checkingSession, setCheckingSession] = useState(true)
+  const [runtimeConfig, setRuntimeConfig] = useState<AuthRuntimeConfig | null>(null)
+
+  const allowGuest = runtimeConfig?.allowGuest !== false
+  const allowRegistration = runtimeConfig?.allowRegistration !== false
+
+  useEffect(() => {
+    let active = true
+    void fetchAuthRuntimeConfig().then((config) => {
+      if (active) setRuntimeConfig(config)
+    })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!allowRegistration) setMode('login')
+  }, [allowRegistration])
 
   const redirectTarget = useMemo(() => {
     if (typeof window === 'undefined') {
@@ -144,7 +164,7 @@ export default function LoginPage() {
       setToken('')
       setActor(normalizeActorPayload(null))
       setPassword('')
-      setNotice('已退出登录，你仍可作为游客继续使用。')
+      setNotice(allowGuest ? '已退出登录，你仍可作为游客继续使用。' : '已退出登录。')
       setError('')
       setLoading(false)
     }
@@ -164,10 +184,12 @@ export default function LoginPage() {
         </div>
 
         <div className={styles.featureList}>
-          <article className={styles.featureCard}>
-            <strong>游客模式</strong>
-            <span>无需注册即可聊天和浏览。</span>
-          </article>
+          {allowGuest ? (
+            <article className={styles.featureCard}>
+              <strong>游客模式</strong>
+              <span>无需注册即可聊天和浏览。</span>
+            </article>
+          ) : null}
           <article className={styles.featureCard}>
             <strong>用户账号</strong>
             <span>登录后隔离个人数据，可上传知识库与技能。</span>
@@ -195,7 +217,13 @@ export default function LoginPage() {
             <p className={styles.cardEyebrow}>
               {actor.isGuest ? '账号入口' : '当前账号'}
             </p>
-            <h2>{actor.isGuest ? '登录或注册' : '已登录'}</h2>
+            <h2>
+              {actor.isGuest
+                ? allowRegistration
+                  ? '登录或注册'
+                  : '登录'
+                : '已登录'}
+            </h2>
           </div>
 
           {checkingSession ? (
@@ -212,26 +240,28 @@ export default function LoginPage() {
 
           {!checkingSession && actor.isGuest ? (
             <>
-              <div className={styles.modeTabs} role="tablist" aria-label="账号操作">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={mode === 'login'}
-                  className={`${styles.modeTab} ${mode === 'login' ? styles.modeTabActive : ''}`}
-                  onClick={() => setMode('login')}
-                >
-                  登录
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={mode === 'register'}
-                  className={`${styles.modeTab} ${mode === 'register' ? styles.modeTabActive : ''}`}
-                  onClick={() => setMode('register')}
-                >
-                  注册
-                </button>
-              </div>
+              {allowRegistration ? (
+                <div className={styles.modeTabs} role="tablist" aria-label="账号操作">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={mode === 'login'}
+                    className={`${styles.modeTab} ${mode === 'login' ? styles.modeTabActive : ''}`}
+                    onClick={() => setMode('login')}
+                  >
+                    登录
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={mode === 'register'}
+                    className={`${styles.modeTab} ${mode === 'register' ? styles.modeTabActive : ''}`}
+                    onClick={() => setMode('register')}
+                  >
+                    注册
+                  </button>
+                </div>
+              ) : null}
 
               <form className={styles.form} onSubmit={handleSubmit}>
                 <label className={styles.field}>
