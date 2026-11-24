@@ -5,7 +5,7 @@ import styles from '../../ChatInterface.module.css'
 import editor from './ModelEditor.module.css'
 import { MODEL_API_PATH } from '../utils/constants'
 
-interface HeaderRow { id: number; name: string; value: string; savedName?: string }
+interface HeaderRow { id: number; name: string; value: string }
 export const CHAT_UPSTREAM_FORMAT_LABELS = {
   chat_completions: 'Chat Completions',
   responses: 'Responses（原生）',
@@ -184,16 +184,13 @@ export function ModelEditor({ draft, modelId, hasSavedKey, busy, error, requestJ
               <button type="button" className={styles.managementMinorButton} disabled={draft.request_headers.length >= 32} onClick={() => change({ request_headers: [...draft.request_headers, { id: nextRow.current++, name: '', value: '' }] })}>＋ 添加请求头</button>
             </div>
             {draft.request_headers.length === 0 && <p className={editor.empty}>可为模型网关添加自定义请求头，例如 Host。</p>}
-            {draft.request_headers.map((row, index) => {
-              const keep = row.savedName?.toLowerCase() === row.name.trim().toLowerCase()
-              return (
+            {draft.request_headers.map((row, index) => (
                 <div className={editor.headerRow} key={row.id}>
                   <input aria-label={'请求头名称 ' + (index + 1)} className={styles.managementInput + ' ' + editor.technical} placeholder="X-API-Version" value={row.name} maxLength={128} required onChange={(event) => change({ request_headers: draft.request_headers.map((item) => item.id === row.id ? { ...item, name: event.target.value } : item) })} />
-                  <input aria-label={'请求头值 ' + (index + 1)} className={styles.managementInput + ' ' + editor.technical} type="password" autoComplete="new-password" placeholder={keep ? '已保存 · 留空保留' : row.name.trim().toLowerCase() === 'host' ? '域名或 IP，可带端口' : '请求头值'} required={!keep} maxLength={8192} value={row.value} onChange={(event) => change({ request_headers: draft.request_headers.map((item) => item.id === row.id ? { ...item, value: event.target.value } : item) })} />
+                  <input aria-label={'请求头值 ' + (index + 1)} className={styles.managementInput + ' ' + editor.technical} type="text" autoComplete="off" spellCheck={false} placeholder={row.name.trim().toLowerCase() === 'host' ? '域名或 IP，可带端口' : '请求头值'} required maxLength={8192} value={row.value} onChange={(event) => change({ request_headers: draft.request_headers.map((item) => item.id === row.id ? { ...item, value: event.target.value } : item) })} />
                   <button type="button" className={editor.icon} aria-label={'删除请求头 ' + (index + 1)} title="删除请求头" onClick={() => change({ request_headers: draft.request_headers.filter((item) => item.id !== row.id) })}>×</button>
                 </div>
-              )
-            })}
+            ))}
           </section>
         </fieldset>
 

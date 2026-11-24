@@ -30,19 +30,30 @@ export function ModelManagementView({ actor, requestJson, canManage = actor.role
   const load = useCallback(async () => { setLoading(true); setError(''); try { setCatalog(await requestJson<Catalog>(MODEL_CATALOG_API_PATH)) } catch (cause) { setError(cause instanceof Error ? cause.message : '无法读取模型目录。') } finally { setLoading(false) } }, [requestJson])
   useEffect(() => { if (canManage && !actor.isGuest) void load() }, [actor.isGuest, canManage, load])
   const startCreate = (type: ModelType) => { setEditingId(null); setDraft(emptyDraft(type)); setNotice(''); setError('') }
-  const startEdit = (model: ModelItem) => {
-    setEditingId(model.id)
-    setDraft({
-      ...emptyDraft(model.type),
-      name: model.name,
-      provider: model.provider,
-      upstream_format: model.upstream_format ?? 'chat_completions',
-      api_base: model.api_base,
-      context_window: String(model.context_window || 128000),
-      request_headers: (model.request_headers ?? []).map((name, id) => ({ id, name, value: '', savedName: name })),
-    })
+  /** 打开编辑器并加载请求头。Args: model 为待编辑的模型。 */
+  const startEdit = async (model: ModelItem) => {
     setNotice('')
     setError('')
+    setBusy(true)
+    try {
+      const { request_headers } = await requestJson<{ request_headers: Record<string, string> }>(
+        MODEL_API_PATH + '/' + model.id + '/headers',
+      )
+      setEditingId(model.id)
+      setDraft({
+        ...emptyDraft(model.type),
+        name: model.name,
+        provider: model.provider,
+        upstream_format: model.upstream_format ?? 'chat_completions',
+        api_base: model.api_base,
+        context_window: String(model.context_window || 128000),
+        request_headers: Object.entries(request_headers).map(([name, value], id) => ({ id, name, value })),
+      })
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '无法读取模型请求头。')
+    } finally {
+      setBusy(false)
+    }
   }
   const closeEditor = () => { if (!busy) { setDraft(null); setEditingId(null); setError('') } }
   const submit = async () => {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import socket
 from contextvars import ContextVar
 from typing import Any
 
@@ -103,6 +104,18 @@ def _delta_of(chunk: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+def chat_gateway_options(headers: dict[str, str]) -> dict[str, Any]:
+    """为使用自定义 Host 路由的聊天网关显式启用直连传输。
+
+    Args:
+        headers: 模型配置中的自定义请求头。
+    """
+    if any(name.lower() == "host" for name in headers):
+        # 显式传入套接字选项使 LangChain 创建直连传输，避免自动代理按 URL 重写 Host。
+        return {"http_socket_options": [(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)]}
+    return {}
+
+
 def get_chat_model(tags: list[str] | None = None, *, catalog_model: dict[str, Any] | None = None) -> ChatOpenAI:
     """创建聊天模型实例。
 
@@ -119,20 +132,19 @@ def get_chat_model(tags: list[str] | None = None, *, catalog_model: dict[str, An
     upstream_format = (
         selected.get("upstream_format") if selected else model_config.active_chat_upstream_format
     )
+    headers = selected.get("request_headers", {}) if selected else model_config.active_chat_headers
     return ReasoningChatOpenAI(
         model=selected.get("name", settings.CHAT_MODEL_NAME),
         base_url=selected.get("api_base", settings.OPENAI_API_BASE),
         api_key=selected.get("api_key", settings.OPENAI_API_KEY) or model_config.KEYLESS_API_KEY,
-        default_headers=selected.get("request_headers", {}) if selected else model_config.active_chat_headers,
+        default_headers=headers,
+        **chat_gateway_options(headers),
         use_responses_api=upstream_format == "responses",
         streaming=True,
         stream_usage=True,
         tags=tags or ["agent"],
         profile={"max_input_tokens": selected.get("context_window") or settings.MODEL_CONTEXT_WINDOW},
-        extra_body={
-            **DISABLE_THINKING_EXTRA_BODY,
-            "tool_choice": "auto",
-        },
+        extra_body=DISABLE_THINKING_EXTRA_BODY.copy(),
     )
 
 

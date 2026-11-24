@@ -53,6 +53,8 @@ def test_chat_model_uses_configured_upstream_format():
     legacy_payload = legacy._get_request_payload("hello")
     assert "messages" in legacy_payload
     assert legacy_payload["extra_body"]["thinking"] == {"type": "disabled"}
+    assert "tool_choice" not in legacy_payload
+    assert "tool_choice" not in legacy_payload["extra_body"]
 
     responses = get_chat_model(catalog_model={**config, "upstream_format": "responses"})
     responses_payload = responses._get_request_payload(

@@ -79,6 +79,12 @@ class ModelSecretResponse(BaseModel):
     api_key: str
 
 
+class ModelHeadersResponse(BaseModel):
+    """编辑模型时可以查看的请求头。"""
+
+    request_headers: dict[str, str]
+
+
 class ModelActivateRequest(BaseModel):
     """切换当前活动模型请求。"""
 

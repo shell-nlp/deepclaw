@@ -15,12 +15,14 @@ from deepclaw.model_config import (
 )
 from deepclaw.web_backend.auth.dependencies import CurrentActor
 from deepclaw.web_backend.auth.rbac import require_permission
+from deepclaw.utils.model_factory import chat_gateway_options
 from deepclaw.web_backend.model_schemas import (
     ModelActivateRequest,
     ModelCatalogResponse,
     ModelCreateRequest,
     ModelDraftTestRequest,
     ModelHeaderRequest,
+    ModelHeadersResponse,
     ModelItemResponse,
     ModelSecretResponse,
     ModelTestResponse,
@@ -252,6 +254,24 @@ async def reveal_model_key(
     return ModelSecretResponse(api_key=model.get("api_key", ""))
 
 
+@router.get("/{model_id}/headers", response_model=ModelHeadersResponse, summary="查看模型请求头")
+async def get_model_headers(
+    model_id: str,
+    response: Response,
+    actor: CurrentActor = Depends(require_permission("/api/models", "write")),
+) -> ModelHeadersResponse:
+    """返回有模型写权限的用户正在编辑的模型请求头。
+
+    Args:
+        model_id: 模型标识。
+        response: 禁止缓存的 HTTP 响应。
+        actor: 具备模型写权限的用户。
+    """
+    response.headers["Cache-Control"] = "no-store"
+    model = _find_model(load_model_state(), model_id)
+    return ModelHeadersResponse(request_headers=model.get("request_headers", {}))
+
+
 async def _probe_model(model: dict) -> ModelTestResponse:
     """验证上游模型是否能完成一次短请求，并返回耗时。
 
@@ -272,6 +292,7 @@ async def _probe_model(model: dict) -> ModelTestResponse:
             from langchain_openai import ChatOpenAI
             await ChatOpenAI(
                 **options, use_responses_api=model.get("upstream_format") == "responses",
+                **chat_gateway_options(options["default_headers"]),
             ).ainvoke("请只回复 OK")
             result_message = "模型可用"
             dimension = None
@@ -294,6 +315,7 @@ async def _probe_model(model: dict) -> ModelTestResponse:
                 403: "请检查模型访问权限和请求头",
                 404: "请检查 API 地址和模型名称",
                 429: "请检查调用额度或稍后重试",
+                502: "请检查模型网关的路由、Host 请求头及后端服务状态",
             }
             detail = f"服务返回 HTTP {exc.status_code}，{hints.get(exc.status_code, '请检查模型服务配置')}。"
         else:
