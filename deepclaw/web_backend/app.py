@@ -16,6 +16,7 @@ from deepclaw.web_backend.common.errors import BusinessRuleError
 from deepclaw.web_backend.knowledge_bases.router import (
     router as knowledge_bases_router,
 )
+from deepclaw.web_backend.mcp_router import router as mcp_router
 from deepclaw.web_backend.model_router import router as model_router
 from deepclaw.web_backend.schedules import router as schedules_router
 from deepclaw.web_backend.lifespan import app_lifespan
@@ -117,6 +118,7 @@ def create_app() -> FastAPI:
     app.include_router(runtime_router)
     app.include_router(devices_router)
     app.include_router(model_router)
+    app.include_router(mcp_router)
     app.include_router(schedules_router)
 
     register_charts_static(app)

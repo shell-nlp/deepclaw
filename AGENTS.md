@@ -53,6 +53,7 @@
   AG-UI Run 公共执行逻辑、统一 Runs 路径解析、渠道 Agent URL 与 runtime-config 路由。
 - `deepclaw/web_backend/common/agui_schemas.py`
   AG-UI HTTP 协议模型，当前包含 `AgUiRunRequest`、`RunSnapshotResponse` 与 Thread/Agent 响应模型。
+- `deepclaw/web_backend/mcp_router.py` 提供 MCP 工具清单预览，沿用 MCP 使用权限，仅获取工具说明与输入参数。公开 HTTP 服务可直接预览。内网地址与 stdio 服务需先由管理员配置在 `MCP_CONFIG`。MCP 管理页将单个服务的停用状态保存到浏览器配置中，智能体每轮按生效配置校验会话工具缓存。
 - `deepclaw/agent_registry.py`
   统一 Agent 基类与自动发现入口。定义 `Agent` 与 `AgentRegistry`，扫描 `deepclaw.agents.*.agent` 模块并校验 `agent_id`、默认智能体和 `build_agent` 构建入口。
 - `deepclaw/web_backend/agui/runtime.py`

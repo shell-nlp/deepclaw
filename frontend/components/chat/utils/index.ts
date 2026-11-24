@@ -502,6 +502,7 @@ export function parseMcpConfig(raw: string): {
       name,
       transport,
       endpoint,
+      enabled: serverConfig.disabled !== true,
     }
   })
 

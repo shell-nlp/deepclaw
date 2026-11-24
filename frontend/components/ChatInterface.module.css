@@ -4514,6 +4514,54 @@ button.extensionListRow { cursor: pointer; }
 .extensionRowDetail > div > span { flex: 0 0 100px; color: var(--extension-muted); }
 .extensionRowDetail strong { font-weight: 550; }
 .extensionRowDetail code { overflow-wrap: anywhere; font: 12px/1.6 'IBM Plex Mono', monospace; }
+.mcpTools {
+  display: grid;
+  gap: 8px;
+  padding: 14px 20px 18px clamp(20px, 7vw, 87px);
+  border-top: 1px solid #edf1f5;
+  background: #f8fafc;
+  font-size: 12px;
+}
+.mcpTools > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--extension-ink);
+}
+.mcpTools p { margin: 0; color: var(--extension-muted); line-height: 1.65; overflow-wrap: anywhere; }
+.mcpTools > p[role="alert"] { color: #9e3a38; }
+.mcpTool { min-width: 0; border: 1px solid #e2e8f0; border-radius: 7px; background: #fff; }
+.mcpTool > button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 38px;
+  padding: 6px 11px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--extension-ink);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.mcpTool > button:hover { background: #f3f6fa; }
+.mcpTool code { overflow-wrap: anywhere; font: 600 12px 'IBM Plex Mono', monospace; }
+.mcpToolDetail { display: grid; gap: 7px; padding: 10px 13px 13px; border-top: 1px solid #edf1f5; }
+.mcpToolDetail p { white-space: pre-wrap; }
+.mcpToolDetail pre {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: 240px;
+  overflow: auto;
+  border-radius: 5px;
+  background: #f0f4f8;
+  color: var(--extension-ink);
+  font: 12px/1.55 'IBM Plex Mono', monospace;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mcpTools .extensionChevron { transition: none; }
+}
 .extensionTextButton { justify-self: start; padding: 2px 0; border: 0; background: transparent; color: #365f9d; font-size: 12px; font-weight: 650; cursor: pointer; }
 .extensionTextButton:hover { text-decoration: underline; }
 .extensionEmpty { display: grid; justify-items: center; gap: 7px; padding: 50px 20px; text-align: center; }

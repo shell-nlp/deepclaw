@@ -6,6 +6,7 @@ from contextvars import ContextVar
 from typing import Any
 
 from langchain_core.messages.ai import AIMessageChunk
+from langchain_core.language_models import LanguageModelInput
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 from deepclaw.settings import settings
@@ -24,6 +25,26 @@ class ReasoningChatOpenAI(ChatOpenAI):
     Args:
         与 ChatOpenAI 一致。
     """
+
+    def _get_request_payload(
+        self, input_: LanguageModelInput, *, stop: list[str] | None = None, **kwargs: Any,
+    ) -> dict[str, Any]:
+        """构造请求并移除原生 Responses 接口不支持的兼容网关参数。
+
+        Args:
+            input_: 本轮模型输入。
+            stop: 停止词列表。
+            kwargs: 本轮绑定的模型参数。
+        """
+        payload = super()._get_request_payload(input_, stop=stop, **kwargs)
+        if self.use_responses_api and (extra := payload.pop("extra_body", None)):
+            responses_extra = {
+                key: value for key, value in extra.items()
+                if key not in {"chat_template_kwargs", "thinking", "response_format", "tool_choice"}
+            }
+            if responses_extra:
+                payload["extra_body"] = responses_extra
+        return payload
 
     def _convert_chunk_to_generation_chunk(
         self,
@@ -95,11 +116,15 @@ def get_chat_model(tags: list[str] | None = None, *, catalog_model: dict[str, An
     from deepclaw import model_config
 
     selected = catalog_model or {}
+    upstream_format = (
+        selected.get("upstream_format") if selected else model_config.active_chat_upstream_format
+    )
     return ReasoningChatOpenAI(
         model=selected.get("name", settings.CHAT_MODEL_NAME),
         base_url=selected.get("api_base", settings.OPENAI_API_BASE),
         api_key=selected.get("api_key", settings.OPENAI_API_KEY) or model_config.KEYLESS_API_KEY,
         default_headers=selected.get("request_headers", {}) if selected else model_config.active_chat_headers,
+        use_responses_api=upstream_format == "responses",
         streaming=True,
         stream_usage=True,
         tags=tags or ["agent"],

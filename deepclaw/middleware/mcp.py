@@ -128,18 +128,21 @@ class MCPMiddleware(AgentMiddleware):
         Args:
             request: 中间件包装请求对象，通过 state 携带运行参数。
 
-        融合规则：两份配置都存在时按 server 名称合并 `mcpServers`，
-        同名 server 以文件内配置 `self.mcp_config` 为准。
+        同名服务优先使用部署配置，浏览器可停用其列表中的同名服务。
+        显式传入空值表示关闭总开关。
         """
-        context_config = (request.state or {}).get("mcp_config")
-        if not self.mcp_config:
-            resolved_config = context_config
-        elif not context_config:
-            resolved_config = self.mcp_config
-        else:
-            resolved_config = self._merge_mcp_config(self.mcp_config, context_config)
-
-        return resolved_config
+        state = request.state or {}
+        if "mcp_config" in state and state["mcp_config"] is None:
+            return None
+        context_config = state.get("mcp_config")
+        defaults = self.normalize_mcp_config(self.mcp_config)["mcpServers"] if self.mcp_config else {}
+        local = self.normalize_mcp_config(context_config)["mcpServers"] if context_config else {}
+        servers = {}
+        for name, config in (local | defaults).items():
+            if config.get("disabled") is True or local.get(name, {}).get("disabled") is True:
+                continue
+            servers[name] = {key: value for key, value in config.items() if key != "disabled"}
+        return {"mcpServers": servers} if servers else None
 
     def _inject_context_headers(
         self,
@@ -172,23 +175,6 @@ class MCPMiddleware(AgentMiddleware):
                 merged_headers[name] = str(value)
             server_config["headers"] = merged_headers
         return normalized_config
-
-    def _merge_mcp_config(self, primary: dict[str, Any], secondary: dict[str, Any]) -> dict[str, Any]:
-        """按 server 名称融合两份 MCP 配置，同名 server 以 primary 为准。
-
-        Args:
-            primary: 优先配置（文件内 self.mcp_config）。
-            secondary: 补充配置（state.mcp_config）。
-        """
-        primary_normalized = self.normalize_mcp_config(primary)
-        secondary_normalized = self.normalize_mcp_config(secondary)
-
-        merged_servers = dict(secondary_normalized.get("mcpServers", {}))
-        merged_servers.update(primary_normalized.get("mcpServers", {}))
-
-        merged = dict(primary_normalized)
-        merged["mcpServers"] = merged_servers
-        return merged
 
     def normalize_mcp_server_config(self, server_config: dict[str, Any]) -> dict[str, Any]:
         normalized = dict(server_config)
@@ -352,8 +338,11 @@ class MCPMiddleware(AgentMiddleware):
 
     async def awrap_model_call(self, request: ModelRequest, handler):
         thread_id = request.runtime.execution_info.thread_id
+        mcp_config = self._resolve_mcp_config(request)
         cached_resources = self._mcp_resources_by_thread_id.get(thread_id)
-        mcp_config = None if cached_resources else self._resolve_mcp_config(request)
+        if cached_resources is not None and cached_resources[0] != mcp_config:
+            self._mcp_resources_by_thread_id.pop(thread_id, None)
+            cached_resources = None
         if (cached_resources or mcp_config) and not await self._can_use_mcp(request):
             return await handler(request)
         if cached_resources is not None:
@@ -369,17 +358,15 @@ class MCPMiddleware(AgentMiddleware):
                     command=Command(update={"mcp_tool_names": [tool.name for tool in tools]}),
                 )
             self._mcp_resources_by_thread_id.pop(thread_id, None)
-            mcp_config = self._resolve_mcp_config(request)
 
         if mcp_config:
             header_info = self._prepare_mcp_request_headers(request)
-            mcp_config = self._inject_context_headers(
+            connection_config = self._inject_context_headers(
                 mcp_config,
                 header_info=header_info,
             )
-            logger.info(f"new mcp_config: \n{mcp_config}")
             current_tools = request.tools
-            tools = await self.get_mcp_tools(mcp_config)
+            tools = await self.get_mcp_tools(connection_config)
             if tools:
                 self._mcp_resources_by_thread_id[thread_id] = (mcp_config, tools)
             mcp_tool_names = [tool.name for tool in tools]
@@ -398,7 +385,10 @@ class MCPMiddleware(AgentMiddleware):
                 command=Command(update=update),
             )
 
-        return await handler(request)
+        response = await handler(request)
+        if (getattr(request, "state", None) or {}).get("mcp_tool_names"):
+            return ExtendedModelResponse(model_response=response, command=Command(update={"mcp_tool_names": []}))
+        return response
 
     async def awrap_tool_call(
         self,
@@ -409,6 +399,9 @@ class MCPMiddleware(AgentMiddleware):
         progress_callback = self._build_progress_callback(request.tool_call["id"])
         cached_resources = self._mcp_resources_by_thread_id.get(thread_id)
         mcp_config = self._resolve_mcp_config(request)
+        if cached_resources is not None and cached_resources[0] != mcp_config:
+            self._mcp_resources_by_thread_id.pop(thread_id, None)
+            cached_resources = None
         if (cached_resources or mcp_config) and not await self._can_use_mcp(request):
             return await handler(request)
         if cached_resources is not None:
@@ -434,11 +427,11 @@ class MCPMiddleware(AgentMiddleware):
 
         if mcp_config:
             header_info = self._prepare_mcp_request_headers(request)
-            mcp_config = self._inject_context_headers(
+            connection_config = self._inject_context_headers(
                 mcp_config,
                 header_info=header_info,
             )
-            tools = await self.get_mcp_tools(mcp_config)
+            tools = await self.get_mcp_tools(connection_config)
             if tools:
                 self._mcp_resources_by_thread_id[thread_id] = (mcp_config, tools)
             tool_name_map = {tool.name: tool for tool in tools}

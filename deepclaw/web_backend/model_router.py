@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from openai import APIConnectionError, APIStatusError, APITimeoutError
 
 from deepclaw.model_config import (
+    DEFAULT_CHAT_UPSTREAM_FORMAT,
     KEYLESS_API_KEY,
     _new_model,
     load_model_state,
@@ -28,8 +29,9 @@ from deepclaw.web_backend.model_schemas import (
 
 router = APIRouter(prefix="/api/models", tags=["models"])
 HEADER_NAME = re.compile(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+")
+HOST_HEADER_VALUE = re.compile(r"(?:[A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\])(?::[0-9]{1,5})?")
 RESERVED_HEADERS = {
-    "connection", "content-length", "expect", "host", "keep-alive",
+    "connection", "content-length", "expect", "keep-alive",
     "proxy-authorization", "proxy-connection", "te", "trailer", "transfer-encoding", "upgrade",
 }
 
@@ -65,11 +67,27 @@ def _resolve_headers(rows: list[ModelHeaderRequest] | None, saved: dict[str, str
         name = row.name.strip()
         key = name.lower()
         value = previous.get(key) if row.value is None else row.value.strip(" \t")
-        if not HEADER_NAME.fullmatch(name) or len(name) > 128 or key in RESERVED_HEADERS:
-            raise HTTPException(status_code=422, detail=f"第 {index} 条请求头名称无效或为保留名称。")
+        if not HEADER_NAME.fullmatch(name) or len(name) > 128:
+            raise HTTPException(status_code=422, detail=f"第 {index} 条请求头名称格式无效，请填写名称，例如 Host。")
+        if key in RESERVED_HEADERS:
+            raise HTTPException(status_code=422, detail=f"第 {index} 条请求头 {name} 由 HTTP 客户端管理，请删除这一行。")
         if key in seen:
             raise HTTPException(status_code=422, detail=f"第 {index} 条请求头名称重复。")
-        if not value or len(value) > 8192 or not re.fullmatch(r"[\x20-\x7e\t]+", value):
+        if key == "host":
+            try:
+                valid_host = bool(value and HOST_HEADER_VALUE.fullmatch(value))
+                if valid_host:
+                    parsed = urlparse(f"//{value}")
+                    port = parsed.port
+                    valid_host = bool(parsed.hostname and (port is None or port > 0))
+            except ValueError:
+                valid_host = False
+            if not valid_host:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"第 {index} 条 Host 请求头仅填写域名或 IP，可带端口，例如 gateway.example.com:8080。",
+                )
+        elif not value or len(value) > 8192 or not re.fullmatch(r"[\x20-\x7e\t]+", value):
             raise HTTPException(status_code=422, detail=f"第 {index} 条请求头需要有效的 ASCII 值。")
         seen.add(key)
         headers[name.title()] = value
@@ -164,6 +182,8 @@ async def create_model(
         request.context_window or 128_000,
     )
     model["request_headers"] = _resolve_headers(request.request_headers, {})
+    if request.type == "chat":
+        model["upstream_format"] = request.upstream_format or DEFAULT_CHAT_UPSTREAM_FORMAT
     state.setdefault("models", []).append(model)
     active_key = "active_chat_model_id" if request.type == "chat" else "active_embedding_model_id"
     if not state.get(active_key):
@@ -210,6 +230,7 @@ async def test_model_draft(
         "api_base": _validate_api_base(request.api_base),
         "api_key": (request.api_key or "").strip() or saved.get("api_key", ""),
         "request_headers": _resolve_headers(request.request_headers, saved.get("request_headers", {})),
+        "upstream_format": request.upstream_format or saved.get("upstream_format"),
     })
 
 
@@ -249,7 +270,9 @@ async def _probe_model(model: dict) -> ModelTestResponse:
     try:
         if model.get("type") == "chat":
             from langchain_openai import ChatOpenAI
-            await ChatOpenAI(**options).ainvoke("请只回复 OK")
+            await ChatOpenAI(
+                **options, use_responses_api=model.get("upstream_format") == "responses",
+            ).ainvoke("请只回复 OK")
             result_message = "模型可用"
             dimension = None
         else:
@@ -298,6 +321,8 @@ async def update_model(
         model["api_key"] = request.api_key.strip()
     if model.get("type") == "chat":
         model["context_window"] = request.context_window or 128_000
+        if request.upstream_format is not None:
+            model["upstream_format"] = request.upstream_format
     persist_model_state(state)
     await _reset_runtime(http_request)
     return _catalog_response(state)

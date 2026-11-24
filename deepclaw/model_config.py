@@ -15,7 +15,10 @@ MODEL_CONFIG_FILENAME = "model_config.json"
 MODEL_CONFIG_PATH = HOME_PATH / MODEL_CONFIG_FILENAME
 KEYLESS_API_KEY = "deepclaw-no-key"
 ModelType = Literal["chat", "embedding"]
+ChatUpstreamFormat = Literal["chat_completions", "responses"]
+DEFAULT_CHAT_UPSTREAM_FORMAT: ChatUpstreamFormat = "chat_completions"
 active_chat_headers: dict[str, str] = {}
+active_chat_upstream_format: ChatUpstreamFormat = DEFAULT_CHAT_UPSTREAM_FORMAT
 active_embedding_options: dict[str, Any] = {}
 
 
@@ -178,11 +181,15 @@ def apply_active_model_config(state: dict[str, Any]) -> None:
     Args:
         state: 模型目录状态。
     """
-    global active_chat_headers, active_embedding_options
+    global active_chat_headers, active_chat_upstream_format, active_embedding_options
     models = state.get("models", [])
     active_chat = next((m for m in models if m.get("id") == state.get("active_chat_model_id")), None)
     active_embedding = next((m for m in models if m.get("id") == state.get("active_embedding_model_id")), None)
     active_chat_headers = dict(active_chat.get("request_headers", {})) if active_chat else {}
+    active_chat_upstream_format = (
+        "responses" if active_chat and active_chat.get("upstream_format") == "responses"
+        else DEFAULT_CHAT_UPSTREAM_FORMAT
+    )
     active_embedding_options = (
         {
             "base_url": active_embedding["api_base"],
@@ -232,6 +239,10 @@ def public_model(model: dict[str, Any], active_id: str | None) -> dict[str, Any]
         "api_key_masked": mask_api_key(model.get("api_key")),
         "has_api_key": bool(model.get("api_key")),
         "request_headers": list(model.get("request_headers", {})),
+        "upstream_format": (
+            model.get("upstream_format") or DEFAULT_CHAT_UPSTREAM_FORMAT
+            if model["type"] == "chat" else None
+        ),
         "active": model.get("id") == active_id,
     }
 

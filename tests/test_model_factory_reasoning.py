@@ -1,6 +1,6 @@
 from langchain_core.messages.ai import AIMessageChunk
 
-from deepclaw.utils.model_factory import ReasoningChatOpenAI
+from deepclaw.utils.model_factory import DISABLE_THINKING_EXTRA_BODY, ReasoningChatOpenAI, get_chat_model
 
 
 def _convert(model: ReasoningChatOpenAI, chunk: dict) -> AIMessageChunk:
@@ -43,3 +43,21 @@ def test_reasoning_chat_openai_preserves_native_reasoning_content() -> None:
 
     assert message.content == ""
     assert message.additional_kwargs["reasoning_content"] == "先分析问题"
+
+
+def test_chat_model_uses_configured_upstream_format():
+    """验证旧模型沿用兼容协议，Responses 模型使用原生请求体。"""
+    config = {"name": "test-model", "api_base": "http://localhost:7869/v1", "api_key": "test"}
+
+    legacy = get_chat_model(catalog_model=config)
+    legacy_payload = legacy._get_request_payload("hello")
+    assert "messages" in legacy_payload
+    assert legacy_payload["extra_body"]["thinking"] == {"type": "disabled"}
+
+    responses = get_chat_model(catalog_model={**config, "upstream_format": "responses"})
+    responses_payload = responses._get_request_payload(
+        "hello", extra_body={**DISABLE_THINKING_EXTRA_BODY, "response_format": {"type": "json_object"}},
+    )
+    assert "input" in responses_payload
+    assert "messages" not in responses_payload
+    assert "extra_body" not in responses_payload

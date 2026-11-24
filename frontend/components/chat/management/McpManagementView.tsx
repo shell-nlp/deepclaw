@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react'
 
 import styles from '../../ChatInterface.module.css'
-import type { McpServerSummary } from '../utils/types'
+import type { McpServerSummary, McpToolMetadata } from '../utils/types'
+
+type McpRequest = <T>(path: string, init?: RequestInit) => Promise<T>
 
 interface McpManagementViewProps {
   mcpEnabled: boolean
@@ -13,11 +15,14 @@ interface McpManagementViewProps {
   mcpError: string
   draftError: string
   savedServerCount: number
-  draftServerSummaries: McpServerSummary[]
+  savedServerSummaries: McpServerSummary[]
+  savedConfig: Record<string, unknown> | null
+  requestJson: McpRequest
   onMcpConfigDraftChange: (value: string) => void
-  onSaveMcpConfig: () => void
+  onSaveMcpConfig: () => boolean
   onFormatMcpConfig: () => void
   onToggleMcpEnabled: () => void
+  onToggleMcpServer: (name: string) => void
   onLoadMcpExample: () => void
   onClearMcpConfig: () => void
 }
@@ -30,18 +35,22 @@ export function McpManagementView({
   mcpError,
   draftError,
   savedServerCount,
-  draftServerSummaries,
+  savedServerSummaries,
+  savedConfig,
+  requestJson,
   onMcpConfigDraftChange,
   onSaveMcpConfig,
   onFormatMcpConfig,
   onToggleMcpEnabled,
+  onToggleMcpServer,
   onLoadMcpExample,
   onClearMcpConfig,
 }: McpManagementViewProps) {
   const [editorOpen, setEditorOpen] = useState(false)
   const [expandedServer, setExpandedServer] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const visibleServers = draftServerSummaries.filter((server) =>
+  const savedServers = savedConfig?.mcpServers as Record<string, Record<string, unknown>> | undefined
+  const visibleServers = savedServerSummaries.filter((server) =>
     `${server.name} ${server.transport}`
       .toLocaleLowerCase()
       .includes(search.trim().toLocaleLowerCase())
@@ -83,7 +92,7 @@ export function McpManagementView({
         <div className={styles.extensionSettingIcon} aria-hidden="true">M</div>
         <div className={styles.extensionSettingText}>
           <strong>在对话中使用 MCP</strong>
-          <span>启用后仅加载已保存的服务；未配置时不加载 MCP 工具。知识库问答不使用此配置。</span>
+          <span>控制通用 Agent 是否使用 MCP。服务开关在下次发送消息时生效。</span>
         </div>
         <button
           type="button"
@@ -99,8 +108,8 @@ export function McpManagementView({
 
       <div className={styles.extensionSectionHeading}>
         <div>
-          <div className={styles.extensionSectionLabel}>已配置的服务 <span>{draftServerSummaries.length}</span></div>
-          <p>{mcpConfigDirty ? '当前显示未保存的草稿' : '服务配置保存在此浏览器中'}</p>
+          <div className={styles.extensionSectionLabel}>已配置的服务 <span>{savedServerCount}</span></div>
+          <p>展开服务可查看工具清单和参数。</p>
         </div>
         <label className={styles.extensionSearch}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
@@ -111,13 +120,14 @@ export function McpManagementView({
       <div className={styles.extensionList}>
         {visibleServers.length === 0 ? (
           <div className={styles.extensionEmpty}>
-            <strong>{search ? '没有匹配的服务' : draftError ? '配置需要修正' : '还没有配置 MCP 服务'}</strong>
-            <span>{search ? '试试服务名称或传输方式。' : draftError || '打开配置编辑器，添加第一个服务。'}</span>
+            <strong>{search ? '没有匹配的服务' : '还没有配置 MCP 服务'}</strong>
+            <span>{search ? '试试服务名称或传输方式。' : '打开配置编辑器，添加第一个服务。'}</span>
           </div>
         ) : visibleServers.map((server) => (
           <div className={styles.extensionListEntry} key={server.name}>
-            <button
-              className={styles.extensionListRow}
+            <div className={styles.extensionListRow}>
+            <button type="button"
+              className={styles.extensionSkillExpand}
               onClick={() => setExpandedServer(expandedServer === server.name ? null : server.name)}
               aria-expanded={expandedServer === server.name}
             >
@@ -125,17 +135,25 @@ export function McpManagementView({
               <span className={styles.extensionServerIcon} aria-hidden="true">{server.name.slice(0, 1).toUpperCase()}</span>
               <span className={styles.extensionRowMain}>
                 <strong>{server.name}</strong>
-                <small>已添加至当前配置</small>
+                <small>{server.enabled ? (mcpEnabled ? '已启用' : '总开关已关闭') : '已停用'}</small>
               </span>
               <span className={styles.extensionTransport}>{server.transport}</span>
-              <span className={styles.extensionRowEnd} aria-hidden="true">查看详情</span>
             </button>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={server.enabled}
+              aria-label={`启用 MCP 服务 ${server.name}`}
+              className={`${styles.extensionSwitch} ${server.enabled ? styles.extensionSwitchOn : ''}`}
+              onClick={() => onToggleMcpServer(server.name)}
+            ><span /></button>
+            </div>
             {expandedServer === server.name && (
-              <div className={styles.extensionRowDetail}>
-                <div><span>传输方式</span><strong>{server.transport}</strong></div>
-                <div><span>配置详情</span><strong>在 JSON 编辑器中查看</strong></div>
-                <button className={styles.extensionTextButton} onClick={() => setEditorOpen(true)}>编辑 JSON 配置</button>
-              </div>
+              <McpToolList
+                name={server.name}
+                configText={JSON.stringify(savedServers?.[server.name], (key, value) => key === 'disabled' ? undefined : value)}
+                requestJson={requestJson}
+              />
             )}
           </div>
         ))}
@@ -153,7 +171,7 @@ export function McpManagementView({
               </div>
               <button className={styles.extensionIconButton} onClick={() => setEditorOpen(false)} aria-label="关闭配置编辑器" title="关闭">×</button>
             </div>
-            <p className={styles.extensionDialogHint}>使用标准 mcpServers JSON 配置多个服务。保存后仅在此浏览器生效。</p>
+            <p className={styles.extensionDialogHint}>{mcpConfigDirty ? '有未保存的更改。' : '使用 mcpServers JSON 配置服务，配置保存在此浏览器中。'}</p>
             <textarea
               className={styles.extensionCodeEditor}
               value={mcpConfigDraft}
@@ -173,7 +191,7 @@ export function McpManagementView({
               <div className={styles.extensionDialogActions}>
                 <button className={styles.extensionSecondaryButton} onClick={() => setEditorOpen(false)}>取消</button>
                 <button className={styles.extensionPrimaryButton} onClick={() => {
-                  if (!draftError) onSaveMcpConfig()
+                  if (onSaveMcpConfig()) setEditorOpen(false)
                 }} disabled={Boolean(draftError)}>保存配置</button>
               </div>
             </div>
@@ -181,5 +199,62 @@ export function McpManagementView({
         </div>
       )}
     </div>
+  )
+}
+
+/** 读取单个服务的工具清单。Args: name 为服务名，configText 为已保存连接配置，requestJson 为鉴权请求函数。 */
+function McpToolList({ name, configText, requestJson }: { name: string; configText: string; requestJson: McpRequest }) {
+  const [attempt, setAttempt] = useState(0)
+  const [result, setResult] = useState<{ config: string; attempt: number; tools?: McpToolMetadata[]; error?: string } | null>(null)
+  const [openTool, setOpenTool] = useState<string | null>(null)
+  const current = result?.config === configText && result.attempt === attempt ? result : null
+
+  useEffect(() => {
+    const controller = new AbortController()
+    void requestJson<McpToolMetadata[]>('/api/mcp/tools', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, server: JSON.parse(configText) }),
+      signal: controller.signal,
+    }).then((tools) => {
+      if (!controller.signal.aborted) setResult({ config: configText, attempt, tools })
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) setResult({
+        config: configText,
+        attempt,
+        error: error instanceof Error ? error.message : '无法读取工具清单。',
+      })
+    })
+    return () => controller.abort()
+  }, [attempt, configText, name, requestJson])
+
+  return (
+    <section className={styles.mcpTools} aria-label={`${name} 的工具`}>
+      <header>
+        <strong>工具清单{current?.tools ? `（${current.tools.length}）` : ''}</strong>
+        {current && <button className={styles.extensionTextButton} type="button" onClick={() => setAttempt(attempt + 1)}>{current.error ? '重试' : '刷新'}</button>}
+      </header>
+      {!current && <p role="status">正在读取工具清单…</p>}
+      {current?.error && <p role="alert">{current.error}</p>}
+      {current?.tools?.length === 0 && <p>此服务没有公布工具。</p>}
+      {current?.tools?.map((tool) => (
+        <div className={styles.mcpTool} key={tool.name}>
+          <button type="button" aria-expanded={openTool === tool.name} onClick={() => setOpenTool(openTool === tool.name ? null : tool.name)}>
+            <span className={`${styles.extensionChevron} ${openTool === tool.name ? styles.extensionChevronOpen : ''}`} aria-hidden="true">⌄</span>
+            <code>{tool.name}</code>
+          </button>
+          {openTool === tool.name && (
+            <div className={styles.mcpToolDetail}>
+              <p>{tool.description || '此工具没有提供说明。'}</p>
+              <strong>输入参数</strong>
+              {Array.isArray(tool.input_schema.required) && tool.input_schema.required.length > 0 && (
+                <p>必填参数：{tool.input_schema.required.join('、')}</p>
+              )}
+              <pre>{JSON.stringify(tool.input_schema, null, 2)}</pre>
+            </div>
+          )}
+        </div>
+      ))}
+    </section>
   )
 }

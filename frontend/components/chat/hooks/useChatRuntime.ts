@@ -1115,7 +1115,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
       setManagementError(`智能体 ${selectedAgentId} 当前不可用。`)
       return
     }
-    const requestMcpConfig = requestMode === 'agent' && mcpEnabled ? mcpConfig : null
+    const requestMcpConfig = requestMode === 'agent' && mcpEnabled ? (mcpConfig ?? { mcpServers: {} }) : null
     if (requestMode === 'rag' && knowledgeIndexNames.length === 0) {
       setManagementError('启用知识库问答后，必须先选择至少一个知识库。')
       navigateTo('knowledge', 'libraries')
@@ -1193,7 +1193,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
         // 知识库模式由中间件自动检索，通用模式交给 retrieve_context 工具按需检索。
         state.index_names = knowledgeIndexNames
       }
-      if (requestMcpConfig) {
+      if (requestMode === 'agent') {
         state.mcp_config = requestMcpConfig
       }
       const runInput = createAgUiRunInput({

@@ -183,7 +183,7 @@ def test_mcp_middleware_caches_resources_by_thread_id():
     asyncio.run(middleware.awrap_model_call(request, handler))
     asyncio.run(middleware.awrap_model_call(request, handler))
 
-    assert config_calls == [True]
+    assert config_calls == [True, True]
     assert tool_load_calls == [config]
     assert middleware._mcp_resources_by_thread_id["thread-cache"] == (config, tools)
 
@@ -306,8 +306,10 @@ def test_mcp_middleware_uses_cached_tools_for_tool_call(monkeypatch):
         """
         raise AssertionError("命中 MCP 缓存时不应调用默认处理器")
 
+    config = {"mcpServers": {"demo": {"url": "https://example.com/mcp"}}}
+    middleware.mcp_config = {}
     middleware._mcp_resources_by_thread_id["thread-1"] = (
-        {"mcpServers": {}},
+        config,
         [SimpleNamespace(name="echo", ainvoke=invoke_tool)],
     )
     request = SimpleNamespace(
@@ -316,7 +318,7 @@ def test_mcp_middleware_uses_cached_tools_for_tool_call(monkeypatch):
             "name": "echo",
             "args": {"text": "hello"},
         },
-        state={"user_id": "user-42"},
+        state={"user_id": "user-42", "mcp_config": config},
         runtime=SimpleNamespace(
             execution_info=SimpleNamespace(thread_id="thread-1"),
             server_info=SimpleNamespace(user=SimpleNamespace(identity="user-42")),
@@ -342,4 +344,10 @@ def test_mcp_middleware_uses_cached_tools_for_tool_call(monkeypatch):
     captured_config.clear()
     assert asyncio.run(middleware.awrap_model_call(request, fallback)) == "fallback"
     assert asyncio.run(middleware.awrap_tool_call(request, fallback)) == "fallback"
+    assert captured_config == {}
+
+    granted = True
+    request.state["mcp_config"] = {"mcpServers": {"demo": {"url": "https://example.com/mcp", "disabled": True}}}
+    assert asyncio.run(middleware.awrap_tool_call(request, fallback)) == "fallback"
+    assert "thread-1" not in middleware._mcp_resources_by_thread_id
     assert captured_config == {}

@@ -6,10 +6,17 @@ import editor from './ModelEditor.module.css'
 import { MODEL_API_PATH } from '../utils/constants'
 
 interface HeaderRow { id: number; name: string; value: string; savedName?: string }
+export const CHAT_UPSTREAM_FORMAT_LABELS = {
+  chat_completions: 'Chat Completions',
+  responses: 'Responses（原生）',
+}
+export type ChatUpstreamFormat = keyof typeof CHAT_UPSTREAM_FORMAT_LABELS
+
 export interface ModelDraft {
   type: 'chat' | 'embedding'
   name: string
   provider: string
+  upstream_format: ChatUpstreamFormat
   api_base: string
   api_key: string
   context_window: string
@@ -33,6 +40,7 @@ export function modelPayload(draft: ModelDraft) {
   return {
     name: draft.name.trim(),
     provider: draft.provider.trim(),
+    upstream_format: draft.type === 'chat' ? draft.upstream_format : null,
     api_base: draft.api_base.trim(),
     api_key: draft.api_key.trim() || null,
     context_window: draft.type === 'chat' ? Number(draft.context_window) : null,
@@ -138,8 +146,17 @@ export function ModelEditor({ draft, modelId, hasSavedKey, busy, error, requestJ
               <input className={styles.managementInput} value={draft.name} onChange={(event) => change({ name: event.target.value })} placeholder={draft.type === 'chat' ? 'deepseek-chat' : 'bge-m3'} maxLength={200} required autoFocus />
             </label>
             <label className={styles.managementField}>
-              <span>服务提供方</span>
-              <input className={styles.managementInput} value={draft.provider} onChange={(event) => change({ provider: event.target.value })} placeholder="OpenAI Compatible" maxLength={100} />
+              {draft.type === 'chat' ? <>
+                <span>上游格式</span>
+                <select className={styles.managementInput} value={draft.upstream_format}
+                  onChange={(event) => change({ upstream_format: event.target.value as ChatUpstreamFormat })}>
+                  <option value="chat_completions">{CHAT_UPSTREAM_FORMAT_LABELS.chat_completions}</option>
+                  <option value="responses">{CHAT_UPSTREAM_FORMAT_LABELS.responses}</option>
+                </select>
+              </> : <>
+                <span>服务提供方</span>
+                <input className={styles.managementInput} value={draft.provider} onChange={(event) => change({ provider: event.target.value })} placeholder="OpenAI Compatible" maxLength={100} />
+              </>}
             </label>
             <label className={styles.managementField + ' ' + editor.full}>
               <span>API Base URL</span>
@@ -166,13 +183,13 @@ export function ModelEditor({ draft, modelId, hasSavedKey, busy, error, requestJ
               <h4 id="model-headers-title">请求头 <span>{draft.request_headers.length}</span></h4>
               <button type="button" className={styles.managementMinorButton} disabled={draft.request_headers.length >= 32} onClick={() => change({ request_headers: [...draft.request_headers, { id: nextRow.current++, name: '', value: '' }] })}>＋ 添加请求头</button>
             </div>
-            {draft.request_headers.length === 0 && <p className={editor.empty}>可为模型网关添加自定义请求头。</p>}
+            {draft.request_headers.length === 0 && <p className={editor.empty}>可为模型网关添加自定义请求头，例如 Host。</p>}
             {draft.request_headers.map((row, index) => {
               const keep = row.savedName?.toLowerCase() === row.name.trim().toLowerCase()
               return (
                 <div className={editor.headerRow} key={row.id}>
                   <input aria-label={'请求头名称 ' + (index + 1)} className={styles.managementInput + ' ' + editor.technical} placeholder="X-API-Version" value={row.name} maxLength={128} required onChange={(event) => change({ request_headers: draft.request_headers.map((item) => item.id === row.id ? { ...item, name: event.target.value } : item) })} />
-                  <input aria-label={'请求头值 ' + (index + 1)} className={styles.managementInput + ' ' + editor.technical} type="password" autoComplete="new-password" placeholder={keep ? '已保存 · 留空保留' : '请求头值'} required={!keep} maxLength={8192} value={row.value} onChange={(event) => change({ request_headers: draft.request_headers.map((item) => item.id === row.id ? { ...item, value: event.target.value } : item) })} />
+                  <input aria-label={'请求头值 ' + (index + 1)} className={styles.managementInput + ' ' + editor.technical} type="password" autoComplete="new-password" placeholder={keep ? '已保存 · 留空保留' : row.name.trim().toLowerCase() === 'host' ? '域名或 IP，可带端口' : '请求头值'} required={!keep} maxLength={8192} value={row.value} onChange={(event) => change({ request_headers: draft.request_headers.map((item) => item.id === row.id ? { ...item, value: event.target.value } : item) })} />
                   <button type="button" className={editor.icon} aria-label={'删除请求头 ' + (index + 1)} title="删除请求头" onClick={() => change({ request_headers: draft.request_headers.filter((item) => item.id !== row.id) })}>×</button>
                 </div>
               )

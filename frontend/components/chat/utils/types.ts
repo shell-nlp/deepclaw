@@ -287,6 +287,13 @@ export interface McpServerSummary {
   name: string
   transport: string
   endpoint: string
+  enabled: boolean
+}
+
+export interface McpToolMetadata {
+  name: string
+  description: string
+  input_schema: Record<string, unknown>
 }
 
 export interface SkillRecord {

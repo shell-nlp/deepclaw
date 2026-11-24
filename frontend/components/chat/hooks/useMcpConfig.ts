@@ -34,6 +34,7 @@ export function useMcpConfig(viewMode: ViewMode, isKnowledgeMode: boolean) {
   const mcpDraftParseResult = parseMcpConfig(mcpConfigDraft)
   const savedMcpParseResult = parseMcpConfig(savedMcpConfigText)
   const mcpConfigDirty = mcpConfigDraft !== savedMcpConfigText
+  const activeServerCount = savedMcpParseResult.serverSummaries.filter((server) => server.enabled).length
 
   const initializeMcpConfig = (raw: string, enabled: boolean) => {
     const parsed = parseMcpConfig(raw)
@@ -50,27 +51,33 @@ export function useMcpConfig(viewMode: ViewMode, isKnowledgeMode: boolean) {
     const trimmed = mcpConfigDraft.trim()
 
     if (!trimmed) {
-      if (typeof window !== 'undefined') {
+      try {
         localStorage.removeItem('rag_mcp_config')
+      } catch {
+        setMcpError('无法写入浏览器存储，请检查浏览器设置。')
+        return false
       }
       setSavedMcpConfigText('')
       setMcpConfigDraft('')
       setMcpConfig(null)
       setMcpNotice('MCP 配置已清空。')
       setMcpError('')
-      return
+      return true
     }
 
     const parsed = parseMcpConfig(trimmed)
     if (!parsed.config || parsed.error) {
       setMcpNotice('')
       setMcpError(parsed.error || 'MCP 配置无效，无法保存。')
-      return
+      return false
     }
 
     const formatted = JSON.stringify(parsed.config, null, 2)
-    if (typeof window !== 'undefined') {
+    try {
       localStorage.setItem('rag_mcp_config', formatted)
+    } catch {
+      setMcpError('无法写入浏览器存储，请检查浏览器设置。')
+      return false
     }
 
     setSavedMcpConfigText(formatted)
@@ -78,6 +85,30 @@ export function useMcpConfig(viewMode: ViewMode, isKnowledgeMode: boolean) {
     setMcpConfig(parsed.config)
     setMcpNotice(`已保存 ${parsed.serverSummaries.length} 个 MCP 服务配置。`)
     setMcpError('')
+    return true
+  }
+
+  /** 更新已保存的服务开关。Args: name 为服务名称。 */
+  const toggleMcpServer = (name: string) => {
+    const config = savedMcpParseResult.config
+    const servers = config?.mcpServers as Record<string, Record<string, unknown>> | undefined
+    if (!servers || !Object.prototype.hasOwnProperty.call(servers, name)) return
+    const server = { ...servers[name] }
+    if (server.disabled === true) delete server.disabled
+    else server.disabled = true
+    const next = { ...config, mcpServers: { ...servers, [name]: server } }
+    const formatted = JSON.stringify(next, null, 2)
+    try {
+      localStorage.setItem('rag_mcp_config', formatted)
+    } catch {
+      setMcpError('无法写入浏览器存储，请检查浏览器设置。')
+      return
+    }
+    setSavedMcpConfigText(formatted)
+    if (!mcpConfigDirty) setMcpConfigDraft(formatted)
+    setMcpConfig(next)
+    setMcpError('')
+    setMcpNotice(server.disabled ? '已停用服务，下次发送消息时生效。' : '已启用服务，下次发送消息时生效。')
   }
 
   const formatMcpConfig = () => {
@@ -113,7 +144,7 @@ export function useMcpConfig(viewMode: ViewMode, isKnowledgeMode: boolean) {
       localStorage.setItem('rag_mcp_enabled', 'true')
     }
     setMcpEnabled(true)
-    setMcpNotice(mcpConfig ? 'MCP 已启用，通用 Agent 将使用已保存的配置。' : 'MCP 已启用；当前没有配置服务，聊天不会加载 MCP 工具。')
+    setMcpNotice('MCP 已启用，下次发送消息时生效。')
     setMcpError('')
   }
 
@@ -132,9 +163,7 @@ export function useMcpConfig(viewMode: ViewMode, isKnowledgeMode: boolean) {
   const mcpStatusLabel = mcpEnabled
     ? isKnowledgeMode
       ? '已启用，但当前 RAG 不使用'
-      : savedMcpParseResult.serverSummaries.length > 0
-        ? `已启用 ${savedMcpParseResult.serverSummaries.length} 个服务`
-        : '已启用'
+      : `已启用 ${activeServerCount} 个服务`
     : savedMcpParseResult.serverSummaries.length > 0
       ? `已配置 ${savedMcpParseResult.serverSummaries.length} 个服务`
       : '未配置'
@@ -154,6 +183,7 @@ export function useMcpConfig(viewMode: ViewMode, isKnowledgeMode: boolean) {
     saveMcpConfig,
     formatMcpConfig,
     toggleMcpEnabled,
+    toggleMcpServer,
     loadMcpExample,
     clearMcpConfig,
     mcpStatusLabel,

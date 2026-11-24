@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from deepclaw.model_config import ChatUpstreamFormat
+
 
 class ModelItemResponse(BaseModel):
     """模型目录中的单个模型响应。"""
@@ -10,6 +12,7 @@ class ModelItemResponse(BaseModel):
     type: Literal["chat", "embedding"]
     name: str
     provider: str
+    upstream_format: ChatUpstreamFormat | None = None
     api_base: str
     api_key: None = None
     api_key_masked: str
@@ -42,6 +45,7 @@ class ModelUpdateRequest(BaseModel):
 
     name: str = Field(min_length=1, max_length=200)
     provider: str = Field(default="OpenAI Compatible", max_length=100)
+    upstream_format: ChatUpstreamFormat | None = None
     api_base: str = Field(min_length=1, max_length=500)
     api_key: str | None = Field(default=None, max_length=2_000)
     context_window: int | None = Field(default=128_000, ge=1, le=10_000_000)

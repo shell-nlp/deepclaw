@@ -139,6 +139,7 @@ export default function ChatInterface() {
     saveMcpConfig,
     formatMcpConfig,
     toggleMcpEnabled,
+    toggleMcpServer,
     loadMcpExample,
     clearMcpConfig,
     handleLogout,
@@ -318,11 +319,14 @@ export default function ChatInterface() {
                 mcpError={mcpError}
                 draftError={mcpDraftParseResult.error}
                 savedServerCount={savedMcpParseResult.serverSummaries.length}
-                draftServerSummaries={mcpDraftParseResult.serverSummaries}
+                savedServerSummaries={savedMcpParseResult.serverSummaries}
+                savedConfig={savedMcpParseResult.config}
+                requestJson={requestJson}
                 onMcpConfigDraftChange={setMcpConfigDraft}
                 onSaveMcpConfig={saveMcpConfig}
                 onFormatMcpConfig={formatMcpConfig}
                 onToggleMcpEnabled={toggleMcpEnabled}
+                onToggleMcpServer={toggleMcpServer}
                 onLoadMcpExample={loadMcpExample}
                 onClearMcpConfig={clearMcpConfig}
               /> : <p>当前账号没有使用 MCP 的权限。</p>}
