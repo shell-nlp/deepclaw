@@ -361,8 +361,9 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
       if (eventType === 'STATE_SNAPSHOT' || eventType === 'MESSAGES_SNAPSHOT') {
         const snapshot = event.snapshot as Record<string, unknown> | undefined
         const snapshotMessages = eventType === 'STATE_SNAPSHOT' ? snapshot?.messages : event.messages
+        const userMessageId = (currentRunInputRef.current?.messages as Array<{ id: string }> | undefined)?.[0]?.id
         updateAssistantMessage((message) => mergeAssistantProcessSnapshot(
-          message, snapshotMessages, (currentRunInputRef.current?.messages as Array<{ id: string }> | undefined)?.[0]?.id
+          message, snapshotMessages, userMessageId
         ))
         if (eventType === 'STATE_SNAPSHOT') return null
       }
@@ -610,6 +611,11 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
           return 'interrupt'
         }
         finishAssistantDuration()
+        updateAssistantMessage((message) =>
+          message.thinkingRequest === 'pending'
+            ? { ...message, thinkingRequest: 'completed' }
+            : message
+        )
         return 'finished'
       }
 
@@ -1126,6 +1132,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
       createdAt: Date.now(),
       toolData: [],
       startedAt: Date.now(),
+      thinkingRequest: deepThinking ? 'pending' : undefined,
     })
     runtime.messages = messagesRef.current
     runtime.assistantMessageId = assistantMessageId
@@ -1153,7 +1160,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
         agentId: selectedAgentId,
         threadId,
         runId: generateMessageId(),
-        messageId: generateMessageId(),
+        messageId: userMessageId,
         query,
         state,
       })

@@ -568,17 +568,17 @@ test('已有正文展示项时仍补齐缺失的过程展示项', () => {
   assert.equal(items.filter((item) => item.type === 'content').length, 1)
 })
 
-test('处理中及结束后都保留真实思考和工具，无过程时结束后隐藏摘要', () => {
+test('真实思考和工具默认折叠并在结束后保留，纯等待不提供查看入口', () => {
   const message = mergeAssistantProcessSnapshot(placeholder(), snapshot, 'u1')
   for (const isProcessing of [true, false]) {
     const html = renderToStaticMarkup(React.createElement(ProcessSummary, {
       msg: { ...message, duration: isProcessing ? undefined : 300 },
       reasoningBlocks: message.reasoningBlocks, isProcessing,
     }))
-    assert.doesNotMatch(html, /先查询天气/)
-    assert.match(html, /reasoningHeader[^>]*aria-expanded="false"/)
+    assert.match(html, /<details class="processSummary">/)
+    assert.match(html, /<summary[^>]*>[\s\S]*查看[\s\S]*<\/summary>/)
+    assert.match(html, /class="reasoningContent">先查询天气/)
     assert.match(html, /weather/)
-    assert.match(html, /aria-expanded="true"/)
   }
   const html = renderToStaticMarkup(React.createElement(ProcessSummary, {
     msg: { ...placeholder(), duration: 300 }, reasoningBlocks: [], isProcessing: false,
@@ -592,7 +592,15 @@ test('处理中及结束后都保留真实思考和工具，无过程时结束�
     msg: placeholder(), reasoningBlocks: [], isProcessing: true,
   }))
   assert.match(waitingHtml, /正在处理中/)
-  assert.doesNotMatch(waitingHtml, /等待模型返回|未返回思考|processSummaryDetails/)
+  assert.doesNotMatch(waitingHtml, /查看|<summary|分析与执行|processSummaryDetails/)
+
+  const firstTurn = renderToStaticMarkup(React.createElement(ProcessSummary, {
+    msg: { ...placeholder(), content: '你好', duration: 300, thinkingRequest: 'completed' },
+    reasoningBlocks: [], isProcessing: false,
+  }))
+  assert.match(firstTurn, /<details class="processSummary">/)
+  assert.match(firstTurn, /分析与执行/)
+  assert.match(firstTurn, /本次未返回思考内容，也没有调用工具/)
 })
 
 

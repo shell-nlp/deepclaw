@@ -1349,7 +1349,8 @@ textarea.interruptInput {
   overflow: hidden;
 }
 
-.processSummaryHeader {
+.processSummaryHeader,
+.processSummaryWaiting {
   display: flex;
   align-items: center;
   width: 100%;
@@ -1359,9 +1360,26 @@ textarea.interruptInput {
   border: 0;
   background: transparent;
   color: #475569;
-  cursor: pointer;
   text-align: left;
   transition: background 0.16s ease, color 0.16s ease;
+}
+
+.processSummaryHeader {
+  cursor: pointer;
+  list-style: none;
+}
+
+.processSummaryHeader::-webkit-details-marker {
+  display: none;
+}
+
+.processWhenOpen,
+.processSummary[open] .processWhenClosed {
+  display: none;
+}
+
+.processSummary[open] .processWhenOpen {
+  display: inline;
 }
 
 .processSummaryHeader:hover {
@@ -1449,6 +1467,13 @@ textarea.interruptInput {
   gap: 6px;
   padding: 0 8px 8px;
   border-top: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.processEmpty {
+  margin: 0;
+  padding: 4px 0;
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 .processSummaryDetails .reasoningContainer,
@@ -1610,7 +1635,6 @@ textarea.interruptInput {
   border: 0;
   border-bottom: 1px solid rgba(15, 23, 42, 0.06);
   color: #4d6bfe;
-  cursor: pointer;
   font-size: 12px;
   font-weight: 600;
   text-align: left;
@@ -1623,28 +1647,9 @@ textarea.interruptInput {
   font-variant-numeric: tabular-nums;
 }
 
-.reasoningHeader:hover {
-  background: rgba(77, 107, 254, 0.08);
-}
-
-.reasoningHeader:focus-visible,
 .toolCardHeader:focus-visible {
   outline: 2px solid rgba(77, 107, 254, 0.42);
   outline-offset: -2px;
-}
-
-.reasoningToggleIcon {
-  width: 22px;
-  height: 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  color: #4d6bfe;
-  background: rgba(77, 107, 254, 0.1);
-  font-size: 14px;
-  line-height: 1;
-  flex-shrink: 0;
 }
 
 .reasoningContent {

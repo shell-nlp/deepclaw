@@ -31,12 +31,16 @@ export function ProcessSummary({
 }: ProcessSummaryProps) {
   const processItems = getAssistantMessageItems(msg).filter(
     (item) => item.type === 'reasoning' || item.type === 'tool'
-  )
-  // 处理中默认展开，便于实时查看思考/工具过程；已有过程内容（历史消息）也默认展开，
-  // 避免思考内容被折叠隐藏导致“看不到思考内容”。
-  const [expanded, setExpanded] = useState(
-    () => isProcessing || processItems.length > 0
-  )
+  ).filter((item) => {
+    if (item.type === 'reasoning') {
+      return reasoningBlocks.some((block) =>
+        block.id === item.reasoningBlockId && block.content.trim()
+      )
+    }
+    return msg.toolData?.some(
+      (tool) => tool.toolCall.id === item.toolCallId
+    )
+  })
   const reasoningCount = processItems.filter(
     (item) => item.type === 'reasoning'
   ).length
@@ -105,77 +109,88 @@ export function ProcessSummary({
     return () => window.clearInterval(timer)
   }, [activitySteps.length, isProcessing])
 
-  // 进入处理中（含中断恢复）时自动展开，保证实时思考过程可见。
-  useEffect(() => {
-    if (isProcessing) setExpanded(true)
-  }, [isProcessing])
-
   const activityLabel = isProcessing
     ? activitySteps[activityIndex % activitySteps.length] || '正在处理中...'
     : '已完成'
+  const hasProcess = processItems.length > 0
+  const showCompletedRequest = !isProcessing && msg.thinkingRequest === 'completed'
+  const showSummaryLabel = hasProcess || showCompletedRequest ||
+    (isProcessing && msg.thinkingRequest === 'pending')
 
-  if (!isProcessing && processItems.length === 0) return null
-
-  return (
-    <section className={styles.processSummary}>
-      <button
-        type="button"
-        className={styles.processSummaryHeader}
-        aria-expanded={expanded}
-        onClick={() => setExpanded((current) => !current)}
+  const status = (
+    <>
+      <span
+        className={`${styles.processSummaryStatus} ${
+          isProcessing ? styles.processSummaryStatusActive : ''
+        }`}
+        aria-hidden="true"
+      />
+      <span
+        className={`${styles.processSummaryLabel} ${
+          isProcessing ? styles.processSummaryLabelActive : ''
+        }`}
       >
-        <span className={styles.processSummaryMark} aria-hidden="true">
-          {expanded ? '−' : '+'}
-        </span>
-        <span
-          className={`${styles.processSummaryStatus} ${
-            isProcessing ? styles.processSummaryStatusActive : ''
-          }`}
-          aria-hidden="true"
-        />
-        <span
-          className={`${styles.processSummaryLabel} ${
-            isProcessing ? styles.processSummaryLabelActive : ''
-          }`}
-        >
-          分析与执行
-        </span>
+        {showSummaryLabel ? '分析与执行' : '正在处理中...'}
+      </span>
+      {showSummaryLabel && (
         <span className={styles.processSummaryActivity} aria-live="polite">
           {activityLabel}
         </span>
-        <span className={styles.processSummaryMeta}>{processMeta}</span>
-        <span className={styles.processSummaryAction}>
-          {expanded ? '收起' : '查看'}
-        </span>
-      </button>
-      {expanded && processItems.length > 0 && (
-        <div className={styles.processSummaryDetails}>
-          {processItems.map((item) => {
-            if (item.type === 'reasoning') {
-              const block = reasoningBlocks.find(
-                (reasoningBlock) =>
-                  reasoningBlock.id === item.reasoningBlockId
-              )
-              return block ? (
-                <ReasoningCard key={item.id} block={block}
-                  duration={block.duration ?? (isProcessing && block.startedAt !== undefined
-                    ? Math.max(0, now - block.startedAt) : undefined)} />
-              ) : null
-            }
-
-            const toolData = msg.toolData?.find(
-              (data) => data.toolCall.id === item.toolCallId
-            )
-            return toolData ? (
-              <ToolCard
-                key={item.id}
-                toolData={toolData}
-                duration={getToolDuration(item.toolCallId)}
-              />
-            ) : null
-          })}
-        </div>
       )}
-    </section>
+      <span className={styles.processSummaryMeta}>{processMeta}</span>
+    </>
+  )
+
+  if (!hasProcess && !showCompletedRequest) {
+    return isProcessing ? (
+      <div className={styles.processSummary}>
+        <div className={styles.processSummaryWaiting} role="status">{status}</div>
+      </div>
+    ) : null
+  }
+
+  return (
+    <details className={styles.processSummary}>
+      <summary className={styles.processSummaryHeader}>
+        <span className={styles.processSummaryMark} aria-hidden="true">
+          <span className={styles.processWhenClosed}>+</span>
+          <span className={styles.processWhenOpen}>−</span>
+        </span>
+        {status}
+        <span className={styles.processSummaryAction}>
+          <span className={styles.processWhenClosed}>查看</span>
+          <span className={styles.processWhenOpen}>收起</span>
+        </span>
+      </summary>
+      <div className={styles.processSummaryDetails}>
+        {!hasProcess && (
+          <p className={styles.processEmpty}>本次未返回思考内容，也没有调用工具。</p>
+        )}
+        {processItems.map((item) => {
+          if (item.type === 'reasoning') {
+            const block = reasoningBlocks.find(
+              (reasoningBlock) =>
+                reasoningBlock.id === item.reasoningBlockId
+            )
+            return block ? (
+              <ReasoningCard key={item.id} block={block}
+                duration={block.duration ?? (isProcessing && block.startedAt !== undefined
+                  ? Math.max(0, now - block.startedAt) : undefined)} />
+            ) : null
+          }
+
+          const toolData = msg.toolData?.find(
+            (data) => data.toolCall.id === item.toolCallId
+          )
+          return toolData ? (
+            <ToolCard
+              key={item.id}
+              toolData={toolData}
+              duration={getToolDuration(item.toolCallId)}
+            />
+          ) : null
+        })}
+      </div>
+    </details>
   )
 }

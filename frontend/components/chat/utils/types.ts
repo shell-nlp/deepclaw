@@ -5,6 +5,7 @@ export interface Message {
   createdAt?: number
   startedAt?: number
   duration?: number
+  thinkingRequest?: 'pending' | 'completed'
   error?: ChatError
   reasoningContent?: string
   reasoningBlocks?: ReasoningBlock[]
