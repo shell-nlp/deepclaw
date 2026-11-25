@@ -58,6 +58,7 @@ type UseChatRuntimeDeps = {
   messages: Message[]
   inputValue: string
   draftImages: import('../utils/chatImages').ChatImage[]
+  draftFiles: import('../utils/chatFiles').ChatFile[]
   clearDraftImages: () => void
   selectedModelId: string
   reasoningEffort: string
@@ -144,6 +145,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
     inputValue,
     setInputValue,
     draftImages,
+    draftFiles,
     clearDraftImages,
     selectedModelId,
     reasoningEffort,
@@ -1116,12 +1118,23 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
     switchToThreadRef.current = switchToThread
   }, [switchToThread])
 
-  const sendMessage = async (recommendedQuestion?: string, retry?: { images: typeof draftImages; modelId: string; effort: string }) => {
+  const sendMessage = async (recommendedQuestion?: string, retry?: { images: typeof draftImages; files: typeof draftFiles; modelId: string; effort: string }) => {
     const images = retry?.images ?? (recommendedQuestion === undefined ? draftImages : [])
+    const files = retry?.files ?? (recommendedQuestion === undefined ? draftFiles : [])
     const modelId = retry?.modelId ?? selectedModelId
     const effort = retry?.effort ?? reasoningEffort
-    const query = (recommendedQuestion ?? inputValue).trim() || (images.length ? '请描述这些图片。' : '')
+    const query = (recommendedQuestion ?? inputValue).trim() || (files.length ? '请查看这些附件。' : images.length ? '请描述这些图片。' : '')
     if (!query || isProcessing || !sessionId) return
+    const messageText = files.length ? [
+      query,
+      '聊天附件（链接中的 ID 用于文件工具）',
+      ...files.map((file) => {
+        const label = file.name
+          .replace(/[\\\[\]`*_]/g, '\\$&')
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        return `- [${label}](${file.download_url})`
+      }),
+    ].join('\n\n') : query
     const threadId = sessionId
     const generation = streamGenerationRef.current + 1
     streamGenerationRef.current = generation
@@ -1154,7 +1167,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
     addMessage({
       id: userMessageId,
       role: 'user',
-      content: query,
+      content: messageText,
       ...(images.length ? { images } : {}),
       createdAt: userMessageCreatedAt,
     })
@@ -1222,7 +1235,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
         threadId,
         runId: generateMessageId(),
         messageId: userMessageId,
-        query,
+        query: messageText,
         images,
         modelId,
         reasoningEffort: effort,
@@ -1256,7 +1269,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
                   message.id !== assistantMessageId
               )
             )
-            await sendMessage(query, { images, modelId, effort })
+            await sendMessage(query, { images, files, modelId, effort })
           })
         }
       }

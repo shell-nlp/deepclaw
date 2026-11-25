@@ -25,6 +25,20 @@ PERMISSION_DEFINITIONS = (
         rules=[RbacPermissionRuleResponse(path="/api/agui/*", action="write")],
     ),
     RbacPermissionDefinitionResponse(
+        code="files.view",
+        group="聊天",
+        name="读取聊天文件",
+        description="查看自己的文件、收藏与清理设置，搜索或下载文件。",
+        rules=[RbacPermissionRuleResponse(path="/api/files", action="read")],
+    ),
+    RbacPermissionDefinitionResponse(
+        code="files.manage",
+        group="聊天",
+        name="写入聊天文件",
+        description="上传文件、保存智能体产物、收藏文件及设置自动清理。",
+        rules=[RbacPermissionRuleResponse(path="/api/files", action="write")],
+    ),
+    RbacPermissionDefinitionResponse(
         code="schedules.view",
         group="能力与连接",
         name="查看定时任务",

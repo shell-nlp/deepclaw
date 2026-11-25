@@ -103,6 +103,7 @@ export const DEFAULT_MCP_CONFIG_TEMPLATE = `{
 
 export const MANAGEMENT_PAGE_TITLE_MAP: Record<KnowledgePage, string> = {
   libraries: '知识库',
+  files: '文件知识库',
   'library-detail': '知识库详情',
   'document-detail': '知识详情',
   users: '用户管理',
@@ -110,6 +111,7 @@ export const MANAGEMENT_PAGE_TITLE_MAP: Record<KnowledgePage, string> = {
 }
 
 export const MANAGEMENT_PAGE_DESCRIPTION_MAP: Record<KnowledgePage, string> = {
+  files: '查看上传的文档、聊天附件和模型生成的文件。',
   libraries: '先从知识库卡片中选择目标知识库，再进入它的详情页和知识明细。',
   'library-detail':
     '为当前知识库上传知识文件，管理已有知识，并进入知识详情页查看切片。',

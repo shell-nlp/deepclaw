@@ -8,6 +8,8 @@ import { ScheduleBell } from './shared/ScheduleBell'
 import { AppSidebar } from './shared/AppSidebar'
 import { ChannelManagementView } from './management/ChannelManagementView'
 import { KnowledgeManagementView } from './management/KnowledgeManagementView'
+import { FileKnowledgeView } from './management/FileKnowledgeView'
+import { getRouteHash } from './utils'
 import { McpManagementView } from './management/McpManagementView'
 import { SkillManagementView } from './management/SkillManagementView'
 import { RbacManagementView } from './management/RbacManagementView'
@@ -30,6 +32,8 @@ export default function ChatInterface() {
     inputValue,
     setInputValue,
     draftImages,
+    draftFiles,
+    setDraftFiles,
     setDraftImages,
     chatModels,
     selectedModelId,
@@ -231,6 +235,16 @@ export default function ChatInterface() {
 
         <main className={styles.mainContent}>
           {viewMode !== 'chat' && scheduleBell && <div className={scheduleStyles.toolbar}>{scheduleBell}</div>}
+          {viewMode === 'knowledge' && knowledgePage !== 'users' && knowledgePage !== 'roles' && (
+            <nav className={styles.knowledgeNavigation} aria-label="知识库类型">
+              <a href={getRouteHash('knowledge', 'libraries')} aria-current={knowledgePage !== 'files' ? 'true' : undefined}>
+                知识库
+              </a>
+              <a href={getRouteHash('knowledge', 'files')} aria-current={knowledgePage === 'files' ? 'true' : undefined}>
+                文件知识库
+              </a>
+            </nav>
+          )}
           {viewMode === 'chat' ? (
             <ChatView
               notifications={scheduleBell}
@@ -254,6 +268,11 @@ export default function ChatInterface() {
               inputValue={inputValue}
               draftImages={draftImages}
               onDraftImagesChange={setDraftImages}
+              draftFiles={draftFiles}
+              onDraftFilesChange={setDraftFiles}
+              fileDraftKey={`${actor.userId}/${sessionId}`}
+              canAttachFiles={actorCapabilities.canReadChatFiles && actorCapabilities.canWriteChatFiles}
+              withAuthHeaders={withAuthHeaders}
               chatModels={chatModels}
               selectedModelId={selectedModelId}
               onModelChange={setSelectedModelId}
@@ -343,6 +362,13 @@ export default function ChatInterface() {
                 channelPage={channelPage}
                 requestJson={requestJson}
               />
+            </div>
+          ) : knowledgePage === 'files' ? (
+            <div className={styles.managementViewport}>
+              <FileKnowledgeView key={actor.userId} isGuest={actor.isGuest}
+                canRead={actorCapabilities.canReadChatFiles}
+                canWrite={actorCapabilities.canWriteChatFiles}
+                requestJson={requestJson} withAuthHeaders={withAuthHeaders} />
             </div>
           ) : knowledgePage === 'users' ? (
             <div className={styles.managementViewport}>

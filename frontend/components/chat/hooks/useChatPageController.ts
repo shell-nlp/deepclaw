@@ -37,6 +37,7 @@ import { usePageRouting } from './usePageRouting'
 import { useHistorySessions } from './useHistorySessions'
 import { useDevices } from './useDevices'
 import type { ChatImage } from '../utils/chatImages'
+import type { ChatFile } from '../utils/chatFiles'
 
 export function useChatPageController() {
   const selectedKnowledgeBaseRef = useRef<KnowledgeBase | null>(null)
@@ -60,6 +61,7 @@ export function useChatPageController() {
   const [messages, setMessages] = useState<Message[]>([])
   const [inputValue, setInputValue] = useState('')
   const [imageDraft, setImageDraft] = useState<{ threadId: string; images: ChatImage[] } | null>(null)
+  const [fileDraft, setFileDraft] = useState<{ key: string; files: ChatFile[] } | null>(null)
   const [selectedModelId, setSelectedModelId] = useState('')
   const [chatModels, setChatModels] = useState<ChatModelOptions>({ items: [], default_id: null })
   const [effortSelection, setEffortSelection] = useState<{ modelId: string | null; effort: ReasoningEffort | '' }>({ modelId: null, effort: '' })
@@ -691,7 +693,11 @@ export function useChatPageController() {
     messages,
     inputValue,
     draftImages,
-    clearDraftImages: () => setImageDraft(null),
+    draftFiles: actorCapabilities.canReadChatFiles && fileDraft?.key === `${actor.userId}/${sessionId}` ? fileDraft.files : [],
+    clearDraftImages: () => {
+      setImageDraft(null)
+      setFileDraft(null)
+    },
     selectedModelId,
     reasoningEffort,
     setInputValue,
@@ -782,6 +788,8 @@ export function useChatPageController() {
     setInputValue,
     draftImages,
     setDraftImages: (images: ChatImage[]) => setImageDraft({ threadId: sessionId, images }),
+    draftFiles: actorCapabilities.canReadChatFiles && fileDraft?.key === `${actor.userId}/${sessionId}` ? fileDraft.files : [],
+    setDraftFiles: (files: ChatFile[]) => setFileDraft({ key: `${actor.userId}/${sessionId}`, files }),
     chatModels,
     selectedModelId,
     reasoningChoice,

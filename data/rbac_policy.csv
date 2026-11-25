@@ -7,6 +7,8 @@ p, user, /api/agui/*, read
 p, user, /api/agui/*, write
 p, user, /api/schedules, read
 p, user, /api/schedules, write
+p, user, /api/files, read
+p, user, /api/files, write
 p, user, /agent/tools/mcp, use
 p, user, /api/agent/*, read
 p, user, /api/agent/*, write

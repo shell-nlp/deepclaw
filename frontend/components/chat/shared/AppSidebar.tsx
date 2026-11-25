@@ -108,6 +108,8 @@ export function AppSidebar({
   onAccountMenuOpenChange,
   onLogout,
 }: AppSidebarProps) {
+  const knowledgeActive = viewMode === 'knowledge' && knowledgePage !== 'users' && knowledgePage !== 'roles'
+
   return (
     <aside
       className={`${styles.sidebarNav} ${
@@ -242,12 +244,10 @@ export function AppSidebar({
           </section>
         ) : null}
         <button
-          className={`${styles.sidebarButton} ${
-            viewMode === 'knowledge' && knowledgePage !== 'users'
-              ? styles.sidebarButtonActive
-              : ''
-          }`}
+          className={`${styles.sidebarButton} ${knowledgeActive ? styles.sidebarButtonActive : ''}`}
           onClick={() => onNavigate('knowledge', 'libraries')}
+          title="知识库"
+          aria-current={knowledgeActive ? 'page' : undefined}
         >
           <SidebarIcon name="knowledge" />
           <span className={styles.sidebarButtonLabel}>知识库</span>

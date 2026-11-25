@@ -122,6 +122,9 @@ class GeneralAgent(Agent):
         """
 
         middleware = cls.get_common_middleware()
+        from deepclaw.middleware.files import FileMiddleware
+
+        middleware.append(FileMiddleware(keep_workspace_tools=deep_agent))
         agent_tools = cls.get_common_tools()
 
         skills = None

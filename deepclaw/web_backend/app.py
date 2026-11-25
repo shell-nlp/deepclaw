@@ -19,6 +19,7 @@ from deepclaw.web_backend.knowledge_bases.router import (
 from deepclaw.web_backend.mcp_router import router as mcp_router
 from deepclaw.web_backend.model_router import router as model_router
 from deepclaw.web_backend.schedules import router as schedules_router
+from deepclaw.web_backend.files import router as files_router
 from deepclaw.web_backend.lifespan import app_lifespan
 from deepclaw.web_backend.skills.router import router as skills_router
 from deepclaw.web_backend.devices.router import router as devices_router
@@ -133,6 +134,7 @@ def create_app() -> FastAPI:
     app.include_router(model_router)
     app.include_router(mcp_router)
     app.include_router(schedules_router)
+    app.include_router(files_router)
 
     register_charts_static(app)
     return app

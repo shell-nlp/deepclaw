@@ -273,3 +273,135 @@ def test_workspace_permissions_apply_to_custom_roles(guarded_client, monkeypatch
             await auth_store.engine.dispose()
 
     asyncio.run(verify())
+
+
+def test_chat_file_permissions_and_tool_roundtrip(guarded_client, monkeypatch, tmp_path):
+    """通过真实令牌和工具节点验证文件读写、角色与账号隔离。
+
+    Args:
+        guarded_client: 隔离的应用和身份存储。
+        monkeypatch: 测试替换器。
+        tmp_path: 临时数据库与对象存储目录。
+    """
+    import json
+    from datetime import timedelta
+
+    from langchain_core.messages import AIMessage
+    from langgraph.graph import END, START, MessagesState, StateGraph
+    from langgraph.prebuilt import ToolNode
+
+    from deepclaw.common.object_storage import LocalObjectStorage
+    from deepclaw.middleware import files
+    from deepclaw.middleware.files.service import BUCKET, FileService, utc_now
+    from deepclaw.web_backend import files as file_routes
+    from deepclaw.web_backend.agent.run_manager import AgentAuthUser
+    from deepclaw.web_backend.auth import service as auth_module
+
+    app, policies, auth_store, auth_service = guarded_client
+    service = FileService(f"sqlite:///{(tmp_path / 'files.db').as_posix()}", LocalObjectStorage(tmp_path / "objects"))
+    app.include_router(file_routes.router)
+    monkeypatch.setattr(files, "get_file_service", lambda: service)
+    monkeypatch.setattr(file_routes, "get_file_service", lambda: service)
+    monkeypatch.setattr(auth_module, "get_auth_service", lambda: auth_service)
+    graph = StateGraph(MessagesState)
+    graph.add_node("files", ToolNode(files.FileMiddleware().tools))
+    graph.add_edge(START, "files")
+    graph.add_edge("files", END)
+    agent = graph.compile()
+
+    async def invoke(user_id, tool_name, **args):
+        """通过可信运行时在图中执行文件工具。
+
+        Args:
+            user_id: 已认证的账号 ID。
+            tool_name: 工具名称。
+            args: 工具输入。
+        """
+        message = AIMessage(content="", tool_calls=[{"name": tool_name, "args": args, "id": "file-tool"}])
+        result = await agent.ainvoke(
+            {"messages": [message]},
+            {"configurable": {"langgraph_auth_user": AgentAuthUser(identity=user_id)}},
+        )
+        return result["messages"][-1].content
+
+    async def verify():
+        """执行端到端文件操作并关闭隔离存储。
+
+        Args:
+            无。
+        """
+        try:
+            await policies.ensure_catalog()
+            for role, action in (("writer", "read"), ("writer", "write"), ("reader", "read")):
+                await policies.add_policy(role, "/api/files", action)
+            identities = {}
+            for name, role in (("owner", "writer"), ("other", "reader"), ("denied", "ungranted")):
+                user = await auth_store.create_user(
+                    username=name, password_hash=hash_password("test-pass-123"), role=role,
+                )
+                token = await auth_service.login(username=name, password="test-pass-123")
+                identities[name] = (user.user_id, {"Authorization": f"Bearer {token.token}"})
+            enforcer._enforcer = None
+            owner, owner_headers = identities["owner"]
+            other, other_headers = identities["other"]
+            _, denied_headers = identities["denied"]
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                upload = {"file": ("示例.txt", "第一行\n\n命中\n".encode())}
+                response = await client.post("/api/files", files=upload, headers=owner_headers)
+                assert response.status_code == 201, response.text
+                saved = response.json()
+                file_id = saved["file_id"]
+                path = saved["download_url"]
+                preview_path = f"/api/files/{file_id}/preview"
+                assert (await client.get(preview_path, headers=other_headers)).status_code == 404
+                assert (await client.get("/api/files", headers=other_headers)).json()["files"] == []
+                preview = await client.get(preview_path + "?start_line=3", headers=owner_headers)
+                assert preview.json()["lines"][0]["line"] == 3
+                assert (await client.post("/api/files", files=upload, headers=other_headers)).status_code == 403
+                assert (await client.get(path, headers=other_headers)).status_code == 404
+                assert (await client.get(path, headers=denied_headers)).status_code == 403
+                assert (await client.get(path)).status_code in {401, 403}
+                assert "找不到" in await invoke(other, "read_file", file_id=file_id)
+                assert "缺少" in await invoke(other, "write_file", name="拒绝", content="拒绝")
+                assert json.loads(await invoke(other, "list_files"))["files"] == []
+                first = json.loads(await invoke(owner, "read_file", file_id=file_id, limit=2))
+                assert first["lines"][1]["content"] == ""
+                assert first["next_start_line"] == 3
+                found = json.loads(await invoke(owner, "grep_file", file_id=file_id, pattern="命中"))
+                assert found["matches"][0]["line"] == 3
+                generated = json.loads(await invoke(owner, "write_file", name="报告", content="# 正文"))
+                listing = await client.get("/api/files", headers=owner_headers)
+                assert {item["file_id"] for item in listing.json()["files"]} == {file_id, generated["file_id"]}
+                download = await client.get(generated["download_url"], headers=owner_headers)
+                assert download.content == "# 正文".encode()
+                converted = json.loads(await invoke(owner, "export_file", file_id=generated["file_id"]))
+                word = json.loads(await invoke(owner, "read_file", file_id=converted["file_id"]))
+                assert word["lines"][0]["content"] == "正文"
+                retention_path = "/api/files/retention"
+                favorite_path = f"/api/files/{file_id}/favorite"
+                assert (await client.get(retention_path, headers=owner_headers)).json() == {"retention_days": None}
+                assert (await client.put(retention_path, headers=other_headers, json={"retention_days": 1})).status_code == 403
+                assert (await client.put(favorite_path, headers=other_headers, json={"favorite": True})).status_code == 403
+                assert (await client.put(favorite_path, headers=owner_headers, json={"favorite": True})).json()["favorite"]
+                visible = (await client.get("/api/files", headers=owner_headers)).json()["files"]
+                assert file_id not in {item["file_id"] for item in visible}
+                favorites = (await client.get("/api/files?favorite=true", headers=owner_headers)).json()["files"]
+                assert [item["file_id"] for item in favorites] == [file_id]
+                assert (await client.put(retention_path, headers=owner_headers, json={"retention_days": 1})).status_code == 200
+                assert (await client.get(retention_path, headers=other_headers)).json() == {"retention_days": None}
+                other_file = await service.save(other, "其他.txt", b"other")
+                future = utc_now() + timedelta(days=2)
+                await service.clean_expired(future)
+                assert (await client.get(path, headers=owner_headers)).status_code == 200
+                assert (await client.get(generated["download_url"], headers=owner_headers)).status_code == 404
+                assert not service.storage.list_objects(BUCKET, generated["file_id"])
+                assert await service.download(await service.get(other, other_file.id)) == b"other"
+                assert not (await client.put(favorite_path, headers=owner_headers, json={"favorite": False})).json()["favorite"]
+                await service.clean_expired(utc_now())
+                assert (await client.get(path, headers=owner_headers)).status_code == 200
+        finally:
+            await service.engine.dispose()
+            await policies.engine.dispose()
+            await auth_store.engine.dispose()
+
+    asyncio.run(verify())

@@ -27,6 +27,7 @@ export function getApiUrl(path: string): string {
 export function normalizeKnowledgePage(value?: string): KnowledgePage {
   switch (value) {
     case 'library-detail':
+    case 'files':
     case 'document-detail':
     case 'users':
     case 'roles':

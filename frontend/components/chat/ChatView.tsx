@@ -11,6 +11,7 @@ import { ChatModelPicker } from './shared/ChatModelPicker'
 import type { ChatModelOptions, ReasoningChoice } from './utils/reasoning'
 import { DevicePicker } from './shared/DevicePicker'
 import { CHAT_IMAGE_TYPES, readChatImage, type ChatImage } from './utils/chatImages'
+import { CHAT_FILE_TYPES, uploadChatFile, type ChatFile } from './utils/chatFiles'
 import type { ClientDevice } from './hooks/useDevices'
 import {
   KnowledgeBasePicker,
@@ -85,6 +86,11 @@ interface ChatViewProps {
   interruptData: InterruptData | null
   inputValue: string
   draftImages: ChatImage[]
+  draftFiles: ChatFile[]
+  onDraftFilesChange: (files: ChatFile[]) => void
+  fileDraftKey: string
+  canAttachFiles: boolean
+  withAuthHeaders: () => HeadersInit
   onDraftImagesChange: (images: ChatImage[]) => void
   chatModels: ChatModelOptions
   reasoningChoice: ReasoningChoice
@@ -139,6 +145,11 @@ export function ChatView({
   interruptData,
   inputValue,
   draftImages,
+  draftFiles,
+  onDraftFilesChange,
+  fileDraftKey,
+  canAttachFiles,
+  withAuthHeaders,
   onDraftImagesChange,
   chatModels,
   reasoningChoice,
@@ -171,6 +182,37 @@ export function ChatView({
   const imageInput = useRef<HTMLInputElement>(null)
   const [readingImages, setReadingImages] = useState(false)
   const [imageError, setImageError] = useState('')
+  const [uploadingFileKey, setUploadingFileKey] = useState<string | null>(null)
+  const uploadingFiles = uploadingFileKey === fileDraftKey
+  const currentFileDraftKey = useRef(fileDraftKey)
+  currentFileDraftKey.current = fileDraftKey
+  const busyWithAttachments = readingImages || uploadingFiles
+
+  /** 上传所选文档并在当前会话保留已成功的附件。Args: files 为本次选择的文档。 */
+  const addFiles = async (files: File[]) => {
+    if (!files.length || !canAttachFiles || uploadingFileKey !== null) return
+    if (files.length + draftFiles.length > 4) {
+      setImageError('每条消息最多添加 4 个文档。')
+      return
+    }
+    setImageError('')
+    setUploadingFileKey(fileDraftKey)
+    const uploaded = [...draftFiles]
+    const headers = withAuthHeaders()
+    try {
+      for (const file of files) {
+        uploaded.push(await uploadChatFile(file, headers))
+        if (currentFileDraftKey.current !== fileDraftKey) break
+        onDraftFilesChange([...uploaded])
+      }
+    } catch (error) {
+      if (currentFileDraftKey.current === fileDraftKey) {
+        setImageError(error instanceof Error ? error.message : '文件上传失败。')
+      }
+    } finally {
+      setUploadingFileKey(null)
+    }
+  }
 
   /** 读取并预览本次选择的图片。Args: files 为本地文件选项。 */
   const addImages = async (files: File[]) => {
@@ -301,9 +343,11 @@ export function ChatView({
 
       <div className={styles.inputArea}>
         <div className={styles.inputContainer}>
-          <input ref={imageInput} type="file" hidden multiple accept={CHAT_IMAGE_TYPES}
+          <input ref={imageInput} type="file" hidden multiple accept={canAttachFiles ? CHAT_IMAGE_TYPES + ',' + CHAT_FILE_TYPES : CHAT_IMAGE_TYPES}
             onChange={(event) => {
-              void addImages(Array.from(event.currentTarget.files ?? []))
+              const files = Array.from(event.currentTarget.files ?? [])
+              void addImages(files.filter((file) => file.type.startsWith('image/')))
+              void addFiles(files.filter((file) => !file.type.startsWith('image/')))
               event.currentTarget.value = ''
             }} />
           {draftImages.length > 0 && <div className={styles.composerImages}>
@@ -315,6 +359,16 @@ export function ChatView({
               </div>
             ))}
           </div>}
+          {(draftFiles.length > 0 || uploadingFiles) && <div className={styles.composerImages}>
+            {draftFiles.map((file) => (
+              <span key={file.file_id} className={styles.composerFile} title={file.name}>
+                <span>{file.name}</span>
+                <button type="button" disabled={uploadingFiles} aria-label={'移除 ' + file.name}
+                  onClick={() => onDraftFilesChange(draftFiles.filter((item) => item.file_id !== file.file_id))}>×</button>
+              </span>
+            ))}
+            {uploadingFiles && <span className={styles.composerFile} role="status">正在上传文档…</span>}
+          </div>}
           {imageError && <p className={styles.composerImageError} role="alert">{imageError}</p>}
           <textarea
             ref={textareaRef}
@@ -322,7 +376,7 @@ export function ChatView({
             value={inputValue}
             onChange={(event) => onInputChange(event.target.value)}
             onKeyDown={(event) => {
-              if (readingImages && event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) event.preventDefault()
+              if (busyWithAttachments && event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) event.preventDefault()
               else onKeyDown(event)
             }}
             onPaste={(event) => {
@@ -342,8 +396,9 @@ export function ChatView({
           />
           <div className={styles.composerFooter}>
             <div className={styles.toggles}>
-              <button type="button" className={styles.composerAddImage} aria-label="上传图片"
-                title="上传图片" disabled={readingImages || isProcessing} onClick={() => imageInput.current?.click()}>
+              <button type="button" className={styles.composerAddImage} aria-label={canAttachFiles ? '添加图片或文档' : '上传图片'}
+                title={canAttachFiles ? '添加图片或文档' : '上传图片'}
+                disabled={busyWithAttachments || isProcessing} onClick={() => imageInput.current?.click()}>
                 <span aria-hidden="true">+</span>
               </button>
               {!isKnowledgeMode && onDeviceChange && <DevicePicker devices={devices} value={selectedDeviceId} disabled={isProcessing} onChange={onDeviceChange}/>}
@@ -388,7 +443,7 @@ export function ChatView({
               <button
                 className={styles.sendBtn}
                 onClick={() => void onSendMessage()}
-                disabled={readingImages || (!inputValue.trim() && !draftImages.length) || chatDisabled}
+                disabled={busyWithAttachments || (!inputValue.trim() && !draftImages.length && !draftFiles.length) || chatDisabled}
                 aria-label="发送消息"
                 title="发送"
               >

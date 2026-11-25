@@ -14,6 +14,7 @@ from deepclaw.agent_registry import AgentRegistry
 from deepclaw.constant import HOME_PATH, resolve_frontend_path
 from deepclaw.middleware.cron.executor import schedule_worker
 from deepclaw.middleware.cron.schedule_store import get_schedule_store
+from deepclaw.middleware.files.service import close_file_service, file_retention_worker
 from deepclaw.settings import settings
 from deepclaw.web_backend.model_store import get_model_catalog_store
 from deepclaw.web_backend.agui.runtime import AgentRuntimeCache
@@ -282,6 +283,7 @@ async def app_lifespan(app: FastAPI):
     rbac_watch = asyncio.create_task(watch_rbac_revision()) if settings.RBAC_STORE_ENABLED else None
     schedule_store = get_schedule_store()
     schedule_task = asyncio.create_task(schedule_worker(schedule_store))
+    file_retention_task = asyncio.create_task(file_retention_worker())
     model_watch = asyncio.create_task(watch_model_catalog(runtime_cache))
     try:
         async with channel_lifespan():
@@ -309,6 +311,10 @@ async def app_lifespan(app: FastAPI):
         await get_run_store().close()
         from deepclaw.web_backend.devices.store import close_device_store
         await close_device_store()
+        file_retention_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await file_retention_task
+        await close_file_service()
         checkpointer_pool = getattr(app.state, "agent_checkpointer_pool", None)
         if checkpointer_pool is not None:
             await checkpointer_pool.close()

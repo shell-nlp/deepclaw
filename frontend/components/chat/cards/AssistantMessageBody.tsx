@@ -1,10 +1,12 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import styles from '../../ChatInterface.module.css'
 import type { Message, ToolData } from '../utils/types'
 import { normalizeChartMarkdown, parseMarkdown } from '../utils'
 import { getAssistantMessageItems } from '../utils/assistantMessage'
 import { ErrorCard } from './ErrorCard'
 import { ProcessSummary } from './ProcessSummary'
+import { buildAuthorizationHeaders, getStoredAuthToken } from '../utils/auth'
+import { downloadChatFile, isChatFileLink } from '../utils/chatFiles'
 
 /** 渲染 Markdown 正文。其他消息更新时复用已渲染的正文。
  *
@@ -19,11 +21,24 @@ export const MarkdownMessage = memo(function MarkdownMessage({
   normalizeCharts = false,
 }: { content: string; tools?: ToolData[]; normalizeCharts?: boolean }) {
   const markdown = normalizeCharts ? normalizeChartMarkdown(content, tools) : content
+  const [downloadError, setDownloadError] = useState('')
   return (
-    <div
-      className={styles.messageContent}
-      dangerouslySetInnerHTML={{ __html: parseMarkdown(markdown) }}
-    />
+    <>
+      <div
+        className={styles.messageContent}
+        dangerouslySetInnerHTML={{ __html: parseMarkdown(markdown) }}
+        onClick={(event) => {
+          if (!(event.target instanceof Element)) return
+          const path = event.target.closest('a')?.getAttribute('href')
+          if (!path || !isChatFileLink(path)) return
+          event.preventDefault()
+          setDownloadError('')
+          void downloadChatFile(path, buildAuthorizationHeaders(getStoredAuthToken()))
+            .catch((error: Error) => setDownloadError(error.message))
+        }}
+      />
+      {downloadError && <p className={styles.composerImageError} role="alert">{downloadError}</p>}
+    </>
   )
 })
 

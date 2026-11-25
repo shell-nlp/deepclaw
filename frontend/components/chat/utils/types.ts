@@ -245,6 +245,7 @@ export type ViewMode = 'chat' | 'knowledge' | 'mcp' | 'skills' | 'channels' | 'd
 export type ChannelManagementPage = 'weixin' | 'feishu'
 export type KnowledgePage =
   | 'libraries'
+  | 'files'
   | 'library-detail'
   | 'document-detail'
   | 'users'

@@ -9,6 +9,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "dompurify": "^3.5.0",
     "marked": "^15.0.0",
     "next": "^15.0.0",
     "qrcode": "^1.5.4",

@@ -36,6 +36,7 @@ class RagAgent(Agent):
 
         from deepclaw.agents.rag.state import StateSchema
         from deepclaw.middleware.common import BusinessMiddleware
+        from deepclaw.middleware.files import FileMiddleware
         from deepclaw.middleware.rag import RAGMiddleware
         from deepclaw.tools.retriever import get_default_retriever
         from deepclaw.utils import get_chat_model
@@ -52,6 +53,7 @@ class RagAgent(Agent):
                     retrieve_router=True,
                 ),
                 BusinessMiddleware(),
+                FileMiddleware(),
             ],
             checkpointer=checkpointer,
             store=store,

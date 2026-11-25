@@ -451,6 +451,34 @@
     #f7f8fa;
 }
 
+.knowledgeNavigation {
+  display: flex;
+  flex: none;
+  gap: 20px;
+  padding: 0 clamp(12px, 3vw, 30px);
+  border-bottom: 1px solid var(--border-subtle);
+  background: #fff;
+}
+
+.knowledgeNavigation a {
+  padding: 11px 2px 9px;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.knowledgeNavigation a:hover,
+.knowledgeNavigation a[aria-current='true'] {
+  color: var(--accent-primary);
+}
+
+.knowledgeNavigation a[aria-current='true'] {
+  border-bottom-color: currentColor;
+  font-weight: 600;
+}
+
 .managementSectionDivider {
   height: 1px;
   margin: 4px 0 0;
@@ -2287,6 +2315,18 @@ textarea.interruptInput {
   background: #20304ae0; color: white; cursor: pointer;
 }
 .composerImageError { margin: 0 4px 6px; color: #a53942; font-size: 12px; }
+.composerFile {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(260px, 100%);
+  padding: 4px 8px;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.composerFile span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composerFile button { border: 0; background: transparent; color: inherit; cursor: pointer; }
 .chatMessageImages img { width: auto; max-width: min(240px, 100%); max-height: 180px; object-fit: contain; }
 .chatMessageImages { margin-bottom: 7px; }
 
@@ -3862,6 +3902,7 @@ textarea.interruptInput {
 
 .chatHistory {
   display: flex;
+  flex-shrink: 0;
   flex-direction: column;
   gap: 7px;
   min-height: 0;
@@ -3919,6 +3960,7 @@ textarea.interruptInput {
 
 .chatHistoryItem {
   display: grid;
+  flex-shrink: 0;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 3px;

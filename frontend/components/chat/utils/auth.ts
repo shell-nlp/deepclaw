@@ -38,6 +38,8 @@ export interface ActorCapabilities {
   canUseChat: boolean
   canViewSchedules: boolean
   canManageSchedules: boolean
+  canReadChatFiles: boolean
+  canWriteChatFiles: boolean
   canUseMcp: boolean
   canViewKnowledge: boolean
   canManageKnowledge: boolean
@@ -115,6 +117,8 @@ export function getActorCapabilities(actor: ActorState): ActorCapabilities {
     canUseChat: actor.isGuest || (allowed('/api/agui/runs', 'read') && allowed('/api/agui/runs', 'write')),
     canViewSchedules: allowed('/api/schedules', 'read'),
     canManageSchedules: allowed('/api/schedules', 'write'),
+    canReadChatFiles: allowed('/api/files', 'read'),
+    canWriteChatFiles: allowed('/api/files', 'write'),
     canUseMcp: allowed('/agent/tools/mcp', 'use'),
     canViewKnowledge: actor.isGuest || !hasPermissions || allowed('/api/rag/knowledge-bases/list', 'read'),
     canManageKnowledge: actor.isGuest || !hasPermissions || allowed('/api/rag/knowledge-bases/list', 'write'),
