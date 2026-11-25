@@ -61,20 +61,17 @@ class _DiscoveryTransport(httpx.AsyncHTTPTransport):
         return await super().handle_async_request(pinned)
 
 
-async def _discovery_address(endpoint: httpx.URL, trusted: bool) -> str:
-    """解析 MCP 地址，并限制浏览器配置访问内网。
+async def _discovery_address(endpoint: httpx.URL) -> str:
+    """解析 MCP 地址，支持用户直接填写内网或公网地址。
 
     Args:
         endpoint: 用户配置或服务端配置中的 HTTP 地址。
-        trusted: 地址是否由服务端 MCP_CONFIG 明确配置。
     """
     port = endpoint.port or (443 if endpoint.scheme == "https" else 80)
     entries = await asyncio.get_running_loop().getaddrinfo(endpoint.host, port, type=socket.SOCK_STREAM)
     addresses = [ipaddress.ip_address(entry[4][0]) for entry in entries]
-    if not trusted:
-        addresses = [address for address in addresses if address.is_global and not address.is_multicast]
     if not addresses:
-        raise HTTPException(422, "内网 MCP 地址需先由管理员加入服务端 MCP_CONFIG。")
+        raise HTTPException(422, "MCP 服务地址未解析到可用的 IP。")
     return str(addresses[0])
 
 
@@ -101,8 +98,7 @@ async def _discover_tools(payload: McpToolsRequest) -> list[McpToolResponse]:
         endpoint = httpx.URL(raw_url)
         if endpoint.scheme not in {"http", "https"} or not endpoint.host or endpoint.userinfo:
             raise HTTPException(422, "请填写有效的 HTTP 或 HTTPS 服务地址。")
-        trusted = any(config.get("url") == raw_url for config in defaults.values())
-        address = await _discovery_address(endpoint, trusted)
+        address = await _discovery_address(endpoint)
         raw_headers = server.get("headers")
         headers = {
             name: value for name, value in (raw_headers.items() if isinstance(raw_headers, dict) else ())

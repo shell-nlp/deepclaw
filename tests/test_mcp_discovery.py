@@ -1,15 +1,20 @@
-from fastapi import FastAPI
+import asyncio
+import socket
+
+import httpx
+import pytest
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from mcp.server.fastmcp import FastMCP
 
 from deepclaw.middleware.mcp import MCPMiddleware
 from deepclaw.web_backend.auth.dependencies import CurrentActor, require_authenticated_actor
 from deepclaw.web_backend.auth.rbac import dependencies
-from deepclaw.web_backend.mcp_router import router
+from deepclaw.web_backend.mcp_router import McpToolsRequest, _discover_tools, _discovery_address, router
 
 
 def test_list_mcp_tools_without_invoking_them(monkeypatch, free_tcp_port):
-    """通过真实 MCP HTTP 会话验证清单、权限与内网边界。
+    """通过真实 MCP HTTP 会话验证无需预配置的内网清单与权限。
 
     Args:
         monkeypatch: 注入临时 MCP 配置与测试身份。
@@ -81,9 +86,6 @@ def test_list_mcp_tools_without_invoking_them(monkeypatch, free_tcp_port):
             assert client.post("/api/mcp/tools", json=body).status_code == 403
             allowed = True
             monkeypatch.setattr(MCPMiddleware, "mcp_config", {})
-            assert client.post("/api/mcp/tools", json=body).status_code == 422
-
-            monkeypatch.setattr(MCPMiddleware, "mcp_config", {"mcpServers": {"demo": server}})
             result = client.post("/api/mcp/tools", json=body)
             assert result.status_code == 200, result.text
             assert len(result.json()) == 1
@@ -95,3 +97,36 @@ def test_list_mcp_tools_without_invoking_them(monkeypatch, free_tcp_port):
     finally:
         upstream.should_exit = True
         worker.join(timeout=5)
+
+
+@pytest.mark.parametrize("address", ["10.87.18.144", "192.168.143.117", "127.0.0.1", "::1"])
+def test_discovery_accepts_private_addresses(monkeypatch, address):
+    """验证内网、回环及 IPv6 地址无需服务端白名单。
+
+    Args:
+        monkeypatch: 替换 DNS 解析以避免依赖外部网络。
+        address: 本次解析返回的目标地址。
+    """
+    def resolve(*args, **kwargs):
+        """返回测试用的目标地址。
+
+        Args:
+            args: 待解析的地址参数。
+            kwargs: 套接字类型等解析选项。
+        """
+        return [(socket.AF_INET6 if ":" in address else socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, 8000))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", resolve)
+    assert asyncio.run(_discovery_address(httpx.URL("http://internal.example:8000/mcp"))) == address
+
+
+def test_unconfigured_stdio_still_requires_server_config(monkeypatch):
+    """验证开放内网地址后 stdio 仍必须匹配服务端配置。
+
+    Args:
+        monkeypatch: 清空服务端默认 MCP 配置。
+    """
+    monkeypatch.setattr(MCPMiddleware, "mcp_config", {})
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(_discover_tools(McpToolsRequest(name="local", server={"type": "stdio", "command": "test-command"})))
+    assert error.value.status_code == 422

@@ -47,8 +47,8 @@ export function useMcpConfig(viewMode: ViewMode, isKnowledgeMode: boolean) {
     }
   }
 
-  const saveMcpConfig = () => {
-    const trimmed = mcpConfigDraft.trim()
+  const saveMcpConfig = (raw = mcpConfigDraft) => {
+    const trimmed = raw.trim()
 
     if (!trimmed) {
       try {
@@ -86,6 +86,19 @@ export function useMcpConfig(viewMode: ViewMode, isKnowledgeMode: boolean) {
     setMcpNotice(`已保存 ${parsed.serverSummaries.length} 个 MCP 服务配置。`)
     setMcpError('')
     return true
+  }
+
+  /** 合并并保存单个服务。Args: originalName 为原服务名，name 为新名称，server 为连接配置。 */
+  const saveMcpServer = (originalName: string | null, name: string, server: Record<string, unknown>) => {
+    const config = savedMcpParseResult.config
+    const entries = Object.entries(config?.mcpServers ?? {})
+    if (entries.some(([key]) => key === name && key !== originalName)) {
+      setMcpError('该服务名称已存在，请使用其他名称。')
+      return false
+    }
+    const servers = entries.map(([key, value]) => key === originalName ? [name, server] : [key, value])
+    if (originalName === null) servers.push([name, server])
+    return saveMcpConfig(JSON.stringify({ ...config, mcpServers: Object.fromEntries(servers) }))
   }
 
   /** 更新已保存的服务开关。Args: name 为服务名称。 */
@@ -181,6 +194,7 @@ export function useMcpConfig(viewMode: ViewMode, isKnowledgeMode: boolean) {
     mcpConfigDirty,
     initializeMcpConfig,
     saveMcpConfig,
+    saveMcpServer,
     formatMcpConfig,
     toggleMcpEnabled,
     toggleMcpServer,

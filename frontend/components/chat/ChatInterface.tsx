@@ -141,6 +141,7 @@ export default function ChatInterface() {
     activeChatModeId,
     handleChatModeChange,
     saveMcpConfig,
+    saveMcpServer,
     formatMcpConfig,
     toggleMcpEnabled,
     toggleMcpServer,
@@ -343,6 +344,7 @@ export default function ChatInterface() {
                 requestJson={requestJson}
                 onMcpConfigDraftChange={setMcpConfigDraft}
                 onSaveMcpConfig={saveMcpConfig}
+                onSaveMcpServer={saveMcpServer}
                 onFormatMcpConfig={formatMcpConfig}
                 onToggleMcpEnabled={toggleMcpEnabled}
                 onToggleMcpServer={toggleMcpServer}

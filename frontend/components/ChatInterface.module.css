@@ -4610,6 +4610,38 @@ textarea.interruptInput {
 
 button.extensionListRow { cursor: pointer; }
 .extensionListRow:hover { background: #f9fbfc; }
+.mcpServerActions { display: flex; align-items: center; flex: none; gap: 16px; }
+.mcpServerActions button { white-space: nowrap; }
+.mcpServerEditor { width: min(590px, 100%); overflow-y: auto; }
+.mcpEditorFields { display: grid; gap: 14px; }
+.mcpEditorIdentity { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 175px); gap: 12px; }
+.mcpEditorFields label { display: grid; gap: 6px; min-width: 0; color: var(--extension-ink); font-size: 13px; font-weight: 600; }
+.mcpEditorFields input, .mcpEditorFields select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid #ccd7e3;
+  border-radius: 5px;
+  background: #fff;
+  color: var(--extension-ink);
+  font: inherit;
+  font-weight: 400;
+}
+.mcpEditorFields input:focus-visible, .mcpEditorFields select:focus-visible { outline: 2px solid #5479a9; outline-offset: 2px; }
+.mcpEditorHeaders { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 6px; background: #f8fafc; }
+.mcpEditorHeaders legend { padding: 0 4px; color: var(--extension-ink); font-size: 13px; font-weight: 600; }
+.mcpEditorHeaders legend span { color: var(--extension-muted); font-size: 11px; font-weight: 400; }
+.mcpEditorHeaderRow { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) auto; gap: 8px; align-items: center; font-size: 12px; }
+.mcpHeaderActions { display: flex; justify-content: space-between; }
+.mcpServerEditor button:disabled { opacity: 0.6; cursor: wait; }
+@media (max-width: 640px) {
+  .mcpServerRow { flex-wrap: wrap; }
+  .mcpServerRow > button { flex-basis: 100%; }
+  .mcpServerActions { margin-left: auto; }
+  .mcpEditorIdentity { grid-template-columns: minmax(0, 1fr); }
+}
 .extensionChevron { display: inline-block; flex: none; color: #9aa6b4; font-size: 21px; line-height: 1; transform: rotate(-90deg); transition: transform 0.18s ease; }
 .extensionChevronOpen { transform: rotate(0); }
 .extensionRowMain { display: grid; flex: 1; min-width: 0; gap: 4px; }
@@ -5226,3 +5258,6 @@ button.extensionListRow { cursor: pointer; }
   .rbacFormArrow { display: none; }
 }
 
+
+.mcpEditorModes { padding: 0 24px; }
+.mcpEditorModes button[aria-pressed='true'] { color: var(--extension-ink); font-weight: 700; text-decoration: underline; text-underline-offset: 5px; }
