@@ -23,6 +23,7 @@ import {
 } from '../utils/constants'
 import { generateMessageId, getApiUrl, stringifyToolContent } from '../utils'
 import { fetchAuthRuntimeConfig, redirectToLogin } from '../utils/auth'
+import { CHAT_ATTACHMENTS_HEADING } from '../utils/chatFiles'
 import {
   ChatRequestError,
   appendContentToken,
@@ -1127,7 +1128,7 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
     if (!query || isProcessing || !sessionId) return
     const messageText = files.length ? [
       query,
-      '聊天附件（链接中的 ID 用于文件工具）',
+      CHAT_ATTACHMENTS_HEADING,
       ...files.map((file) => {
         const label = file.name
           .replace(/[\\\[\]`*_]/g, '\\$&')

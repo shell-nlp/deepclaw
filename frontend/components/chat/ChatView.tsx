@@ -5,7 +5,8 @@ import { useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from '
 import styles from '../ChatInterface.module.css'
 import { InterruptPanel } from './interrupt/InterruptPanel'
 import type { InterruptEditedAction } from './interrupt/utils'
-import { AssistantMessageBody, MarkdownMessage } from './cards/AssistantMessageBody'
+import { AssistantMessageBody } from './cards/AssistantMessageBody'
+import { UserMessageBody } from './cards/UserMessageBody'
 import { AgentModeSwitcher } from './shared/AgentModeSwitcher'
 import { ChatModelPicker } from './shared/ChatModelPicker'
 import type { ChatModelOptions, ReasoningChoice } from './utils/reasoning'
@@ -296,10 +297,7 @@ export function ChatView({
                       {formatMessageTime(msg)}
                     </span>
                   </div>
-                  {msg.images?.length ? <div className={styles.chatMessageImages}>
-                    {msg.images.map((image, index) => <img key={index} src={image.url} alt={image.name} />)}
-                  </div> : null}
-                  <MarkdownMessage content={msg.content} />
+                  <UserMessageBody message={msg} />
                 </>
               ) : (
                 <>

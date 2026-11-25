@@ -1,7 +1,31 @@
 import { getApiUrl } from './index'
 
 export const CHAT_FILE_TYPES = '.docx,.txt,.md,.pdf,.xlsx'
+export const CHAT_ATTACHMENTS_HEADING = '聊天附件（链接中的 ID 用于文件工具）'
 const CHAT_FILE_PATH = /^\/api\/files\/[a-f0-9]{32}\/download$/
+
+/** 从用户消息末尾提取聊天附加的文件，供历史消息和即时消息共用。
+ *
+ * Args:
+ *   content: 包含用户正文和可选附件区块的原始消息。
+ */
+export function splitChatAttachments(content: string) {
+  const separator = `\n\n${CHAT_ATTACHMENTS_HEADING}\n\n`
+  const boundary = content.lastIndexOf(separator)
+  const attachments: { name: string; path: string }[] = []
+  if (boundary < 0) return { text: content, attachments }
+
+  for (const entry of content.slice(boundary + separator.length).split('\n\n')) {
+    const match = /^- \[([\s\S]+)\]\(([^\s()]+)\)$/.exec(entry)
+    if (!match || !isChatFileLink(match[2])) return { text: content, attachments: [] }
+    const [, label, path] = match
+    const name = label.replace(/\\([\\\[\]`*_])/g, '$1')
+      .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+    attachments.push({ name, path })
+  }
+
+  return { text: content.slice(0, boundary), attachments }
+}
 
 export type ChatFile = {
   file_id: string
