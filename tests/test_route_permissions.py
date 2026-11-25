@@ -291,7 +291,7 @@ def test_chat_file_permissions_and_tool_roundtrip(guarded_client, monkeypatch, t
     from langgraph.prebuilt import ToolNode
 
     from deepclaw.common.object_storage import LocalObjectStorage
-    from deepclaw.middleware import files
+    from deepclaw.middleware.files import middleware as files
     from deepclaw.middleware.files.service import BUCKET, FileService, utc_now
     from deepclaw.web_backend import files as file_routes
     from deepclaw.web_backend.agent.run_manager import AgentAuthUser

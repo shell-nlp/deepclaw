@@ -350,7 +350,8 @@ uv sync --dev
 按需追加可选能力：
 
 ```bash
-uv sync --dev --extra pdf           # 知识库文档入库（文本转 PDF 与解析）
+uv sync --dev --extra pdf           # 知识库文档入库（旧命令兼容，PDF 依赖已默认安装）
+uv sync --dev --extra graph-db      # NetworkX / Neo4j 图数据库
 uv sync --dev --extra docling       # Docling 文档解析
 uv sync --dev --extra elasticsearch # Elasticsearch 向量库
 uv sync --dev --extra web-fetch     # Crawl4AI 网页抓取
@@ -362,8 +363,7 @@ uv sync --dev --extra phoenix       # Phoenix 可观测性
 uv sync --dev --extra object-storage # MinIO / S3 对象存储
 ```
 
-> 知识库上传文档依赖 `pdf` extra。缺少时上传会返回
-> `PDF 解析需要 PyMuPDF，请执行 uv sync --extra pdf 安装`。
+> 知识库上传文档所需的 PDF 解析依赖已纳入默认安装。`pdf` extra 保留用于兼容旧安装命令。
 
 #### 方式 B：pip 安装（推荐部署，不需要仓库源码）
 
@@ -375,7 +375,7 @@ python -m venv .venv            # 建议使用独立虚拟环境
 pip install .                   # 从当前目录安装；也可以直接装构建好的 wheel
 pip install -e .                # 开发用：可编辑安装，改 Python 代码立即生效
 
-pip install ".[pdf,elasticsearch]"   # 按需安装可选能力（extras 名同下文的 uv --extra）
+pip install ".[elasticsearch]"       # 按需安装可选能力（extras 名同上文的 uv --extra）
 ```
 
 安装完成后会提供 `deepclaw` 命令，等价于 `python -m deepclaw.main`：
@@ -752,7 +752,7 @@ curl -X POST http://localhost:7869/api/rag/knowledge-bases/create \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"user_id":"demo-user","name":"产品文档","description":"示例知识库"}'
 
-# 上传文档（需要 uv sync --extra pdf）
+# 上传文档（默认安装已包含 PDF 解析依赖）
 curl -X POST http://localhost:7869/api/rag/knowledge-bases/documents/upload \
   -H "Authorization: Bearer $TOKEN" \
   -F "user_id=demo-user" \

@@ -38,7 +38,7 @@ def _require_pymupdf():
     except ModuleNotFoundError as exc:
         if exc.name != "fitz":
             raise
-        raise RuntimeError("PDF 功能需要 PyMuPDF，请执行 uv sync --extra pdf 安装。") from exc
+        raise RuntimeError("PDF 功能需要 PyMuPDF，请重新安装项目依赖。") from exc
 
 
 def _require_pdfplumber():
@@ -58,7 +58,7 @@ def _require_pdfplumber():
     except ModuleNotFoundError as exc:
         if exc.name != "pdfplumber":
             raise
-        raise RuntimeError("PDF 功能需要 pdfplumber，请执行 uv sync --extra pdf 安装。") from exc
+        raise RuntimeError("PDF 功能需要 pdfplumber，请重新安装项目依赖。") from exc
 
 
 def _require_pypdf2():
@@ -78,7 +78,7 @@ def _require_pypdf2():
     except ModuleNotFoundError as exc:
         if exc.name != "PyPDF2":
             raise
-        raise RuntimeError("PDF 功能需要 PyPDF2，请执行 uv sync --extra pdf 安装。") from exc
+        raise RuntimeError("PDF 功能需要 PyPDF2，请重新安装项目依赖。") from exc
 
 
 def _require_pillow():
@@ -100,7 +100,7 @@ def _require_pillow():
     except ModuleNotFoundError as exc:
         if exc.name not in {"PIL", "PIL.Image"}:
             raise
-        raise RuntimeError("图片处理功能需要 Pillow，请执行 uv sync --extra pdf 安装。") from exc
+        raise RuntimeError("图片处理功能需要 Pillow，请重新安装项目依赖。") from exc
 
 
 def _require_pandas():

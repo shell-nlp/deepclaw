@@ -33,7 +33,6 @@ dependencies = [
     "python-multipart>=0.0.20",
     "pandas>=3.0.2",
     "pgvector>=0.4.2",
-    "neo4j>=6.2.0",
     "matplotlib>=3.11.0",
     "casbin>=1.43.0",
     # 默认轻量向量库：SQLite 扩展，无需外部中间件
@@ -44,16 +43,20 @@ dependencies = [
     "python-docx>=1.2.0",
     "openpyxl>=3.1.5",
     "pymupdf>=1.27.2.3",
-    "regex",
-]
-# uv add pypdf2 --optional pdf
-# uv sync --extra pdf 才会安装
-# uv sync --all-extras 安装所有可选依赖
-[project.optional-dependencies]
-pdf = [
-    "pymupdf>=1.27.2.3",
     "pypdf2>=3.0.1",
     "pdfplumber>=0.11.9",
+    "regex",
+]
+# uv add pypdf2 --optional pdf（原可选组配置示例）
+# uv sync --extra pdf（旧安装命令仍可使用，PDF 依赖现在默认安装）
+# uv sync --all-extras 安装所有可选依赖
+[project.optional-dependencies]
+# 保留旧部署命令的兼容入口，PDF 依赖已纳入默认安装。
+pdf = []
+# uv sync --extra graph-db 安装图数据库驱动
+graph-db = [
+    "neo4j>=6.2.0",
+    "networkx",
 ]
 docling = [
     "docling>=2.129.0,<3.0.0",
@@ -110,6 +113,9 @@ default = true
 dev = [
     "pytest>=9.0.3",
     "pytest-xdist>=3.6.1", # 用于并行测试
+    "networkx",
+    "neo4j>=6.2.0",
+    "tokenizers",
 ]
 lint = ["ruff>=0.15.16"]
 
