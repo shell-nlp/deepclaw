@@ -8,11 +8,10 @@ from typing import Any
 
 from ag_ui.core import RunAgentInput, RunErrorEvent
 from ag_ui.encoder import EventEncoder
-from ag_ui_langgraph import LangGraphAgent
 from langgraph.graph.state import CompiledStateGraph
 from loguru import logger
 
-from deepclaw.patch.ag_ui_langgraph import install_reasoning_text_split
+from deepclaw.patch.ag_ui_langgraph import DeepClawLangGraphAgent, install_reasoning_text_split
 from deepclaw.web_backend.model_store import find_chat_model
 from deepclaw.settings import settings
 from deepclaw.utils.model_factory import RUN_CHAT_MODEL, get_chat_model
@@ -606,7 +605,7 @@ class AgentRunManager:
         await self.store.update_run_status(run_id, "running")
         owner_user_id = self._owner_user_id(payload)
         await self._prepare_langgraph_store(owner_user_id)
-        agent = LangGraphAgent(
+        agent = DeepClawLangGraphAgent(
             name="deepclaw-agent",
             graph=self.graph,
             config=self._run_config(owner_user_id),

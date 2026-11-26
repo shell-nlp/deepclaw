@@ -1,4 +1,5 @@
 import asyncio
+import warnings
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -332,3 +333,64 @@ def test_run_manager_injects_auth_user_and_syncs_skills(monkeypatch, tmp_path):
         for item in langgraph_store.search(general_utils.user_namespace("alice"))
     )
     assert keys == [f"{general_utils.SKILLS_VIRTUAL_ROOT}/demo/SKILL.md"]
+
+
+def test_run_tool_keeps_server_identity_without_injecting_runtime_context():
+    """验证实际工具调用保留用户身份，并且运行上下文符合工具声明。"""
+    from langchain.agents import create_agent
+    from langchain.tools import ToolRuntime
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    from deepclaw.web_backend.agent.run_manager import AgentRunManager
+
+    observed = []
+
+    def inspect_runtime(runtime: ToolRuntime[None]) -> str:
+        """记录工具收到的运行上下文和服务端身份。
+
+        Args:
+            runtime: LangGraph 提供的工具运行环境。
+        """
+        observed.append((runtime.context, runtime.server_info.user.identity))
+        return "ok"
+
+    class ToolModel(FakeMessagesListChatModel):
+        """发出一次工具调用后生成最终回答。"""
+
+        def bind_tools(self, tools, **kwargs):
+            """为测试返回支持工具调用的模型。
+
+            Args:
+                tools: 智能体提供的工具。
+                **kwargs: 绑定参数。
+            """
+            return self
+
+    async def scenario():
+        """使用正常 Run 入口执行一轮带工具的对话。"""
+        graph = create_agent(
+            ToolModel(responses=[
+                AIMessage(content="", tool_calls=[{"name": "inspect_runtime", "id": "call-1", "args": {}}]),
+                AIMessage(content="done"),
+            ]),
+            tools=[inspect_runtime],
+            checkpointer=InMemorySaver(),
+        )
+        store = InMemoryRunStore()
+        manager = AgentRunManager(graph, store=store)
+        run_input = AgUiRunRequest.model_validate(payload()).model_copy(update={"state": {"user_id": "alice"}})
+        try:
+            await manager.create(run_input)
+            frames = [frame async for frame in manager.events(run_input.run_id, user_id="alice")]
+            assert any("TOOL_CALL_RESULT" in frame for frame in frames)
+            assert any("RUN_FINISHED" in frame for frame in frames)
+        finally:
+            await manager.close()
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        asyncio.run(scenario())
+    assert observed == [(None, "alice")]
+    assert not any("PydanticSerializationUnexpectedValue" in str(w.message) for w in caught)

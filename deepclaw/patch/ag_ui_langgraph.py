@@ -1,5 +1,7 @@
 """AG-UI LangGraph 适配层补丁。
 
+运行配置独立传递给 LangGraph，避免 AG-UI 将服务端身份和会话标识复制到工具上下文。
+
 `ag_ui_langgraph` 在处理 `on_chat_model_stream` 事件时，只要分片携带推理内容
 （`additional_kwargs.reasoning_content`）就只发送推理事件并提前返回。部分模型
 会把「最后一段推理」和「第一段正文」放进同一个分片，此时正文会被静默丢弃：
@@ -9,13 +11,47 @@
 
 import functools
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, Literal
 
+from ag_ui_langgraph import LangGraphAgent
 from ag_ui_langgraph.utils import resolve_message_content, resolve_reasoning_content
+from langchain_core.runnables import RunnableConfig
 
 
 _WRAPPER_MARK = "__deepclaw_reasoning_split__"
 _REASONING_BLOCK_TYPES = {"thinking", "reasoning", "reasoning_content"}
+
+
+class DeepClawLangGraphAgent(LangGraphAgent):
+    """为 AG-UI 运行保留独立的 LangGraph 配置和工具上下文。"""
+
+    def get_stream_kwargs(
+        self,
+        input: Any,
+        subgraphs: bool = False,
+        version: Literal["v1", "v2"] = "v2",
+        config: RunnableConfig | None = None,
+        context: dict[str, Any] | None = None,
+        fork: Any = None,
+    ) -> dict[str, Any]:
+        """构造流式调用参数，只将显式传入的应用上下文交给工具。
+
+        Args:
+            input: LangGraph 输入。
+            subgraphs: 是否订阅子图事件。
+            version: 流式事件版本。
+            config: 包含可信身份和会话 ID 的运行配置。
+            context: 显式传入的应用上下文。
+            fork: 时间旅行调用的附加参数。
+        """
+        kwargs = super().get_stream_kwargs(
+            input=input, subgraphs=subgraphs, version=version, context=context,
+        )
+        if config:
+            kwargs["config"] = config
+        if fork:
+            kwargs.update(fork)
+        return kwargs
 
 
 def _message_text(chunk: Any) -> str:
