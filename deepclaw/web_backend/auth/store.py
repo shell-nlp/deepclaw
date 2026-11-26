@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import inspect, text
+from sqlalchemy import delete, inspect, text
 from sqlmodel import select
 
 from deepclaw.web_backend.common.errors import BusinessRuleError
@@ -666,26 +666,19 @@ class AuthStore:
         token_hash_value = hash_token(token)
         async with self.async_session() as session:
             result = await session.exec(
-                select(AccessTokenRecord).where(AccessTokenRecord.token_hash == token_hash_value)
+                delete(AccessTokenRecord).where(AccessTokenRecord.token_hash == token_hash_value)
             )
-            record = result.first()
-            if record is None:
-                return False
-            await session.delete(record)
             await session.commit()
-            return True
+            return result.rowcount > 0
 
     async def revoke_tokens_by_user_id(self, user_id: str) -> int:
         await self._ensure_init()
         async with self.async_session() as session:
             result = await session.exec(
-                select(AccessTokenRecord).where(AccessTokenRecord.user_id == user_id)
+                delete(AccessTokenRecord).where(AccessTokenRecord.user_id == user_id)
             )
-            records = list(result.all())
-            for record in records:
-                await session.delete(record)
             await session.commit()
-            return len(records)
+            return result.rowcount
 
     async def issue_access_token(
         self,
@@ -721,8 +714,14 @@ class AuthStore:
             record = result.first()
             if record is None:
                 raise BusinessRuleError("登录状态已失效，请重新登录。")
-            if record.expires_at <= utc_now():
-                await session.delete(record)
+            now = utc_now()
+            if record.expires_at <= now:
+                await session.exec(
+                    delete(AccessTokenRecord).where(
+                        AccessTokenRecord.token_hash == token_hash_value,
+                        AccessTokenRecord.expires_at <= now,
+                    )
+                )
                 await session.commit()
                 raise BusinessRuleError("登录状态已失效，请重新登录。")
 
@@ -733,7 +732,6 @@ class AuthStore:
             if user is None:
                 raise BusinessRuleError("登录状态已失效，请重新登录。")
 
-            now = utc_now()
             if (
                 record.last_used_at is None
                 or now - record.last_used_at >= ACCESS_TOKEN_LAST_USED_THROTTLE

@@ -223,9 +223,16 @@ def test_register_rejects_duplicate_username():
     asyncio.run(_test())
 
 
-def test_authenticate_expired_token_deletes_token_record():
+@pytest.mark.filterwarnings("error:DELETE statement on table 'accesstokenrecord':sqlalchemy.exc.SAWarning")
+def test_authenticate_expired_token_deletes_token_record(tmp_path):
+    """验证并发认证过期令牌时，每个请求都被拒绝且只需删除一次。
+
+    Args:
+        tmp_path: 用于创建独立 SQLite 数据库的测试目录。
+    """
     async def _test():
-        service = build_service()
+        """并发提交同一个过期凭据并检查数据库。"""
+        service = build_file_service(tmp_path / "auth.db")
         user = await service.register(username="user", password="secret-123")
         issued = await service.store.issue_access_token(
             user=user,
@@ -244,8 +251,13 @@ def test_authenticate_expired_token_deletes_token_record():
             session.add(record)
             await session.commit()
 
-        with pytest.raises(ValueError, match="登录状态已失效，请重新登录。"):
-            await service.authenticate_token(issued.token)
+        results = await asyncio.gather(
+            *(service.authenticate_token(issued.token) for _ in range(4)),
+            return_exceptions=True,
+        )
+        for result in results:
+            assert isinstance(result, ValueError)
+            assert str(result) == "登录状态已失效，请重新登录。"
 
         async with service.store.async_session() as session:
             result = await session.exec(
