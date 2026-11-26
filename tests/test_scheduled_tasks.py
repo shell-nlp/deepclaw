@@ -90,7 +90,8 @@ def test_workers_deliver_once_and_share_results(backend, tmp_path, monkeypatch):
         monkeypatch: 测试替换工具。
     """
     from deepclaw.middleware.cron import executor
-    from deepclaw.web_backend import schedules
+    from deepclaw.middleware.files.service import FileService
+    from deepclaw.web_backend import files, schedules
     from deepclaw.web_backend.auth.rbac import dependencies as rbac_dependencies
 
     store_module = importlib.import_module("deepclaw.middleware.cron.schedule_store")
@@ -100,6 +101,22 @@ def test_workers_deliver_once_and_share_results(backend, tmp_path, monkeypatch):
     monkeypatch.setattr(executor.settings, "OBJECT_STORAGE_PROVIDER", "local")
     monkeypatch.setattr(executor.settings, "LOCAL_STORAGE_ROOT", str(tmp_path / "objects"))
     monkeypatch.setattr(schedules, "get_schedule_store", lambda: store)
+    library = FileService(url, executor.create_object_storage(executor.settings))
+    monkeypatch.setattr(executor, "get_file_service", lambda: library)
+    monkeypatch.setattr(files, "get_file_service", lambda: library)
+    file_write_allowed = False
+
+    async def can_write_file(user_id, path, action):
+        """模拟账号文件写权限的授予和拒绝。
+
+        Args:
+            user_id: 任务所属账号。
+            path: 待检查的功能路径。
+            action: 待检查的操作。
+        """
+        return (user_id, path, action) == ("owner", "/api/files", "write") and file_write_allowed
+
+    monkeypatch.setattr(executor, "agent_has_permission", can_write_file)
 
     async def active_user(user_id):
         """模拟执行任务时查到有效账号。
@@ -124,7 +141,7 @@ def test_workers_deliver_once_and_share_results(backend, tmp_path, monkeypatch):
             action: 授权动作。
             owner: 资源归属。
         """
-        return path == "/api/schedules" and action in grants
+        return (path == "/api/schedules" and action in grants) or (path == "/api/files" and action == "read")
 
     monkeypatch.setattr(rbac_dependencies, "is_allowed", is_allowed)
 
@@ -139,6 +156,7 @@ def test_workers_deliver_once_and_share_results(backend, tmp_path, monkeypatch):
     app = FastAPI()
     app.dependency_overrides[require_authenticated_actor] = current_actor
     app.include_router(schedules.router)
+    app.include_router(files.router)
     now = utc_now()
     run_at = (now + timedelta(seconds=10)).replace(tzinfo=UTC)
     with TestClient(app) as client:
@@ -180,6 +198,7 @@ def test_workers_deliver_once_and_share_results(backend, tmp_path, monkeypatch):
             Args:
                 无。
             """
+            nonlocal file_write_allowed
             delivered = set()
             while len(delivered) < 3:
                 results = await asyncio.gather(store.claim(), second_store.claim())
@@ -188,12 +207,32 @@ def test_workers_deliver_once_and_share_results(backend, tmp_path, monkeypatch):
                 for run, settings in claims:
                     assert run.job_id not in delivered
                     delivered.add(run.job_id)
+                    file_write_allowed = settings.output == "docx"
                     await executor.deliver(store, run, settings)
             assert await store.claim() is None
-            await store.engine.dispose()
-            await second_store.engine.dispose()
 
         client.portal.call(execute)
+        assert [row["extension"] for row in client.get("/api/files").json()["files"]] == [".docx"]
+        file_write_allowed = True
+
+        async def backfill():
+            """验证两个 worker 同时补录历史产物只登记一次。"""
+            await asyncio.gather(
+                executor.backfill_artifacts(store), executor.backfill_artifacts(second_store),
+            )
+            await executor.backfill_artifacts(store)
+
+        client.portal.call(backfill)
+        library_files = client.get("/api/files").json()["files"]
+        assert sorted(row["extension"] for row in library_files) == [".docx", ".md"]
+        for row in library_files:
+            preview = client.get(f"/api/files/{row['file_id']}/preview")
+            assert preview.status_code == 200
+            assert "测试正文" in preview.text
+        owner.id = "other"
+        assert client.get("/api/files").json()["files"] == []
+        assert client.get(library_files[0]["download_url"]).status_code == 404
+        owner.id = "owner"
         payload = client.get("/api/schedules/notifications").json()
         assert payload["unread"] == 3
         for item in payload["items"]:
@@ -225,7 +264,10 @@ def test_workers_deliver_once_and_share_results(backend, tmp_path, monkeypatch):
         assert client.delete(notification_path).status_code == 204
         assert client.get(notification_path + "/file").status_code == 404
         assert len(client.get("/api/schedules/notifications").json()["items"]) == 2
-        assert len(list((tmp_path / "objects").rglob("*.md")) +
-                   list((tmp_path / "objects").rglob("*.docx"))) == 1
+        assert len(list((tmp_path / "objects" / executor.BUCKET).rglob("*.*"))) == 1
+        assert len(client.get("/api/files").json()["files"]) == 2
+        assert all(client.get(row["download_url"]).status_code == 200 for row in library_files)
+        client.portal.call(library.engine.dispose)
+        client.portal.call(second_store.engine.dispose)
         client.portal.call(store.engine.dispose)
 

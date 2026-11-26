@@ -34,6 +34,7 @@ export function FileKnowledgeView({ canRead, canWrite, isGuest, requestJson, wit
   const [actionError, setActionError] = useState('')
   const [uploading, setUploading] = useState(false)
   const [moving, setMoving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [retention, setRetention] = useState<Retention | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [retentionDraft, setRetentionDraft] = useState('')
@@ -154,6 +155,28 @@ export function FileKnowledgeView({ canRead, canWrite, isGuest, requestJson, wit
     }
   }
 
+  /**
+   * 确认删除文件后刷新当前区域。
+   *
+   * Args:
+   *   file: 要删除的文件。
+   */
+  async function removeFile(file: ChatFile) {
+    if (deleting || moving || !window.confirm('确定删除「' + file.name + '」？历史聊天中的文件链接也将失效。')) return
+    setDeleting(true)
+    setActionError('')
+    try {
+      await requestJson<void>('/api/files/' + encodeURIComponent(file.file_id), { method: 'DELETE' })
+      setSelected((current) => current?.file_id === file.file_id ? null : current)
+      setOffset(0)
+      setRefresh((value) => value + 1)
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : '删除文件失败。')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   /** 保存账号的文件保留期。Args: days 为空时关闭自动清理。 */
   async function saveRetention(days: number | null) {
     setSavingRetention(true)
@@ -253,10 +276,12 @@ export function FileKnowledgeView({ canRead, canWrite, isGuest, requestJson, wit
           <header className={styles.previewHeader}>
             <h2 title={selected?.name}>{selected?.name ?? '文件预览'}</h2>
             {selected && <div className={styles.fileActions}>
-              {canWrite && <button type="button" disabled={moving} onClick={() => void move(selected)}>
+              {canWrite && <button type="button" disabled={moving || deleting} onClick={() => void move(selected)}>
                 {selected.favorite ? '取消收藏' : '移到收藏'}
               </button>}
-              <button type="button" onClick={() => void download(selected)}>下载原件</button>
+              <button type="button" disabled={deleting} onClick={() => void download(selected)}>下载原件</button>
+              {canWrite && <button type="button" className={styles.deleteButton} disabled={moving || deleting}
+                onClick={() => void removeFile(selected)}>{deleting ? '正在删除…' : '删除'}</button>}
             </div>}
           </header>
           {selected && !isMarkdown && preview?.sheets && <label className={styles.sheet}>

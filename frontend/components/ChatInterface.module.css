@@ -2156,6 +2156,65 @@ textarea.interruptInput {
   color: var(--text-muted);
 }
 
+.knowledgePickerTabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  padding: 3px;
+  margin-bottom: 3px;
+  border-radius: 8px;
+  background: #f0f3f9;
+}
+
+.knowledgePickerTabs button {
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #53617a;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.knowledgePickerTabs button[aria-pressed='true'] {
+  background: #fff;
+  color: #294ec6;
+  box-shadow: 0 1px 3px #182d4b20;
+}
+
+.knowledgePickerFiles {
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 8px;
+}
+
+.knowledgePickerFiles .knowledgePickerItem:has(input:disabled:not(:checked)) {
+  opacity: .6;
+  cursor: default;
+}
+
+.knowledgePickerMore {
+  display: block;
+  margin: 4px auto;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: #f0f3f9;
+  color: #294ec6;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.knowledgePickerTabs button:focus-visible,
+.knowledgePickerMore:focus-visible {
+  outline: 2px solid #4865ed;
+  outline-offset: 1px;
+}
+
 .knowledgePickerAll {
   display: flex;
   align-items: center;

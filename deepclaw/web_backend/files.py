@@ -117,6 +117,20 @@ async def set_favorite(
         raise HTTPException(status_code=404, detail="找不到文件。") from exc
 
 
+@router.delete("/{file_id}", status_code=204)
+async def delete_file(file_id: str, actor: CurrentActor = Depends(require_permission("/api/files", "write"))):
+    """删除当前账号的文件及其解析缓存。
+
+    Args:
+        file_id: 文件 ID。
+        actor: 有写入权限的登录账号。
+    """
+    try:
+        await get_file_service().remove(actor.user_id, file_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="找不到文件。") from exc
+
+
 @router.get("/{file_id}/preview")
 async def preview_file(
     file_id: str,

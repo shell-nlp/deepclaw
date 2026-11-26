@@ -35,6 +35,8 @@
 .collections button { padding: 6px 17px; border: 0; border-radius: 6px; background: transparent; color: #54617a; cursor: pointer; }
 .collections button[aria-pressed=true] { color: #23385d; background: #fff; box-shadow: 0 1px 3px #22375d21; }
 .fileActions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.fileActions .deleteButton { color: #a52e35; border-color: #e9c3c6; }
+.fileActions .deleteButton:hover:not(:disabled) { background: #fff4f4; }
 .retention { margin: 0 0 12px; padding: 12px 16px; border: 1px solid #dce3ef; border-radius: 10px; background: #fff; font-size: 13px; }
 .retention p { margin: 0 0 10px; color: #54617a; }
 .retention div { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

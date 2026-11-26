@@ -273,6 +273,8 @@ export default function ChatInterface() {
               onDraftFilesChange={setDraftFiles}
               fileDraftKey={`${actor.userId}/${sessionId}`}
               canAttachFiles={actorCapabilities.canReadChatFiles && actorCapabilities.canWriteChatFiles}
+              canReadFiles={actorCapabilities.canReadChatFiles}
+              requestJson={requestJson}
               withAuthHeaders={withAuthHeaders}
               chatModels={chatModels}
               selectedModelId={selectedModelId}
@@ -297,6 +299,7 @@ export default function ChatInterface() {
               onChatModeChange={handleChatModeChange}
               onInternetSearchChange={setInternetSearch}
               onNavigateToKnowledge={() => navigateTo('knowledge', 'libraries')}
+              onNavigateToFiles={() => navigateTo('knowledge', 'files')}
               onAbortRequest={abortRequest}
               onSendMessage={sendMessage}
               onRecommendedQuestion={askRecommendedQuestion}

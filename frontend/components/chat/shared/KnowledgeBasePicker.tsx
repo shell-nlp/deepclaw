@@ -1,9 +1,20 @@
 'use client'
 
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 import styles from '../../ChatInterface.module.css'
 import type { KnowledgeBase } from '../utils/types'
+import type { ChatFile } from '../utils/chatFiles'
+import type { RequestJson } from '../management/schedules'
+import { FavoriteFileOptions } from './FavoriteFileOptions'
+
+interface FavoriteFilesPicker {
+  files: ChatFile[]
+  onChange: (files: ChatFile[]) => void
+  onNavigate: () => void
+  requestJson: RequestJson
+  disabled: boolean
+}
 
 interface KnowledgeBasePickerProps {
   open: boolean
@@ -14,6 +25,7 @@ interface KnowledgeBasePickerProps {
   onOpenChange: (open: boolean) => void
   onSelectionChange: (ids: string[]) => void
   onNavigateToKnowledge: () => void
+  favoriteFiles?: FavoriteFilesPicker
 }
 
 function KnowledgeIcon() {
@@ -63,6 +75,7 @@ function ChevronIcon({ open }: { open: boolean }): ReactNode {
  *   onOpenChange: 展开状态变更回调。
  *   onSelectionChange: 选中集合变更回调。
  *   onNavigateToKnowledge: 跳转知识库管理页回调。
+ *   favoriteFiles: 收藏文件的授权请求、草稿与导航配置。
  */
 export function KnowledgeBasePicker({
   open,
@@ -73,7 +86,10 @@ export function KnowledgeBasePicker({
   onOpenChange,
   onSelectionChange,
   onNavigateToKnowledge,
+  favoriteFiles,
 }: KnowledgeBasePickerProps) {
+  const [tab, setTab] = useState<'libraries' | 'files'>('libraries')
+  const showFiles = tab === 'files' && !!favoriteFiles
   const rootRef = useRef<HTMLDivElement | null>(null)
   const selectAllRef = useRef<HTMLInputElement | null>(null)
   const selectedSet = new Set(selectedIds)
@@ -83,7 +99,7 @@ export function KnowledgeBasePicker({
   useEffect(() => {
     if (!open) return
     if (selectAllRef.current) selectAllRef.current.indeterminate = partiallySelected
-  }, [open, partiallySelected])
+  }, [open, partiallySelected, showFiles])
 
   useEffect(() => {
     if (!open) return
@@ -139,13 +155,30 @@ export function KnowledgeBasePicker({
       </button>
 
       {open ? (
-        <div className={styles.knowledgePickerPanel} role="dialog" aria-label="选择知识库">
+        <div className={styles.knowledgePickerPanel} role="dialog" aria-label="选择知识来源">
           <header className={styles.knowledgePickerHeader}>
-            <strong>选择知识库</strong>
-            <span>选中的知识库会一起参与检索。</span>
+            {favoriteFiles && (
+              <div className={styles.knowledgePickerTabs} role="group" aria-label="知识来源">
+                <button type="button" aria-pressed={!showFiles} onClick={() => setTab('libraries')}>知识库</button>
+                <button type="button" aria-pressed={showFiles} onClick={() => setTab('files')}>文件知识库</button>
+              </div>
+            )}
+            {!favoriteFiles && <strong>选择知识库</strong>}
+            <span>{showFiles ? '从收藏中选择文件，用于本轮对话。' : '选中的知识库会一起参与检索。'}</span>
           </header>
 
-          {loading ? (
+          {showFiles && favoriteFiles ? (
+            <FavoriteFileOptions
+              requestJson={favoriteFiles.requestJson}
+              draftFiles={favoriteFiles.files}
+              disabled={favoriteFiles.disabled}
+              onChange={favoriteFiles.onChange}
+              onNavigate={() => {
+                onOpenChange(false)
+                favoriteFiles.onNavigate()
+              }}
+            />
+          ) : loading ? (
             <div className={styles.knowledgePickerEmpty}>正在加载知识库...</div>
           ) : options.length === 0 ? (
             <div className={styles.knowledgePickerEmpty}>
@@ -203,7 +236,9 @@ export function KnowledgeBasePicker({
 
           <footer className={styles.knowledgePickerFooter}>
             <span>
-              已选 {selectedIds.length} / {options.length}
+              {showFiles
+                ? `本轮附件 ${favoriteFiles?.files.length ?? 0} / 4`
+                : `已选 ${selectedIds.length} / ${options.length}`}
             </span>
             <button
               type="button"

@@ -35,7 +35,7 @@ PERMISSION_DEFINITIONS = (
         code="files.manage",
         group="聊天",
         name="写入聊天文件",
-        description="上传文件、保存智能体产物、收藏文件及设置自动清理。",
+        description="上传、收藏和删除本人文件，保存智能体产物及设置自动清理。",
         rules=[RbacPermissionRuleResponse(path="/api/files", action="write")],
     ),
     RbacPermissionDefinitionResponse(

@@ -13,6 +13,7 @@ import type { ChatModelOptions, ReasoningChoice } from './utils/reasoning'
 import { DevicePicker } from './shared/DevicePicker'
 import { CHAT_IMAGE_TYPES, readChatImage, type ChatImage } from './utils/chatImages'
 import { CHAT_FILE_TYPES, uploadChatFile, type ChatFile } from './utils/chatFiles'
+import type { RequestJson } from './management/schedules'
 import type { ClientDevice } from './hooks/useDevices'
 import {
   KnowledgeBasePicker,
@@ -91,6 +92,8 @@ interface ChatViewProps {
   onDraftFilesChange: (files: ChatFile[]) => void
   fileDraftKey: string
   canAttachFiles: boolean
+  canReadFiles: boolean
+  requestJson: RequestJson
   withAuthHeaders: () => HeadersInit
   onDraftImagesChange: (images: ChatImage[]) => void
   chatModels: ChatModelOptions
@@ -119,6 +122,7 @@ interface ChatViewProps {
   onChatModeChange: (optionId: string) => void
   onInternetSearchChange: (checked: boolean) => void
   onNavigateToKnowledge: () => void
+  onNavigateToFiles: () => void
   onAbortRequest: () => void
   onSendMessage: () => void | Promise<void>
   onRecommendedQuestion: (question: string) => void | Promise<void>
@@ -150,6 +154,8 @@ export function ChatView({
   onDraftFilesChange,
   fileDraftKey,
   canAttachFiles,
+  canReadFiles,
+  requestJson,
   withAuthHeaders,
   onDraftImagesChange,
   chatModels,
@@ -175,6 +181,7 @@ export function ChatView({
   onChatModeChange,
   onInternetSearchChange,
   onNavigateToKnowledge,
+  onNavigateToFiles,
   onAbortRequest,
   onSendMessage,
   onRecommendedQuestion,
@@ -409,6 +416,13 @@ export function ChatView({
                 onOpenChange={onKnowledgePickerOpenChange}
                 onSelectionChange={onKnowledgeSelectionChange}
                 onNavigateToKnowledge={onNavigateToKnowledge}
+                favoriteFiles={canReadFiles ? {
+                  files: draftFiles,
+                  onChange: onDraftFilesChange,
+                  onNavigate: onNavigateToFiles,
+                  requestJson,
+                  disabled: busyWithAttachments || isProcessing,
+                } : undefined}
               />
               <ComposerToggle
                 label="联网"

@@ -5,10 +5,11 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from croniter import CroniterBadDateError, croniter
-from sqlalchemy import Column, DateTime, Index, JSON, Text, func, update
+from sqlalchemy import Column, DateTime, Index, JSON, Text, func, inspect, update
 from sqlmodel import Field, SQLModel, select
 
 from deepclaw.middleware.cron.schemas import NotificationsResponse, ScheduleRequest, ScheduleResponse, ScheduleRunResponse
+from deepclaw.middleware.files.service import ChatFile
 from deepclaw.utils.db import build_async_sessionmaker, create_async_engine_from_url
 from deepclaw.web_backend.db import resolve_metadata_db_url
 
@@ -76,6 +77,7 @@ class ScheduledRun(SQLModel, table=True):
     read_at: datetime | None = Field(default=None, sa_type=DateTime)
     message: str | None = Field(default=None, sa_type=Text)
     filename: str | None = None
+    file_registered: bool = Field(default=False)
 
     def response(self) -> ScheduleRunResponse:
         """转换为带 UTC 时区且省略内部字段的运行结果。
@@ -89,6 +91,22 @@ class ScheduledRun(SQLModel, table=True):
             finished_at=self.finished_at.replace(tzinfo=UTC) if self.finished_at else None,
             read_at=self.read_at.replace(tzinfo=UTC) if self.read_at else None,
             message=self.message, filename=self.filename,
+        )
+
+
+def _ensure_schedule_tables(connection) -> None:
+    """创建任务表并为历史运行补齐文件登记状态。
+
+    Args:
+        connection: 已持有初始化锁的数据库连接。
+    """
+    SQLModel.metadata.create_all(
+        connection, tables=[ScheduledTask.__table__, ScheduledRun.__table__],
+    )
+    columns = {column["name"] for column in inspect(connection).get_columns("scheduled_task_runs")}
+    if "file_registered" not in columns:
+        connection.exec_driver_sql(
+            "ALTER TABLE scheduled_task_runs ADD COLUMN file_registered BOOLEAN NOT NULL DEFAULT FALSE"
         )
 
 
@@ -121,10 +139,7 @@ class ScheduleStore:
                     await connection.execute(text("SELECT pg_advisory_xact_lock(42760712)"))
                 elif dialect == "sqlite":
                     await connection.exec_driver_sql("BEGIN IMMEDIATE")
-                await connection.run_sync(
-                    SQLModel.metadata.create_all,
-                    tables=[ScheduledTask.__table__, ScheduledRun.__table__],
-                )
+                await connection.run_sync(_ensure_schedule_tables)
             self.initialized = True
 
     async def list_jobs(self, owner: str) -> list[ScheduleResponse]:
@@ -367,6 +382,39 @@ class ScheduleStore:
                 ScheduledRun.owner == owner, ScheduledRun.id == run_id,
                 ScheduledRun.status == "succeeded", ScheduledRun.filename.is_not(None),
             ))).first()
+
+    async def unpublished_artifacts(self, after: str) -> list[ScheduledRun]:
+        """按执行 ID 分批读取尚未收录的成功产物。
+
+        Args:
+            after: 上一批最后一个执行 ID，空字符串表示从头开始。
+        """
+        await self.initialize()
+        async with self.sessions() as session:
+            rows = await session.exec(select(ScheduledRun).where(
+                ScheduledRun.id > after, ScheduledRun.status == "succeeded",
+                ScheduledRun.filename.is_not(None), ScheduledRun.file_registered.is_(False),
+            ).order_by(ScheduledRun.id).limit(100))
+            return list(rows)
+
+    async def register_artifact(self, run_id: str, record: ChatFile) -> bool:
+        """在同一事务中写入文件记录并标记任务产物已收录。
+
+        Args:
+            run_id: 产物所属执行 ID。
+            record: 已保存原件和解析缓存的候选文件记录。
+        """
+        async with self.sessions() as session:
+            result = await session.exec(update(ScheduledRun).where(
+                ScheduledRun.id == run_id, ScheduledRun.owner == record.owner,
+                ScheduledRun.status == "succeeded", ScheduledRun.filename.is_not(None),
+                ScheduledRun.file_registered.is_(False),
+            ).values(file_registered=True).returning(ScheduledRun.id))
+            if result.first() is None:
+                return False
+            session.add(record)
+            await session.commit()
+            return True
 
     async def delete_notification(self, owner: str, run_id: str) -> None:
         """删除当前账号的一条已完成通知。

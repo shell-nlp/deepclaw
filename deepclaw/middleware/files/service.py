@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import PurePosixPath
@@ -145,6 +146,24 @@ class FileService:
             name: 上传或生成的文件名。
             data: 原件字节。
         """
+        record = await self.publish(owner, name, data)
+        assert record is not None
+        return record
+
+    async def publish(
+        self, owner: str, name: str, data: bytes, *,
+        created_at: datetime | None = None,
+        register: Callable[[ChatFile], Awaitable[bool]] | None = None,
+    ) -> ChatFile | None:
+        """保存原件和解析缓存，再登记文件；未登记时清理本次写入的对象。
+
+        Args:
+            owner: 可信账号 ID。
+            name: 原始文件名。
+            data: 原件字节。
+            created_at: 原件生成时间，默认为当前时间。
+            register: 可选的事务登记函数，返回是否已提交文件记录。
+        """
         name = PurePosixPath(name.replace("\\", "/")).name.strip()
         extension = PurePosixPath(name).suffix.lower()
         if extension not in MIME_TYPES or len(name) > 255 or any(ord(char) < 32 for char in name):
@@ -161,25 +180,30 @@ class FileService:
         await self.initialize()
         record = ChatFile(
             id=uuid4().hex, owner=owner, name=name, extension=extension,
-            size=len(data), created_at=utc_now(),
+            size=len(data), created_at=created_at or utc_now(),
         )
         original_key = f"{record.id}/original{extension}"
         parsed_key = f"{record.id}/parsed-v1.json"
+        registered = False
         try:
             cache = await asyncio.to_thread(lambda: json.dumps(parsed, ensure_ascii=False).encode())
             await asyncio.to_thread(self.storage.put_bytes, BUCKET, original_key, data, MIME_TYPES[extension])
             await asyncio.to_thread(self.storage.put_bytes, BUCKET, parsed_key, cache, "application/json")
-            async with self.sessions() as session:
-                session.add(record)
-                await session.commit()
-        except Exception:
-            for key in (original_key, parsed_key):
-                try:
-                    await asyncio.to_thread(self.storage.delete_object, BUCKET, key)
-                except Exception:
-                    logger.exception("清理未保存的文件对象失败")
-            raise
-        return record
+            if register is None:
+                async with self.sessions() as session:
+                    session.add(record)
+                    await session.commit()
+                registered = True
+            else:
+                registered = await register(record)
+        finally:
+            if not registered:
+                for key in (original_key, parsed_key):
+                    try:
+                        await asyncio.to_thread(self.storage.delete_object, BUCKET, key)
+                    except Exception:
+                        logger.exception("清理未保存的文件对象失败")
+        return record if registered else None
 
     async def get(self, owner: str, file_id: str) -> ChatFile:
         """查找当前账号可访问的文件。
@@ -263,6 +287,25 @@ class FileService:
             ))
             await session.commit()
 
+    async def remove(self, owner: str, file_id: str) -> None:
+        """将本人文件标记为删除，并清理存储对象。
+
+        Args:
+            owner: 可信账号 ID。
+            file_id: 要删除的文件 ID。
+        """
+        await self.initialize()
+        async with self.sessions() as session:
+            scope = (ChatFile.id == file_id, ChatFile.owner == owner)
+            await session.exec(update(ChatFile).where(
+                *scope, ChatFile.deleting.is_(False),
+            ).values(deleting=True))
+            record = (await session.exec(select(ChatFile).where(*scope))).one_or_none()
+            await session.commit()
+        if record is None:
+            raise LookupError("找不到文件。")
+        await self._purge_file(record)
+
     async def clean_expired(self, now: datetime) -> None:
         """认领到期文件，清除原件和解析缓存。
 
@@ -292,15 +335,23 @@ class FileService:
             await session.commit()
             pending = (await session.exec(select(ChatFile).where(ChatFile.deleting.is_(True)))).all()
         for record in pending:
-            try:
-                await asyncio.to_thread(self.storage.delete_object, BUCKET, f"{record.id}/original{record.extension}")
-                await asyncio.to_thread(self.storage.delete_object, BUCKET, f"{record.id}/parsed-v1.json")
-            except Exception:
-                logger.exception("清理过期文件失败，稍后重试，文件 ID %s", record.id)
-                continue
-            async with self.sessions() as session:
-                await session.exec(delete(ChatFile).where(ChatFile.id == record.id, ChatFile.deleting.is_(True)))
-                await session.commit()
+            await self._purge_file(record)
+
+    async def _purge_file(self, record: ChatFile) -> None:
+        """清理已标记删除的文件，失败时保留记录供后台重试。
+
+        Args:
+            record: 待清理的文件记录。
+        """
+        try:
+            await asyncio.to_thread(self.storage.delete_object, BUCKET, f"{record.id}/original{record.extension}")
+            await asyncio.to_thread(self.storage.delete_object, BUCKET, f"{record.id}/parsed-v1.json")
+        except Exception:
+            logger.exception("清理文件失败，稍后重试，文件 ID %s", record.id)
+            return
+        async with self.sessions() as session:
+            await session.exec(delete(ChatFile).where(ChatFile.id == record.id, ChatFile.deleting.is_(True)))
+            await session.commit()
 
     async def parsed(self, record: ChatFile) -> dict:
         """读取已授权文件的解析结果。

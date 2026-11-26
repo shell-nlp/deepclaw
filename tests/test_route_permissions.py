@@ -399,6 +399,17 @@ def test_chat_file_permissions_and_tool_roundtrip(guarded_client, monkeypatch, t
                 assert not (await client.put(favorite_path, headers=owner_headers, json={"favorite": False})).json()["favorite"]
                 await service.clean_expired(utc_now())
                 assert (await client.get(path, headers=owner_headers)).status_code == 200
+                delete_path = f"/api/files/{file_id}"
+                assert (await client.delete(f"/api/files/{other_file.id}", headers=other_headers)).status_code == 403
+                assert (await client.delete(f"/api/files/{other_file.id}", headers=owner_headers)).status_code == 404
+                assert (await client.put(favorite_path, headers=owner_headers, json={"favorite": True})).status_code == 200
+                assert (await client.delete(delete_path, headers=owner_headers)).status_code == 204
+                assert (await client.get("/api/files?favorite=true", headers=owner_headers)).json()["files"] == []
+                assert (await client.get(path, headers=owner_headers)).status_code == 404
+                assert (await client.get(preview_path, headers=owner_headers)).status_code == 404
+                assert not service.storage.list_objects(BUCKET, file_id)
+                assert (await client.delete(delete_path, headers=owner_headers)).status_code == 404
+                assert await service.download(await service.get(other, other_file.id)) == b"other"
         finally:
             await service.engine.dispose()
             await policies.engine.dispose()
