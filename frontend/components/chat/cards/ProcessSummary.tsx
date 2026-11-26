@@ -103,7 +103,10 @@ export function ProcessSummary({
       const toolName = latestTool.toolCall.tool_display_name || latestTool.toolCall.name
       activityLabel = hasResult
         ? (isRetrieval ? '检索已返回' : '工具已返回')
-        : (isRetrieval ? '正在检索知识库' : `正在执行 ${toolName}`)
+        : latestTool.approvalStatus === 'pending' ? '等待审批'
+          : latestTool.approvalStatus === 'rejected' ? '工具已拒绝'
+            : latestTool.startedAt === undefined ? '正在准备工具参数'
+              : (isRetrieval ? '正在检索知识库' : `正在执行 ${toolName}`)
     }
   }
   const hasProcess = processItems.length > 0

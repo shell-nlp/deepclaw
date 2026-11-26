@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import asyncio
+from collections.abc import AsyncGenerator
+from contextlib import aclosing
 from copy import deepcopy
-from typing import Any, Iterable
+from typing import Any, Iterable, cast
 
 from ag_ui.core import RunAgentInput
 from ag_ui.encoder import EventEncoder
+from anyio import CancelScope
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from starlette.types import Send
 
 from deepclaw.settings import settings
 from deepclaw.web_backend.agent.run_manager import (
@@ -432,6 +437,28 @@ async def get_agui_run_snapshot_from_store(
     return run_state_to_snapshot(state)
 
 
+class _RunEventStreamResponse(StreamingResponse):
+    """在客户端断开时取消订阅并等待数据库连接清理。"""
+
+    async def stream_response(self, send: Send) -> None:
+        """隔离外层 AnyIO 重复取消，并显式关闭 SSE 生成器。
+
+        Args:
+            send: ASGI 响应发送函数。
+        """
+        frames = cast(AsyncGenerator[str, None], self.body_iterator)
+        task = asyncio.create_task(super().stream_response(send))
+        try:
+            await asyncio.shield(task)
+        finally:
+            # 将外层重复取消转换成一次取消，让 asyncpg 完成回滚或关闭。
+            with CancelScope(shield=True):
+                if not task.done():
+                    task.cancel()
+                    await asyncio.gather(task, return_exceptions=True)
+                await frames.aclose()
+
+
 async def stream_agui_run_events_from_store(
     store: RunStore,
     run_id: str,
@@ -456,7 +483,7 @@ async def stream_agui_run_events_from_store(
     if state is None:
         raise HTTPException(status_code=404, detail="Run 不存在")
     cursor = _event_cursor(run_id, request.headers.get("last-event-id") or after)
-    return StreamingResponse(
+    return _RunEventStreamResponse(
         _store_event_frames(
             store,
             run_id,
@@ -474,7 +501,7 @@ async def _store_event_frames(
     *,
     after: int,
     user_id: str,
-):
+) -> AsyncGenerator[str, None]:
     """将 RunStore 事件转换为带 SSE id 的帧。
 
     Args:
@@ -486,12 +513,13 @@ async def _store_event_frames(
     Yields:
         带 SSE id 的事件帧。
     """
-    async for event_id, frame in store.subscribe(
+    async with aclosing(store.subscribe(
         run_id,
         after=after,
         user_id=user_id,
-    ):
-        yield f"id: {run_id}:{event_id}\n{frame}"
+    )) as events:
+        async for event_id, frame in events:
+            yield f"id: {run_id}:{event_id}\n{frame}"
 
 
 async def resume_agui_run(

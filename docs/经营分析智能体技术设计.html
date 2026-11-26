@@ -8,7 +8,11 @@
 :root{--ink:#17212b;--muted:#50616f;--paper:#f4f6f7;--panel:#fff;--line:#d7e0e5;--navy:#172b4d;--blue:#1769aa;--green:#1f7a57;--orange:#a84710;--purple:#6b4c9a;--sans:Inter,"Microsoft YaHei","PingFang SC",sans-serif;--mono:Consolas,monospace}
 *{box-sizing:border-box}html{scroll-padding-top:22px}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.75 var(--sans);overflow-wrap:anywhere}a{color:var(--blue)}a:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
 header{background:#162846;color:#fff;padding:clamp(32px,3.5vw,52px) 0 clamp(44px,5vw,76px)}
-.hero{max-width:1600px;margin:auto;padding:0 clamp(24px,4vw,64px)}
+.hero,.layout{
+  max-width:1720px;
+  margin-inline:auto;
+  padding-inline:clamp(16px,4vw,64px);
+}
 .hero h1{
   margin:0;
   font-size:clamp(36px,6vw,84px);
@@ -25,7 +29,14 @@ header{background:#162846;color:#fff;padding:clamp(32px,3.5vw,52px) 0 clamp(44px
   font-weight:500;
   line-height:1.65;
 }
-.layout{display:grid;grid-template-columns:208px minmax(0,1fr);gap:26px;max-width:1500px;margin:auto;padding:28px clamp(18px,4vw,56px) 64px;align-items:start}nav{position:sticky;top:20px;border:1px solid var(--line);background:var(--panel);padding:14px 16px}nav strong{color:var(--blue);display:block;padding-bottom:8px}nav a{display:block;padding:5px 0;border-top:1px solid #edf1f3;color:var(--muted);text-decoration:none;font-size:13px}nav a:hover{color:var(--blue);text-decoration:underline}
+.layout{
+  display:grid;
+  grid-template-columns:208px minmax(0,1fr);
+  gap:24px;
+  padding-block:28px 64px;
+  align-items:start;
+}
+nav{position:sticky;top:20px;border:1px solid var(--line);background:var(--panel);padding:14px 16px}nav strong{color:var(--blue);display:block;padding-bottom:8px}nav a{display:block;padding:5px 0;border-top:1px solid #edf1f3;color:var(--muted);text-decoration:none;font-size:13px}nav a:hover{color:var(--blue);text-decoration:underline}
 section{margin:0 0 34px}h2{margin:0 0 14px;padding:0 0 8px;border-bottom:1px solid var(--line);font-size:clamp(23px,3vw,29px);letter-spacing:-.025em}h3{margin:20px 0 7px;font-size:18px}p{margin:8px 0 13px}ul{padding-left:22px}li+li{margin-top:6px}code{font: .9em var(--mono);color:#15588b}figure{margin:0 0 14px;padding:15px;border:1px solid var(--line);background:#fbfcfd}figcaption{margin-top:10px;color:var(--muted);font-size:13px}
 .table{overflow:auto}table{width:100%;border-collapse:collapse;background:var(--panel)}th,td{border:1px solid var(--line);padding:10px 12px;text-align:left;vertical-align:top}th{font-size:13px;background:#f8fafb;color:var(--muted)}td{font-size:14px}td:first-child{font-weight:650}.note{padding:11px 14px;border:1px solid var(--line);border-left:4px solid var(--orange);background:var(--panel)}.sources{color:var(--muted);font-size:13px}
 @media(max-width:790px){.layout{grid-template-columns:1fr;gap:18px}nav{position:static;display:flex;flex-wrap:wrap;gap:0 14px}nav strong{width:100%}nav a{border:0}th,td{padding:8px}}
@@ -257,13 +268,14 @@ main{min-width:0}.table caption{text-align:left;font-weight:700;padding:0 0 8px}
 </tbody></table></div>
 <h3 id="file-tool-choice">为什么采用 FileMiddleware</h3>
 <div class="table"><table aria-labelledby="file-tool-choice">
-<thead><tr><th scope="col">比较维度</th><th scope="col">文件系统 + Python</th><th scope="col">FileMiddleware</th></tr></thead>
+<thead><tr><th scope="col">比较维度</th><th scope="col">通用文件系统 + Python 执行</th><th scope="col">DeepClaw FileMiddleware</th></tr></thead>
 <tbody>
-<tr><td>文件操作</td><td>读写文件，按需写脚本</td><td>直接调用文件工具</td></tr>
-<tr><td>安全与维护</td><td>需部署和维护脚本沙箱</td><td>复用现有文件权限与存储</td></tr>
-<tr><td>成果交付</td><td>生成后再上传入库</td><td>生成后直接入库</td></tr>
-<tr><td>适用场景</td><td>复杂计算、自定义转换</td><td>文档问答、报表生成</td></tr>
+<tr><td>模型如何操作</td><td>模型通过 <code>read</code>、<code>grep</code>、<code>write</code> 操作工作区路径，遇到 PDF、Word 或 Excel 时可编写 Python 脚本调用相应格式库。</td><td>模型传入 <code>file_id</code> 和结构化参数，由 <code>FileService</code> 统一解析或生成文件。搜索和分页读取共用行号、页码和 Sheet 坐标。</td></tr>
+<tr><td>安全隔离</td><td>开放模型生成的代码时，需要配置隔离执行环境，限制文件挂载、网络、凭据访问和资源用量，同时管理工作区的创建与回收。</td><td>这组工具只开放约定的文件操作。服务端使用可信账号校验角色权限和文件归属，根据文件 ID 定位对象，文件问答和报告生成可直接通过文件服务完成。</td></tr>
+<tr><td>交付与维护</td><td>需要维护解释器、格式库与沙箱运行环境。工作区产物要进入聊天、文件知识库或分发流程时，还需要上传和登记。</td><td>服务端集中维护格式适配与解析缓存，复用 DeepClaw 的数据库和对象存储。上传件与生成件都直接登记到文件知识库，聊天与后续分发可引用同一个文件 ID。</td></tr>
+<tr><td>适用场景</td><td>适合临时脚本、复杂计算、自定义转换，以及需要模型自由组合库的任务。</td><td>适合格式和操作已知的文档问答、报表生成与成果交付。新增格式或导出样式时，由服务端扩展对应适配。</td></tr>
 </tbody></table></div>
+<p class="note">经营分析的常用流程是读取用户材料、按页或按行定位依据、生成报告并登记成果。采用 FileMiddleware 后，这条流程可复用现有文件服务，省去为常规文件操作部署和维护模型脚本执行环境的成本。</p>
 <p class="note">DeepAgent 模式使用 <code>read_chat_file</code> 和 <code>write_chat_file</code>，保留同名的工作区工具。通用装配的其他模式及 RAG 使用 <code>read_file</code> 和 <code>write_file</code>。<a href="../deepclaw/middleware/files/middleware.py">FileMiddleware 源码</a></p>
 </section>
 

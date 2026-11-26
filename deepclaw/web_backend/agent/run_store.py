@@ -5,11 +5,11 @@ import copy
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, AsyncIterator, Protocol
+from typing import Any, AsyncGenerator, Protocol
 
 from ag_ui.core import RunAgentInput
 from loguru import logger
-from sqlalchemy import JSON, Column, DateTime, Index, UniqueConstraint, inspect, text
+from sqlalchemy import JSON, Column, DateTime, Index, UniqueConstraint, insert, inspect, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Field, SQLModel, delete, select
 
@@ -355,6 +355,15 @@ class RunStore(Protocol):
         """
         ...
 
+    async def append_events(self, run_id: str, frames: list[str]) -> int:
+        """保存非空事件批次并返回最后一条序号。
+
+        Args:
+            run_id: Run ID。
+            frames: 按原顺序排列的事件帧。
+        """
+        ...
+
     async def get_events(self, run_id: str, after: int = 0) -> list[tuple[int, str]]:
         """读取 Run 事件。
 
@@ -372,7 +381,7 @@ class RunStore(Protocol):
         run_id: str,
         after: int = 0,
         user_id: str | None = None,
-    ) -> AsyncIterator[tuple[int, str]]:
+    ) -> AsyncGenerator[tuple[int, str], None]:
         """订阅 Run 事件。
 
         Args:
@@ -898,6 +907,18 @@ class InMemoryRunStore(BaseRunStore):
                 queue.put_nowait((event_id, frame))
             return event_id
 
+    async def append_events(self, run_id: str, frames: list[str]) -> int:
+        """按顺序追加内存事件。
+
+        Args:
+            run_id: Run ID。
+            frames: 非空事件批次。
+        """
+        event_id = 0
+        for frame in frames:
+            event_id = await self.append_event(run_id, frame)
+        return event_id
+
     async def get_events(self, run_id: str, after: int = 0) -> list[tuple[int, str]]:
         """读取 Run 事件。
 
@@ -919,7 +940,7 @@ class InMemoryRunStore(BaseRunStore):
         run_id: str,
         after: int = 0,
         user_id: str | None = None,
-    ) -> AsyncIterator[tuple[int, str]]:
+    ) -> AsyncGenerator[tuple[int, str], None]:
         """订阅 Run 事件。
 
         Args:
@@ -1788,56 +1809,47 @@ class SqlRunStore(BaseRunStore):
         Returns:
             Run 内递增事件 ID。
         """
-        await self._ensure_init()
-        await self._maybe_prune()
-        async with self.async_session() as session:
-            record = await session.get(AgUiRunRecord, run_id)
-            if record is None:
-                raise ValueError("Run 不存在")
-            event_id = record.last_event_id + 1
-            record.last_event_id = event_id
-            record.updated_at = utc_now()
-            record.expires_at = datetime_from_timestamp(self._expires_at())
-            session.add(record)
-            session.add(
-                AgUiRunEventRecord(
-                    run_id=run_id,
-                    event_id=event_id,
-                    frame=frame,
-                    expires_at=record.expires_at,
-                )
-            )
-            await session.commit()
-            for waiter in self._event_waiters.get(run_id, ()):
-                waiter.set()
-            await self._trim_events(session, run_id)
-            await self._touch_thread(record.thread_id)
-            return event_id
+        return await self.append_events(run_id, [frame])
 
-    async def _trim_events(self, session, run_id: str) -> None:
-        """裁剪超出上限的旧事件。
+    async def append_events(self, run_id: str, frames: list[str]) -> int:
+        """一次事务分配事件序号、保存批次并裁剪超限事件。
 
         Args:
-            session: 当前异步数据库会话。
             run_id: Run ID。
-
-        Returns:
-            无。
+            frames: 非空事件批次，按流式顺序排列。
         """
-        result = await session.exec(
-            select(AgUiRunEventRecord.id)
-            .where(AgUiRunEventRecord.run_id == run_id)
-            .order_by(AgUiRunEventRecord.event_id.desc())
-        )
-        event_ids = list(result.all())
-        expired_event_ids = event_ids[self.max_events_per_run :]
-        if expired_event_ids:
-            await session.exec(
-                delete(AgUiRunEventRecord)
-                .where(AgUiRunEventRecord.id.in_(expired_event_ids))
-                .execution_options(synchronize_session=False)
-            )
-        await session.commit()
+        if not frames:
+            raise ValueError("事件批次不能为空")
+        await self._ensure_init()
+        await self._maybe_prune()
+        now = utc_now()
+        expires_at = datetime_from_timestamp(self._expires_at())
+        async with self.async_session() as session:
+            result = await session.exec(update(AgUiRunRecord).where(
+                AgUiRunRecord.run_id == run_id,
+            ).values(
+                last_event_id=AgUiRunRecord.last_event_id + len(frames),
+                updated_at=now,
+                expires_at=expires_at,
+            ).returning(AgUiRunRecord.last_event_id))
+            event_id = result.scalar_one_or_none()
+            if event_id is None:
+                raise ValueError("Run 不存在")
+            first_id = event_id - len(frames) + 1
+            await session.exec(insert(AgUiRunEventRecord.__table__), params=[
+                dict(run_id=run_id, event_id=number, frame=frame,
+                     created_at=now, expires_at=expires_at)
+                for number, frame in enumerate(frames, first_id)
+            ])
+            cutoff = event_id - self.max_events_per_run
+            if cutoff > 0:
+                await session.exec(delete(AgUiRunEventRecord).where(
+                    AgUiRunEventRecord.run_id == run_id, AgUiRunEventRecord.event_id <= cutoff,
+                ).execution_options(synchronize_session=False))
+            await session.commit()
+        for waiter in self._event_waiters.get(run_id, ()):
+            waiter.set()
+        return event_id
 
     async def get_events(self, run_id: str, after: int = 0) -> list[tuple[int, str]]:
         """读取 Run 事件。
@@ -1867,7 +1879,7 @@ class SqlRunStore(BaseRunStore):
         run_id: str,
         after: int = 0,
         user_id: str | None = None,
-    ) -> AsyncIterator[tuple[int, str]]:
+    ) -> AsyncGenerator[tuple[int, str], None]:
         """订阅 Run 事件。
 
         Args:

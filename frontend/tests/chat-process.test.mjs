@@ -330,6 +330,9 @@ test('浏览器时钟记录恢复工具与思考耗时，重复事件不能重�
     const steps = [
       [101000, { type: 'TOOL_CALL_START', toolCallId: 't1', toolCallName: 'get_weather' }],
       [103000, { type: 'TOOL_CALL_START', toolCallId: 't1', toolCallName: 'get_weather' }],
+      [104000, { type: 'TOOL_CALL_END', toolCallId: 't1' }],
+      [105000, { type: 'CUSTOM', name: 'deepclaw_tool_execution_started', value: { tool_call_id: 't1' } }],
+      [106000, { type: 'CUSTOM', name: 'deepclaw_tool_execution_started', value: { tool_call_id: 't1' } }],
       [107000, { type: 'TOOL_CALL_RESULT', toolCallId: 't1', content: '晴天', duration: 999999 }],
       [109000, { type: 'TOOL_CALL_RESULT', toolCallId: 't1', content: '晴天' }],
       [110000, { type: 'REASONING_MESSAGE_CONTENT', delta: '整理' }],
@@ -351,8 +354,8 @@ test('浏览器时钟记录恢复工具与思考耗时，重复事件不能重�
     }
     await harness.actions.handleInterruptAction('approve')
     const assistant = harness.deps.messagesRef.current[1]
-    assert.equal(assistant.toolData[0].startedAt, 100000)
-    assert.equal(assistant.toolData[0].duration, 7000)
+    assert.equal(assistant.toolData[0].startedAt, 105000)
+    assert.equal(assistant.toolData[0].duration, 2000)
     assert.equal(assistant.reasoningBlocks.at(-1).startedAt, 110000)
     assert.equal(assistant.reasoningBlocks.at(-1).duration, 5000)
     assert.equal(assistant.duration, 16500)
@@ -401,7 +404,7 @@ test('MCP 进度更新对应工具卡片并在完成前展示服务端状态', a
   }
 })
 
-test('批准后即使没有工具开始事件也用前端时间计时，拒绝不生成执行耗时', async () => {
+test('没有实际工具开始事件时，批准和拒绝都不推算工具耗时', async () => {
   const originalFetch = globalThis.fetch
   const originalWindow = globalThis.window
   const originalNow = Date.now
@@ -420,7 +423,7 @@ test('批准后即使没有工具开始事件也用前端时间计时，拒绝�
         ].map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''))
       }
       await harness.actions.handleInterruptAction(decision)
-      assert.equal(harness.deps.messagesRef.current[1].toolData[0].duration, decision === 'approve' ? 3000 : undefined)
+      assert.equal(harness.deps.messagesRef.current[1].toolData[0].duration, undefined)
     }
   } finally {
     globalThis.fetch = originalFetch
@@ -477,7 +480,7 @@ test('批准和拒绝写入工具输出，恢复沿用原 assistant 且不复制
     assert.equal(message.toolData[0].toolOutput, undefined)
     const html = renderToStaticMarkup(React.createElement(ToolCard, { toolData: resumed.toolData[0] }))
     assert.doesNotMatch(html, /工具执行成功/)
-    assert.match(html, decision.type === 'approve' ? /等待工具结果/ : /已拒绝/)
+    assert.match(html, decision.type === 'approve' ? /等待执行/ : /已拒绝/)
   }
 })
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from contextlib import aclosing
 from dataclasses import dataclass
 from typing import Any
 
@@ -25,6 +26,54 @@ from deepclaw.web_backend.agent.run_store import (
 
 # LangGraph 只在该 configurable 键存在时才构造 Runtime.server_info。
 LANGGRAPH_AUTH_USER_KEY = "langgraph_auth_user"
+STREAM_BATCH_WINDOW = 0.04
+STREAM_BATCH_SIZE = 32
+STREAM_DELTAS = frozenset({
+    "TEXT_MESSAGE_CONTENT", "REASONING_MESSAGE_CONTENT", "TOOL_CALL_ARGS",
+})
+
+
+async def _write_stream_batches(
+    store: RunStore, run_id: str, queue: asyncio.Queue[tuple[str, str] | None],
+) -> None:
+    """分批提交模型增量，首片和状态边界立即提交。
+
+    Args:
+        store: 事件存储。
+        run_id: 当前 Run ID。
+        queue: 按原始顺序接收事件的有界队列，None 表示流结束。
+    """
+    loop = asyncio.get_running_loop()
+    frames: list[str] = []
+    previous_kind = None
+    deadline = 0.0
+    while True:
+        if frames:
+            try:
+                async with asyncio.timeout_at(deadline):
+                    item = await queue.get()
+            except TimeoutError:
+                await store.append_events(run_id, frames)
+                frames = []
+                continue
+        else:
+            item = await queue.get()
+        if item is None:
+            if frames:
+                await store.append_events(run_id, frames)
+            return
+        kind, frame = item
+        if kind not in STREAM_DELTAS or kind != previous_kind:
+            await store.append_events(run_id, [*frames, frame])
+            frames = []
+        else:
+            if not frames:
+                deadline = loop.time() + STREAM_BATCH_WINDOW
+            frames.append(frame)
+            if len(frames) >= STREAM_BATCH_SIZE or loop.time() >= deadline:
+                await store.append_events(run_id, frames)
+                frames = []
+        previous_kind = kind
 
 
 @dataclass(frozen=True)
@@ -578,11 +627,19 @@ class AgentRunManager:
                 if selected is not None:
                     model_token = RUN_CHAT_MODEL.set(get_chat_model(catalog_model=selected, reasoning_effort=effort))
                 payload = payload.model_copy(update={"state": state_input})
-            async for event in agent.run(payload):
-                state = await self.store.get_run(run_id)
-                if state is None or state.status in {"cancelling", "cancelled"}:
-                    raise asyncio.CancelledError
-                await self.store.append_event(run_id, encoder.encode(event))
+            queue: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue(maxsize=STREAM_BATCH_SIZE * 2)
+            stream_error: Exception | asyncio.CancelledError | None = None
+            async with asyncio.TaskGroup() as group:
+                group.create_task(_write_stream_batches(self.store, run_id, queue))
+                try:
+                    async with aclosing(agent.run(payload)) as stream:
+                        async for event in stream:
+                            await queue.put((event.type, encoder.encode(event)))
+                except (Exception, asyncio.CancelledError) as exc:
+                    stream_error = exc
+                await queue.put(None)
+            if stream_error is not None:
+                raise stream_error
             await self.store.update_run_status(run_id, "finished")
         except asyncio.CancelledError:
             await self.store.append_event(

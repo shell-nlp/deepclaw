@@ -2,6 +2,7 @@ import os
 from typing import cast
 
 from langchain.agents.middleware import AgentMiddleware, ToolCallRequest
+from langchain_core.callbacks import adispatch_custom_event
 from langchain_core.messages import SystemMessage, ToolMessage
 from loguru import logger
 
@@ -96,6 +97,13 @@ class BusinessMiddleware(AgentMiddleware):
         Returns:
             正常工具结果，或携带原工具调用标识的错误 ToolMessage。
         """
+        tool_call_id = request.tool_call.get("id")
+        if tool_call_id:
+            try:
+                await adispatch_custom_event("deepclaw_tool_execution_started", {"tool_call_id": tool_call_id})
+            except RuntimeError:
+                # 独立调用中间件时可能没有 LangChain 回调上下文。
+                pass
         try:
             return await handler(request)
         except Exception as exc:

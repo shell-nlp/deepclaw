@@ -422,19 +422,14 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
         const existingTool = messagesRef.current.find((message) => message.id === currentAssistantMessageIdRef.current)
           ?.toolData?.find((tool) => tool.toolCall.id === toolCallId)
         if (existingTool?.toolOutput?.some((output) => output.kind !== 'decision')) return null
-        toolCallStartTimesRef.current[toolCallId] ??= Date.now()
-        const toolStartedAt = toolCallStartTimesRef.current[toolCallId]
         updateAssistantMessage((message) => {
           const tools = [...(message.toolData || [])]
           if (!tools.some((tool) => tool.toolCall.id === toolCallId)) {
             tools.push({
               toolCall: { id: toolCallId, name: toolName, args: {} },
               toolOutput: [],
-              startedAt: toolStartedAt,
+              startedAt: toolCallStartTimesRef.current[toolCallId],
             })
-          } else {
-            const index = tools.findIndex((tool) => tool.toolCall.id === toolCallId)
-            tools[index] = { ...tools[index], startedAt: toolStartedAt }
           }
           return {
             ...message,
@@ -535,6 +530,19 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
       }
 
       if (eventType === 'CUSTOM') {
+        if (event.name === 'deepclaw_tool_execution_started') {
+          const value = event.value as { tool_call_id?: unknown } | undefined
+          const toolCallId = value?.tool_call_id
+          if (typeof toolCallId !== 'string' || !toolCallId || processedToolCallIdsRef.current.has(toolCallId)) return null
+          const startedAt = toolCallStartTimesRef.current[toolCallId] ??= Date.now()
+          updateAssistantMessage((message) => ({
+            ...message,
+            toolData: message.toolData?.map((tool) => tool.toolCall.id === toolCallId
+              ? { ...tool, startedAt }
+              : tool),
+          }))
+          return null
+        }
         const mcpProgress = getMcpProgress(event)
         if (mcpProgress) {
           updateAssistantMessage((message) => {
@@ -910,20 +918,6 @@ export function useChatRuntime(deps: UseChatRuntimeDeps) {
     ) => {
       const runId = currentRunIdRef.current
       if (!runId) throw new Error('当前没有可恢复的 Run')
-      const resumedAt = Date.now()
-      const resumedToolIds = new Set(messagesRef.current
-        .find((message) => message.id === currentAssistantMessageIdRef.current)?.toolData
-        ?.filter((tool) => ['approved', 'edited'].includes(tool.approvalStatus || '')
-          && !tool.toolOutput?.some((output) => output.kind !== 'decision'))
-        .map((tool) => tool.toolCall.id))
-      resumedToolIds.forEach((toolCallId) => { toolCallStartTimesRef.current[toolCallId] = resumedAt })
-      updateAssistantMessage((message) => ({
-        ...message,
-        toolData: message.toolData?.map((tool) => {
-          if (!resumedToolIds.has(tool.toolCall.id)) return tool
-          return { ...tool, startedAt: resumedAt, duration: undefined }
-        }),
-      }))
       const resumeResponse = await fetch(
         getApiUrl(`${basePath}/${encodeURIComponent(runId)}/resume`),
         {

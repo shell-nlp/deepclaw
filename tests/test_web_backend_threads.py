@@ -3,6 +3,7 @@ from contextlib import aclosing
 from types import SimpleNamespace
 
 from ag_ui.core import RunAgentInput
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from langchain.agents import create_agent
@@ -28,7 +29,64 @@ from deepclaw.web_backend.agent.run_store import (
     restore_threads_from_checkpoints,
 )
 from deepclaw.web_backend.auth.dependencies import CurrentActor, get_current_actor
-from deepclaw.web_backend.common.agui_runs import _collect_message_created_at
+from deepclaw.web_backend.common.agui_runs import (
+    _collect_message_created_at,
+    _RunEventStreamResponse,
+    _store_event_frames,
+)
+
+
+@pytest.mark.parametrize("disconnect_during_send", [False, True])
+def test_agui_sse_disconnect_waits_for_subscription_cleanup(disconnect_during_send):
+    """验证读库或发送时断开都能完成订阅的异步清理。
+
+    Args:
+        disconnect_during_send: 是否在发送事件时断开，否则在读取时断开。
+    """
+    async def run():
+        """通过 ASGI 断开消息驱动 SSE 退出。"""
+        disconnect = asyncio.Event()
+        closed = asyncio.Event()
+
+        async def subscribe(*args, **kwargs):
+            """模拟需要异步归还连接的订阅。
+
+            Args:
+                *args: 订阅位置参数。
+                **kwargs: 订阅关键字参数。
+            """
+            try:
+                if disconnect_during_send:
+                    yield 1, "data: event\n\n"
+                else:
+                    disconnect.set()
+                    await asyncio.Future()
+            finally:
+                await asyncio.sleep(0)
+                closed.set()
+
+        async def receive():
+            """发送客户端断开消息。"""
+            await disconnect.wait()
+            return {"type": "http.disconnect"}
+
+        async def send(message):
+            """模拟向客户端写入 SSE 数据。
+
+            Args:
+                message: ASGI 响应消息。
+            """
+            if message["type"] == "http.response.body":
+                disconnect.set()
+                await asyncio.Future()
+
+        frames = _store_event_frames(SimpleNamespace(subscribe=subscribe), "run", after=0, user_id="owner")
+        response = _RunEventStreamResponse(frames)
+        scope = {"type": "http", "asgi": {"spec_version": "2.3"}}
+        await asyncio.wait_for(response(scope, receive, send), timeout=2)
+        assert closed.is_set()
+
+    asyncio.run(run())
 
 
 class FakeThreadStore:
@@ -511,13 +569,18 @@ def test_sql_run_subscription_wakes_on_committed_events(tmp_path):
                 assert await anext(stream) == (1, "initial")
                 next_event = asyncio.create_task(anext(stream))
                 await asyncio.sleep(0)
-                await store.append_event("run", "next")
+                assert await store.append_events("run", ["next", "tail"]) == 3
                 assert await asyncio.wait_for(next_event, 2) == (2, "next")
+                assert await anext(stream) == (3, "tail")
                 await store.update_run_status("run", "finished")
                 assert [event async for event in stream] == []
 
-            replay = store.subscribe("run", after=1, user_id="user-1")
-            assert [event async for event in replay] == [(2, "next")]
+            reader = SqlRunStore(f"sqlite:///{tmp_path / 'live-events.db'}")
+            try:
+                replay = reader.subscribe("run", after=2, user_id="user-1")
+                assert [event async for event in replay] == [(3, "tail")]
+            finally:
+                await reader.close()
         finally:
             await store.close()
 

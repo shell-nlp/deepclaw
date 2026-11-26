@@ -36,7 +36,8 @@ export function ToolCard({ toolData, duration }: ToolCardProps) {
     : toolData.approvalStatus === 'rejected' ? '已拒绝'
       : hasResult ? '工具执行完成'
         : toolData.approvalStatus === 'approved' || toolData.approvalStatus === 'edited'
-          ? '已批准，等待工具结果' : '工具执行中'
+          ? (toolData.startedAt === undefined ? '已批准，等待执行' : '工具执行中')
+          : toolData.startedAt === undefined ? '正在准备工具参数' : '工具执行中'
 
   return (
     <div className={styles.toolCard}>
@@ -54,7 +55,9 @@ export function ToolCard({ toolData, duration }: ToolCardProps) {
           aria-label={statusLabel}
         />
         <span className={styles.toolName}>{toolName}</span>
-        {toolData.approvalStatus && <span className={styles.toolPreview}>{statusLabel}</span>}
+        {(toolData.approvalStatus || (!hasResult && duration === undefined)) && (
+          <span className={styles.toolPreview}>{statusLabel}</span>
+        )}
         {preview && <span className={styles.toolPreview}>{preview}</span>}
         {duration !== undefined && (
           <span className={styles.toolDuration}>{formatDuration(duration)}</span>
