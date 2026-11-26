@@ -16,6 +16,31 @@ MAX_COLUMNS = 256
 MAX_UNPACKED = 80 * 1024 * 1024
 MAX_TEXT = 8_000_000
 PDF_LOCK = Lock()
+PDF_IMAGE_MAX_EDGE = 2200
+
+
+def render_pdf_images(data: bytes, pages: list[int]) -> list[bytes]:
+    """将指定 PDF 页渲染为尺寸受限的 JPEG。
+
+    Args:
+        data: PDF 原件。
+        pages: 从 1 开始的页码。
+    """
+    import pymupdf
+
+    with PDF_LOCK, pymupdf.open(stream=data, filetype="pdf") as document:
+        if document.needs_pass or any(number < 1 or number > len(document) for number in pages):
+            raise ValueError("PDF 已加密或页码超出范围。")
+        images = []
+        for number in pages:
+            page = document[number - 1]
+            edge = max(page.rect.width, page.rect.height)
+            if edge <= 0:
+                raise ValueError("PDF 页面尺寸无效。")
+            scale = min(2.8, PDF_IMAGE_MAX_EDGE / edge)
+            pixmap = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), alpha=False)
+            images.append(pixmap.tobytes("jpeg", jpg_quality=85))
+        return images
 
 
 def _check_archive(data: bytes) -> None:

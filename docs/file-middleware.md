@@ -36,7 +36,7 @@ flowchart LR
 | --- | --- |
 | `list_files` | 分页列出当前账号的文件，支持按文件名关键词、格式和收藏状态筛选。 |
 | `inspect_file` | 返回文档行数、PDF 页数与无文字页，或列出 Excel 的 Sheet。指定 `sheet` 可预览最多三行，保留原始行号和列标。 |
-| `read_file` | `start_line` 从 1 开始，`limit` 默认 100，最多 200。返回行号、内容、后续起始行和结束标记。每次输出有字符预算。Excel 可指定 Sheet 和列范围。 |
+| `read_file` | `start_line` 从 1 开始，`limit` 默认 100，最多 200。返回行号、内容、后续起始行和结束标记。Excel 可指定 Sheet 和列范围。首次读取 PDF 时自动把最多两页无法提取文字的页面转为图片，也可通过 `pages` 查看指定页。图片只进入当次模型输入。 |
 | `grep_file` | 支持字面文本、完整匹配和正则。Excel 可指定搜索列，并在命中时返回同一行的指定列、行号和单元格坐标。指定列精确匹配可一次扫描至首批命中或表尾。 |
 | `write_file` | 用 Markdown 正文生成 MD 或 DOCX，或用多个有序 Sheet 的结构化数据生成 XLSX。 |
 | `export_file` | 把 Markdown 导出为新 DOCX，支持基础标题、段落、列表和表格。 |

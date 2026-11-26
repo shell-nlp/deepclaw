@@ -1,7 +1,128 @@
+import asyncio
+from base64 import b64decode
+from types import SimpleNamespace
+
 import pymupdf
+import pytest
 
 from deepclaw.middleware.files.formats import extract_document, generate_xlsx
 from deepclaw.middleware.files.query import inspect_document, read_lines, search_lines
+
+
+@pytest.mark.parametrize("keep_workspace_tools, pages", [(False, None), (True, [1])])
+def test_pdf_read_reaches_model_as_an_image(monkeypatch, keep_workspace_tools, pages):
+    """验证只有图片的 PDF 通过工具进入模型请求，图状态只保留页码。
+
+    Args:
+        monkeypatch: 替换文件服务与读取权限。
+        keep_workspace_tools: 保留 DeepAgent 工作区工具时使用聊天文件别名。
+        pages: 显式选页，或自动选取无文字页。
+    """
+    from langchain.agents import create_agent
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+
+    from deepclaw.middleware.files import middleware
+    from deepclaw.utils.model_factory import ReasoningChatOpenAI
+
+    with pymupdf.open() as pdf:
+        pdf.new_page().insert_text((45, 60), "4862")
+        raster = pdf[0].get_pixmap().tobytes()
+    with pymupdf.open() as pdf:
+        pdf.new_page().insert_image(pdf[0].rect, stream=raster)
+        original = pdf.tobytes()
+    document = extract_document(".pdf", original)
+    assert document["pages_without_text"] == [1]
+    record = SimpleNamespace(name="report.pdf", extension=".pdf")
+
+    async def get(owner, file_id):
+        """替换原件归属校验。
+
+        Args:
+            owner: 当前账号。
+            file_id: 目标文件。
+        """
+        assert (owner, file_id) == ("alice", "report")
+        return record
+
+    async def parsed(record):
+        """读取已解析的页面数据。
+
+        Args:
+            record: 通过归属校验的记录。
+        """
+        return document
+
+    async def download(record):
+        """读取测试构造的原件。
+
+        Args:
+            record: 通过归属校验的记录。
+        """
+        return original
+
+    async def permission(owner, path, action):
+        """允许测试用户读取文件。
+
+        Args:
+            owner: 当前账号。
+            path: 权限路径。
+            action: 权限动作。
+        """
+        return (owner, path, action) == ("alice", "/api/files", "read")
+
+    service = SimpleNamespace(get=get, parsed=parsed, download=download)
+    monkeypatch.setattr(middleware, "get_file_service", lambda: service)
+    monkeypatch.setattr(middleware, "agent_has_permission", permission)
+    observed = []
+
+    class Model(FakeMessagesListChatModel):
+        """记录实际进入模型的消息。"""
+
+        def bind_tools(self, tools, **kwargs):
+            """保留测试模型作为工具绑定结果。
+
+            Args:
+                tools: 智能体工具。
+                kwargs: 模型绑定参数。
+            """
+            return self
+
+        def _generate(self, messages, *args, **kwargs):
+            """记录模型输入并生成预设回复。
+
+            Args:
+                messages: 送入模型的消息。
+                args: 模型生成参数。
+                kwargs: 模型生成选项。
+            """
+            observed.append(messages)
+            return super()._generate(messages, *args, **kwargs)
+
+    read_name = "read_chat_file" if keep_workspace_tools else "read_file"
+    arguments = {"file_id": "report"}
+    if pages is not None:
+        arguments["pages"] = pages
+    model = Model(responses=[
+        AIMessage(content="", tool_calls=[{"name": read_name, "id": "view-1", "args": arguments}]),
+        AIMessage(content="done"),
+    ])
+    agent = create_agent(model, middleware=[middleware.FileMiddleware(keep_workspace_tools=keep_workspace_tools)])
+    state = asyncio.run(agent.ainvoke(
+        {"messages": [HumanMessage(content="看 PDF")]},
+        {"configurable": {"langgraph_auth_user": SimpleNamespace(identity="alice", permissions=[])}},
+    ))
+    sent = observed[-1][-1]
+    assert isinstance(sent, HumanMessage)
+    url = sent.content[1]["image_url"]["url"]
+    assert b64decode(url.split(",", 1)[1]).startswith(b"\xff\xd8")
+    for use_responses_api in (False, True):
+        transport = ReasoningChatOpenAI(model="test", api_key="test", use_responses_api=use_responses_api)
+        payload = transport._get_request_payload(observed[-1])
+        assert url in str(payload)
+    tool_result = next(message for message in state["messages"] if isinstance(message, ToolMessage))
+    assert tool_result.artifact["pages"] == [1]
+    assert url not in str(state["messages"])
 
 
 def test_workbook_roundtrip_preserves_sheets_rows_and_coordinates():

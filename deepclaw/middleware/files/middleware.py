@@ -2,16 +2,21 @@
 
 import asyncio
 import json
+from base64 import b64encode
 from typing import Annotated, Literal
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain.tools import ToolRuntime, tool
+from langchain_core.messages import HumanMessage, ToolMessage
+from langgraph.config import get_config
 from pydantic import BaseModel, Field
 
-from deepclaw.middleware.files.formats import generate_docx, generate_xlsx
+from deepclaw.middleware.files.formats import generate_docx, generate_xlsx, render_pdf_images
 from deepclaw.middleware.files.query import read_lines, search_lines
 from deepclaw.middleware.files.service import file_details, get_file_service
 from deepclaw.web_backend.auth.rbac.dependencies import agent_has_permission
+
+PDF_IMAGE_BATCH = 2
 
 
 class DateCellRequest(BaseModel):
@@ -81,6 +86,8 @@ async def list_files(
 async def inspect_file(runtime: ToolRuntime, file_id: str, sheet: str | None = None) -> str:
     """查看文档结构，指定 Excel Sheet 时预览最多三行原始数据。
 
+    PDF 的 pages_without_text 表示无法直接提取文字的页，可用聊天文件读取工具按页查看。
+
     Args:
         runtime: 框架注入的运行时。
         file_id: 聊天附件或 list_files 返回的文件 ID。
@@ -106,7 +113,7 @@ async def inspect_file(runtime: ToolRuntime, file_id: str, sheet: str | None = N
         return str(exc)
 
 
-@tool
+@tool(response_format="content_and_artifact")
 async def read_file(
     runtime: ToolRuntime,
     file_id: str,
@@ -114,8 +121,12 @@ async def read_file(
     limit: Annotated[int, Field(ge=1, le=200)] = 100,
     sheet: str | None = None,
     columns: Annotated[list[Annotated[str, Field(pattern=r"^[A-Za-z]{1,3}$")]], Field(max_length=256)] | None = None,
-) -> str:
+    pages: Annotated[list[Annotated[int, Field(ge=1)]], Field(min_length=1, max_length=PDF_IMAGE_BATCH)] | None = None,
+) -> tuple[str, dict | None]:
     """分页读取聊天文件。用 next_start_line 继续，并以返回行号引用原文。
+
+    首次读取 PDF 时，自动附带最多两页无法提取文字的页面图片。
+    如需查看指定 PDF 页的图表、版面或其余无文字页，使用 pages。
 
     Args:
         runtime: 框架注入的运行时。
@@ -124,16 +135,35 @@ async def read_file(
         limit: 本次最多返回的行数。
         sheet: Excel 工作表名称，省略时读取第一张。
         columns: 可选 Excel 列标列表，例如 ["A", "D"]。
+        pages: 按图片查看的 PDF 原始页码，从 1 开始，每次最多两页。
     """
     try:
         owner = await _owner(runtime, "read")
         service = get_file_service()
         record = await service.get(owner, file_id)
+        if pages is not None and record.extension != ".pdf":
+            raise ValueError("只有 PDF 文件可以指定页码查看图片。")
+        if pages is not None and (sheet is not None or columns is not None):
+            raise ValueError("按 PDF 页码查看时不能指定 Excel 工作表或列。")
         document = await service.parsed(record)
-        result = await asyncio.to_thread(read_lines, document, sheet, start_line, limit, columns)
-        return json.dumps(result, ensure_ascii=False)
-    except (LookupError, ValueError) as exc:
-        return str(exc)
+        missing_text = document.get("pages_without_text", [])
+        if pages is not None:
+            image_pages = list(dict.fromkeys(pages))
+            if any(page > document["page_count"] for page in image_pages):
+                raise ValueError(f"页码超出范围。该 PDF 共 {document['page_count']} 页。")
+            result = {"page_count": document["page_count"]}
+        else:
+            result = await asyncio.to_thread(read_lines, document, sheet, start_line, limit, columns)
+            image_pages = missing_text[:PDF_IMAGE_BATCH] if start_line == 1 else []
+        if missing_text:
+            result["pages_without_text"] = missing_text
+        artifact = None
+        if image_pages:
+            result["image_pages"] = image_pages
+            artifact = {"owner": owner, "file_id": file_id, "pages": image_pages}
+        return json.dumps(result, ensure_ascii=False), artifact
+    except (LookupError, ValueError, FileNotFoundError) as exc:
+        return str(exc), None
 
 
 @tool
@@ -154,6 +184,7 @@ async def grep_file(
 
     若 search_complete 为 false，即使本页无命中，也应使用 next_cursor 继续搜索。
     Excel 按指定列精确匹配适合查询订单号等完整标识。
+    PDF 的 pages_without_text 未参与搜索，可用聊天文件读取工具按页查看。
 
     Args:
         runtime: 框架注入的运行时。
@@ -177,6 +208,8 @@ async def grep_file(
             search_lines, document, pattern, use_regex, ignore_case, sheet, limit, cursor,
             exact=exact, match_column=match_column, return_columns=return_columns,
         )
+        if document.get("pages_without_text"):
+            result["pages_without_text"] = document["pages_without_text"]
         return json.dumps(result, ensure_ascii=False)
     except (LookupError, ValueError) as exc:
         return str(exc)
@@ -257,4 +290,57 @@ class FileMiddleware(AgentMiddleware):
         if keep_workspace_tools:
             read = read_file.model_copy(update={"name": "read_chat_file"})
             write = write_file.model_copy(update={"name": "write_chat_file"})
+        self._read_tool_name = read.name
         self.tools = [list_files, inspect_file, read, grep_file, write, export_file]
+
+    async def awrap_model_call(self, request, handler):
+        """将最新一批 PDF 工具请求转换为本次模型可见的图像输入。
+
+        Args:
+            request: 本次模型调用的消息和模型配置。
+            handler: 下一层模型调用处理器。
+        """
+        pending = []
+        for message in reversed(request.messages):
+            if not isinstance(message, ToolMessage):
+                break
+            if message.name == self._read_tool_name and isinstance(message.artifact, dict):
+                pending.append(message.artifact)
+        if not pending:
+            return await handler(request)
+
+        config = get_config().get("configurable", {})
+        owner = getattr(config.get("langgraph_auth_user"), "identity", None)
+        if not owner or owner == "guest" or not await agent_has_permission(owner, "/api/files", "read"):
+            return await handler(request.override(messages=[
+                *request.messages, HumanMessage(content="文件读取权限已失效，PDF 页面图片未提供。"),
+            ]))
+        blocks = []
+        remaining = PDF_IMAGE_BATCH
+        for artifact in reversed(pending):
+            if artifact.get("owner") != owner:
+                continue
+            if not remaining:
+                blocks.append({"type": "text", "text": "本次最多查看两页，请另行请求其余页。"})
+                break
+            pages = artifact["pages"][:remaining]
+            try:
+                service = get_file_service()
+                record = await service.get(owner, artifact["file_id"])
+                data = await service.download(record)
+                images = await asyncio.to_thread(render_pdf_images, data, pages)
+            except (LookupError, ValueError, OSError, RuntimeError):
+                blocks.append({"type": "text", "text": "PDF 页面图片生成失败，请检查原件或换页。"})
+                continue
+            for number, image in zip(pages, images, strict=True):
+                url = "data:image/jpeg;base64," + b64encode(image).decode("ascii")
+                blocks.extend([
+                    {"type": "text", "text": f"PDF「{record.name}」第 {number} 页。"},
+                    {"type": "image_url", "image_url": {"url": url}},
+                ])
+            remaining -= len(images)
+            if len(pages) < len(artifact["pages"]):
+                blocks.append({"type": "text", "text": "本次最多查看两页，请另行请求其余页。"})
+        if blocks:
+            request = request.override(messages=[*request.messages, HumanMessage(content=blocks)])
+        return await handler(request)
