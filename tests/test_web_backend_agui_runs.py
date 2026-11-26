@@ -1,6 +1,8 @@
 import asyncio
+import json
 import warnings
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -394,3 +396,66 @@ def test_run_tool_keeps_server_identity_without_injecting_runtime_context():
         asyncio.run(scenario())
     assert observed == [(None, "alice")]
     assert not any("PydanticSerializationUnexpectedValue" in str(w.message) for w in caught)
+
+
+@pytest.mark.parametrize("step_limit", [None, 25])
+def test_agui_tool_loop_respects_execution_step_limit(step_limit):
+    """验证长工具链可完成，达到显式上限时流和快照都标记失败。
+
+    Args:
+        step_limit: 可选的 LangGraph 执行步数上限。
+    """
+    from langchain.agents import create_agent
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    from deepclaw.web_backend.agent.run_manager import AgentRunManager
+
+    def check_step() -> str:
+        """返回测试工具结果。"""
+        return "ok"
+
+    class ToolModel(FakeMessagesListChatModel):
+        """逐次发出预设的工具调用。"""
+
+        def bind_tools(self, tools, **kwargs):
+            """模拟绑定工具后的模型。
+
+            Args:
+                tools: 智能体提供的工具。
+                **kwargs: 工具绑定配置。
+            """
+            return self
+
+    async def scenario():
+        """通过 Run 管理器执行同一条多轮工具链。"""
+        responses = [
+            AIMessage(content="", tool_calls=[{"name": "check_step", "id": f"call-{i}", "args": {}}])
+            for i in range(15)
+        ]
+        graph = create_agent(
+            ToolModel(responses=[*responses, AIMessage(content="done")]),
+            tools=[check_step],
+            checkpointer=InMemorySaver(),
+        )
+        store = InMemoryRunStore()
+        config = {"recursion_limit": step_limit} if step_limit is not None else None
+        manager = AgentRunManager(graph, config=config, store=store)
+        run_input = AgUiRunRequest.model_validate(payload())
+        try:
+            await manager.create(run_input)
+            frames = [json.loads(frame.removeprefix("data: ")) async for _, frame in store.subscribe(run_input.run_id)]
+            snapshot = await manager.get_snapshot(run_input.run_id)
+            if step_limit is None:
+                assert sum(frame["type"] == "TOOL_CALL_RESULT" for frame in frames) == 15
+                assert frames[-1]["type"] == "RUN_FINISHED"
+                assert snapshot["status"] == "finished"
+            else:
+                assert frames[-1]["type"] == "RUN_ERROR"
+                assert frames[-1]["code"] == "GRAPH_RECURSION_LIMIT"
+                assert snapshot["status"] == "error"
+        finally:
+            await manager.close()
+
+    asyncio.run(scenario())

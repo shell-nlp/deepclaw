@@ -80,6 +80,8 @@ class Settings(BaseSettings):
     AGUI_RUN_MAX_EVENTS: int = Field(default=2000, ge=100)
     AGUI_RUN_CLEANUP_INTERVAL_SECONDS: int = Field(default=60, ge=10)
     AGUI_RUN_POLL_INTERVAL_SECONDS: float = Field(default=0.5, ge=0.1)
+    # LangGraph 官方默认值。显式传入以覆盖 AG-UI 通过 LangChain Core 补入的 25。
+    AGUI_RUN_RECURSION_LIMIT: int = Field(default=10_007, ge=1)
 
 
     # opensandbox 配置

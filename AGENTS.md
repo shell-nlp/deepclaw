@@ -1,6 +1,85 @@
 # AGENTS.md
 
-本文档面向仓库协作代理与开发者，记录当前仓库的真实结构、改动边界与最小验证要求。`README.md` 面向外部使用者，这里不重复写外部上手说明。
+本文档面向仓库协作代理与开发者。全文分两部分：
+
+- **第一部分 通用协作规范**：与具体仓库、技术栈无关，可整段复制到其它项目（复制时按需替换示例路径与命令）。
+- **第二部分 本仓库专属**：项目定位、代码结构、启动方式、环境变量与产品级交互要求。
+
+两部分合起来记录当前仓库的真实结构、改动边界与最小验证要求；`README.md` 面向外部使用者，这里不重复写外部上手说明。
+
+# 第一部分：通用协作规范
+
+## 代码探索约定
+
+- 优先使用 `codegraph` CLI 探索代码，能大幅加快文件定位并节约 token：
+  - 开工前执行一次 `codegraph sync`；改完代码后再 `sync` 一次，让索引跟上本次改动
+  - `codegraph explore <描述>`：按语义定位相关模块与调用路径
+  - `codegraph node <符号>`：查看符号定义、调用方与被调用方
+  - `codegraph callers/callees/impact <符号>`：评估改动影响面
+- 不强制 `codegraph index --force`：只有 `sync` 报错或索引损坏（例如 `disk I/O error`）时才重建；索引同步失败只说明原因，不阻塞主任务交付。
+- 精确字符串、文案或配置键搜索仍使用 `rg` / Grep，codegraph 不擅长字面匹配。
+- 当前环境未提供 `codegraph_explore` MCP 工具，统一通过 CLI 调用。
+
+## 工作方式
+
+- 实现过程中不要逐项播报进度；只在关键节点、遇到阻塞或需要用户决策时简短更新，完成后集中报告结果与验证情况。
+- 只改任务直接相关的代码，不做顺手重构。
+- 未经用户明确要求，不要执行 `git add`、`git commit`、`git amend`。
+- 输出文档必须是中文。
+
+## 文档体系
+
+- `AGENTS.md` 只记“以后必须怎么做”和“还没做什么”：口径、约定、禁令、接口与字段规格、待办指针。已解决的问题、修复过程、实测过程不进本文件，归 `docs/历史决策与踩坑.md` 或 Git 提交信息；“为什么这么设计”只保留一句结论式理由。
+- 待办唯一落点：`docs/待办事项.md`。任何未完成功能、已知缺口、后续优化都必须登记到该文件，每条包含编号、状态、前因后果、功能作用、现状（文件 / 函数 / 表 / 接口）、缺口与最小设计、已完成、未完成、验收标准、影响范围、关联文档；`AGENTS.md` 只留「编号 + 一句话 + 未获明确授权前不要开工」的指针，不展开细节。
+- 用户说“先不做 / 后面再做 / 先记录一下”时：当次不动代码，也不许只回一句“已记录”；当次把外部口径（结论 + 出处）、我们的现状、缺口与最小设计、验收标准写进 `docs/待办事项.md`，并在 `AGENTS.md` 登记一条指针。
+- 文档职责分开：行为约定与工程边界写 `AGENTS.md`；修复过程、实测过程与历史决策写 `docs/历史决策与踩坑.md`；提交历史以 Git 为准。三处不互相复制过程细节。
+- `AGENTS.md` 分两部分维护：可迁移到其它项目的通用规范放第一部分，仓库专属内容放第二部分；新增规则先判断归属再落笔，不要把项目专属路径或命令写进第一部分。
+- 整理或迁移文档时必须逐条保留既有规则，不得在重排中静默删减；改完要对照原文逐条核对一遍，确认没有内容丢失。
+
+## 验证纪律
+
+- 按改动范围选最贴近的一档，够用就停；只有动到跨层契约（schema / 存储 / 对外接口）、或一次改多个互不相干的模块时，才升级到全量：
+  - 文档改动：不跑构建，但必须基于最新代码核对关键事实（路由、配置键、路径）。
+  - 文案 / 样式 / 页面结构：页面实测一次。
+  - 纯函数或单模块：跑对应测试文件 + lint。
+  - 跨层契约或多模块：全量测试 + lint + build。
+- 前后端测试都必须并行执行，不要为了“稳妥”改成串行；结果以并行那一次为准，单一用例抖动时只把那个文件单独重跑确认（Node test runner 默认按测试文件并行）。
+- 验证实例使用独立端口（例如 3100），不得占用或杀掉用户正在使用的 3000 端口；用完关闭。
+- 不要新增仅校验日志输出内容的测试用例；日志无需专门测试。
+
+## 通用开发约束
+
+- 所有新写的函数 / 方法都必须带中文 docstring（功能说明 + Args 每行），禁止 `"""...""" ...` 同一行。
+- 字段、变量、参数和函数名统一使用 `snake_case`；对外 JSON 需要 `camelCase` 时通过 Pydantic alias 等序列化别名映射，不直接把内部字段命名为 camelCase。
+- schema 类名必须通过后缀区分请求与响应：请求模型以 `Request` 结尾，响应模型以 `Response` 结尾；嵌套响应模型同样遵守。
+- 导入统一使用绝对导入，禁止使用 `from .`、`from ..` 等相对导入。
+- 数据库操作使用 ORM / 官方异步 API，禁止在业务代码里散落原生 SQL；迁移、数据库专有索引与“执行用户 SQL”的工作台是允许的例外，并要在文件里写明原因。
+- 迁移必须幂等：启动时会重复执行的迁移中，数据回填、删列、改约束必须挂在“表 / 列是否存在”的检查上；迁移失败会直接导致服务启动失败。
+- 外部存储与中间件必须走中间层：业务代码只依赖抽象契约与统一创建入口（如 `RunStore`、`ObjectStorage`），禁止 import 具体实现内部文件；换后端只新增适配器并在注册表登记一行。领域层不直接落库或写文件，持久化与副作用留在 Web / 适配器层。
+- 权限守卫一处声明、一处执行：路由在依赖或统一包装层声明权限点，业务处理函数内不重复手写鉴权；公开路由名单只保留一处来源，新增路由必须能被覆盖测试扫到，公开接口必须显式登记并写清理由。
+- 如果成熟、稳定、维护活跃的开源库能更好解决问题，优先采用开源库方案。
+- 包结构调整或代码结构变化后，必须同步更新 `AGENTS.md` 的「当前代码结构」。
+- 代码改动使文档中已记录的事实（路由、接口、环境变量、默认值、数据表、目录结构）失效时，必须在同一次改动中同步更新对应段落；纯实现修复不追加记录。
+- Python 项目测试统一使用 `pytest`，不要引入 `unittest` 风格测试。
+
+## 协作方式
+
+- 执行主任务过程中，如果用户又提出与主任务独立、不冲突的任务，默认派给子智能体并行执行，主线不放下手上的活。
+- 判据是文件与关注点都不重叠：子任务要自己拥有一组文件；会编辑同一份文件的只能排队做。
+- 派活时说清三件事：交付物（哪几个文件）、验证命令、不许提交（提交始终由用户执行）。
+- 不拆：同一份文件的连续改动、需要全局状态的编排，以及对主任务改动的验证（验证必须由改代码的人做）。
+
+## 通用前端约定
+
+- 能抽成通用组件的必须抽成组件；同一个视觉结构、交互行为或状态管理出现两次以上时，不允许继续复制粘贴。
+- 优先复用仓库已有组件、已有工具函数和成熟开源组件；禁止为相同能力重复造轮子。
+- 页面级组件只负责编排和状态流，不承载大段可独立展示的 UI；可独立展示的卡片、面板、弹窗、列表项、表单块必须拆成组件。
+- 复杂状态和副作用应优先抽成自定义 Hook；纯数据转换、格式化、校验应抽成 `utils` 函数，不与 JSX 混写。
+- 新组件必须有明确职责和最小输入；能通过 props 组合的，不要直接依赖父组件内部状态。
+- 拆分后必须保持原有行为、样式和可访问性；不得以“重构”为名改变业务语义。
+- 存量代码中不符合上述要求的，必须同步整改；整改范围以当前模块和相关复用面为准，不允许只对新代码执行规范。
+
+# 第二部分：本仓库专属
 
 ## 项目定位
 
@@ -12,23 +91,13 @@
 
 前端是一个独立的 Next.js 应用，构建后由后端静态托管。
 
-## 代码探索约定
-
-- 优先使用 `codegraph` CLI 探索代码，能大幅加快文件定位并节约 token：
-  - 改动前先执行 `codegraph sync`，确保索引最新
-  - `codegraph explore <描述>`：按语义定位相关模块与调用路径
-  - `codegraph node <符号>`：查看符号定义、调用方与被调用方
-  - `codegraph callers/callees/impact <符号>`：评估改动影响面
-- 精确字符串、文案或配置键搜索仍使用 `rg` / Grep，codegraph 不擅长字面匹配。
-- 当前环境未提供 `codegraph_explore` MCP 工具，统一通过 CLI 调用。
-
 ## 当前代码结构
 
 ### Web 应用层
 
 - `deepclaw/web_backend/app.py`
   当前 FastAPI 官方装配入口。负责：
-  - 创建 `FastAPI` 应用并挂载模块级 `auth`、`agui`、`channels`、`skills`、`knowledge_bases` 路由
+  - 创建 `FastAPI` 应用并挂载模块级 `auth`、`rbac`、`agui`、`channels`、`skills`、`knowledge_bases`、`devices`、`models`、`mcp`、`schedules`、`files` 与 runtime-config 路由
   - 注册 CORS 与业务异常处理器
   - 注册图表静态读取路由
   - 通过 `lifespan.app_lifespan` 交给启动/关闭生命周期
@@ -45,7 +114,7 @@
 - `deepclaw/web_backend/db.py`
   Web 侧统一异步数据库辅助入口。负责：
   - 同步/异步数据库 URL 转换
-  - `auth` / `channels` / `knowledge_bases` 默认元数据数据库选择
+  - `auth` / `rbac` / `channels` / `devices` / `knowledge_bases` 默认元数据数据库选择
   - 优先使用 `PG_DATABASE_URL`，未配置时共用 `DEEPCLAW_HOME/deepclaw.db`。可在 `.env` 用 `SQLITE_DB_PATH` 覆盖，相对路径以 `DEEPCLAW_HOME` 为基准。
   - `sqlite_migration.py` 在 SQLite 模式启动时将历史分库中身份、策略、设备、渠道、知识库及旧 cron 表一次性迁入统一库，迁移成功后可清理旧文件。向量索引仍使用 `SQLITE_VECTOR_DB_PATH`。
 
@@ -77,7 +146,7 @@
   认证相关路由、请求模型、SQLModel、存储、服务与 FastAPI 依赖。
 
 - `deepclaw/web_backend/auth/rbac/`
-  基于 Casbin 的 RBAC + ABAC 授权层。`rbac_model.conf` 定义「角色继承 + 资源归属」匹配规则，`rbac_policy.csv` 是基础策略（内置 user、admin，admin 继承 user）；`enforcer.py` 提供进程级单例、主体/资源属性对象与 `is_allowed()`，`dependencies.py` 提供 `require_permission(path, action, owner=...)` 依赖，`store.py` + `models.py` 把策略落到 `rbac_policy_rules` / `rbac_role_rules` 两张表（默认 `.deepclaw/rbac.db`，随 `PG_DATABASE_URL` 走统一 PG），`adapter.py` 负责首次启动播种，`bootstrap.py` 在建表后写入基础策略，`router.py` 提供 `/api/auth/rbac/*` 策略管理接口。角色目录与权限目录分两层：`store.py` 维护 `rbac_catalog_roles` 角色实体（内置 `user` / `admin` 只读，其余可增删改并统计在用账号数），`permissions.py` 定义可在界面勾选的功能权限及其真实 Casbin 路径动作映射，`router.py` 提供 `/api/auth/rbac/catalog/roles`（角色目录 CRUD 与 `PUT .../permissions` 原子替换）与 `/api/auth/rbac/catalog/permissions`（界面权限目录）。前端「角色管理」独立成页，`management/RbacManagementView.tsx` 负责左侧角色清单与右侧按模块分组的权限矩阵，`hooks/useRoleCatalog.ts` 同时加载角色目录与权限目录；用户管理页的角色下拉复用同一目录。权限目录只收录后端真实挂了 `require_permission` 的功能，避免界面可勾选而服务端不鉴权；`tests/test_rbac_permission_consistency.py` 双向校验「代码里的守卫都在目录里」与「目录里的规则都有真实守卫」。知识库、技能、渠道、设备路由使用 `require_permission(..., allow_guest=True)`：游客直接放行保持原有归属隔离，登录用户按角色策略判定。多进程部署下策略写入会递增 `rbac_policy_revision`，`lifespan.watch_rbac_revision()` 每 `REVISION_POLL_SECONDS`（默认 2 秒）比对版本号并重建授权引擎，避免只有收到写请求的进程生效。`RBAC_STORE_ENABLED=True` 时从数据库装载策略，失败回退策略文件；`RBAC_MODEL_PATH` / `RBAC_POLICY_PATH` 可外部覆盖模型与基础策略（需同时配置）。启动时在 `validate_runtime_settings()` 中加载，策略损坏直接启动失败。管理员专属接口、渠道 `scope=all` 与 RBAC 管理接口均走策略判定；资源归属仍由各模块的 owner 判断保留。注意 Casbin 的 `Enforcer(model)` 不会重建 g 规则链接，必须用 adapter 构造，否则角色继承静默失效。
+  基于 Casbin 的 RBAC + ABAC 授权层。`rbac_model.conf` 定义「角色继承 + 资源归属」匹配规则，`rbac_policy.csv` 是基础策略（内置 user、admin，admin 继承 user）；`enforcer.py` 提供进程级单例、主体/资源属性对象与 `is_allowed()`，`dependencies.py` 提供 `require_permission(path, action, owner=...)` 依赖，`store.py` + `models.py` 把策略落到 `rbac_policy_rules` / `rbac_role_rules`（另有 `rbac_catalog_roles` 角色目录与 `rbac_policy_revision` 版本表），默认复用统一业务元数据数据库（`PG_DATABASE_URL`，否则 `DEEPCLAW_HOME/deepclaw.db`，可由 `SQLITE_DB_PATH` 覆盖）；`adapter.py` 的 `bootstrap_policy_store()` 负责建表、空库播种并补齐新增基础策略，`bootstrap.py` 在启动时调用它，`router.py` 提供 `/api/auth/rbac/*` 策略管理接口。角色目录与权限目录分两层：`store.py` 维护 `rbac_catalog_roles` 角色实体（内置 `user` / `admin` 只读，其余可增删改并统计在用账号数），`permissions.py` 定义可在界面勾选的功能权限及其真实 Casbin 路径动作映射，`router.py` 提供 `/api/auth/rbac/catalog/roles`（角色目录 CRUD 与 `PUT .../permissions` 原子替换）与 `/api/auth/rbac/catalog/permissions`（界面权限目录）。前端「角色管理」独立成页，`management/RbacManagementView.tsx` 负责左侧角色清单与右侧按模块分组的权限矩阵，`hooks/useRoleCatalog.ts` 同时加载角色目录与权限目录；用户管理页的角色下拉复用同一目录。权限目录只收录后端真实挂了 `require_permission` 的功能，避免界面可勾选而服务端不鉴权；`tests/test_rbac_permission_consistency.py` 双向校验「代码里的守卫都在目录里」与「目录里的规则都有真实守卫」。知识库、技能、渠道、设备路由使用 `require_permission(..., allow_guest=True)`：游客直接放行保持原有归属隔离，登录用户按角色策略判定。多进程部署下策略写入会递增 `rbac_policy_revision`，`lifespan.watch_rbac_revision()` 每 `REVISION_POLL_SECONDS`（默认 2 秒）比对版本号并重建授权引擎，避免只有收到写请求的进程生效。`RBAC_STORE_ENABLED=True` 时从数据库装载策略，失败回退策略文件；`RBAC_MODEL_PATH` / `RBAC_POLICY_PATH` 可外部覆盖模型与基础策略（需同时配置）。启动时在 `validate_runtime_settings()` 中加载，策略损坏直接启动失败。管理员专属接口、渠道 `scope=all` 与 RBAC 管理接口均走策略判定；资源归属仍由各模块的 owner 判断保留。注意 Casbin 的 `Enforcer(model)` 不会重建 g 规则链接，必须用 adapter 构造，否则角色继承静默失效。
 - `deepclaw/web_backend/channels/`
   渠道共享模型、会话存储、消息处理服务、共享会话接口与总装配入口。
   `jobs.py` 定义独立的 `channel_jobs` 持久化任务表、`channel_leases` 数据库租约表及存储；消息按渠道、绑定、消息 ID 去重，同一会话在所有服务实例之间通过租约串行执行。`service.py` 编排执行与投递，`delivery.py` 隔离渠道发送故障，`recovery.py` 恢复原 Run 或补发已完成结果；流式进度按约 0.5 秒或终止事件保存，不逐 token 写库。`jobs_router.py` 提供任务查询及只补发/人工结束操作，接口响应不包含原始消息、正文或凭据。
@@ -106,7 +175,7 @@
 
 - `deepclaw/web_backend/devices/installer.py`：公开安装包发布状态 `/api/devices/installer` 与 Windows x64 附件下载 `/api/devices/installer/windows-x64`，只分发 `.deepclaw/downloads/DeepClaw-Setup-x64.exe`。`desktop/scripts/publish-installer.mjs` 在 `pnpm package:win` 完成后自动发布；Docker 需只读挂载下载目录，详见 `docs/local-devices.md`。网页下载组件位于 `management/devices/DeviceDownload.tsx`，状态查询由 `hooks/useDeviceInstaller.ts` 承载。
 
-- `deepclaw/web_backend/devices/`：设备配对、用户归属管理、WSS 连接和共享数据库任务队列。`store.py` 使用 SQLModel 原生异步会话，只延迟创建 `devices`、`device_pairings`、`device_tasks`；默认优先 PG，否则 `.deepclaw/devices.db`。应用关闭释放已创建连接池。
+- `deepclaw/web_backend/devices/`：设备配对、用户归属管理、WSS 连接和共享数据库任务队列。`store.py` 使用 SQLModel 原生异步会话，只延迟创建 `devices`、`device_pairings`、`device_tasks`；默认复用统一业务元数据数据库（`PG_DATABASE_URL`，否则 `DEEPCLAW_HOME/deepclaw.db`）。应用关闭释放已创建连接池。
 - `deepclaw/middleware/device_tools.py`：每次模型调用按可信用户身份、在线授权和本轮 `device_id` 动态注入设备工具；执行再次校验，禁止回退服务端操作客户端路径。网页 `device_id=null` 禁用本轮设备工具。
 - `desktop/`：Electron + React + TypeScript 本机助手。`src/main` 承载连接、SQLite 去重、权限和进程执行，`src/preload` 只暴露固定 IPC，`src/renderer` 为控制台。总开关由本机控制，重启、断线后关闭。操作审批只有「请求批准」（默认，修改与命令逐次确认）和「完全访问权限」（已开启能力自动执行）两档，由 `src/renderer/components/ApprovalModePicker.tsx` 展示，类型及文案位于 `src/shared/approval.ts`，主进程独立校验并执行。模式保存在本机，不从服务端指令读取；旧配置回退请求批准。切换模式先取消旧任务，自动任务以 `queued` 状态串行执行，保留去重与终止保护。命令拥有当前账户权限，授权工作目录不是进程沙箱。
 - 前端 `chat/management/DeviceManagementView.tsx` 编排设备管理，子组件位于 `management/devices/`；`hooks/useDevices.ts` 管理当前账号设备与选择，`shared/DevicePicker.tsx` 供聊天选择设备。网页仅展示权限和撤销凭据，不提供远程开启接口。
@@ -276,6 +345,7 @@ uv venv .tmpvenv && uv pip install --python .tmpvenv/Scripts/python.exe .
 - `TAVILY_API_KEY`
 - `BACKEND_TYPE`
 - `PG_DATABASE_URL`
+- `SQLITE_DB_PATH`（未配置 `PG_DATABASE_URL` 时的统一 SQLite 元数据库文件名，默认 `deepclaw.db`，相对路径以 `DEEPCLAW_HOME` 为基准）
 - `VECTOR_STORE_BACKEND`（`sqlite` 默认 / `pgsql` / `elasticsearch` / `none`；`sqlite` 走 SQLite + sqlite-vec 单文件，无需中间件）
 - `SQLITE_VECTOR_DB_PATH`（sqlite 后端的数据库文件路径，默认 `HOME_PATH/vector.db`）
 - `LANGSMITH_API_KEY`
@@ -287,6 +357,8 @@ uv venv .tmpvenv && uv pip install --python .tmpvenv/Scripts/python.exe .
 - `AGUI_RUN_MAX_EVENTS`
 - `AGUI_RUN_CLEANUP_INTERVAL_SECONDS`
 - `AGUI_RUN_POLL_INTERVAL_SECONDS`
+- `AGUI_RUN_RECURSION_LIMIT`（默认 10,007，与 LangGraph 官方默认值一致，限制单次运行的步数）
+- `OPEN_SANDBOX_CODE_INTERPRETER_IMAGE`（OpenSandbox 代码解释器镜像）
 - `CHART_PUBLIC_URL`
 - `CHART_RETENTION_HOURS`
 - `CHART_MAX_FILES`
@@ -322,34 +394,29 @@ uv venv .tmpvenv && uv pip install --python .tmpvenv/Scripts/python.exe .
 - `WEIXIN_CLAWBOT_DEFAULT_REPLY_MODE`
 - `WEIXIN_CLAWBOT_REQUEST_TIMEOUT_SECONDS`
 
+`deepclaw/web_backend/channels/feishu/settings.py` 当前识别：
+
+- `FEISHU_DEFAULT_DOMAIN`（默认 `feishu`，可选 `lark`）
+- `FEISHU_DEFAULT_GROUP_POLICY`（默认 `mention`，可选 `open`）
+- `FEISHU_DEFAULT_STREAMING`（默认 `false`）
+- `FEISHU_RUNTIME_RECONNECT_SECONDS`（默认 5）
+
 ### 可观测性
 
 - `PHOENIX_COLLECTOR_ENDPOINT`
 
 注意：`.env.example` 里可能有示例值或历史残留，修改配置逻辑时以实际代码为准。
 
-## 必须要遵守的开发约束
+## 本项目开发约束
 
-- 新增或修改功能时，检查角色管理是否需要新增或更新权限。需要授权的功能同步更新后端守卫（包括 API 和智能体工具入口）、`permissions.py` 权限目录、仓库 `data/rbac_policy.csv` 与包内默认策略、前端权限判断，并验证自定义角色授权与拒绝场景。
+通用条目见第一部分「通用开发约束」，这里只保留本仓库专属的边界。
 
-- 实现过程中不要逐项播报进度；只在关键节点、遇到阻塞或需要用户决策时简短更新，完成后集中报告结果与验证情况。
-- 所有新写的函数/方法都必须带中文 docstring（功能说明 + Args 每行）。禁止 `"""...""" ...` 同行。
-- 所有 schema 类名必须通过后缀区分请求与响应：请求模型以 `Request` 结尾，响应模型以 `Response` 结尾；嵌套响应模型也必须遵守该规则。
-- Python 字段、变量、参数和函数名统一使用 `snake_case`；对外 JSON 需要 `camelCase` 时通过 Pydantic alias 映射，不直接把 Python 字段命名为 camelCase。
-- 只改任务直接相关的代码，不做顺手重构。
-- Python 导入统一使用 `deepclaw.*` 绝对导入，禁止使用 `from .`、`from ..` 等相对导入。
-- 包结构调整后同步更新本文档的「当前代码结构」。
+- 新增或修改功能时，检查角色管理是否需要新增或更新权限。需要授权的功能同步更新后端守卫（包括 API 和智能体工具入口）、`permissions.py` 权限目录、仓库 `data/rbac_policy.csv` 与包内默认策略、前端权限判断，并验证自定义角色授权与拒绝场景；同时保证 `tests/test_rbac_permission_consistency.py` 能扫描到新增守卫。
+- Python 导入统一使用 `deepclaw.*` 绝对导入。
 - `deepclaw/agents/` 只放 Agent 实现与对应的 `Agent` 子类；Agent 自动发现和注册基础设施放在 `deepclaw/agent_registry.py`。
-- 未经用户明确要求，不要执行 `git add`、`git commit`、`git amend`。
-- 测试统一使用 `pytest`，不要引入 `unittest` 风格测试。
-- 不要新增仅校验日志输出内容的测试用例；日志无需专门测试。
-- 如果成熟、稳定、维护活跃的开源库能更好解决问题，优先采用开源库方案。
 - 当前 Web 目录已经统一收口到 `web_backend`，不要再新增新的根包 `auth`、`channels`、`management`、`api` 目录。
 - 如果修改会影响静态托管行为，记得同时检查 `frontend/out` 是否需要重新构建。
 - 所有数据库操作必须使用 SQLModel 的原生异步功能：`async_sessionmaker` 用 `class_=AsyncSession`（`from sqlmodel.ext.asyncio.session import AsyncSession`），查询用 `await session.exec(select(...))`（`select` 从 `sqlmodel` 导入而非 `sqlalchemy`），结果直接用 `.one()/.first()/.all()` 获取模型实例（不使用 `.scalars()`），写入用 `session.add()` + `commit()` + `refresh()`。
-- 输出文档必须是中文。
-- 如果代码结构变化，必须同步更新 `AGENTS.md`。
-- 前后端测试都必须并行执行：后端使用 `uv run pytest -q -n auto`；前端使用 `cd frontend && node --test "tests/*.test.mjs"`（Node test runner 默认按文件并行）。
 
 ## 前端交互与错误处理规范
 
@@ -390,17 +457,6 @@ uv venv .tmpvenv && uv pip install --python .tmpvenv/Scripts/python.exe .
 - Human-in-the-loop 中断必须使用标准 `RUN_FINISHED.outcome` 暴露。
 - 恢复必须使用顶层 `resume[]`，每项包含 `interruptId`、`status`、`payload`，禁止继续使用 `forwardedProps.command.resume`。
 - 缺少 `interruptId` 时不得静默恢复，必须显示可见错误。
-
-### 前端组件化与最佳实践
-
-- 能抽成通用组件的必须抽成组件；同一个视觉结构、交互行为或状态管理出现两次以上时，不允许继续复制粘贴。
-- 优先复用仓库已有组件、已有工具函数和成熟开源组件；禁止为相同能力重复造轮子。
-- 页面级组件只负责编排和状态流，不承载大段可独立展示的 UI；可独立展示的卡片、面板、弹窗、列表项、表单块必须拆成组件。
-- 复杂状态和副作用应优先抽成自定义 Hook；纯数据转换、格式化、校验应抽成 `utils` 函数，不与 JSX 混写。
-- 新组件必须有明确职责和最小输入；能通过 props 组合的，不要直接依赖父组件内部状态。
-- 拆分后必须保持原有行为、样式和可访问性；不得以“重构”为名改变业务语义。
-- 存量代码中不符合上述要求的，必须同步整改；整改范围以当前模块和相关复用面为准，不允许只对新代码执行规范。
-- 前端重构完成后至少执行 `pnpm lint` 和 `pnpm build`；涉及共享逻辑时补充或更新前端测试。
 
 ### 前端目录结构
 
@@ -453,24 +509,22 @@ frontend/components/
 - 页面级状态与副作用放在 `chat/hooks/`，纯工具函数放在 `chat/utils/`；`ChatInterface.tsx` 只保留渲染编排。
 - 人工确认与提问界面由 `chat/interrupt/InterruptPanel.tsx` 独立编排，递归参数字段位于 `InterruptArgFields.tsx`，参数转换及审批权限判断位于同目录 `utils.ts`，审批视觉样式由 `InterruptPanel.module.css` 管理。`ChatView.tsx` 只传入中断数据与提交回调。
 
-## 最小验证
+## 最小验证（本项目命令）
+
+档位划分见第一部分「验证纪律」，这里只给本仓库的具体命令与核对项。
+
+**Python**
 
 修改 Python 文件后，至少运行 Ruff：
 
 ```bash
 uv run ruff check .
-```
-
-前后端测试都必须并行执行：
-
-```bash
-# 后端
 uv run pytest tests -q -n auto
-
-# 前端（Node test runner 默认按测试文件并行）
-cd frontend
-node --test "tests/*.test.mjs"
 ```
+
+只改单个模块时，可先跑对应测试文件：`uv run pytest tests/<相关测试文件>.py -q`。
+
+**前端**
 
 修改前端文件后，至少运行：
 
@@ -480,7 +534,18 @@ pnpm lint
 pnpm build
 ```
 
-只改文档时，不需要额外构建，但必须基于最新代码核对：
+前端测试并行执行（Node test runner 默认按测试文件并行）：
+
+```bash
+cd frontend
+node --test "tests/*.test.mjs"
+```
+
+- 前端重构完成后至少执行 `pnpm lint` 和 `pnpm build`；涉及共享逻辑时补充或更新前端测试。
+
+**文档改动**
+
+不跑构建，但必须基于最新代码核对：
 
 - 路由前缀是否真实存在
 - 环境变量名是否与 `settings.py` / `web_backend/channels/config.py` / `web_backend/channels/weixin_clawbot/settings.py` 一致
@@ -516,14 +581,15 @@ pnpm build
 - 知识库读写已对游客开放：`/api/rag/knowledge-bases/*` 的写接口与读接口统一用同一个归属解析（登录用户取自身 ID，游客取固定 `guest`），不再对游客返回 403。前端能力由 `getActorCapabilities()` 推导：游客恒为可用；登录用户若服务端返回 `permissions`，则按其中是否包含对应路径动作为准，未返回权限列表（旧后端）时回退为可用
 - 账号以 `username` 作为唯一登录标识（归一化为小写），`email` 改为可空的可选资料字段，不参与登录；旧库升级时会把存量 `email` 回填为 `username` 并放宽 `email` 的 NOT NULL 约束。首次启动若无管理员，按 `AUTH_ADMIN_USERNAME` / `AUTH_ADMIN_PASSWORD`（默认 `deepclaw` / `deepclaw`）自举。
 - 认证是不透明令牌（`la_` + 随机串，`sha256` 后入库），不是 JWT；`AuthStore.get_actor_by_token()` 刷新 `last_used_at` 时按 `ACCESS_TOKEN_LAST_USED_THROTTLE`（60 秒）节流，同一令牌在窗口内重复校验不会写库，这是刻意的性能设计，不是漏写
-- `auth`、`channels`、`knowledge_bases` 元数据默认优先使用 `PG_DATABASE_URL`；未配置时各自回退到 `.deepclaw` 下的 SQLite，并在默认初始化路径上兼容导入历史 SQLite 数据
+- `auth`、`rbac`、`channels`、`devices`、`knowledge_bases` 元数据默认优先使用 `PG_DATABASE_URL`；未配置时统一回退到 `DEEPCLAW_HOME` 下的 SQLite（默认 `deepclaw.db`，可由 `SQLITE_DB_PATH` 覆盖），并在默认初始化路径上兼容导入历史分库的 SQLite 数据
 
-## 文档协作原则
+## 文档协作原则（本项目）
 
 - `README.md` 面向中文外部使用者，优先写“怎么跑、怎么调、有哪些公开能力”。
 - `README_EN.md` 是 `README.md` 的英文翻译，保持内容同步；修改中文版后应同步更新英文版。
-- `AGENTS.md` 面向仓库协作方，优先写“代码怎么组织、改哪里、怎么验证、有哪些边界”。
-- 三份文档职责分开，避免互相复制导致失真。
+- `AGENTS.md` 面向仓库协作方，优先写“代码怎么组织、改哪里、怎么验证、有哪些边界”；可迁移到其它项目的通用规范统一放在第一部分。
+- 通用文档分层、待办落点与“先不做但记录清楚”的规则见第一部分「文档体系」，本节不重复。
+
 ## 2026-06 Channels 补充事实
 
 - `deepclaw/web_backend/channels/models.py` 现在新增统一的 `ChannelBinding` 模型，用来承载多用户 IM 绑定的凭据、配置和运行态。
@@ -537,7 +603,7 @@ pnpm build
 
 - `deepclaw/web_backend/channels/store.py` 现在同时支持 `create_binding()`、`update_binding()`、`list_bindings()`、`delete_binding()`；新代码不要再把“每个用户每个渠道只能有一个绑定”写死。
 - `deepclaw/web_backend/channels/bindings_router.py` 提供统一的 `/api/channels/bindings` 列表接口；普通用户默认看自己的绑定，管理员可切 `scope=all` 查看全量绑定。
-- `deepclaw/web_backend/channels/feishu/router.py` 只提供多绑定接口 `/feishu/bindings` 与 `/feishu/bindings/{binding_id}`；旧的 `/feishu/users/{user_id}/binding`（GET/POST/DELETE）与 `/feishu/users` 兼容路径已删除。
+- `deepclaw/web_backend/channels/feishu/router.py` 的绑定接口只有 `/feishu/bindings` 与 `/feishu/bindings/{binding_id}`，另保留事件回调 `/feishu/events`；旧的 `/feishu/users/{user_id}/binding`（GET/POST/DELETE）与 `/feishu/users` 兼容路径已删除。
 - `deepclaw/web_backend/channels/weixin_clawbot/router.py` 只提供按绑定 ID 的路径：
   - `/weixin-clawbot/bindings`
   - `/weixin-clawbot/bindings/{binding_id}/qrcode`
@@ -550,9 +616,9 @@ pnpm build
 - `deepclaw/web_backend/channels/weixin_clawbot/runtime.py` 与 `deepclaw/web_backend/channels/weixin_clawbot/lifespan.py` 现在支持按 `binding_id` 启停 runtime；同一系统用户下的多个微信绑定不能复用同一个 runtime 或同一条渠道会话。
 - 前端 `frontend/components/chat/management/ChannelManagementView.tsx` 是统一绑定中心，包含：
   - `我的绑定`
-  - `管理员总览`
-  - 微信多绑定管理
-  - 飞书多绑定管理
+  - `全部绑定`（`scope=all`，仅管理员可见）
+  - 微信绑定管理
+  - 飞书绑定管理
 
 ## 渠道消息可靠性约束
 

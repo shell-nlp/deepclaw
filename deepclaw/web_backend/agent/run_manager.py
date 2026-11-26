@@ -6,7 +6,7 @@ from contextlib import aclosing
 from dataclasses import dataclass
 from typing import Any
 
-from ag_ui.core import RunAgentInput, RunErrorEvent
+from ag_ui.core import EventType, RunAgentInput, RunErrorEvent
 from ag_ui.encoder import EventEncoder
 from langgraph.graph.state import CompiledStateGraph
 from loguru import logger
@@ -371,6 +371,7 @@ class AgentRunManager:
             合并了 langgraph_auth_user 的运行配置。
         """
         config = dict(self.config)
+        config.setdefault("recursion_limit", settings.AGUI_RUN_RECURSION_LIMIT)
         configurable = dict(config.get("configurable") or {})
         configurable[LANGGRAPH_AUTH_USER_KEY] = AgentAuthUser(identity=user_id)
         config["configurable"] = configurable
@@ -694,18 +695,30 @@ class AgentRunManager:
                 payload = payload.model_copy(update={"state": state_input})
             queue: asyncio.Queue[Any | None] = asyncio.Queue(maxsize=STREAM_BATCH_SIZE * 2)
             stream_error: Exception | asyncio.CancelledError | None = None
+            run_error: str | None = None
             async with asyncio.TaskGroup() as group:
                 group.create_task(_write_stream_batches(self.store, run_id, queue))
                 try:
                     async with aclosing(agent.run(payload)) as stream:
                         async for event in stream:
+                            if event.type == EventType.RUN_ERROR:
+                                run_error = event.message
+                                if run_error.startswith("Recursion limit ") and "GRAPH_RECURSION_LIMIT" in run_error:
+                                    run_error = "本轮已达到智能体执行步数上限。可以发送「继续」，或将任务拆成几步。"
+                                    event = event.model_copy(update={
+                                        "message": run_error,
+                                        "code": "GRAPH_RECURSION_LIMIT",
+                                    })
                             await queue.put(event)
                 except (Exception, asyncio.CancelledError) as exc:
                     stream_error = exc
                 await queue.put(None)
             if stream_error is not None:
                 raise stream_error
-            await self.store.update_run_status(run_id, "finished")
+            if run_error is not None:
+                await self.store.update_run_status(run_id, "error", run_error)
+            else:
+                await self.store.update_run_status(run_id, "finished")
         except asyncio.CancelledError:
             await self.store.append_event(
                 run_id,
