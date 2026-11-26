@@ -432,11 +432,11 @@ def test_chat_file_permissions_and_tool_roundtrip(guarded_client, monkeypatch, t
                     return data
 
                 monkeypatch.setattr(service.storage, "get_bytes", track_read)
-                assert "找不到" in await invoke(other, "inspect_file", file_id=workbook_id, sheet="明细")
+                assert "找不到" in await invoke(other, "read_file", file_id=workbook_id, mode="summary", sheet="明细")
                 assert reads == []
-                structure = json.loads(await invoke(owner, "inspect_file", file_id=workbook_id))
+                structure = json.loads(await invoke(owner, "read_file", file_id=workbook_id, mode="summary"))
                 assert structure["sheets"] == [{"name": "明细", "total_lines": 4}]
-                preview = json.loads(await invoke(owner, "inspect_file", file_id=workbook_id, sheet="明细"))
+                preview = json.loads(await invoke(owner, "read_file", file_id=workbook_id, mode="summary", sheet="明细"))
                 assert preview["preview"] == [
                     {"line": 1, "cells": {}, "truncated": False},
                     {"line": 2, "cells": {"A": "订单号", "B": "金额", "C": "状态"}, "truncated": False},
@@ -444,7 +444,7 @@ def test_chat_file_permissions_and_tool_roundtrip(guarded_client, monkeypatch, t
                 ]
                 assert [key for key, _ in reads] == [summary_key, summary_key]
                 service.storage.delete_object(BUCKET, summary_key)
-                historical = json.loads(await invoke(owner, "inspect_file", file_id=workbook_id, sheet="明细"))
+                historical = json.loads(await invoke(owner, "read_file", file_id=workbook_id, mode="summary", sheet="明细"))
                 assert historical == preview
                 assert reads[-1][0] == f"{workbook_id}/parsed-v1.json"
                 match = json.loads(await invoke(

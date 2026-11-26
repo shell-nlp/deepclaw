@@ -35,7 +35,6 @@ flowchart LR
 | 工具 | 契约 |
 | --- | --- |
 | `list_files` | 分页列出当前账号的文件，支持按文件名关键词、格式和收藏状态筛选。 |
-| `inspect_file` | 返回文档行数、PDF 页数与无文字页，或列出 Excel 的 Sheet。指定 `sheet` 可预览最多三行，保留原始行号和列标。 |
 | `read_file` | `start_line` 从 1 开始，`limit` 默认 100，最多 200。返回行号、内容、后续起始行和结束标记。Excel 可指定 Sheet 和列范围。首次读取 PDF 时自动把最多两页无法提取文字的页面转为图片，也可通过 `pages` 查看指定页。图片只进入当次模型输入。 |
 | `grep_file` | 支持字面文本、完整匹配和正则。Excel 可指定搜索列，并在命中时返回同一行的指定列、行号和单元格坐标。指定列精确匹配可一次扫描至首批命中或表尾。 |
 | `write_file` | 用 Markdown 正文生成 MD 或 DOCX，或用多个有序 Sheet 的结构化数据生成 XLSX。 |
@@ -43,7 +42,9 @@ flowchart LR
 
 TXT 和 Markdown 的行号来自文本。DOCX 的行号来自按正文顺序提取的段落和表格文本。PDF 用 PyMuPDF 提取文本层，按全文件连续编号并返回原始页码。无文字页用页码标记，扫描页可在后续接入多模态读取。Excel 的每张 Sheet 各自从第 1 行编号，保留空行和原始列坐标。缓存以文件 ID 和解析版本为键，读取与搜索引用同一份编号。
 
-例如可用 `grep_file(file_id, pattern="X123", exact=True, sheet="明细", match_column="A", return_columns=["B", "C"])` 按订单号查金额和状态。需要查看相邻行时，可用 `read_file` 指定起始行号。新文件在保存时生成轻量结构摘要，历史文件缺少摘要时从已有解析缓存读取。生成的文件可从聊天回复下载，下载再次校验账号与权限。
+`read_file(file_id, mode="summary")` 返回文档行数、PDF 页数与无文字页，或列出 Excel 的工作表。指定 `sheet` 可预览最多三行，保留原始行号和列标。新文件在保存时生成轻量摘要，历史文件缺少摘要时从已有解析缓存读取。
+
+例如可用 `grep_file(file_id, pattern="X123", exact=True, sheet="明细", match_column="A", return_columns=["B", "C"])` 按订单号查金额和状态。需要查看相邻行时，可用 `read_file` 指定起始行号。生成的文件可从聊天回复下载，下载再次校验账号与权限。
 
 `search_complete=false` 时，请用相同查询条件和 `next_cursor` 继续搜索，即使当前页的 `matches` 为空。Excel 行超出输出预算时，`read_file` 和 `grep_file` 优先保留短字段，并在 `truncated_columns` 中标明内容被截短或省略的列。可单独读取这些列以获取更多内容。
 

@@ -68,7 +68,7 @@ def _select_sheet(document: dict, sheet: str | None) -> tuple[str | None, dict]:
         return None, document
     name = sheet if sheet is not None else next(iter(sheets))
     if name not in sheets:
-        raise ValueError("找不到指定的 Sheet，请先用 inspect_file 查看工作表名称。")
+        raise ValueError('找不到指定的 Sheet，请用聊天文件读取工具的 mode="summary" 查看工作表名称。')
     return name, sheets[name]
 
 

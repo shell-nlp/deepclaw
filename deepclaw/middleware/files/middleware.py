@@ -82,35 +82,25 @@ async def list_files(
         return str(exc)
 
 
-@tool
-async def inspect_file(runtime: ToolRuntime, file_id: str, sheet: str | None = None) -> str:
-    """查看文档结构，指定 Excel Sheet 时预览最多三行原始数据。
-
-    PDF 的 pages_without_text 表示无法直接提取文字的页，可用聊天文件读取工具按页查看。
+def _file_summary(summary: dict, sheet: str | None) -> dict:
+    """整理已缓存的文档结构和指定工作表的原始预览。
 
     Args:
-        runtime: 框架注入的运行时。
-        file_id: 聊天附件或 list_files 返回的文件 ID。
+        summary: 文件服务提供的摘要。
         sheet: 可选的 Excel 工作表名称。预览保留列标与行号，不推断表头。
     """
-    try:
-        owner = await _owner(runtime, "read")
-        service = get_file_service()
-        record = await service.get(owner, file_id)
-        summary = await service.summary(record)
-        if "sheets" in summary:
-            sheets = summary["sheets"]
-            summary["sheets"] = [{"name": entry["name"], "total_lines": entry["total_lines"]} for entry in sheets]
-            if sheet is not None:
-                selected = next((entry for entry in sheets if entry["name"] == sheet), None)
-                if selected is None:
-                    return "找不到指定的 Sheet。"
-                summary.update(sheet=sheet, preview=selected["preview"])
-        elif sheet is not None:
-            return "只有 Excel 文件可以指定 Sheet。"
-        return json.dumps({**file_details(record), **summary}, ensure_ascii=False)
-    except (LookupError, ValueError) as exc:
-        return str(exc)
+    sheets = summary.get("sheets")
+    if sheets is None:
+        if sheet is not None:
+            raise ValueError("只有 Excel 文件可以指定 Sheet。")
+        return summary
+    result = {**summary, "sheets": [{"name": entry["name"], "total_lines": entry["total_lines"]} for entry in sheets]}
+    if sheet is not None:
+        selected = next((entry for entry in sheets if entry["name"] == sheet), None)
+        if selected is None:
+            raise ValueError("找不到指定的 Sheet。")
+        result.update(sheet=sheet, preview=selected["preview"])
+    return result
 
 
 @tool(response_format="content_and_artifact")
@@ -122,11 +112,13 @@ async def read_file(
     sheet: str | None = None,
     columns: Annotated[list[Annotated[str, Field(pattern=r"^[A-Za-z]{1,3}$")]], Field(max_length=256)] | None = None,
     pages: Annotated[list[Annotated[int, Field(ge=1)]], Field(min_length=1, max_length=PDF_IMAGE_BATCH)] | None = None,
+    mode: Literal["content", "summary"] = "content",
 ) -> tuple[str, dict | None]:
     """分页读取聊天文件。用 next_start_line 继续，并以返回行号引用原文。
 
     首次读取 PDF 时，自动附带最多两页无法提取文字的页面图片。
     如需查看指定 PDF 页的图表、版面或其余无文字页，使用 pages。
+    使用 mode="summary" 查看文件结构、总行数、PDF 页数及无文字页。指定 Excel Sheet 可预览最多三行。
 
     Args:
         runtime: 框架注入的运行时。
@@ -136,11 +128,17 @@ async def read_file(
         sheet: Excel 工作表名称，省略时读取第一张。
         columns: 可选 Excel 列标列表，例如 ["A", "D"]。
         pages: 按图片查看的 PDF 原始页码，从 1 开始，每次最多两页。
+        mode: content 读取正文或页面图片，summary 只读结构与可选的 Excel 预览。
     """
     try:
         owner = await _owner(runtime, "read")
         service = get_file_service()
         record = await service.get(owner, file_id)
+        if mode == "summary":
+            if pages is not None or columns is not None:
+                raise ValueError("查看文件结构时请省略页码和列。")
+            summary = _file_summary(await service.summary(record), sheet)
+            return json.dumps({**file_details(record), **summary}, ensure_ascii=False), None
         if pages is not None and record.extension != ".pdf":
             raise ValueError("只有 PDF 文件可以指定页码查看图片。")
         if pages is not None and (sheet is not None or columns is not None):
@@ -291,7 +289,7 @@ class FileMiddleware(AgentMiddleware):
             read = read_file.model_copy(update={"name": "read_chat_file"})
             write = write_file.model_copy(update={"name": "write_chat_file"})
         self._read_tool_name = read.name
-        self.tools = [list_files, inspect_file, read, grep_file, write, export_file]
+        self.tools = [list_files, read, grep_file, write, export_file]
 
     async def awrap_model_call(self, request, handler):
         """将最新一批 PDF 工具请求转换为本次模型可见的图像输入。
