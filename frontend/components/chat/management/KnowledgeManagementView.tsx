@@ -480,7 +480,7 @@ export function KnowledgeManagementView({
 
       <div className={styles.knowledgeList}>
         {knowledgeBases.length === 0 ? (
-          <div className={styles.extensionEmpty}><strong>还没有知识库</strong><span>新建知识库后可以集中上传和管理资料。</span><button type="button" className={styles.extensionTextButton} disabled={writeDisabled} onClick={() => onShowCreateKnowledgeBaseModalChange(true)}>新建知识库</button></div>
+          <div className={styles.extensionEmpty}><strong>还没有知识库</strong><span>新建知识库后可以集中上传和管理资料。</span></div>
         ) : knowledgeBases.map((knowledgeBase) => (
           <div className={styles.knowledgeRow} key={knowledgeBase.knowledge_base_id}>
             <label className={styles.knowledgeCheckbox} onClick={(event) => onToggleKnowledgeBaseChecked(knowledgeBase.knowledge_base_id, event as unknown as MouseEvent<HTMLButtonElement | HTMLInputElement>)}>
