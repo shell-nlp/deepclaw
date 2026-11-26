@@ -10,6 +10,7 @@ from deepclaw.web_backend.knowledge_bases.schemas import (
     DocumentDetailRequest,
     DocumentListRequest,
     KnowledgeBaseIdentityRequest,
+    KnowledgeUploadCheckRequest,
     KnowledgeUploadTaskRequest,
     KnowledgeBaseListRequest,
     UpdateKnowledgeChunkRequest,
@@ -167,6 +168,21 @@ async def get_document_detail(
         page=request.page,
         page_size=request.page_size,
     )
+
+@router.post(
+    "/knowledge-bases/documents/upload-check",
+    response_model=list[KnowledgeUploadTaskResponse | None],
+)
+async def check_document_uploads(
+    request: KnowledgeUploadCheckRequest,
+    actor=Depends(get_current_actor),
+    _permission: CurrentActor = Depends(require_permission("/api/rag/*", "write", allow_guest=True)),
+):
+    """查找当前用户在目标知识库内可复用的上传任务。"""
+    return await get_knowledge_base_manager().check_uploads(
+        _resolved_user_id(actor), request.knowledge_base_id, request.files,
+    )
+
 
 @router.post(
     "/knowledge-bases/documents/upload",

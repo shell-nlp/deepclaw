@@ -46,6 +46,7 @@ class KnowledgeUploadTaskMetadata(SQLModel, table=True):
     file_name: str
     content_type: str = ""
     file_size: int = 0
+    content_key: str | None = Field(default=None, max_length=129)
     storage_path: str
     status: str = Field(default="queued", index=True)
     error: str = ""

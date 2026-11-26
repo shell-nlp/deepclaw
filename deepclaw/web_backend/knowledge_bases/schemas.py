@@ -1,4 +1,12 @@
 from pydantic import BaseModel, Field
+from deepclaw.web_backend.common.file_upload import FileFingerprint
+
+
+class KnowledgeUploadCheckRequest(BaseModel):
+    """按顺序检查一批待上传文件。"""
+
+    knowledge_base_id: str
+    files: list[FileFingerprint] = Field(min_length=1, max_length=100)
 
 
 class KnowledgeBaseIdentityRequest(BaseModel):

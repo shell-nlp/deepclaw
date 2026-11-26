@@ -5,14 +5,17 @@ import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, Iterable
 
 from langchain_core.documents import Document
 from loguru import logger
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 
 from deepclaw.web_backend.common.errors import BusinessRuleError
+from deepclaw.web_backend.common.file_upload import FileFingerprint
 from deepclaw.common import create_default_vector_store
 from deepclaw.common.object_storage import (
     ObjectStorage,
@@ -85,6 +88,7 @@ class KnowledgeUploadTaskResponse(BaseModel):
     document_id: str = ""
     created_at: str
     updated_at: str
+    reused: bool = False
 
 
 class KnowledgeUploadSubmissionResponse(BaseModel):
@@ -292,6 +296,51 @@ class KnowledgeBaseManager:
                 return row
         raise BusinessRuleError("上传任务不存在。")
 
+    async def check_uploads(
+        self, user_id: str, knowledge_base_id: str, fingerprints: list[FileFingerprint],
+    ) -> list[KnowledgeUploadTaskResponse | None]:
+        """在已授权知识库内预查文件，按请求顺序返回匹配任务。"""
+        await self.get_knowledge_base(user_id, knowledge_base_id)
+        if user_id == "guest":
+            return [None] * len(fingerprints)
+        matches = []
+        for fingerprint in fingerprints:
+            task = await self.metadata_store.find_upload_task(
+                user_id, knowledge_base_id, fingerprint.size, fingerprint.sha256 + fingerprint.extension,
+            )
+            matches.append(KnowledgeUploadTaskResponse(**task, reused=True) if task else None)
+        return matches
+
+    async def _reuse_upload(
+        self, task: dict[str, Any], data: bytes,
+    ) -> KnowledgeUploadTaskResponse:
+        """验证重复上传的原始字节，返回现有任务和状态。"""
+        bucket, path = self._storage_location_from_source(
+            user_id=task["user_id"], knowledge_base_id=task["knowledge_base_id"],
+            document_id=task["task_id"], source=task,
+        )
+        if await asyncio.to_thread(self.object_storage.get_bytes, bucket, path) != data:
+            raise ValueError("文件摘要相同但原始内容不同，无法复用。")
+        return KnowledgeUploadTaskResponse(**task, reused=True)
+
+    async def _match_legacy_upload(
+        self, user_id: str, knowledge_base_id: str, extension: str, content_key: str, data: bytes,
+    ) -> dict[str, Any] | None:
+        """重复提交历史文件时比对原件并为现有任务补登记摘要。"""
+        for task in await self.metadata_store.list_legacy_uploads(user_id, knowledge_base_id, len(data)):
+            if Path(task["file_name"]).suffix.lower() != extension:
+                continue
+            try:
+                await self._reuse_upload(task, data)
+            except (FileNotFoundError, ValueError):
+                continue
+            try:
+                await self.metadata_store.set_upload_content_key(task["task_id"], content_key)
+            except IntegrityError:
+                pass
+            return await self.metadata_store.find_upload_task(user_id, knowledge_base_id, len(data), content_key)
+        return None
+
     async def submit_uploads(
         self, user_id: str, knowledge_base_id: str,
         files: Iterable[UploadedKnowledgeFile],
@@ -308,6 +357,22 @@ class KnowledgeBaseManager:
         errors: list[KnowledgeBaseUploadError] = []
         for uploaded_file in files:
             file_name = Path(uploaded_file.file_name or "unnamed").name
+            size = len(uploaded_file.data)
+            extension = Path(file_name).suffix.lower()
+            content_key = None
+            if user_id != "guest" and len(extension) <= 64:
+                digest = await asyncio.to_thread(lambda: sha256(uploaded_file.data).hexdigest())
+                content_key = digest + extension
+                existing = await self.metadata_store.find_upload_task(user_id, knowledge_base_id, size, content_key)
+                if existing is None:
+                    existing = await self._match_legacy_upload(user_id, knowledge_base_id, extension, content_key,
+                                                               uploaded_file.data)
+                if existing:
+                    try:
+                        tasks.append(await self._reuse_upload(existing, uploaded_file.data))
+                    except (ValueError, FileNotFoundError) as exc:
+                        errors.append(KnowledgeBaseUploadError(file_name=file_name, error=str(exc)))
+                    continue
             task_id = uuid.uuid4().hex
             bucket_name = self._storage_bucket_name(user_id, knowledge_base_id)
             file_path = self._storage_file_path(
@@ -332,7 +397,8 @@ class KnowledgeBaseManager:
                 "user_id": user_id,
                 "file_name": file_name,
                 "content_type": uploaded_file.content_type,
-                "file_size": len(uploaded_file.data),
+                "file_size": size,
+                "content_key": content_key,
                 "storage_path": f"{bucket_name}/{file_path}",
                 "status": "queued",
                 "error": "",
@@ -344,6 +410,14 @@ class KnowledgeBaseManager:
                 saved = await self.metadata_store.save_upload_task(source)
             except Exception as exc:
                 await asyncio.to_thread(self.object_storage.delete_object, bucket_name, file_path)
+                if isinstance(exc, IntegrityError) and content_key is not None:
+                    existing = await self.metadata_store.find_upload_task(user_id, knowledge_base_id, size, content_key)
+                    if existing:
+                        try:
+                            tasks.append(await self._reuse_upload(existing, uploaded_file.data))
+                        except (ValueError, FileNotFoundError) as conflict:
+                            errors.append(KnowledgeBaseUploadError(file_name=file_name, error=str(conflict)))
+                        continue
                 errors.append(KnowledgeBaseUploadError(file_name=file_name, error=str(exc)))
                 continue
             tasks.append(KnowledgeUploadTaskResponse(**saved))

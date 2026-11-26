@@ -14,6 +14,10 @@ Markdown 文件默认显示渲染后的正文，预览区可切换到「源格�
 
 聊天上传和产物下载由 FastAPI 传输。通用 Agent 和 RAG Agent 挂载同一个文件中间件。HTTP 与工具共用文件服务、存储和权限规则。
 
+聊天附件与文件知识库按账号、文件后缀、大小和 SHA-256 识别重复上传，复用已有文件 ID、名称和收藏状态。浏览器支持 Web Crypto 时通过 `POST /api/files/upload-check` 预检，命中后直接引用已有文件。上传请求仍由服务端计算摘要，数据库唯一索引防止并发创建重复记录。历史文件在首次重复提交原件时按需比对并补登记摘要。
+
+RAG 知识库的预检入口为 `POST /api/rag/knowledge-bases/documents/upload-check`，去重范围为当前账号下的目标知识库。命中后复用已有文档对应的上传任务，失败任务可从上传列表重试。历史任务在重复提交时补登记摘要。游客上传仍走完整流程。
+
 发送后的聊天附件在用户正文上方以文件卡片展示，列出文件名和格式，点击走原件下载接口。前端从消息末尾的附件区块恢复卡片，历史会话和刚发送的消息使用同一种展示方式，智能体仍可从消息取得文件 ID。
 
 ```mermaid
@@ -30,16 +34,18 @@ flowchart LR
 
 | 工具 | 契约 |
 | --- | --- |
-| `list_files` | 分页列出当前账号的文件。 |
-| `inspect_file` | 返回文档行数、PDF 页数与无文字页，或列出 Excel 的 Sheet。 |
+| `list_files` | 分页列出当前账号的文件，支持按文件名关键词、格式和收藏状态筛选。 |
+| `inspect_file` | 返回文档行数、PDF 页数与无文字页，或列出 Excel 的 Sheet。指定 `sheet` 可预览最多三行，保留原始行号和列标。 |
 | `read_file` | `start_line` 从 1 开始，`limit` 默认 100，最多 200。返回行号、内容、后续起始行和结束标记。每次输出有字符预算。Excel 可指定 Sheet 和列范围。 |
-| `grep_file` | 支持字面文本与可选正则。返回命中行号和继续搜索的游标。Excel 支持跨表搜索，命中包含 Sheet 和单元格坐标。 |
-| `write_file` | 保存 Markdown 正文，或用多个有序 Sheet 的结构化数据生成 XLSX。 |
+| `grep_file` | 支持字面文本、完整匹配和正则。Excel 可指定搜索列，并在命中时返回同一行的指定列、行号和单元格坐标。指定列精确匹配可一次扫描至首批命中或表尾。 |
+| `write_file` | 用 Markdown 正文生成 MD 或 DOCX，或用多个有序 Sheet 的结构化数据生成 XLSX。 |
 | `export_file` | 把 Markdown 导出为新 DOCX，支持基础标题、段落、列表和表格。 |
 
 TXT 和 Markdown 的行号来自文本。DOCX 的行号来自按正文顺序提取的段落和表格文本。PDF 用 PyMuPDF 提取文本层，按全文件连续编号并返回原始页码。无文字页用页码标记，扫描页可在后续接入多模态读取。Excel 的每张 Sheet 各自从第 1 行编号，保留空行和原始列坐标。缓存以文件 ID 和解析版本为键，读取与搜索引用同一份编号。
 
-例如 `grep_file` 命中 `明细!D128` 后，可用 `read_file(file_id, sheet="明细", start_line=124, limit=12)` 查看上下文。生成的文件可从聊天回复下载，下载再次校验账号与权限。
+例如可用 `grep_file(file_id, pattern="X123", exact=True, sheet="明细", match_column="A", return_columns=["B", "C"])` 按订单号查金额和状态。需要查看相邻行时，可用 `read_file` 指定起始行号。新文件在保存时生成轻量结构摘要，历史文件缺少摘要时从已有解析缓存读取。生成的文件可从聊天回复下载，下载再次校验账号与权限。
+
+`search_complete=false` 时，请用相同查询条件和 `next_cursor` 继续搜索，即使当前页的 `matches` 为空。Excel 行超出输出预算时，`read_file` 和 `grep_file` 优先保留短字段，并在 `truncated_columns` 中标明内容被截短或省略的列。可单独读取这些列以获取更多内容。
 
 聊天输入框的「+」可以添加图片或文档。每条消息最多添加 4 个文档，单个文档最多 20 MiB。服务端使用 `POST /api/files` 接收原件，通过 `GET /api/files/{file_id}/download` 提供鉴权下载。上传成功后即保存至当前账号，从输入框移除仅取消本轮引用。DOCX、TXT、MD、PDF 和 XLSX 都可上传。
 

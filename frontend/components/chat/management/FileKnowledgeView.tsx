@@ -32,6 +32,7 @@ export function FileKnowledgeView({ canRead, canWrite, isGuest, requestJson, wit
   const [page, setPage] = useState<FilePage | null>(null)
   const [listError, setListError] = useState('')
   const [actionError, setActionError] = useState('')
+  const [uploadNotice, setUploadNotice] = useState('')
   const [uploading, setUploading] = useState(false)
   const [moving, setMoving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -99,14 +100,17 @@ export function FileKnowledgeView({ canRead, canWrite, isGuest, requestJson, wit
   async function upload(files: File[]) {
     if (!files.length || uploading) return
     setActionError('')
+    setUploadNotice('')
     setUploading(true)
     const errors: string[] = []
     const headers = withAuthHeaders()
     let latest: ChatFile | null = null
+    let reused = 0
     try {
       for (const file of files) {
         try {
           latest = await uploadChatFile(file, headers)
+          if (latest.reused) reused += 1
         } catch (error) {
           errors.push(file.name + '：' + (error instanceof Error ? error.message : '上传失败'))
         }
@@ -118,6 +122,7 @@ export function FileKnowledgeView({ canRead, canWrite, isGuest, requestJson, wit
         open(latest)
       }
       setActionError(errors.join('；'))
+      if (reused) setUploadNotice(`已复用 ${reused} 个已有文件。`)
     } finally {
       setUploading(false)
     }
@@ -225,6 +230,7 @@ export function FileKnowledgeView({ canRead, canWrite, isGuest, requestJson, wit
     </header>
     {!canRead ? <p className={styles.empty}>{isGuest ? '登录后可使用文件知识库。' : '当前账号没有读取文件的权限。'}</p> : <>
       {actionError && <p className={styles.error} role="alert">{actionError}</p>}
+      {uploadNotice && <p role="status">{uploadNotice}</p>}
       <div className={styles.toolbar}>
         <div className={styles.collections} role="group" aria-label="文件区域">
           <button type="button" aria-pressed={!favorites} onClick={() => selectCollection(false)}>全部</button>

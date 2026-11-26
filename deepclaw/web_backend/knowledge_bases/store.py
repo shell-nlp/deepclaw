@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from loguru import logger
-from sqlalchemy import text, update
+from sqlalchemy import inspect, text, update
 from sqlmodel import SQLModel, delete, or_, select
 
 from deepclaw.web_backend.common.errors import BusinessRuleError
@@ -463,10 +463,25 @@ class SQLModelKnowledgeBaseMetadataStore:
             async with self.engine.begin() as conn:
                 if self.db_url.startswith("postgresql"):
                     await conn.execute(text("SELECT pg_advisory_xact_lock(787017331)"))
+                elif conn.dialect.name == "sqlite":
+                    await conn.exec_driver_sql("BEGIN IMMEDIATE")
                 await conn.run_sync(SQLModel.metadata.create_all)
+                await conn.run_sync(self._ensure_upload_content_index)
                 await self._drop_legacy_graph_columns(conn)
             await self._import_home_sqlite_if_needed()
             self._init_done = True
+
+    @staticmethod
+    def _ensure_upload_content_index(conn) -> None:
+        """为历史上传任务添加可空指纹，并约束同一知识库内的重复上传。"""
+        columns = {column["name"] for column in inspect(conn).get_columns("knowledge_upload_tasks")}
+        if "content_key" not in columns:
+            conn.exec_driver_sql("ALTER TABLE knowledge_upload_tasks ADD COLUMN content_key VARCHAR(129)")
+        conn.exec_driver_sql(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_knowledge_upload_content "
+            "ON knowledge_upload_tasks (user_id, knowledge_base_id, file_size, content_key) "
+            "WHERE content_key IS NOT NULL"
+        )
 
     async def _drop_legacy_graph_columns(self, conn) -> None:
         """清理图 RAG 时期遗留的 index_prefix / entity_index / relation_index 列。
@@ -759,6 +774,44 @@ class SQLModelKnowledgeBaseMetadataStore:
             )
             return len(list(result.all()))
 
+    async def find_upload_task(
+        self, user_id: str, knowledge_base_id: str, size: int, content_key: str,
+    ) -> dict[str, Any] | None:
+        """按可信账号、知识库和文件指纹查找上传任务。"""
+        await self._ensure_init()
+        async with self.async_session() as session:
+            rows = await session.exec(select(KnowledgeUploadTaskMetadata).where(
+                KnowledgeUploadTaskMetadata.user_id == user_id,
+                KnowledgeUploadTaskMetadata.knowledge_base_id == knowledge_base_id,
+                KnowledgeUploadTaskMetadata.file_size == size,
+                KnowledgeUploadTaskMetadata.content_key == content_key,
+            ))
+            task = rows.first()
+            return task.model_dump() if task else None
+
+    async def list_legacy_uploads(self, user_id: str, knowledge_base_id: str, size: int) -> list[dict[str, Any]]:
+        """按大小缩小尚未登记摘要的历史任务范围。"""
+        await self._ensure_init()
+        async with self.async_session() as session:
+            rows = await session.exec(select(KnowledgeUploadTaskMetadata).where(
+                KnowledgeUploadTaskMetadata.user_id == user_id,
+                KnowledgeUploadTaskMetadata.knowledge_base_id == knowledge_base_id,
+                KnowledgeUploadTaskMetadata.file_size == size,
+                KnowledgeUploadTaskMetadata.content_key.is_(None),
+            ).order_by(KnowledgeUploadTaskMetadata.created_at, KnowledgeUploadTaskMetadata.task_id))
+            return [task.model_dump() for task in rows.all()]
+
+    async def set_upload_content_key(self, task_id: str, content_key: str) -> bool:
+        """补登记历史任务摘要，不改变任务阶段和更新时间。"""
+        await self._ensure_init()
+        async with self.async_session() as session:
+            result = await session.exec(update(KnowledgeUploadTaskMetadata).where(
+                KnowledgeUploadTaskMetadata.task_id == task_id,
+                KnowledgeUploadTaskMetadata.content_key.is_(None),
+            ).values(content_key=content_key))
+            await session.commit()
+            return result.rowcount == 1
+
     async def save_upload_task(self, source: dict[str, Any]) -> dict[str, Any]:
         """创建或更新上传任务。
 
@@ -782,7 +835,7 @@ class SQLModelKnowledgeBaseMetadataStore:
                     )
                     .values(**{
                         key: value for key, value in source.items()
-                        if key not in {"task_id", "created_at"}
+                        if key not in {"task_id", "created_at", "content_key"}
                     })
                 )
                 await session.commit()

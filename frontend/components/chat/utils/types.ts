@@ -204,6 +204,7 @@ export interface UploadResult {
 }
 
 export interface KnowledgeUploadTask {
+  reused?: boolean
   task_id: string
   knowledge_base_id: string
   user_id: string

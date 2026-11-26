@@ -10,6 +10,7 @@ from deepclaw.middleware.files.query import inspect_document, read_lines
 from deepclaw.middleware.files.service import MAX_BYTES, MIME_TYPES, file_details, get_file_service
 from deepclaw.web_backend.auth.dependencies import CurrentActor
 from deepclaw.web_backend.auth.rbac.dependencies import require_permission
+from deepclaw.web_backend.common.file_upload import FileFingerprint
 
 router = APIRouter(prefix="/api/files", tags=["files"])
 
@@ -31,6 +32,24 @@ class ChatFileListResponse(BaseModel):
 
     files: list[ChatFileResponse]
     next_offset: int | None
+
+
+class ChatFileUploadResponse(ChatFileResponse):
+    """标明上传是否复用了已有记录。"""
+
+    reused: bool
+
+
+@router.post("/upload-check", response_model=ChatFileUploadResponse | None)
+async def check_upload(
+    body: FileFingerprint,
+    actor: CurrentActor = Depends(require_permission("/api/files", "write")),
+):
+    """仅在当前账号内预查可复用的文件。"""
+    if body.extension not in MIME_TYPES or body.size > MAX_BYTES:
+        return None
+    record = await get_file_service().find_upload(actor.user_id, body.extension, body.size, body.sha256)
+    return {**file_details(record), "reused": True} if record else None
 
 
 class FavoriteFileRequest(BaseModel):
@@ -160,8 +179,11 @@ async def preview_file(
     return {**inspect_document(document), **result}
 
 
-@router.post("", response_model=ChatFileResponse, status_code=201)
-async def upload_file(file: UploadFile, actor: CurrentActor = Depends(require_permission("/api/files", "write"))):
+@router.post("", response_model=ChatFileUploadResponse, status_code=201)
+async def upload_file(
+    file: UploadFile, response: Response,
+    actor: CurrentActor = Depends(require_permission("/api/files", "write")),
+):
     """上传并保存当前登录账号的文件。
 
     Args:
@@ -172,7 +194,10 @@ async def upload_file(file: UploadFile, actor: CurrentActor = Depends(require_pe
         data = await file.read(MAX_BYTES + 1)
         if len(data) > MAX_BYTES:
             raise HTTPException(status_code=413, detail="文件大小不能超过 20 MiB。")
-        return file_details(await get_file_service().save(actor.user_id, file.filename or "", data))
+        record, reused = await get_file_service().upload(actor.user_id, file.filename or "", data)
+        if reused:
+            response.status_code = 200
+        return {**file_details(record), "reused": reused}
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     finally:

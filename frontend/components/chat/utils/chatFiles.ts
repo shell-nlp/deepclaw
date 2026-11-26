@@ -35,11 +35,45 @@ export type ChatFile = {
   created_at: string
   favorite: boolean
   download_url: string
+  reused?: boolean
+}
+
+/** 计算上传预检指纹，浏览器不支持时交给服务端去重。 */
+export async function getFileFingerprint(file: File) {
+  if (!globalThis.crypto?.subtle) return null
+  const name = file.name.trim()
+  const dot = name.lastIndexOf('.')
+  try {
+    const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer())
+    return {
+      extension: dot > 0 ? name.slice(dot).toLowerCase() : '',
+      size: file.size,
+      sha256: Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join(''),
+    }
+  } catch {
+    return null
+  }
 }
 
 /** 上传聊天附件。Args: file 为原件，headers 为当前账号的认证头。 */
 export async function uploadChatFile(file: File, headers: HeadersInit): Promise<ChatFile> {
   if (file.size > 20 * 1024 * 1024) throw new Error('单个文件最多 20 MiB。')
+  const fingerprint = await getFileFingerprint(file)
+  if (fingerprint) {
+    const checkHeaders = new Headers(headers)
+    checkHeaders.set('Content-Type', 'application/json')
+    try {
+      const check = await fetch(getApiUrl('/api/files/upload-check'), {
+        method: 'POST', headers: checkHeaders, body: JSON.stringify(fingerprint),
+      })
+      if (check.ok) {
+        const existing = await check.json() as ChatFile | null
+        if (existing?.reused) return existing
+      }
+    } catch {
+      // 预检失败时继续上传，由服务端计算摘要。
+    }
+  }
   const body = new FormData()
   body.append('file', file)
   const response = await fetch(getApiUrl('/api/files'), { method: 'POST', headers, body })

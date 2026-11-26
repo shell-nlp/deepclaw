@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
+from hashlib import sha256
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -19,11 +20,13 @@ from deepclaw.common.object_storage import LocalObjectStorage
 from deepclaw.common.vector_store.elasticsearch import ElasticsearchVectorStore
 from deepclaw.common.vector_store.pgsql import PgVectorStore
 from deepclaw.web_backend.common.errors import BusinessRuleError
+from deepclaw.web_backend.common.file_upload import FileFingerprint
 from deepclaw.web_backend.knowledge_bases.service import (
     KnowledgeBaseManager,
     KnowledgeBaseRecord,
     UploadedKnowledgeFile,
 )
+from deepclaw.web_backend.knowledge_bases.store import SQLModelKnowledgeBaseMetadataStore
 
 
 # ---------------------------------------------------------------------------
@@ -48,6 +51,24 @@ class FakeMetadataStore:
         """
         self.tasks[source["task_id"]] = deepcopy(source)
         return deepcopy(source)
+
+    async def find_upload_task(self, user_id, knowledge_base_id, size, content_key):
+        """查找当前知识库内的同内容任务。"""
+        return next((
+            deepcopy(task) for task in self.tasks.values()
+            if (task["user_id"], task["knowledge_base_id"], task["file_size"], task.get("content_key"))
+            == (user_id, knowledge_base_id, size, content_key)
+        ), None)
+
+    async def list_legacy_uploads(self, user_id, knowledge_base_id, size):
+        """模拟查找同大小的历史任务。"""
+        return [task for task in await self.list_upload_tasks(user_id=user_id, knowledge_base_id=knowledge_base_id)
+                if task["file_size"] == size and task.get("content_key") is None]
+
+    async def set_upload_content_key(self, task_id, content_key):
+        """模拟为历史任务补登记摘要。"""
+        self.tasks[task_id]["content_key"] = content_key
+        return True
 
     async def requeue_upload_tasks(self):
         """模拟后台任务恢复。
@@ -355,6 +376,52 @@ def test_background_upload_submission_and_processing(monkeypatch):
         await manager._process_upload(metadata.tasks[task.task_id].copy())
         assert metadata.tasks[task.task_id]["status"] == "succeeded"
         assert metadata.saved_document["document_id"] == task.task_id
+
+    asyncio.run(scenario())
+
+
+def test_concurrent_uploads_reuse_one_task_within_a_knowledge_base(tmp_path):
+    """验证并发提交保留一份原件，预检在知识库之间隔离。"""
+    async def scenario():
+        """用真实 SQLite 唯一索引验证并发上传及历史任务复用。"""
+        metadata = SQLModelKnowledgeBaseMetadataStore(f"sqlite:///{(tmp_path / 'metadata.db').as_posix()}")
+        storage = FakeObjectStorage()
+        manager = KnowledgeBaseManager(
+            vector_store=FakePgVectorStore(), metadata_store=metadata, object_storage=storage,
+        )
+        try:
+            for knowledge_base_id in ("kb-one", "kb-two"):
+                await metadata.create_knowledge_base({
+                    "knowledge_base_id": knowledge_base_id, "user_id": "alice", "name": knowledge_base_id,
+                    "passage_index": knowledge_base_id,
+                })
+            renamed = UploadedKnowledgeFile("renamed.pdf", "application/pdf", _UPLOAD_FILE.data)
+            first, second = await asyncio.gather(
+                manager.submit_uploads("alice", "kb-one", [_UPLOAD_FILE]),
+                manager.submit_uploads("alice", "kb-one", [renamed]),
+            )
+            assert not first.errors and not second.errors
+            assert first.tasks[0].task_id == second.tasks[0].task_id
+            assert first.tasks[0].reused != second.tasks[0].reused
+            assert len(storage.objects) == 1
+            fingerprint = FileFingerprint(
+                extension=".pdf", size=len(_UPLOAD_FILE.data), sha256=sha256(_UPLOAD_FILE.data).hexdigest(),
+            )
+            matches = await manager.check_uploads("alice", "kb-one", [fingerprint])
+            assert matches[0].task_id == first.tasks[0].task_id
+            assert await manager.check_uploads("alice", "kb-two", [fingerprint]) == [None]
+            modified = UploadedKnowledgeFile(renamed.file_name, renamed.content_type, b"X" + renamed.data[1:])
+            different = await manager.submit_uploads("alice", "kb-one", [modified])
+            assert different.tasks[0].task_id != first.tasks[0].task_id
+            assert len(storage.objects) == 2
+            legacy = different.tasks[0].model_dump(exclude={"reused"})
+            await metadata.save_upload_task({**legacy, "content_key": None, "status": "queued"})
+            legacy_match = await manager.submit_uploads("alice", "kb-one", [modified])
+            assert legacy_match.tasks[0].task_id == legacy["task_id"]
+            assert legacy_match.tasks[0].reused
+            assert len(storage.objects) == 2
+        finally:
+            await metadata.engine.dispose()
 
     asyncio.run(scenario())
 

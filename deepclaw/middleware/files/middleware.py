@@ -9,7 +9,7 @@ from langchain.tools import ToolRuntime, tool
 from pydantic import BaseModel, Field
 
 from deepclaw.middleware.files.formats import generate_docx, generate_xlsx
-from deepclaw.middleware.files.query import inspect_document, read_lines, search_lines
+from deepclaw.middleware.files.query import read_lines, search_lines
 from deepclaw.middleware.files.service import file_details, get_file_service
 from deepclaw.web_backend.auth.rbac.dependencies import agent_has_permission
 
@@ -49,6 +49,9 @@ async def list_files(
     runtime: ToolRuntime,
     offset: Annotated[int, Field(ge=0)] = 0,
     limit: Annotated[int, Field(ge=1, le=50)] = 20,
+    keyword: Annotated[str, Field(max_length=255)] | None = None,
+    format: Literal["txt", "md", "pdf", "docx", "xlsx"] | None = None,
+    favorite: bool | None = None,
 ) -> str:
     """列出当前账号上传或生成的聊天文件。
 
@@ -56,10 +59,16 @@ async def list_files(
         runtime: 框架注入的运行时。
         offset: 跳过的记录数量。
         limit: 每页最多返回的文件数。
+        keyword: 文件名关键词，按字面匹配，忽略大小写。
+        format: 限定文件格式。
+        favorite: 为真时只列收藏，为假时只列未收藏，省略时列两者。
     """
     try:
         owner = await _owner(runtime, "read")
-        files = await get_file_service().list(owner, offset, limit + 1)
+        files = await get_file_service().list(
+            owner, offset, limit + 1, favorite,
+            keyword=keyword, extension=f".{format}" if format is not None else None,
+        )
         return json.dumps({
             "files": [file_details(record) for record in files[:limit]],
             "next_offset": offset + limit if len(files) > limit else None,
@@ -69,19 +78,30 @@ async def list_files(
 
 
 @tool
-async def inspect_file(runtime: ToolRuntime, file_id: str) -> str:
-    """查看聊天文件的行数、Excel Sheet 名称或 PDF 页码范围。
+async def inspect_file(runtime: ToolRuntime, file_id: str, sheet: str | None = None) -> str:
+    """查看文档结构，指定 Excel Sheet 时预览最多三行原始数据。
 
     Args:
         runtime: 框架注入的运行时。
         file_id: 聊天附件或 list_files 返回的文件 ID。
+        sheet: 可选的 Excel 工作表名称。预览保留列标与行号，不推断表头。
     """
     try:
         owner = await _owner(runtime, "read")
         service = get_file_service()
         record = await service.get(owner, file_id)
-        document = await service.parsed(record)
-        return json.dumps({**file_details(record), **inspect_document(document)}, ensure_ascii=False)
+        summary = await service.summary(record)
+        if "sheets" in summary:
+            sheets = summary["sheets"]
+            summary["sheets"] = [{"name": entry["name"], "total_lines": entry["total_lines"]} for entry in sheets]
+            if sheet is not None:
+                selected = next((entry for entry in sheets if entry["name"] == sheet), None)
+                if selected is None:
+                    return "找不到指定的 Sheet。"
+                summary.update(sheet=sheet, preview=selected["preview"])
+        elif sheet is not None:
+            return "只有 Excel 文件可以指定 Sheet。"
+        return json.dumps({**file_details(record), **summary}, ensure_ascii=False)
     except (LookupError, ValueError) as exc:
         return str(exc)
 
@@ -126,8 +146,14 @@ async def grep_file(
     sheet: str | None = None,
     limit: Annotated[int, Field(ge=1, le=100)] = 30,
     cursor: Annotated[int, Field(ge=0)] = 0,
+    exact: bool = False,
+    match_column: Annotated[str, Field(pattern=r"^[A-Za-z]{1,3}$")] | None = None,
+    return_columns: Annotated[list[Annotated[str, Field(pattern=r"^[A-Za-z]{1,3}$")]], Field(max_length=256)] | None = None,
 ) -> str:
     """搜索聊天文件。命中包含原文行号、PDF 页码或 Excel 单元格坐标。
+
+    若 search_complete 为 false，即使本页无命中，也应使用 next_cursor 继续搜索。
+    Excel 按指定列精确匹配适合查询订单号等完整标识。
 
     Args:
         runtime: 框架注入的运行时。
@@ -138,13 +164,19 @@ async def grep_file(
         sheet: Excel 工作表名称，省略时搜索整本。
         limit: 最大命中数量。
         cursor: 使用相同查询条件时传入上一页的 next_cursor。
+        exact: 按完整行或完整单元格匹配，不能和正则同时使用。
+        match_column: Excel 搜索列标，例如订单号所在的 A 列。
+        return_columns: Excel 命中后附带同一行的指定列，例如金额和状态所在的 D、E 列。
     """
     try:
         owner = await _owner(runtime, "read")
         service = get_file_service()
         record = await service.get(owner, file_id)
         document = await service.parsed(record)
-        result = await asyncio.to_thread(search_lines, document, pattern, use_regex, ignore_case, sheet, limit, cursor)
+        result = await asyncio.to_thread(
+            search_lines, document, pattern, use_regex, ignore_case, sheet, limit, cursor,
+            exact=exact, match_column=match_column, return_columns=return_columns,
+        )
         return json.dumps(result, ensure_ascii=False)
     except (LookupError, ValueError) as exc:
         return str(exc)
@@ -154,27 +186,29 @@ async def grep_file(
 async def write_file(
     runtime: ToolRuntime,
     name: str,
-    format: Literal["md", "xlsx"] = "md",
+    format: Literal["md", "xlsx", "docx"] = "md",
     content: str | None = None,
     sheets: list[SheetRequest] | None = None,
 ) -> str:
-    """生成供用户下载的 Markdown 或多 Sheet Excel。回复中使用返回的 download_url 作为 Markdown 下载链接。
+    """生成供用户下载的 Markdown、多 Sheet Excel 或 Word。回复中使用返回的 download_url 作为 Markdown 下载链接。
 
     Args:
         runtime: 框架注入的运行时。
         name: 生成的文件名，可省略后缀。
-        format: Markdown 使用 md，Excel 使用 xlsx。
-        content: Markdown 正文，仅在 md 模式使用。
+        format: Markdown 使用 md，Excel 使用 xlsx，Word 使用 docx。
+        content: Markdown 正文，用于 md 和 docx。
         sheets: Excel 工作表与数据行，日期单元格使用 {"date": "2026-11-25"}。
     """
     try:
         owner = await _owner(runtime, "write")
         if format == "md" and content is not None and sheets is None:
             data = content.encode("utf-8")
+        elif format == "docx" and content is not None and sheets is None:
+            data = await asyncio.to_thread(generate_docx, content)
         elif format == "xlsx" and sheets is not None and content is None:
             data = await asyncio.to_thread(generate_xlsx, [sheet.model_dump() for sheet in sheets])
         else:
-            return "生成 Markdown 请提供 content，生成 Excel 请提供 sheets。"
+            return "生成 Markdown 或 Word 请只提供 content，生成 Excel 请只提供 sheets。"
         suffix = f".{format}"
         filename = name if name.lower().endswith(suffix) else name + suffix
         record = await get_file_service().save(owner, filename, data)

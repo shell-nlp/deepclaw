@@ -6,6 +6,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
+from hashlib import sha256
 from pathlib import PurePosixPath
 from uuid import uuid4
 from zipfile import BadZipFile
@@ -15,16 +16,19 @@ from openpyxl.utils.exceptions import InvalidFileException
 from sqlalchemy import DateTime, delete, func, inspect, text, update
 from sqlalchemy.dialects.postgresql import insert as postgres_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Field, SQLModel, select
 
 from deepclaw.common.object_storage import create_object_storage
 from deepclaw.common.object_storage.base import ObjectStorage
 from deepclaw.middleware.files.formats import extract_document
+from deepclaw.middleware.files.query import build_file_summary
 from deepclaw.settings import settings
 from deepclaw.utils.db import build_async_sessionmaker, create_async_engine_from_url
 from deepclaw.web_backend.db import resolve_metadata_db_url
 
 BUCKET = "chat-files"
+SUMMARY_FILENAME = "summary-v1.json"
 MAX_BYTES = 20 * 1024 * 1024
 MIME_TYPES = {
     ".txt": "text/plain",
@@ -49,6 +53,7 @@ class ChatFile(SQLModel, table=True):
     favorite: bool = Field(default=False)
     returned_at: datetime | None = Field(default=None, sa_type=DateTime)
     deleting: bool = Field(default=False)
+    content_sha256: str | None = Field(default=None, max_length=64)
 
 
 class FileRetention(SQLModel, table=True):
@@ -81,9 +86,15 @@ def _ensure_tables(connection) -> None:
         ("favorite", "BOOLEAN NOT NULL DEFAULT FALSE"),
         ("returned_at", "TIMESTAMP"),
         ("deleting", "BOOLEAN NOT NULL DEFAULT FALSE"),
+        ("content_sha256", "VARCHAR(64)"),
     ):
         if name not in columns:
             connection.exec_driver_sql(f"ALTER TABLE chat_files ADD COLUMN {name} {definition}")
+    connection.exec_driver_sql(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_chat_files_content "
+        "ON chat_files (owner, extension, size, content_sha256) "
+        "WHERE content_sha256 IS NOT NULL AND NOT deleting"
+    )
 
 
 def file_details(record: ChatFile) -> dict:
@@ -101,6 +112,15 @@ def file_details(record: ChatFile) -> dict:
         "favorite": record.favorite,
         "download_url": f"/api/files/{record.id}/download",
     }
+
+
+def _upload_name(name: str) -> tuple[str, str]:
+    """清理文件名并验证后缀。"""
+    name = PurePosixPath(name.replace("\\", "/")).name.strip()
+    extension = PurePosixPath(name).suffix.lower()
+    if extension not in MIME_TYPES or len(name) > 255 or any(ord(char) < 32 for char in name):
+        raise ValueError("文件名无效或格式不受支持。")
+    return name, extension
 
 
 class FileService:
@@ -150,10 +170,74 @@ class FileService:
         assert record is not None
         return record
 
+    async def find_upload(self, owner: str, extension: str, size: int, digest: str) -> ChatFile | None:
+        """查找本账号下格式和内容相同的有效上传文件。"""
+        await self.initialize()
+        async with self.sessions() as session:
+            rows = await session.exec(select(ChatFile).where(
+                ChatFile.owner == owner, ChatFile.extension == extension, ChatFile.size == size,
+                ChatFile.content_sha256 == digest, ChatFile.deleting == False,  # noqa: E712
+            ))
+            return rows.first()
+
+    async def upload(self, owner: str, name: str, data: bytes) -> tuple[ChatFile, bool]:
+        """保存新上传的文件，或复用同账号已上传的原件。"""
+        name, extension = _upload_name(name)
+        if len(data) > MAX_BYTES:
+            raise ValueError("文件大小不能超过 20 MiB。")
+        digest = await asyncio.to_thread(lambda: sha256(data).hexdigest())
+        existing = await self.find_upload(owner, extension, len(data), digest)
+        if existing is None:
+            existing = await self._match_legacy_upload(owner, extension, data, digest)
+        if existing is None:
+            try:
+                record = await self.publish(owner, name, data, content_sha256=digest)
+            except IntegrityError:
+                existing = await self.find_upload(owner, extension, len(data), digest)
+                if existing is None:
+                    raise
+            else:
+                assert record is not None
+                return record, False
+        if await self.download(existing) != data:
+            raise ValueError("文件摘要相同但原始内容不同，无法复用。")
+        return existing, True
+
+    async def _match_legacy_upload(
+        self, owner: str, extension: str, data: bytes, digest: str,
+    ) -> ChatFile | None:
+        """按需为字节相同的历史文件补登记摘要，保留原文件 ID。"""
+        async with self.sessions() as session:
+            rows = await session.exec(select(ChatFile).where(
+                ChatFile.owner == owner, ChatFile.extension == extension, ChatFile.size == len(data),
+                ChatFile.content_sha256.is_(None), ChatFile.deleting == False,  # noqa: E712
+            ).order_by(ChatFile.created_at, ChatFile.id))
+            candidates = rows.all()
+        for candidate in candidates:
+            try:
+                if await self.download(candidate) != data:
+                    continue
+            except FileNotFoundError:
+                continue
+            try:
+                async with self.sessions() as session:
+                    result = await session.exec(update(ChatFile).where(
+                        ChatFile.id == candidate.id, ChatFile.content_sha256.is_(None),
+                        ChatFile.deleting == False,  # noqa: E712
+                    ).values(content_sha256=digest))
+                    await session.commit()
+                if result.rowcount == 1:
+                    return candidate
+            except IntegrityError:
+                pass
+            return await self.find_upload(owner, extension, len(data), digest)
+        return None
+
     async def publish(
         self, owner: str, name: str, data: bytes, *,
         created_at: datetime | None = None,
         register: Callable[[ChatFile], Awaitable[bool]] | None = None,
+        content_sha256: str | None = None,
     ) -> ChatFile | None:
         """保存原件和解析缓存，再登记文件；未登记时清理本次写入的对象。
 
@@ -163,11 +247,9 @@ class FileService:
             data: 原件字节。
             created_at: 原件生成时间，默认为当前时间。
             register: 可选的事务登记函数，返回是否已提交文件记录。
+            content_sha256: 用户上传文件由服务端计算的摘要。
         """
-        name = PurePosixPath(name.replace("\\", "/")).name.strip()
-        extension = PurePosixPath(name).suffix.lower()
-        if extension not in MIME_TYPES or len(name) > 255 or any(ord(char) < 32 for char in name):
-            raise ValueError("文件名无效或格式不受支持。")
+        name, extension = _upload_name(name)
         if len(data) > MAX_BYTES:
             raise ValueError("文件大小不能超过 20 MiB。")
         try:
@@ -180,15 +262,18 @@ class FileService:
         await self.initialize()
         record = ChatFile(
             id=uuid4().hex, owner=owner, name=name, extension=extension,
-            size=len(data), created_at=created_at or utc_now(),
+            size=len(data), created_at=created_at or utc_now(), content_sha256=content_sha256,
         )
         original_key = f"{record.id}/original{extension}"
         parsed_key = f"{record.id}/parsed-v1.json"
+        summary_key = f"{record.id}/{SUMMARY_FILENAME}"
         registered = False
         try:
             cache = await asyncio.to_thread(lambda: json.dumps(parsed, ensure_ascii=False).encode())
+            summary = await asyncio.to_thread(lambda: json.dumps(build_file_summary(parsed), ensure_ascii=False).encode())
             await asyncio.to_thread(self.storage.put_bytes, BUCKET, original_key, data, MIME_TYPES[extension])
             await asyncio.to_thread(self.storage.put_bytes, BUCKET, parsed_key, cache, "application/json")
+            await asyncio.to_thread(self.storage.put_bytes, BUCKET, summary_key, summary, "application/json")
             if register is None:
                 async with self.sessions() as session:
                     session.add(record)
@@ -198,7 +283,7 @@ class FileService:
                 registered = await register(record)
         finally:
             if not registered:
-                for key in (original_key, parsed_key):
+                for key in (original_key, parsed_key, summary_key):
                     try:
                         await asyncio.to_thread(self.storage.delete_object, BUCKET, key)
                     except Exception:
@@ -222,7 +307,10 @@ class FileService:
             raise LookupError("找不到文件。")
         return record
 
-    async def list(self, owner: str, offset: int, limit: int, favorite: bool | None = None) -> list[ChatFile]:
+    async def list(
+        self, owner: str, offset: int, limit: int, favorite: bool | None = None,
+        *, keyword: str | None = None, extension: str | None = None,
+    ) -> list[ChatFile]:
         """按创建时间分页列出当前账号的文件。
 
         Args:
@@ -230,12 +318,18 @@ class FileService:
             offset: 跳过的文件数。
             limit: 返回数量。
             favorite: 按收藏状态筛选，省略时返回两区。
+        keyword: 按文件名进行不区分大小写的字面子串匹配。
+        extension: 筛选指定的小写文件后缀，包含点号。
         """
         await self.initialize()
         async with self.sessions() as session:
             query = select(ChatFile).where(ChatFile.owner == owner, ChatFile.deleting.is_(False))
             if favorite is not None:
                 query = query.where(ChatFile.favorite.is_(favorite))
+            if keyword and keyword.strip():
+                query = query.where(func.lower(ChatFile.name).contains(keyword.strip().lower(), autoescape=True))
+            if extension is not None:
+                query = query.where(ChatFile.extension == extension)
             result = await session.exec(query.order_by(
                 func.coalesce(ChatFile.returned_at, ChatFile.created_at).desc(), ChatFile.id.desc(),
             ).offset(offset).limit(limit))
@@ -346,6 +440,7 @@ class FileService:
         try:
             await asyncio.to_thread(self.storage.delete_object, BUCKET, f"{record.id}/original{record.extension}")
             await asyncio.to_thread(self.storage.delete_object, BUCKET, f"{record.id}/parsed-v1.json")
+            await asyncio.to_thread(self.storage.delete_object, BUCKET, f"{record.id}/{SUMMARY_FILENAME}")
         except Exception:
             logger.exception("清理文件失败，稍后重试，文件 ID %s", record.id)
             return
@@ -360,6 +455,18 @@ class FileService:
             record: 已授权的文件记录。
         """
         data = await asyncio.to_thread(self.storage.get_bytes, BUCKET, f"{record.id}/parsed-v1.json")
+        return await asyncio.to_thread(json.loads, data)
+
+    async def summary(self, record: ChatFile) -> dict:
+        """读取已授权文件的轻量摘要，历史文件回退到完整解析结果。
+
+        Args:
+            record: 已授权的文件记录。
+        """
+        try:
+            data = await asyncio.to_thread(self.storage.get_bytes, BUCKET, f"{record.id}/{SUMMARY_FILENAME}")
+        except FileNotFoundError:
+            return await asyncio.to_thread(build_file_summary, await self.parsed(record))
         return await asyncio.to_thread(json.loads, data)
 
     async def download(self, record: ChatFile) -> bytes:

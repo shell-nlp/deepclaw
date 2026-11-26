@@ -209,7 +209,10 @@ export function ChatView({
     const headers = withAuthHeaders()
     try {
       for (const file of files) {
-        uploaded.push(await uploadChatFile(file, headers))
+        const attachment = await uploadChatFile(file, headers)
+        const index = uploaded.findIndex((item) => item.file_id === attachment.file_id)
+        if (index === -1) uploaded.push(attachment)
+        else if (attachment.reused) uploaded[index] = attachment
         if (currentFileDraftKey.current !== fileDraftKey) break
         onDraftFilesChange([...uploaded])
       }
@@ -367,7 +370,7 @@ export function ChatView({
           {(draftFiles.length > 0 || uploadingFiles) && <div className={styles.composerImages}>
             {draftFiles.map((file) => (
               <span key={file.file_id} className={styles.composerFile} title={file.name}>
-                <span>{file.name}</span>
+                <span>{file.name}{file.reused && ' · 已复用'}</span>
                 <button type="button" disabled={uploadingFiles} aria-label={'移除 ' + file.name}
                   onClick={() => onDraftFilesChange(draftFiles.filter((item) => item.file_id !== file.file_id))}>×</button>
               </span>

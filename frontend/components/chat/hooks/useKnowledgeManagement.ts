@@ -28,6 +28,7 @@ import {
   KNOWLEDGE_BASE_PAGE_SIZE,
 } from '../utils/constants'
 import { getPageTotal, getRouteHash } from '../utils'
+import { getFileFingerprint } from '../utils/chatFiles'
 import type {
   AgentSummary,
   BulkDeleteDocumentResponse,
@@ -719,20 +720,46 @@ export function useKnowledgeManagement(options: UseKnowledgeManagementOptions) {
     const formData = new FormData()
     formData.append('user_id', currentUserId)
     formData.append('knowledge_base_id', selectedKnowledgeBase.knowledge_base_id)
-    files.forEach((file) => formData.append('files', file))
-
     try {
-      const result = await requestJson<UploadResult>(KB_DOCUMENT_UPLOAD_API_PATH, {
-        method: 'POST',
-        body: formData,
-      })
-      setUploadTasks((previous) => [
-        ...result.tasks,
-        ...previous.filter((task) => !result.tasks.some((item) => item.task_id === task.task_id)),
-      ])
-      if (result.tasks.length) {
-        setManagementNotice(`已提交 ${result.tasks.length} 个文件，后台处理中。`)
+      const matches = new Map<number, KnowledgeUploadTask>()
+      for (let start = 0; start < files.length; start += 100) {
+        const fingerprints = []
+        const indexes: number[] = []
+        for (let index = start; index < Math.min(start + 100, files.length); index += 1) {
+          const fingerprint = await getFileFingerprint(files[index])
+          if (fingerprint && fingerprint.extension.length <= 64) {
+            fingerprints.push(fingerprint)
+            indexes.push(index)
+          }
+        }
+        if (!fingerprints.length) continue
+        const checked = await requestJson<(KnowledgeUploadTask | null)[]>(KB_DOCUMENT_UPLOAD_API_PATH + '-check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ knowledge_base_id: selectedKnowledgeBase.knowledge_base_id, files: fingerprints }),
+        }).catch(() => [])
+        checked.forEach((task, index) => {
+          if (task?.reused) matches.set(indexes[index], task)
+        })
       }
+      files.forEach((file, index) => { if (!matches.has(index)) formData.append('files', file) })
+      const result = formData.has('files')
+        ? await requestJson<UploadResult>(KB_DOCUMENT_UPLOAD_API_PATH, { method: 'POST', body: formData })
+        : { tasks: [], errors: [] }
+      const received = [...matches.values(), ...result.tasks]
+      const tasks = [...new Map(received.map((task) => [task.task_id, task])).values()]
+      setUploadTasks((previous) => [
+        ...tasks,
+        ...previous.filter((task) => !tasks.some((item) => item.task_id === task.task_id)),
+      ])
+      const submitted = result.tasks.filter((task) => !task.reused).length
+      const reused = received.length - submitted
+      const failed = tasks.some((task) => task.reused && task.status === 'failed')
+      setManagementNotice([
+        submitted ? `已提交 ${submitted} 个文件，后台处理中。` : '',
+        reused ? `已复用 ${reused} 个已有文件或上传任务。` : '',
+        failed ? '失败的任务可在上传列表中重试。' : '',
+      ].filter(Boolean).join(''))
       if (result.errors.length) {
         setManagementError(result.errors.map((item) => `${item.file_name}: ${item.error}`).join('\n'))
       }

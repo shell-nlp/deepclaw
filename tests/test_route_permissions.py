@@ -285,6 +285,7 @@ def test_chat_file_permissions_and_tool_roundtrip(guarded_client, monkeypatch, t
     """
     import json
     from datetime import timedelta
+    from hashlib import sha256
 
     from langchain_core.messages import AIMessage
     from langgraph.graph import END, START, MessagesState, StateGraph
@@ -292,7 +293,7 @@ def test_chat_file_permissions_and_tool_roundtrip(guarded_client, monkeypatch, t
 
     from deepclaw.common.object_storage import LocalObjectStorage
     from deepclaw.middleware.files import middleware as files
-    from deepclaw.middleware.files.service import BUCKET, FileService, utc_now
+    from deepclaw.middleware.files.service import BUCKET, SUMMARY_FILENAME, FileService, utc_now
     from deepclaw.web_backend import files as file_routes
     from deepclaw.web_backend.agent.run_manager import AgentAuthUser
     from deepclaw.web_backend.auth import service as auth_module
@@ -351,6 +352,27 @@ def test_chat_file_permissions_and_tool_roundtrip(guarded_client, monkeypatch, t
                 assert response.status_code == 201, response.text
                 saved = response.json()
                 file_id = saved["file_id"]
+                fingerprint = {"extension": ".txt", "size": len(upload["file"][1]),
+                               "sha256": sha256(upload["file"][1]).hexdigest()}
+                preflight = await client.post("/api/files/upload-check", json=fingerprint, headers=owner_headers)
+                assert preflight.json()["file_id"] == file_id
+                assert preflight.json()["reused"] is True
+                assert (await client.post(
+                    "/api/files/upload-check", json=fingerprint, headers=other_headers,
+                )).status_code == 403
+                repeated = await client.post(
+                    "/api/files", files={"file": ("改名.txt", upload["file"][1])}, headers=owner_headers,
+                )
+                assert repeated.status_code == 200
+                assert repeated.json()["file_id"] == file_id
+                assert repeated.json()["name"] == saved["name"]
+                legacy = await service.save(owner, "旧文件.txt", b"legacy")
+                restored = await client.post(
+                    "/api/files", files={"file": ("旧文件副本.txt", b"legacy")}, headers=owner_headers,
+                )
+                assert restored.status_code == 200
+                assert restored.json()["file_id"] == legacy.id
+                await service.remove(owner, legacy.id)
                 path = saved["download_url"]
                 preview_path = f"/api/files/{file_id}/preview"
                 assert (await client.get(preview_path, headers=other_headers)).status_code == 404
@@ -377,6 +399,62 @@ def test_chat_file_permissions_and_tool_roundtrip(guarded_client, monkeypatch, t
                 converted = json.loads(await invoke(owner, "export_file", file_id=generated["file_id"]))
                 word = json.loads(await invoke(owner, "read_file", file_id=converted["file_id"]))
                 assert word["lines"][0]["content"] == "正文"
+                direct_word = json.loads(await invoke(
+                    owner, "write_file", name="直接生成", format="docx", content="# Word 正文",
+                ))
+                assert direct_word["name"] == "直接生成.docx"
+                direct_preview = json.loads(await invoke(owner, "read_file", file_id=direct_word["file_id"]))
+                assert direct_preview["lines"][0]["content"] == "Word 正文"
+                assert "缺少" in await invoke(other, "write_file", name="拒绝", format="docx", content="# 正文")
+                workbook = json.loads(await invoke(owner, "write_file", name="订单_明细", format="xlsx", sheets=[{
+                    "name": "明细",
+                    "rows": [[], ["订单号", "金额", "状态"], ["X123", 15, "已完成"], ["X1234", 60, "待处理"]],
+                }]))
+                workbook_id = workbook["file_id"]
+                await service.save(owner, "订单A明细.xlsx", await service.download(await service.get(owner, workbook_id)))
+                filtered = json.loads(await invoke(owner, "list_files", format="xlsx", keyword="订单_", limit=1))
+                assert [item["file_id"] for item in filtered["files"]] == [workbook_id]
+                assert filtered["next_offset"] is None
+                assert json.loads(await invoke(other, "list_files", format="xlsx", keyword="订单"))["files"] == []
+                summary_key = f"{workbook_id}/{SUMMARY_FILENAME}"
+                reads = []
+                original_read = service.storage.get_bytes
+
+                def track_read(bucket, key):
+                    """记录探测读取的对象及字节数。
+
+                    Args:
+                        bucket: 对象存储桶。
+                        key: 对象键。
+                    """
+                    data = original_read(bucket, key)
+                    reads.append((key, len(data)))
+                    return data
+
+                monkeypatch.setattr(service.storage, "get_bytes", track_read)
+                assert "找不到" in await invoke(other, "inspect_file", file_id=workbook_id, sheet="明细")
+                assert reads == []
+                structure = json.loads(await invoke(owner, "inspect_file", file_id=workbook_id))
+                assert structure["sheets"] == [{"name": "明细", "total_lines": 4}]
+                preview = json.loads(await invoke(owner, "inspect_file", file_id=workbook_id, sheet="明细"))
+                assert preview["preview"] == [
+                    {"line": 1, "cells": {}, "truncated": False},
+                    {"line": 2, "cells": {"A": "订单号", "B": "金额", "C": "状态"}, "truncated": False},
+                    {"line": 3, "cells": {"A": "X123", "B": 15, "C": "已完成"}, "truncated": False},
+                ]
+                assert [key for key, _ in reads] == [summary_key, summary_key]
+                service.storage.delete_object(BUCKET, summary_key)
+                historical = json.loads(await invoke(owner, "inspect_file", file_id=workbook_id, sheet="明细"))
+                assert historical == preview
+                assert reads[-1][0] == f"{workbook_id}/parsed-v1.json"
+                match = json.loads(await invoke(
+                    owner, "grep_file", file_id=workbook_id, sheet="明细", pattern="X123",
+                    exact=True, match_column="a", return_columns=["B", "C"],
+                ))
+                assert match["matches"] == [{
+                    "line": 3, "sheet": "明细", "cell": "明细!A3", "content": "X123",
+                    "cells": {"B": {"value": 15}, "C": {"value": "已完成"}},
+                }]
                 retention_path = "/api/files/retention"
                 favorite_path = f"/api/files/{file_id}/favorite"
                 assert (await client.get(retention_path, headers=owner_headers)).json() == {"retention_days": None}
@@ -387,6 +465,8 @@ def test_chat_file_permissions_and_tool_roundtrip(guarded_client, monkeypatch, t
                 assert file_id not in {item["file_id"] for item in visible}
                 favorites = (await client.get("/api/files?favorite=true", headers=owner_headers)).json()["files"]
                 assert [item["file_id"] for item in favorites] == [file_id]
+                tool_favorites = json.loads(await invoke(owner, "list_files", favorite=True))
+                assert [item["file_id"] for item in tool_favorites["files"]] == [file_id]
                 assert (await client.put(retention_path, headers=owner_headers, json={"retention_days": 1})).status_code == 200
                 assert (await client.get(retention_path, headers=other_headers)).json() == {"retention_days": None}
                 other_file = await service.save(other, "其他.txt", b"other")
