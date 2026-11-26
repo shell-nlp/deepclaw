@@ -848,7 +848,7 @@ BACKEND_TYPE=local_shell
 | `AGUI_THREAD_RETENTION_SECONDS` | Thread 索引保留时长；默认 `0` 表示不自动过期 |
 | `AGUI_RUN_MAX_EVENTS` | 单个 Run 的事件数量上限，默认 `2000` |
 | `AGUI_RUN_CLEANUP_INTERVAL_SECONDS` | 过期清理任务间隔，默认 `60` |
-| `AGUI_RUN_POLL_INTERVAL_SECONDS` | 事件流轮询间隔，默认 `0.5` |
+| `AGUI_RUN_POLL_INTERVAL_SECONDS` | 事件流兜底轮询间隔（PostgreSQL 下由 NOTIFY 即时唤醒），默认 `0.5` |
 | `CHART_PUBLIC_URL` | 图表对外访问前缀，留空则返回相对路径 `/charts/xxx.png` |
 | `CHART_RETENTION_HOURS` / `CHART_MAX_FILES` | 图表文件保留时长与数量上限 |
 | `CHANNEL_AGENT_API_URL` | 渠道网关调用 Agent 的完整地址；留空时自动使用当前服务的 `/api/agui/runs` |

@@ -27,52 +27,118 @@ from deepclaw.web_backend.agent.run_store import (
 LANGGRAPH_AUTH_USER_KEY = "langgraph_auth_user"
 STREAM_BATCH_WINDOW = 0.04
 STREAM_BATCH_SIZE = 32
+STREAM_BATCH_CHARS = 4096
 STREAM_DELTAS = frozenset({
     "TEXT_MESSAGE_CONTENT", "REASONING_MESSAGE_CONTENT", "TOOL_CALL_ARGS",
 })
 
 
+def _delta_identity(event: Any) -> tuple[str, str] | None:
+    """返回可合并增量事件的标识（事件类型 + 消息/工具归属）。
+
+    Args:
+        event: AG-UI 事件对象。
+
+    Returns:
+        可合并增量返回 (类型, 归属)；非增量事件返回 None。
+    """
+    kind = getattr(event.type, "value", event.type)
+    if kind not in STREAM_DELTAS:
+        return None
+    if kind == "TOOL_CALL_ARGS":
+        return (kind, event.tool_call_id)
+    return (kind, event.message_id)
+
+
 async def _write_stream_batches(
-    store: RunStore, run_id: str, queue: asyncio.Queue[tuple[str, str] | None],
+    store: RunStore, run_id: str, queue: asyncio.Queue[Any | None],
 ) -> None:
-    """分批提交模型增量，首片和状态边界立即提交。
+    """合并提交模型增量：同类同归属的连续分片拼接成单条事件后落库。
+
+    首片与非增量事件立即提交（保住首字延迟与状态边界），其余增量按
+    时间窗、分片数或字符数上限合并。逐 token 一行事件时每行信封开销
+    远大于正文，合并后行数与写入量随 token 数线性下降。
 
     Args:
         store: 事件存储。
         run_id: 当前 Run ID。
-        queue: 按原始顺序接收事件的有界队列，None 表示流结束。
+        queue: 按原始顺序接收 AG-UI 事件对象的有界队列，None 表示流结束。
     """
     loop = asyncio.get_running_loop()
-    frames: list[str] = []
-    previous_kind = None
+    encoder = EventEncoder()
+    pending: Any | None = None
+    pending_identity: tuple[str, str] | None = None
+    pending_fragments = 0
     deadline = 0.0
+    publish_next = True
+
+    async def flush_pending(*, idle: bool = False) -> None:
+        """提交并清空挂起的合并事件。
+
+        Args:
+            idle: 是否因等待超时（流暂时空闲）而提交。
+        """
+        nonlocal pending, pending_identity, pending_fragments, publish_next
+        if pending is None:
+            return
+        await store.append_events(run_id, [encoder.encode(pending)])
+        pending = None
+        pending_identity = None
+        pending_fragments = 0
+        # 只有流空闲后重新开始时才单独立即发布首片；连续流按批次合并，
+        # 否则每批都会拆出一条单行事件，事务数翻倍。
+        publish_next = idle
+
     while True:
-        if frames:
+        if pending is not None:
             try:
                 async with asyncio.timeout_at(deadline):
                     item = await queue.get()
             except TimeoutError:
-                await store.append_events(run_id, frames)
-                frames = []
+                await flush_pending(idle=True)
                 continue
         else:
             item = await queue.get()
         if item is None:
-            if frames:
-                await store.append_events(run_id, frames)
+            await flush_pending()
             return
-        kind, frame = item
-        if kind not in STREAM_DELTAS or kind != previous_kind:
-            await store.append_events(run_id, [*frames, frame])
+        event = item
+        identity = _delta_identity(event)
+        if identity is None:
+            # 非增量事件：连同挂起增量按序立即提交，保证状态边界不被延迟。
             frames = []
+            if pending is not None:
+                frames.append(encoder.encode(pending))
+                pending = None
+                pending_identity = None
+                pending_fragments = 0
+            frames.append(encoder.encode(event))
+            await store.append_events(run_id, frames)
+            publish_next = True
+            continue
+        if pending is not None and identity != pending_identity:
+            await flush_pending()
+        if publish_next:
+            # 上一批刚提交或流刚起步：突发首片立即下发，降低首字延迟。
+            await store.append_events(run_id, [encoder.encode(event)])
+            publish_next = False
+            continue
+        if pending is None:
+            pending = event
+            pending_identity = identity
+            pending_fragments = 1
+            deadline = loop.time() + STREAM_BATCH_WINDOW
         else:
-            if not frames:
-                deadline = loop.time() + STREAM_BATCH_WINDOW
-            frames.append(frame)
-            if len(frames) >= STREAM_BATCH_SIZE or loop.time() >= deadline:
-                await store.append_events(run_id, frames)
-                frames = []
-        previous_kind = kind
+            pending = pending.model_copy(
+                update={"delta": pending.delta + event.delta}
+            )
+            pending_fragments += 1
+        if (
+            pending_fragments >= STREAM_BATCH_SIZE
+            or len(pending.delta) >= STREAM_BATCH_CHARS
+            or loop.time() >= deadline
+        ):
+            await flush_pending()
 
 
 @dataclass(frozen=True)
@@ -626,14 +692,14 @@ class AgentRunManager:
                 if selected is not None:
                     model_token = RUN_CHAT_MODEL.set(get_chat_model(catalog_model=selected, reasoning_effort=effort))
                 payload = payload.model_copy(update={"state": state_input})
-            queue: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue(maxsize=STREAM_BATCH_SIZE * 2)
+            queue: asyncio.Queue[Any | None] = asyncio.Queue(maxsize=STREAM_BATCH_SIZE * 2)
             stream_error: Exception | asyncio.CancelledError | None = None
             async with asyncio.TaskGroup() as group:
                 group.create_task(_write_stream_batches(self.store, run_id, queue))
                 try:
                     async with aclosing(agent.run(payload)) as stream:
                         async for event in stream:
-                            await queue.put((event.type, encoder.encode(event)))
+                            await queue.put(event)
                 except (Exception, asyncio.CancelledError) as exc:
                     stream_error = exc
                 await queue.put(None)

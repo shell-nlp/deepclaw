@@ -863,7 +863,7 @@ After signing in as an administrator, open Model management from the sidebar to 
 | `AGUI_THREAD_RETENTION_SECONDS` | Thread index retention; `0` means no automatic expiry |
 | `AGUI_RUN_MAX_EVENTS` | Max events per run, default `2000` |
 | `AGUI_RUN_CLEANUP_INTERVAL_SECONDS` | Expired-record cleanup interval, default `60` |
-| `AGUI_RUN_POLL_INTERVAL_SECONDS` | Event stream poll interval, default `0.5` |
+| `AGUI_RUN_POLL_INTERVAL_SECONDS` | Fallback event stream poll interval (PostgreSQL deployments are woken by NOTIFY), default `0.5` |
 | `CHART_PUBLIC_URL` | Public URL prefix for charts; empty returns a relative `/charts/xxx.png` |
 | `CHART_RETENTION_HOURS` / `CHART_MAX_FILES` | Chart file retention and count limits |
 | `CHANNEL_AGENT_API_URL` | Full URL channels use to reach the agent; when empty the current service's `/api/agui/runs` is used |

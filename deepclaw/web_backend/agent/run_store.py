@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, AsyncGenerator, Protocol
@@ -162,6 +163,140 @@ def checkpoint_timestamp(value: Any) -> float:
         except ValueError:
             pass
     return time.time()
+
+
+AGUI_RUN_NOTIFY_CHANNEL = "agui_run_events"
+
+
+class _RunNotifyBus:
+    """进程级 PG NOTIFY 监听总线，跨进程唤醒 Run 事件订阅。
+
+    事件写入与 pg_notify 在同一事务内提交：回滚不投递；多实例部署时，
+    其它进程的订阅端由 NOTIFY 立即唤醒，轮询仅作为通知丢失时的兜底。
+    监听连接独立于 SQLAlchemy 连接池，断线按退避重连，未建立时退化为
+    纯轮询（正确性不受影响）。
+    """
+
+    _RECONNECT_MIN_SECONDS = 0.5
+    _RECONNECT_MAX_SECONDS = 30.0
+    _LIVENESS_CHECK_SECONDS = 5.0
+
+    def __init__(self, db_url: str, on_notify: Callable[[str], None]) -> None:
+        """初始化通知总线。
+
+        Args:
+            db_url: PostgreSQL 连接 URL，可带 SQLAlchemy 的 `+asyncpg` 驱动后缀。
+            on_notify: 收到 run_id 通知时执行的唤醒回调。
+        """
+        self._db_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
+        self._on_notify = on_notify
+        self._task: asyncio.Task[None] | None = None
+        self._conn: Any | None = None
+        self._stopping = False
+
+    async def start(self) -> None:
+        """启动监听任务（幂等）。
+
+        Args:
+            无。
+
+        Returns:
+            无。
+        """
+        if self._task is not None:
+            return
+        self._stopping = False
+        self._task = asyncio.create_task(
+            self._listen_forever(), name="agui-run-notify-bus"
+        )
+
+    async def stop(self) -> None:
+        """停止监听并释放专用连接。
+
+        Args:
+            无。
+
+        Returns:
+            无。
+        """
+        self._stopping = True
+        task, self._task = self._task, None
+        if task is not None:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        await self._close_connection()
+
+    async def _listen_forever(self) -> None:
+        """持续监听 NOTIFY 频道，断线按指数退避重连。
+
+        Args:
+            无。
+
+        Returns:
+            无。
+        """
+        import asyncpg
+
+        backoff = self._RECONNECT_MIN_SECONDS
+        while not self._stopping:
+            try:
+                conn = await asyncpg.connect(self._db_url)
+                self._conn = conn
+                await conn.add_listener(
+                    AGUI_RUN_NOTIFY_CHANNEL, self._handle_notify
+                )
+                backoff = self._RECONNECT_MIN_SECONDS
+                while not self._stopping and not conn.is_closed():
+                    await asyncio.sleep(self._LIVENESS_CHECK_SECONDS)
+                    # 主动探活：连接被代理或数据库单方面断开时，
+                    # 仅靠 is_closed() 未必能及时发现，探活失败即触发重连。
+                    await conn.fetchval("select 1")
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.warning(
+                    "AG-UI Run 通知总线监听失败，订阅退化为轮询兜底",
+                    exc_info=True,
+                )
+            finally:
+                await self._close_connection()
+            if self._stopping:
+                return
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, self._RECONNECT_MAX_SECONDS)
+
+    def _handle_notify(self, _conn, _pid, _channel, payload) -> None:
+        """分发单条 NOTIFY 载荷到唤醒回调。
+
+        Args:
+            _conn: 触发通知的连接（未使用）。
+            _pid: 发送端进程号（未使用）。
+            _channel: 通知频道（未使用）。
+            payload: 携带 run_id 的载荷。
+
+        Returns:
+            无。
+        """
+        run_id = str(payload or "")
+        if run_id:
+            self._on_notify(run_id)
+
+    async def _close_connection(self) -> None:
+        """关闭并清空当前监听连接。
+
+        Args:
+            无。
+
+        Returns:
+            无。
+        """
+        conn, self._conn = self._conn, None
+        if conn is None:
+            return
+        try:
+            await conn.close()
+        except Exception:  # noqa: BLE001 —— 连接已断时 close 也会抛，忽略
+            pass
 
 
 @dataclass(slots=True)
@@ -1120,6 +1255,8 @@ class SqlRunStore(BaseRunStore):
         self.db_url = db_url
         self.poll_interval_seconds = poll_interval_seconds
         self._event_waiters: dict[str, set[asyncio.Event]] = {}
+        self._is_postgres = db_url.startswith("postgresql")
+        self._notify_bus: _RunNotifyBus | None = None
         self.engine = create_async_engine_from_url(db_url)
         self.async_session = build_async_sessionmaker(self.engine)
         self._init_done = False
@@ -1793,11 +1930,36 @@ class SqlRunStore(BaseRunStore):
             record.expires_at = datetime_from_timestamp(self._expires_at())
             session.add(record)
             await session.commit()
-            for waiter in self._event_waiters.get(run_id, ()):
-                waiter.set()
+            self._wake_waiters(run_id)
             await session.refresh(record)
             await self._touch_thread(record.thread_id)
             return self._to_state(record)
+
+    def _wake_waiters(self, run_id: str) -> None:
+        """唤醒当前 Run 的全部订阅等待者。
+
+        Args:
+            run_id: Run ID。
+
+        Returns:
+            无。
+        """
+        for waiter in self._event_waiters.get(run_id, ()):
+            waiter.set()
+
+    async def _ensure_notify_bus(self) -> None:
+        """确保 PG 通知总线已启动（仅 PostgreSQL 部署，幂等）。
+
+        Args:
+            无。
+
+        Returns:
+            无。
+        """
+        if not self._is_postgres or self._notify_bus is not None:
+            return
+        self._notify_bus = _RunNotifyBus(self.db_url, self._wake_waiters)
+        await self._notify_bus.start()
 
     async def append_event(self, run_id: str, frame: str) -> int:
         """追加一个 AG-UI 事件。
@@ -1846,9 +2008,15 @@ class SqlRunStore(BaseRunStore):
                 await session.exec(delete(AgUiRunEventRecord).where(
                     AgUiRunEventRecord.run_id == run_id, AgUiRunEventRecord.event_id <= cutoff,
                 ).execution_options(synchronize_session=False))
+            if self._is_postgres:
+                # 事件与通知同事务：提交才投递、回滚不投递（Postgres NOTIFY 语义），
+                # 多实例部署时其它进程的订阅端据此立即回表读取，无需等轮询。
+                await session.execute(
+                    text("select pg_notify(:channel, :payload)"),
+                    {"channel": AGUI_RUN_NOTIFY_CHANNEL, "payload": run_id},
+                )
             await session.commit()
-        for waiter in self._event_waiters.get(run_id, ()):
-            waiter.set()
+        self._wake_waiters(run_id)
         return event_id
 
     async def get_events(self, run_id: str, after: int = 0) -> list[tuple[int, str]]:
@@ -1874,6 +2042,40 @@ class SqlRunStore(BaseRunStore):
             )
             return [(record.event_id, record.frame) for record in result.all()]
 
+    async def _poll_events(
+        self,
+        run_id: str,
+        after: int = 0,
+        user_id: str | None = None,
+    ) -> tuple[RunState | None, list[tuple[int, str]]]:
+        """单次会话内同时读取 Run 状态与新事件。
+
+        Args:
+            run_id: Run ID。
+            after: 只返回大于该序号的事件。
+            user_id: 可选当前用户 ID，用于归属校验。
+
+        Returns:
+            Run 状态（不存在或无权访问时为 None）与事件列表。
+        """
+        await self._ensure_init()
+        await self._maybe_prune()
+        async with self.async_session() as session:
+            record = await session.get(AgUiRunRecord, run_id)
+            if record is None or (user_id is not None and record.owner_user_id != user_id):
+                return None, []
+            state = self._to_state(record)
+            result = await session.exec(
+                select(AgUiRunEventRecord)
+                .where(
+                    AgUiRunEventRecord.run_id == run_id,
+                    AgUiRunEventRecord.event_id > after,
+                )
+                .order_by(AgUiRunEventRecord.event_id)
+            )
+            events = [(item.event_id, item.frame) for item in result.all()]
+            return state, events
+
     async def subscribe(
         self,
         run_id: str,
@@ -1881,6 +2083,9 @@ class SqlRunStore(BaseRunStore):
         user_id: str | None = None,
     ) -> AsyncGenerator[tuple[int, str], None]:
         """订阅 Run 事件。
+
+        PostgreSQL 部署时由 NOTIFY 总线跨进程唤醒，轮询仅作兜底；
+        每轮迭代在单次数据库会话内同时读取 Run 状态与新事件。
 
         Args:
             run_id: Run ID。
@@ -1890,6 +2095,7 @@ class SqlRunStore(BaseRunStore):
         Yields:
             事件 ID 与编码帧。
         """
+        await self._ensure_notify_bus()
         wake_up = asyncio.Event()
         waiters = self._event_waiters.setdefault(run_id, set())
         waiters.add(wake_up)
@@ -1898,17 +2104,19 @@ class SqlRunStore(BaseRunStore):
             while True:
                 # 先清除信号，再查数据库，避免漏掉查询期间提交的事件。
                 wake_up.clear()
-                state = await self.get_run(run_id, user_id=user_id)
+                state, events = await self._poll_events(
+                    run_id, after=last_event_id, user_id=user_id
+                )
                 if state is None:
                     raise ValueError("Run 不存在或无权访问")
-                events = await self.get_events(run_id, after=last_event_id)
                 for event_id, frame in events:
                     last_event_id = event_id
                     yield event_id, frame
                 if state.status not in {"queued", "running", "cancelling"}:
                     return
                 try:
-                    # 同进程提交后立即唤醒，其他进程写入仍可通过轮询读取。
+                    # 同进程提交与跨进程 NOTIFY 都会唤醒等待者，
+                    # 超时兜底轮询保证通知丢失时仍能追上进度。
                     await asyncio.wait_for(wake_up.wait(), self.poll_interval_seconds)
                 except TimeoutError:
                     pass
@@ -1960,7 +2168,7 @@ class SqlRunStore(BaseRunStore):
         return len(expired_run_ids)
 
     async def close(self) -> None:
-        """释放数据库连接资源。
+        """释放通知总线与数据库连接资源。
 
         Args:
             无。
@@ -1968,6 +2176,9 @@ class SqlRunStore(BaseRunStore):
         Returns:
             无。
         """
+        if self._notify_bus is not None:
+            await self._notify_bus.stop()
+            self._notify_bus = None
         await self.engine.dispose()
 
     async def initialize(self) -> None:

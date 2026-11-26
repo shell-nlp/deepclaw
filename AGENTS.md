@@ -66,6 +66,7 @@
   基于 `RunStore` 的 Run 管理器，负责 Run 执行、`Last-Event-ID` 重放、恢复、取消与事件流编排。每次执行前会把当前用户身份写入 LangGraph config 的 `configurable["langgraph_auth_user"]`：LangGraph 只有在该键存在时才构造 `Runtime.server_info`，Store 的 `filesystem` 命名空间才能按用户隔离；同时（`BACKEND_TYPE=store` 时）在启动图之前调用 `sync_skills_store()` 把本地技能同步进该用户命名空间，避免依赖中间件顺序。
 - `deepclaw/web_backend/agent/run_store.py`
   Run/Thread 存储抽象层，定义 Thread owner、按 Thread 查询 Run、Run 状态、事件追加/重放、过期清理和订阅接口；Run/事件按 `AGUI_RUN_RETENTION_SECONDS` 清理，Thread 索引默认不自动过期。启动时会从 LangGraph checkpoint 回填缺失的 Thread 索引；当前提供 `InMemoryRunStore` 与 PostgreSQL/SQLite `SqlRunStore`，后续可新增 Redis 实现。
+  `SqlRunStore.append_events()` 用单条 `UPDATE ... RETURNING` 分配事件序号后批量插入，并在同一事务内 `pg_notify`：提交才投递、回滚不投递。`_RunNotifyBus` 用独立于连接池的专用 asyncpg 连接 `LISTEN`，把唤醒事件分发到订阅等待者，因此多实例部署下订阅端不再等轮询；`AGUI_RUN_POLL_INTERVAL_SECONDS` 只是通知丢失或 SQLite 部署时的兜底。`subscribe()` 每轮在同一个会话内同时读取 Run 状态与新事件，避免终态与事件可见性错位。
 
 - `deepclaw/web_backend/common/errors.py`
   统一业务规则异常 `BusinessRuleError`，由 `create_app()` 注册的全局异常处理器转换为 `{"detail": ...}` 响应。
