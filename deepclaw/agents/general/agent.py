@@ -93,10 +93,16 @@ class GeneralAgent(Agent):
         Returns:
             通用工具列表。
         """
-        from deepclaw.tools import ask_user, get_weather, web_fetch
+        from deepclaw.tools import ask_user, get_weather
+        # from deepclaw.tools import web_fetch
         from deepclaw.tools.retriever import retrieve_context
 
-        return [get_weather, web_fetch, ask_user, retrieve_context]
+        return [
+            get_weather,
+            # web_fetch,  # 暂停向智能体注册网页抓取工具。
+            ask_user,
+            retrieve_context,
+        ]
 
     @classmethod
     def build_agent(

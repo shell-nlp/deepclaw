@@ -31,7 +31,7 @@ def test_general_agent_exposes_common_middleware() -> None:
 
 
 def test_general_agent_exposes_common_tools() -> None:
-    """验证通用工具集合覆盖天气、抓取、提问与知识库检索。
+    """验证通用工具集合覆盖天气、提问与知识库检索。
 
     Args:
         无。
@@ -40,7 +40,7 @@ def test_general_agent_exposes_common_tools() -> None:
         getattr(tool, "name", "") for tool in GeneralAgent.get_common_tools()
     }
 
-    assert {"get_weather", "web_fetch", "ask_user", "retrieve_context"} == common_tool_names
+    assert {"get_weather", "ask_user", "retrieve_context"} == common_tool_names
 
 
 def test_general_agent_build_agent_accepts_extra_tools() -> None:
