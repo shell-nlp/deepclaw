@@ -220,7 +220,7 @@
 - `deepclaw/web_backend/agent/run_store.py` 的旧数据归类依据 `index_names`（兼容历史数据的 `index_name`）：把早期被错存为通用 agent 的 RAG run 修正为 `rag`，以及从 checkpoint 回填 Thread 索引时判断 agent
 
 - `deepclaw/middleware/`
-  业务开关、RAG 注入、MCP、工具搜索、计划，以及 `cron` 工具实现等中间件与运行时扩展。
+  业务开关、RAG 注入、MCP、工具搜索，以及 `cron` 工具实现等中间件与运行时扩展。
   工具搜索由 `tool_search.py` 的 `DeferredToolMiddleware` 提供（`USE_TOOL_SEARCH=True` 启用，装配时插在 `DeviceToolsMiddleware` 之前）：工具先只暴露名称（系统提示词 `<available-deferred-tools>`），模型调用 `tool_search` 取回 JSON 架构后，名称记入 state 的 `surfaced_tools`，后续每轮模型调用都会把这些工具重新绑定进 `request.tools` 形成闭环；`deferred_tool` 目录按当前工具集名称比对、变化即重建，避免与 MCP 每轮刷新的工具集脱节。设备工具位于内层中间件注入，始终直接绑定、不进延迟目录。`tests/test_tool_search.py` 覆盖匹配、闭环与缓存重建。
   聊天文件由 `deepclaw/middleware/files/` 提供，通用与 RAG Agent 共用。`middleware.py` 定义 `FileMiddleware` 及其注册的文件工具，包入口导出 `FileMiddleware`。上传、读取、搜索和下载使用可信账号及角色权限，元数据存入统一数据库，原件和带版本的解析缓存使用对象存储。`read_file` 首次读取 PDF 时会渲染最多两页无法提取文字的页面，也可指定页码。图片只加入当次模型输入。前端 `#/knowledge/files` 汇集手动上传、聊天附件和模型产物，支持预览、收藏和按账号设置未收藏文件的保留天数。接口和工具契约见 `docs/file-middleware.md`。
   定时任务由 `cron/cron_tool.py` 和 `web_backend/schedules.py` 共用 `cron/schedule_store.py`，按当前登录账号隔离。任务表 `scheduled_tasks` 与结果表 `scheduled_task_runs` 使用统一业务元数据数据库。应用生命周期启动轮询 worker，原子领取到期任务，停机期间遗漏的周期只补执行一次，过期的运行标为失败。旧 `cron_jobs` 记录缺少账号归属，继续保留为历史数据。
