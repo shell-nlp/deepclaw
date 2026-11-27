@@ -64,6 +64,35 @@ def test_admin_can_create_user():
 
     assert response.status_code == 200
     assert response.json()["user"]["username"] == "created"
+    assert response.json()["user"]["display_name"] is None
+
+
+def test_admin_can_set_and_clear_display_name():
+    """验证显示名可选、可清空，并在登录和当前账号接口中返回。
+
+    Args:
+        无。
+    """
+    client = build_client()
+    credentials = {"username": "admin", "password": "admin-pass-123"}
+    login = client.post("/api/auth/login", json=credentials).json()
+    headers = {"Authorization": f"Bearer {login['token']}"}
+    profile = {"user_id": login["user"]["user_id"]}
+    update_path = "/api/auth/users/update"
+
+    updated = client.post(update_path, json={**profile, "display_name": " 林悦 "}, headers=headers)
+    assert updated.status_code == 200
+    assert updated.json()["user"]["display_name"] == "林悦"
+
+    unchanged = client.post(update_path, json=profile, headers=headers)
+    assert unchanged.json()["user"]["display_name"] == "林悦"
+    assert client.post("/api/auth/login", json=credentials).json()["user"]["display_name"] == "林悦"
+    assert client.get("/api/auth/me", headers=headers).json()["username"] == "admin"
+    assert client.get("/api/auth/me", headers=headers).json()["display_name"] == "林悦"
+
+    cleared = client.post(update_path, json={**profile, "display_name": "  "}, headers=headers)
+    assert cleared.json()["user"]["display_name"] is None
+    assert client.get("/api/auth/me", headers=headers).json()["display_name"] is None
 
 
 def test_admin_can_manage_user_accounts():

@@ -1,4 +1,5 @@
 import asyncio
+import sqlite3
 from contextlib import AsyncExitStack
 from datetime import timedelta
 from pathlib import Path
@@ -113,6 +114,55 @@ def test_auth_store_migrates_legacy_auth_db_to_deepclaw_home(auth_migration_home
 
             assert issued.user.username == "user"
             assert (current_home / ".auth_migrated_from_langchain_api").exists()
+
+    asyncio.run(_test())
+
+
+def test_auth_store_adds_display_name_to_existing_legacy_schema(tmp_path):
+    """验证旧账号表升级后具备可选显示名，且默认不改变用户名。
+
+    Args:
+        tmp_path: 用于创建旧版 SQLite 账号库的临时目录。
+    """
+    from deepclaw.web_backend.auth.store import AuthStore
+
+    db_path = tmp_path / "auth.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            "CREATE TABLE authuser ("
+            "id INTEGER NOT NULL PRIMARY KEY, "
+            "user_id VARCHAR NOT NULL UNIQUE, "
+            "username VARCHAR UNIQUE, "
+            "email VARCHAR NOT NULL, "
+            "password_hash VARCHAR NOT NULL, "
+            "role VARCHAR NOT NULL, "
+            "is_active BOOLEAN NOT NULL, "
+            "created_at TIMESTAMP NOT NULL, "
+            "updated_at TIMESTAMP NOT NULL"
+            ")"
+        )
+        connection.execute(
+            "INSERT INTO authuser (user_id, username, email, password_hash, role, is_active, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            ("user_legacy", "legacy", "legacy@example.com", "hash", "user", 1, "2026-01-01", "2026-01-01"),
+        )
+
+    async def _test():
+        store = AuthStore(f"sqlite:///{db_path.as_posix()}")
+        try:
+            user = await store.get_user_by_username("legacy")
+            assert user is not None
+            assert user.username == "legacy"
+            assert user.display_name is None
+
+            updated = await store.update_user_profile(
+                user_id=user.user_id,
+                display_name="旧账号显示名",
+            )
+            assert updated.username == "legacy"
+            assert updated.display_name == "旧账号显示名"
+        finally:
+            await store.engine.dispose()
 
     asyncio.run(_test())
 

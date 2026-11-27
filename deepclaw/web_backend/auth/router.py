@@ -49,6 +49,7 @@ async def register(
         "token": issued.token,
         "user": {
             "username": user.username,
+            "display_name": user.display_name,
             "email": user.email,
             "role": user.role,
             "is_active": user.is_active,
@@ -70,6 +71,7 @@ async def login(
         "token": issued.token,
         "user": {
             "username": issued.user.username,
+            "display_name": issued.user.display_name,
             "email": issued.user.email,
             "role": issued.user.role,
             "is_active": issued.user.is_active,
@@ -127,10 +129,12 @@ async def create_user(
         password=request.password,
         role=request.role,
         email=request.email,
+        display_name=request.display_name,
     )
     return {
         "user": {
             "username": user.username,
+            "display_name": user.display_name,
             "email": user.email,
             "role": user.role,
             "is_active": user.is_active,
@@ -153,6 +157,7 @@ async def list_users(
         "items": [
             {
                 "username": user.username,
+                "display_name": user.display_name,
                 "email": user.email,
                 "role": user.role,
                 "is_active": user.is_active,
@@ -180,6 +185,7 @@ async def update_user_role(
     return {
         "user": {
             "username": user.username,
+            "display_name": user.display_name,
             "email": user.email,
             "role": user.role,
             "is_active": user.is_active,
@@ -204,6 +210,7 @@ async def update_user_status(
     return {
         "user": {
             "username": user.username,
+            "display_name": user.display_name,
             "email": user.email,
             "role": user.role,
             "is_active": user.is_active,
@@ -214,21 +221,23 @@ async def update_user_status(
     }
 
 
-@router.post("/users/update", summary="修改用户资料", description="管理员修改指定用户的用户名与邮箱。")
+@router.post("/users/update", summary="修改用户资料", description="管理员修改指定用户的用户名、显示名与邮箱。")
 async def update_user_profile(
     request: AdminUpdateUserProfileRequest,
     actor: CurrentActor = Depends(require_permission("/api/auth/users/update", "write")),
     service: AuthService = Depends(get_auth_service),
 ):
-    """由管理员修改用户用户名或邮箱。"""
+    """由管理员修改账号资料。"""
     user = await service.update_user_profile(
         user_id=request.user_id,
         username=request.username,
         email=request.email,
+        display_name=request.display_name,
     )
     return {
         "user": {
             "username": user.username,
+            "display_name": user.display_name,
             "email": user.email,
             "role": user.role,
             "is_active": user.is_active,
@@ -267,6 +276,7 @@ async def reset_user_password(
     return {
         "user": {
             "username": user.username,
+            "display_name": user.display_name,
             "email": user.email,
             "role": user.role,
             "is_active": user.is_active,

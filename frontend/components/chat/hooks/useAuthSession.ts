@@ -160,6 +160,7 @@ export function useAuthSession({
     username: string
     password: string
     role: string
+    display_name?: string
   }) => {
     setUserAdminNotice('')
     setUserAdminError('')
@@ -171,8 +172,10 @@ export function useAuthSession({
       })
       await loadAdminUsers()
       setUserAdminNotice(`已创建账号 ${input.username}。`)
+      return true
     } catch (error) {
       setUserAdminError(error instanceof Error ? error.message : '创建用户失败。')
+      return false
     }
   }
 
@@ -210,24 +213,33 @@ export function useAuthSession({
 
   const updateAdminUserProfile = async (
     userId: string,
-    input: { username?: string; email?: string }
+    input: { username?: string; email?: string; display_name?: string }
   ) => {
     setUserAdminNotice('')
     setUserAdminError('')
     try {
-      await requestJson<AuthLoginResponse>(AUTH_USERS_UPDATE_PROFILE_API_PATH, {
+      const { user } = await requestJson<AuthLoginResponse>(AUTH_USERS_UPDATE_PROFILE_API_PATH, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: userId,
           username: input.username ?? null,
           email: input.email ?? null,
+          display_name: input.display_name,
         }),
       })
       await loadAdminUsers()
+      setActor((previous) => previous.userId === user.user_id ? {
+        ...previous,
+        username: user.username ?? null,
+        displayName: user.display_name ?? null,
+        email: user.email ?? null,
+      } : previous)
       setUserAdminNotice('用户资料已更新。')
+      return true
     } catch (error) {
       setUserAdminError(error instanceof Error ? error.message : '更新用户资料失败。')
+      return false
     }
   }
 

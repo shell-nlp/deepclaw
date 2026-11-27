@@ -237,6 +237,7 @@ class AuthService:
         password: str,
         role: str,
         email: str | None = None,
+        display_name: str | None = None,
     ):
         """管理员创建用户。
 
@@ -245,6 +246,7 @@ class AuthService:
             password: 初始密码。
             role: 用户角色。
             email: 可选邮箱。
+            display_name: 可选显示名；留空时界面显示用户名。
         """
         normalized_username = normalize_username(username)
         normalized_role = await self._validate_role(role)
@@ -255,6 +257,7 @@ class AuthService:
             password_hash=hash_password(password),
             role=normalized_role,
             email=normalize_optional_email(email),
+            display_name=(display_name or "").strip() or None,
         )
 
     async def list_users(self, *, search: str = ""):
@@ -305,13 +308,15 @@ class AuthService:
         user_id: str,
         username: str | None = None,
         email: str | None = None,
+        display_name: str | None = None,
     ):
-        """管理员修改用户用户名或邮箱。
+        """管理员修改账号资料。
 
         Args:
             user_id: 目标用户 ID。
             username: 新用户名；为 None 或空串表示不修改。
             email: 新邮箱；None 表示不修改，空串表示清空。
+            display_name: 新显示名；None 表示不修改，空串表示清空。
 
         Returns:
             AuthUser: 更新后的账号。
@@ -336,6 +341,7 @@ class AuthService:
             user_id=user_id,
             username=normalized_username,
             email=normalized_email,
+            display_name=display_name.strip() if display_name is not None else None,
         )
 
     async def delete_user(self, *, user_id: str, operator_user_id: str | None = None):

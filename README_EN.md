@@ -85,7 +85,7 @@ November 2, 2026, using isolated demo data. Images live in `assets/img/`.
 
 ![Login](assets/img/login.png)
 
-Username is the only login identifier; email is profile-only and not used for login. Public registration is
+Username is the only login identifier. The display name is optional and falls back to the username when blank. Email is profile-only and not used for login. Public registration is
 disabled by default and accounts are created by admins. With `ALLOW_GUEST_ACCESS=false`, unauthenticated
 visits are redirected to this page.
 

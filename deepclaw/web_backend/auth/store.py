@@ -169,6 +169,7 @@ AUTH_USER_TABLE_DDL = (
     "user_id VARCHAR NOT NULL UNIQUE, "
     "username VARCHAR UNIQUE, "
     "email VARCHAR, "
+    "display_name VARCHAR(64), "
     "password_hash VARCHAR NOT NULL, "
     "role VARCHAR NOT NULL, "
     "is_active BOOLEAN NOT NULL, "
@@ -241,7 +242,7 @@ class AuthStore:
         self._init_done = True
 
     async def _migrate_legacy_schema(self) -> None:
-        """为旧库补齐 username 列，并把历史邮箱回填为用户名。
+        """补齐历史账号表字段，并把历史邮箱回填为用户名。
 
         旧版本以邮箱作为唯一登录标识，升级后邮箱变为可选资料；
         这里把存量邮箱复制到 username，保证老账号仍能登录。
@@ -250,6 +251,8 @@ class AuthStore:
             无。
         """
         async with self.engine.begin() as conn:
+            if conn.dialect.name == "sqlite":
+                await conn.exec_driver_sql("BEGIN IMMEDIATE")
             columns = await conn.run_sync(
                 lambda sync_conn: {
                     column["name"]
@@ -259,6 +262,13 @@ class AuthStore:
             if "username" not in columns:
                 await conn.execute(
                     text("ALTER TABLE authuser ADD COLUMN username VARCHAR")
+                )
+            if "display_name" not in columns:
+                if_not_exists = "IF NOT EXISTS " if conn.dialect.name == "postgresql" else ""
+                await conn.execute(
+                    text(
+                        f"ALTER TABLE authuser ADD COLUMN {if_not_exists}display_name VARCHAR(64)"
+                    )
                 )
             if "email" in columns:
                 # 旧库 email 为 NOT NULL：先回填再放宽约束，否则 username-only 账号无法写入。
@@ -445,6 +455,7 @@ class AuthStore:
         password_hash: str,
         role: str,
         email: str | None = None,
+        display_name: str | None = None,
     ) -> AuthUser:
         """创建用户账号。
 
@@ -453,6 +464,7 @@ class AuthStore:
             password_hash: 密码哈希。
             role: 用户角色。
             email: 可选邮箱。
+            display_name: 可选显示名。
 
         Returns:
             AuthUser: 已创建的账号。
@@ -471,6 +483,7 @@ class AuthStore:
                 user_id=f"user_{uuid.uuid4().hex}",
                 username=username,
                 email=email,
+                display_name=display_name,
                 password_hash=password_hash,
                 role=role,
                 is_active=True,
@@ -592,13 +605,15 @@ class AuthStore:
         user_id: str,
         username: str | None = None,
         email: str | None = None,
+        display_name: str | None = None,
     ) -> AuthUser:
-        """更新用户用户名与邮箱。
+        """更新账号资料。
 
         Args:
             user_id: 目标用户 ID。
             username: 新用户名；为 None 表示不修改。
             email: 新邮箱；为 None 表示不修改，空字符串由上层转换为清空。
+            display_name: 新显示名；为 None 表示不修改，空字符串清空。
 
         Returns:
             AuthUser: 更新后的账号。
@@ -618,6 +633,8 @@ class AuthStore:
                 user.username = username
             if email is not None:
                 user.email = email
+            if display_name is not None:
+                user.display_name = display_name or None
             user.updated_at = utc_now()
             session.add(user)
             await session.commit()

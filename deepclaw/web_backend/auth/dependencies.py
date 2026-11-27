@@ -10,6 +10,8 @@ class CurrentActor(BaseModel):
     user_id: str | None
     email: str | None
     role: str
+    username: str | None = None
+    display_name: str | None = None
 
 
 async def get_current_actor(
@@ -35,6 +37,8 @@ async def get_current_actor(
         user_id=actor.user.user_id,
         email=actor.user.email,
         role=actor.user.role,
+        username=actor.user.username,
+        display_name=actor.user.display_name,
     )
 
 

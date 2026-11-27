@@ -16,8 +16,7 @@ interface AccountPanelProps {
 
 function getAccountLabel(actor: ActorState): string {
   if (actor.isGuest) return '游客'
-  if (actor.email) return actor.email
-  return actor.userId
+  return actor.displayName || actor.username || actor.email || actor.userId
 }
 
 function getAccountSubLabel(actor: ActorState): string {
@@ -41,6 +40,7 @@ export function AccountPanel({
   onLogout,
 }: AccountPanelProps) {
   const router = useRouter()
+  const accountLabel = getAccountLabel(actor)
   const shellRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -79,10 +79,10 @@ export function AccountPanel({
     <div className={styles.accountPanelShell} ref={shellRef}>
       <button type="button" className={styles.accountEntry} onClick={handleEntryClick}>
         <span className={styles.accountAvatar}>
-          {actor.isGuest ? '游' : (actor.email || actor.userId).slice(0, 1).toUpperCase()}
+          {Array.from(accountLabel)[0]?.toUpperCase()}
         </span>
         <span className={styles.accountMeta}>
-          <strong>{getAccountLabel(actor)}</strong>
+          <strong title={accountLabel}>{accountLabel}</strong>
           <span className={actor.isGuest ? styles.accountGuestMeta : undefined}>
             {getAccountSubLabel(actor)}
           </span>
@@ -102,6 +102,7 @@ export function AccountPanel({
           </div>
 
           <div className={styles.managementMetaPanel}>
+            <span>用户名: {actor.username || '-'}</span>
             <span>邮箱: {actor.email || '-'}</span>
             <span>用户 ID: {actor.userId}</span>
           </div>

@@ -15,15 +15,15 @@ interface UserManagementViewProps {
   error: string
   onOpenAuth: () => void
   onLoadUsers: (search: string) => void | Promise<void>
-  onCreateUser: (input: { username: string; password: string; role: string }) => void | Promise<void>
+  onCreateUser: (input: { username: string; password: string; role: string; display_name?: string }) => Promise<boolean>
   onUpdateUserRole: (userId: string, role: string) => void | Promise<void>
   requestJson: <T>(path: string, init?: RequestInit) => Promise<T>
   canManageUsers?: boolean
   onUpdateUserStatus: (userId: string, isActive: boolean) => void | Promise<void>
   onUpdateUserProfile: (
     userId: string,
-    input: { username?: string; email?: string }
-  ) => void | Promise<void>
+    input: { username?: string; email?: string; display_name?: string }
+  ) => Promise<boolean>
   onDeleteUser: (userId: string) => void | Promise<void>
   onResetUserPassword: (userId: string, password: string) => void | Promise<void>
   currentUserId?: string
@@ -60,12 +60,14 @@ export function UserManagementView({
 }: UserManagementViewProps) {
   const [search, setSearch] = useState('')
   const [username, setUsername] = useState('')
+  const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
   const [role, setRole] = useState('user')
   const [roleOptions, setRoleOptions] = useState<RoleCatalogRecord[]>([])
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<AuthUserSummary | null>(null)
   const [editUsername, setEditUsername] = useState('')
+  const [editDisplayName, setEditDisplayName] = useState('')
   const [editEmail, setEditEmail] = useState('')
 
   useEffect(() => {
@@ -112,7 +114,7 @@ export function UserManagementView({
         </div></div>
         <div className={styles.managementPageGrid}><section className={styles.managementCard}>
           <div className={styles.managementHeader}><h3>当前账号</h3><span className={styles.accountRoleBadge}>普通用户</span></div>
-          <div className={styles.managementMetaPanel}><span>用户名: {actor.username || '-'}</span><span>邮箱: {actor.email || '-'}</span><span>用户 ID: {actor.userId}</span></div>
+          <div className={styles.managementMetaPanel}><span>显示名: {actor.displayName || actor.username || '-'}</span><span>用户名: {actor.username || '-'}</span><span>邮箱: {actor.email || '-'}</span><span>用户 ID: {actor.userId}</span></div>
           <p className={styles.managementDescription}>你可以继续使用聊天、知识库和技能功能；用户账号管理仅管理员可见。</p>
         </section></div>
       </div>
@@ -120,8 +122,9 @@ export function UserManagementView({
   }
 
   const handleCreateUser = async () => {
-    await onCreateUser({ username, password, role })
-    setUsername(''); setPassword(''); setRole('user'); setIsCreateOpen(false)
+    const created = await onCreateUser({ username, password, role, display_name: displayName.trim() })
+    if (!created) return
+    setUsername(''); setDisplayName(''); setPassword(''); setRole('user'); setIsCreateOpen(false)
   }
 
   return (
@@ -150,10 +153,10 @@ export function UserManagementView({
           <div className={styles.managementDataList}>
             {users.length === 0 ? <div className={styles.managementEmpty}>当前没有匹配的用户。</div> : users.map((user) => (
               <div key={user.user_id} className={styles.managementDataRow}>
-                <div className={styles.managementDataPrimary}><div className={styles.managementDataTitle}><strong>{user.username}</strong>{user.email ? <span className={styles.managementMeta}>{user.email}</span> : null}<span className={styles.accountRoleBadge}>{roleOptions.find((item) => item.id === user.role)?.name || user.role}</span></div><span className={styles.managementDataDescription}>用户 ID: {user.user_id}</span><span className={styles.managementDataDescription}>创建：{formatAccountTime(user.created_at)} · 更新：{formatAccountTime(user.updated_at)}</span></div>
+                <div className={styles.managementDataPrimary}><div className={styles.managementDataTitle}><strong>{user.display_name || user.username}</strong>{user.display_name ? <span className={styles.managementMeta}>账号 {user.username}</span> : null}{user.email ? <span className={styles.managementMeta}>{user.email}</span> : null}<span className={styles.accountRoleBadge}>{roleOptions.find((item) => item.id === user.role)?.name || user.role}</span></div><span className={styles.managementDataDescription}>用户 ID: {user.user_id}</span><span className={styles.managementDataDescription}>创建：{formatAccountTime(user.created_at)} · 更新：{formatAccountTime(user.updated_at)}</span></div>
                 <div className={styles.managementDataMetrics}><span className={user.is_active ? styles.userStatusActive : styles.userStatusInactive}><span aria-hidden="true" className={styles.userStatusDot} />{user.is_active ? '启用中' : '已停用'}</span></div>
                 <div className={styles.managementDataActions}>
-                  <button type="button" className={styles.managementMinorButton} onClick={() => { setEditingUser(user); setEditUsername(user.username || ''); setEditEmail(user.email || '') }} aria-label={`编辑 ${user.username} 的资料`}>编辑</button>
+                  <button type="button" className={styles.managementMinorButton} onClick={() => { setEditingUser(user); setEditUsername(user.username || ''); setEditDisplayName(user.display_name || ''); setEditEmail(user.email || '') }} aria-label={`编辑 ${user.username} 的资料`}>编辑</button>
                   <label className={styles.managementField}>角色
                     <select className={styles.managementInput} aria-label={'设置 ' + user.username + ' 的角色'} value={user.role} onChange={(event) => void onUpdateUserRole(user.user_id, event.target.value)} disabled={user.user_id === currentUserId}>
                       {roleOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
@@ -176,6 +179,7 @@ export function UserManagementView({
             <p className={styles.managementHelperText}>为新成员设置登录信息和访问角色，创建后可在列表中继续调整。</p>
             <div className={styles.managementForm}>
               <label className={styles.managementField}>用户名<input className={styles.managementInput} type="text" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="登录时使用的用户名" autoFocus /></label>
+              <label className={styles.managementField}>显示名<input className={styles.managementInput} type="text" value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={64} placeholder="可选，留空时显示用户名" /></label>
               <label className={styles.managementField}>初始密码<input className={styles.managementInput} type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="至少 8 位" /></label>
               <label className={styles.managementField}>角色<select className={styles.managementInput} value={role} onChange={(event) => setRole(event.target.value)}>{roleOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}{!roleOptions.length && <><option value="user">普通用户</option><option value="admin">管理员</option></>}</select></label>
               <div className={styles.managementToolbar}><button type="button" className={styles.managementMinorButton} onClick={() => setIsCreateOpen(false)}>取消</button><button type="button" className={styles.managementButton} onClick={() => void handleCreateUser()}>创建用户</button></div>
@@ -187,11 +191,12 @@ export function UserManagementView({
         <div className={styles.managementModalOverlay} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditingUser(null) }}>
           <section className={styles.managementModal} role="dialog" aria-modal="true" aria-labelledby="edit-user-title">
             <div className={styles.managementHeader}><div><span className={styles.managementBreadcrumb}>账号设置</span><h3 id="edit-user-title">编辑用户</h3></div><button type="button" className={styles.managementModalClose} onClick={() => setEditingUser(null)} aria-label="关闭编辑用户窗口">关闭</button></div>
-            <p className={styles.managementHelperText}>修改登录用户名与联系邮箱；密码请使用列表中的重置密码操作。</p>
+            <p className={styles.managementHelperText}>可修改登录用户名、显示名和联系邮箱；密码请使用列表中的重置密码操作。</p>
             <div className={styles.managementForm}>
               <label className={styles.managementField}>用户名<input className={styles.managementInput} type="text" value={editUsername} onChange={(event) => setEditUsername(event.target.value)} autoFocus /></label>
+              <label className={styles.managementField}>显示名<input className={styles.managementInput} type="text" value={editDisplayName} onChange={(event) => setEditDisplayName(event.target.value)} maxLength={64} placeholder="可选，留空时显示用户名" /></label>
               <label className={styles.managementField}>邮箱<input className={styles.managementInput} type="email" value={editEmail} onChange={(event) => setEditEmail(event.target.value)} placeholder="留空表示不填写" /></label>
-              <div className={styles.managementToolbar}><button type="button" className={styles.managementMinorButton} onClick={() => setEditingUser(null)}>取消</button><button type="button" className={styles.managementButton} onClick={async () => { await onUpdateUserProfile(editingUser.user_id, { username: editUsername.trim(), email: editEmail.trim() }); setEditingUser(null) }}>保存修改</button></div>
+              <div className={styles.managementToolbar}><button type="button" className={styles.managementMinorButton} onClick={() => setEditingUser(null)}>取消</button><button type="button" className={styles.managementButton} onClick={async () => { const saved = await onUpdateUserProfile(editingUser.user_id, { username: editUsername.trim(), email: editEmail.trim(), display_name: editDisplayName.trim() }); if (saved) setEditingUser(null) }}>保存修改</button></div>
             </div>
           </section>
         </div>

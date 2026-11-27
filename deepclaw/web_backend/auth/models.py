@@ -14,12 +14,14 @@ class AuthUser(SQLModel, table=True):
 
     Args:
         username: 登录用户名，唯一且必填。
+        display_name: 可选显示名；为空时界面回退显示用户名。
         email: 可选邮箱，仅作附加资料展示，可为空且不要求唯一。
     """
 
     id: int | None = Field(default=None, primary_key=True)
     user_id: str = Field(index=True, unique=True)
     username: str | None = Field(default=None, index=True, unique=True)
+    display_name: str | None = Field(default=None, max_length=64)
     email: str | None = Field(default=None, index=True)
     password_hash: str
     role: str = Field(default="user")

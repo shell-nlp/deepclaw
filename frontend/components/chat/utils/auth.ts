@@ -19,6 +19,7 @@ export interface ActorState {
   isGuest: boolean
   userId: string
   username: string | null
+  displayName?: string | null
   email: string | null
   role: ActorRole
   permissions?: ActorPermission[]
@@ -28,6 +29,7 @@ export interface ActorPayload {
   is_guest?: boolean
   user_id?: string | null
   username?: string | null
+  display_name?: string | null
   email?: string | null
   role?: string | null
   permissions?: ActorPermission[]
@@ -85,6 +87,7 @@ export function normalizeActorPayload(payload: ActorPayload | null | undefined):
     isGuest: false,
     userId: payload.user_id,
     username: payload.username ?? null,
+    displayName: payload.display_name?.trim() || null,
     email: payload.email ?? null,
     role,
   }
@@ -99,6 +102,7 @@ export function normalizeUserToActor(user: AuthUserSummary): ActorState {
     is_guest: false,
     user_id: user.user_id,
     username: user.username,
+    display_name: user.display_name,
     email: user.email,
     role: user.role,
     permissions: user.permissions,

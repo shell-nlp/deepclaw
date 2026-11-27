@@ -323,6 +323,7 @@ export interface SkillDeleteResponse {
 }
 
 export interface AuthUserSummary {
+  display_name?: string | null
   username: string
   email: string | null
   role: string

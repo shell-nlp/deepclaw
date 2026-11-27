@@ -328,7 +328,7 @@ export default function LoginPage() {
                 <span className={styles.accountRole}>
                   {actor.role === 'admin' ? '管理员' : '普通用户'}
                 </span>
-                <strong>{actor.username || actor.email || actor.userId}</strong>
+                <strong>{actor.displayName || actor.username || actor.email || actor.userId}</strong>
                 <span>用户 ID：{actor.userId}</span>
               </div>
 

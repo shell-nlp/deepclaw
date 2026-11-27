@@ -34,12 +34,14 @@ class AdminCreateUserRequest(BaseModel):
         username: 登录用户名。
         password: 初始密码。
         role: 用户角色。
+        display_name: 可选显示名；留空时界面显示用户名。
         email: 可选邮箱。
     """
 
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=8)
     role: str = Field(default="user", min_length=1, max_length=128)
+    display_name: str | None = Field(default=None, max_length=64)
     email: str | None = None
 
 
@@ -83,11 +85,13 @@ class AdminUpdateUserProfileRequest(BaseModel):
     Args:
         user_id: 目标用户 ID。
         username: 新用户名；为空表示不修改。
+        display_name: 新显示名；传空字符串表示清空。
         email: 新邮箱；传空字符串表示清空。
     """
 
     user_id: str
     username: str | None = Field(default=None, min_length=1, max_length=64)
+    display_name: str | None = Field(default=None, max_length=64)
     email: str | None = None
 
 

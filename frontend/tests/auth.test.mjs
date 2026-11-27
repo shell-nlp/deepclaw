@@ -28,6 +28,7 @@ test('auth helpers normalize guest and authenticated actors', () => {
       is_guest: false,
       user_id: 'user_123',
       username: 'user',
+      display_name: ' 林悦 ',
       email: null,
       role: 'admin',
     }),
@@ -35,6 +36,7 @@ test('auth helpers normalize guest and authenticated actors', () => {
       isGuest: false,
       userId: 'user_123',
       username: 'user',
+      displayName: '林悦',
       email: null,
       role: 'admin',
     }
